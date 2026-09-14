@@ -422,3 +422,82 @@ alter publication supabase_realtime add table public.colaboradores;
 alter publication supabase_realtime add table public.avisos_rede;
 alter publication supabase_realtime add table public.registros_ponto;
 alter publication supabase_realtime add table public.leituras_mensagem;
+
+-- ============================================================
+-- PRIMEIRO ACESSO
+--
+-- Com as regras acima ligadas, cadastrar colaborador exige já ser RH ou
+-- Administrador — e no banco vazio não existe nenhum dos dois. Sem isto,
+-- ninguém conseguiria entrar na primeira vez.
+--
+-- A solução é um gatilho: quando um usuário é criado na autenticação, a
+-- ficha do colaborador nasce junto. O PRIMEIRO a entrar vira Administrador
+-- (nível 4); todos os seguintes entram como operadores, e o RH ajusta
+-- depois pelo painel.
+-- ============================================================
+
+create or replace function public.criar_colaborador_do_usuario()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  ja_existe_alguem boolean;
+  nivel_inicial    smallint;
+  login_novo       text;
+begin
+  select exists (select 1 from public.colaboradores) into ja_existe_alguem;
+  nivel_inicial := case when ja_existe_alguem then 1 else 4 end;
+
+  -- O login vem do cadastro feito na tela; sem ele, usa a parte antes do @
+  login_novo := coalesce(
+    nullif(trim(new.raw_user_meta_data ->> 'login'), ''),
+    split_part(new.email, '@', 1)
+  );
+
+  insert into public.colaboradores (
+    id, auth_user_id, nome, login, cargo, setor, loja, nivel, foto, presenca, ativo
+  )
+  values (
+    'colab-' || replace(new.id::text, '-', ''),
+    new.id,
+    coalesce(nullif(trim(new.raw_user_meta_data ->> 'nome'), ''), login_novo),
+    login_novo,
+    coalesce(nullif(trim(new.raw_user_meta_data ->> 'cargo'), ''),
+             case when ja_existe_alguem then 'Colaborador' else 'Administrador Geral' end),
+    coalesce(nullif(trim(new.raw_user_meta_data ->> 'setor'), ''),
+             case when ja_existe_alguem then 'Balcão' else 'TI' end),
+    coalesce(nullif(trim(new.raw_user_meta_data ->> 'loja'), ''), 'Pirassununga'),
+    nivel_inicial,
+    '/logo-malachias.svg',
+    'disponivel',
+    true
+  )
+  on conflict (auth_user_id) do nothing;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists ao_criar_usuario on auth.users;
+create trigger ao_criar_usuario
+  after insert on auth.users
+  for each row execute function public.criar_colaborador_do_usuario();
+
+-- ------------------------------------------------------------
+-- CÓDIGOS DE PONTO DAS LOJAS
+--
+-- Semeados aqui porque a criação exige ser RH ou Administrador: se ficassem
+-- para o aplicativo gerar, um operador nunca conseguiria bater o ponto na
+-- primeira vez. O RH troca qualquer um deles pelo painel quando quiser.
+-- ------------------------------------------------------------
+
+insert into public.codigos_ponto_loja (loja, codigo)
+values
+  ('Pirassununga',   upper(substr(md5(random()::text), 1, 6))),
+  ('Porto Ferreira', upper(substr(md5(random()::text), 1, 6))),
+  ('Palmeiras',      upper(substr(md5(random()::text), 1, 6))),
+  ('Descalvado',     upper(substr(md5(random()::text), 1, 6))),
+  ('Santa Rita',     upper(substr(md5(random()::text), 1, 6)))
+on conflict (loja) do nothing;
