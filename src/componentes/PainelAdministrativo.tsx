@@ -48,6 +48,7 @@ import {
 } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA, obterFotoColaborador } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
+import { ehArquivoDeImagem, comprimirImagem } from '../servicos/imagens';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 import { ImportacaoPlanilhaFuncionarios } from './ImportacaoPlanilhaFuncionarios';
 import { baixarPlanilhaModeloExcel } from '../servicos/planilhaFuncionarios';
@@ -248,44 +249,21 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   };
 
   // Processa e otimiza foto para o formulário de cadastro/edição de colaborador
-  const processarArquivoFotoForm = (arquivo: File) => {
-    if (!arquivo.type.startsWith('image/')) {
+  const processarArquivoFotoForm = async (arquivo: File) => {
+    if (!ehArquivoDeImagem(arquivo)) {
       exibirToast('Por favor, selecione um arquivo de imagem válido.', true);
       return;
     }
-    const leitor = new FileReader();
-    leitor.onload = (e) => {
-      const src = e.target?.result as string;
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxDim = 400;
-        let w = img.width;
-        let h = img.height;
-        if (w > h) {
-          if (w > maxDim) {
-            h = Math.round((h * maxDim) / w);
-            w = maxDim;
-          }
-        } else {
-          if (h > maxDim) {
-            w = Math.round((w * maxDim) / h);
-            h = maxDim;
-          }
-        }
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, w, h);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-          setFormColab((prev) => ({ ...prev, foto: dataUrl }));
-          exibirToast('Foto selecionada e otimizada com sucesso.');
-        }
-      };
-      img.src = src;
-    };
-    leitor.readAsDataURL(arquivo);
+
+    // Foto de perfil é pequena na tela: 400px já basta e economiza espaço
+    const dataUrl = await comprimirImagem(arquivo, 400, 0.85);
+    if (!dataUrl) {
+      exibirToast('Não foi possível ler esta imagem.', true);
+      return;
+    }
+
+    setFormColab((prev) => ({ ...prev, foto: dataUrl }));
+    exibirToast('Foto selecionada e otimizada com sucesso.');
   };
 
   // Salva colaborador (criação ou edição)

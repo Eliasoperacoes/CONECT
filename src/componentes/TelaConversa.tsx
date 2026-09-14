@@ -30,6 +30,7 @@ import {
   EstadoTransmissaoRadio,
 } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
+import { ehArquivoDeImagem, ehDataUrlDeImagem, comprimirImagem } from '../servicos/imagens';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoAudioRadio } from '../servicos/audioRadio';
 import { TelaRadioAoVivo } from './TelaRadioAoVivo';
@@ -172,7 +173,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
    */
   const LIMITE_ANEXO_BYTES = 2 * 1024 * 1024; // 2 MB
 
-  const lidarEnvioArquivo = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const lidarEnvioArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const arquivos = e.target.files;
     if (!arquivos || arquivos.length === 0) return;
     const arquivo = arquivos[0];
@@ -180,6 +181,24 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     const limparCampo = () => {
       if (refInputArquivo.current) refInputArquivo.current.value = '';
     };
+
+    // Foto anexada é foto: entra na conversa como imagem, não como documento
+    // para baixar. Vai reduzida, porque foto de celular estoura o navegador.
+    if (ehArquivoDeImagem(arquivo)) {
+      const imagem = await comprimirImagem(arquivo);
+      if (imagem) {
+        const resultado = bancoDados.enviarMensagem(conversa.id, {
+          tipo: 'imagem',
+          imagemUrl: imagem,
+        });
+        if (!resultado.sucesso) {
+          exibirToast(resultado.erro || 'Não foi possível enviar a foto.');
+        }
+        limparCampo();
+        return;
+      }
+      // Formato de imagem que o navegador não abriu: segue como anexo comum
+    }
 
     if (arquivo.size > LIMITE_ANEXO_BYTES) {
       exibirToast('Arquivo acima de 2 MB. Envie um menor ou compartilhe o link.');
@@ -731,6 +750,13 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               }));
             const estaSelecionada = mensagensSelecionadasIds.includes(msg.id);
 
+            // Fotos anexadas antes desta correção foram gravadas como arquivo.
+            // Se o conteúdo é uma imagem, mostra como foto em vez de download.
+            const ehFoto =
+              msg.tipo === 'imagem' ||
+              (msg.tipo === 'arquivo' && ehDataUrlDeImagem(msg.arquivoUrl));
+            const urlDaFoto = msg.tipo === 'imagem' ? msg.imagemUrl : msg.arquivoUrl;
+
             return (
               <div
                 key={msg.id}
@@ -850,8 +876,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       </div>
                     )}
 
-                    {/* Tipo: Arquivo */}
-                    {msg.tipo === 'arquivo' && (
+                    {/* Tipo: Arquivo (documentos; fotos caem no bloco de imagem) */}
+                    {msg.tipo === 'arquivo' && !ehFoto && (
                       <div className="flex items-center gap-3 py-1 min-w-[200px]">
                         <div
                           className={`w-9 h-9 rounded-lg flex items-center justify-center ${
@@ -878,13 +904,13 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       </div>
                     )}
 
-                    {/* Tipo: Imagem / Foto tirada pela câmera */}
-                    {msg.tipo === 'imagem' && msg.imagemUrl && (
+                    {/* Tipo: Imagem — foto da câmera ou anexada pelo clipe */}
+                    {ehFoto && urlDaFoto && (
                       <div className="flex flex-col gap-1.5 py-1 min-w-[180px] max-w-xs sm:max-w-sm">
                         <div
                           onClick={() =>
                             setImagemAmpliada({
-                              url: msg.imagemUrl!,
+                              url: urlDaFoto,
                               legenda: msg.legenda,
                             })
                           }
@@ -892,7 +918,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                           title="Clique para ampliar a foto"
                         >
                           <img
-                            src={msg.imagemUrl}
+                            src={urlDaFoto}
                             alt={msg.legenda || 'Foto'}
                             className="w-full h-auto max-h-72 object-cover transition-transform duration-200 group-hover/foto:scale-[1.02]"
                             loading="lazy"
