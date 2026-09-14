@@ -635,6 +635,199 @@ class ServicoPonto {
 
     return linhas.join('\n');
   }
+
+  /** Origem da marcação, por extenso, para o espelho impresso. */
+  private descreverOrigem(registro: RegistroPonto): string {
+    if (registro.metodo === 'ajuste_rh') {
+      return `Ajuste RH — ${registro.ajustadoPorNome || 'RH'}${
+        registro.justificativa ? `: ${registro.justificativa}` : ''
+      }`;
+    }
+    if (registro.metodo === 'codigo_manual') return `Código digitado — ${registro.loja}`;
+    return `QR — ${registro.loja}`;
+  }
+
+  /**
+   * Espelho de ponto pronto para impressão, uma folha por colaborador.
+   * Traz a jornada dia a dia, a origem de cada marcação, os totais do período
+   * e as linhas de assinatura do colaborador e do responsável.
+   */
+  gerarHtmlEspelho(dataInicio: string, dataFim: string, colaboradorIds?: string[]): string {
+    const todos = this.obterResumoDoPeriodo(dataInicio, dataFim);
+    const selecionados = colaboradorIds
+      ? todos.filter((r) => colaboradorIds.includes(r.colaborador.id))
+      : todos;
+
+    const escapar = (texto: string): string =>
+      texto
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    const folhas = selecionados
+      .map((resumo) => {
+        const c = resumo.colaborador;
+        const jornadaContratada =
+          c.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS;
+
+        // Só entram os dias com alguma marcação ou com jornada prevista
+        const dias = resumo.jornadas.filter(
+          (j) => Object.keys(j.marcacoes).length > 0 || j.minutosPrevistos > 0
+        );
+
+        const linhas = dias
+          .map((j) => {
+            const origens = ORDEM_MARCACOES.map((t) => j.marcacoes[t])
+              .filter((r): r is RegistroPonto => !!r)
+              .map((r) => `${ROTULO_MARCACAO[r.tipo]}: ${this.descreverOrigem(r)}`)
+              .join(' | ');
+
+            const celulas = ORDEM_MARCACOES.map((t) => {
+              const reg = j.marcacoes[t];
+              const ajuste = reg?.metodo === 'ajuste_rh' ? ' *' : '';
+              return `<td class="hora">${reg ? reg.horaFormatada + ajuste : '--:--'}</td>`;
+            }).join('');
+
+            const semMarcacao = Object.keys(j.marcacoes).length === 0;
+
+            return `<tr class="${semMarcacao ? 'vazio' : ''}">
+              <td class="dia">${formatarDataBR(j.data)}<br><span class="semana">${formatarDiaCurto(j.data).split(',')[0]}</span></td>
+              ${celulas}
+              <td class="num">${formatarMinutos(j.minutosTrabalhados)}</td>
+              <td class="num">${formatarMinutos(j.minutosPrevistos)}</td>
+              <td class="num ${j.saldoMinutos < 0 ? 'neg' : ''}">${
+                j.minutosTrabalhados === 0 ? '—' : formatarSaldo(j.saldoMinutos)
+              }</td>
+              <td class="origem">${escapar(origens)}</td>
+            </tr>`;
+          })
+          .join('');
+
+        return `<section class="folha">
+          <header class="topo">
+            <div>
+              <h1>ESPELHO DE PONTO</h1>
+              <p class="empresa">Malachias Autopeças · CONECTA</p>
+            </div>
+            <div class="periodo">
+              <strong>Período apurado</strong><br>
+              ${formatarDataBR(dataInicio)} a ${formatarDataBR(dataFim)}
+            </div>
+          </header>
+
+          <table class="ficha">
+            <tr>
+              <td><strong>Colaborador:</strong> ${escapar(c.nome)}</td>
+              <td><strong>Matrícula:</strong> ${escapar(c.matricula || '—')}</td>
+            </tr>
+            <tr>
+              <td><strong>Cargo:</strong> ${escapar(c.cargo)}</td>
+              <td><strong>Setor:</strong> ${escapar(c.setor)}</td>
+            </tr>
+            <tr>
+              <td><strong>Unidade:</strong> ${escapar(c.loja)}</td>
+              <td><strong>Jornada contratada:</strong> ${formatarMinutos(jornadaContratada)} por dia útil</td>
+            </tr>
+            <tr>
+              <td><strong>Admissão:</strong> ${escapar(c.dataAdmissao ? formatarDataBR(c.dataAdmissao) : '—')}</td>
+              <td><strong>Emitido em:</strong> ${formatarDataBR(dataDeHoje())}</td>
+            </tr>
+          </table>
+
+          <table class="marcacoes">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Entrada</th>
+                <th>Saída<br>almoço</th>
+                <th>Retorno<br>almoço</th>
+                <th>Saída</th>
+                <th>Trabalhado</th>
+                <th>Previsto</th>
+                <th>Saldo</th>
+                <th>Origem das marcações</th>
+              </tr>
+            </thead>
+            <tbody>${linhas}</tbody>
+          </table>
+
+          <table class="totais">
+            <tr>
+              <td>Total trabalhado no período</td>
+              <td class="num">${formatarMinutos(resumo.minutosTrabalhados)}</td>
+            </tr>
+            <tr>
+              <td>Total previsto no período</td>
+              <td class="num">${formatarMinutos(resumo.minutosPrevistos)}</td>
+            </tr>
+            <tr class="destaque">
+              <td>Saldo do período</td>
+              <td class="num ${resumo.saldoPeriodoMinutos < 0 ? 'neg' : ''}">${formatarSaldo(
+                resumo.saldoPeriodoMinutos
+              )}</td>
+            </tr>
+            <tr class="destaque">
+              <td>Saldo acumulado no banco de horas</td>
+              <td class="num ${resumo.saldoAcumuladoMinutos < 0 ? 'neg' : ''}">${formatarSaldo(
+                resumo.saldoAcumuladoMinutos
+              )}</td>
+            </tr>
+          </table>
+
+          <p class="nota">
+            (*) Marcação lançada ou corrigida pelo RH, com justificativa registrada na coluna de
+            origem e na auditoria do sistema.
+          </p>
+
+          <div class="assinaturas">
+            <div><span class="linha"></span>Assinatura do colaborador</div>
+            <div><span class="linha"></span>Responsável / RH</div>
+          </div>
+        </section>`;
+      })
+      .join('');
+
+    return `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<title>Espelho de Ponto — ${formatarDataBR(dataInicio)} a ${formatarDataBR(dataFim)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Arial, sans-serif; color: #111; margin: 0; padding: 16px; background: #fff; }
+  .folha { page-break-after: always; max-width: 1000px; margin: 0 auto 32px; }
+  .folha:last-child { page-break-after: auto; }
+  .topo { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 12px; }
+  .topo h1 { font-size: 18px; margin: 0; letter-spacing: 1px; }
+  .empresa { margin: 2px 0 0; font-size: 12px; color: #444; }
+  .periodo { font-size: 12px; text-align: right; }
+  table { width: 100%; border-collapse: collapse; }
+  .ficha { margin-bottom: 12px; font-size: 12px; }
+  .ficha td { border: 1px solid #bbb; padding: 5px 8px; width: 50%; }
+  .marcacoes { font-size: 11px; }
+  .marcacoes th { background: #eee; border: 1px solid #999; padding: 5px 4px; font-size: 10px; text-transform: uppercase; }
+  .marcacoes td { border: 1px solid #bbb; padding: 4px; text-align: center; }
+  .marcacoes .dia { text-align: left; white-space: nowrap; font-weight: 600; }
+  .semana { font-weight: 400; color: #666; text-transform: capitalize; }
+  .hora { font-family: ui-monospace, Consolas, monospace; }
+  .num { font-family: ui-monospace, Consolas, monospace; text-align: right; padding-right: 8px; }
+  .neg { color: #b00020; }
+  .origem { text-align: left; font-size: 9px; color: #555; }
+  .vazio td { color: #999; background: #fafafa; }
+  .totais { margin-top: 12px; width: 60%; font-size: 12px; }
+  .totais td { border: 1px solid #bbb; padding: 5px 8px; }
+  .totais .destaque td { font-weight: 700; background: #f2f2f2; }
+  .nota { font-size: 10px; color: #555; margin-top: 10px; }
+  .assinaturas { display: flex; gap: 48px; margin-top: 44px; font-size: 11px; text-align: center; }
+  .assinaturas div { flex: 1; }
+  .linha { display: block; border-top: 1px solid #111; margin-bottom: 4px; }
+  @media print {
+    body { padding: 0; }
+    @page { size: A4 landscape; margin: 12mm; }
+  }
+</style></head><body>${
+      folhas || '<p>Nenhum colaborador no período selecionado.</p>'
+    }</body></html>`;
+  }
 }
 
 export const servicoPonto = new ServicoPonto();

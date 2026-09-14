@@ -240,6 +240,47 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
     exibirToast('Espelho de ponto exportado.');
   };
 
+  /** CSV de uma pessoa só, usado no espelho individual. */
+  const baixarCsvDe = (colaboradorId: string, nome: string) => {
+    const csv = servicoPonto.gerarCsvDoPeriodo(dataInicio, dataFim, [colaboradorId]);
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ponto-${nome.toLowerCase().replace(/\s+/g, '-')}-${dataInicio}-a-${dataFim}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    exibirToast(`Espelho de ${nome} exportado.`);
+  };
+
+  /**
+   * Abre a folha de ponto formatada numa janela e dispara a impressão.
+   * `ids` vazio imprime o que está em tela; passando um id, imprime só ele.
+   */
+  const imprimirEspelho = (ids?: string[]) => {
+    const alvos =
+      ids ?? (nivelVisao === 'unidades' ? resumos : equipeExibida).map((r) => r.colaborador.id);
+
+    if (alvos.length === 0) {
+      exibirToast('Nenhum colaborador para imprimir.', true);
+      return;
+    }
+
+    const janela = window.open('', '_blank');
+    if (!janela) {
+      exibirToast('Permita as janelas pop-up para imprimir o espelho.', true);
+      return;
+    }
+
+    janela.document.write(servicoPonto.gerarHtmlEspelho(dataInicio, dataFim, alvos));
+    janela.document.close();
+    janela.focus();
+    // Espera o layout fechar antes de chamar a impressão
+    setTimeout(() => janela.print(), 250);
+  };
+
   const regenerarCodigo = (loja: Loja) => {
     const res = servicoPonto.regenerarCodigoDaLoja(loja);
     if (res.sucesso) {
@@ -383,6 +424,20 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
                   : buscando
                   ? 'Exportar resultado da busca em CSV'
                   : `Exportar espelho de ${lojaSelecionada} em CSV`}
+              </button>
+
+              <button
+                type="button"
+                id="botao-imprimir-espelho"
+                onClick={() => imprimirEspelho()}
+                className="w-full py-2.5 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto)] hover:border-[var(--c-acento)] flex items-center justify-center gap-1.5 transition-all"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                {nivelVisao === 'unidades'
+                  ? 'Imprimir espelhos da rede'
+                  : buscando
+                  ? 'Imprimir espelhos do resultado'
+                  : `Imprimir espelhos de ${lojaSelecionada}`}
               </button>
             </div>
 
@@ -706,14 +761,37 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
         {/* ---------- ESPELHO INDIVIDUAL ---------- */}
         {abaAtiva === 'banco_horas' && detalhe && (
           <div className="p-4 flex flex-col gap-4">
-            <button
-              type="button"
-              onClick={() => setDetalheId(null)}
-              className="self-start text-xs font-bold text-[var(--c-acento)] flex items-center gap-1 hover:underline"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              Voltar para a lista
-            </button>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setDetalheId(null)}
+                className="text-xs font-bold text-[var(--c-acento)] flex items-center gap-1 hover:underline"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                Voltar para a lista
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  id="botao-csv-individual"
+                  onClick={() => baixarCsvDe(detalhe.colaborador.id, detalhe.colaborador.nome)}
+                  className="py-2 px-3 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto)] hover:border-[var(--c-acento)] flex items-center gap-1.5 transition-all"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  CSV
+                </button>
+                <button
+                  type="button"
+                  id="botao-imprimir-espelho-individual"
+                  onClick={() => imprimirEspelho([detalhe.colaborador.id])}
+                  className="py-2 px-3 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold hover:brightness-110 active:scale-[0.99] flex items-center gap-1.5 transition-all shadow-xs"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  Imprimir espelho
+                </button>
+              </div>
+            </div>
 
             {/* Identificação */}
             <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-4 flex items-center gap-3">
@@ -781,6 +859,9 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
                       ))}
                       <th className="text-right font-bold px-3 py-2">Total</th>
                       <th className="text-right font-bold px-3 py-2">Saldo</th>
+                      <th className="text-left font-bold px-3 py-2 whitespace-nowrap">
+                        Origem
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--c-borda)]">
@@ -859,6 +940,44 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
                               {jornada.minutosTrabalhados === 0
                                 ? '—'
                                 : formatarSaldo(jornada.saldoMinutos)}
+                            </td>
+
+                            {/* Como cada ponto do dia foi comprovado */}
+                            <td className="px-3 py-2 text-left">
+                              <div className="flex flex-wrap gap-1">
+                                {ORDEM_MARCACOES.map((tipo) => {
+                                  const reg = jornada.marcacoes[tipo];
+                                  if (!reg) return null;
+                                  const ehAjuste = reg.metodo === 'ajuste_rh';
+                                  return (
+                                    <span
+                                      key={tipo}
+                                      title={
+                                        ehAjuste
+                                          ? `${ROTULO_MARCACAO[tipo]} · ajustada por ${reg.ajustadoPorNome}: ${reg.justificativa}`
+                                          : `${ROTULO_MARCACAO[tipo]} · ${
+                                              reg.metodo === 'qrcode'
+                                                ? 'QR lido'
+                                                : 'código digitado'
+                                            } na loja ${reg.loja}`
+                                      }
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                        ehAjuste
+                                          ? 'bg-amber-500/10 text-amber-600 border-amber-500/30'
+                                          : reg.metodo === 'codigo_manual'
+                                          ? 'bg-[var(--c-superficie-2)] text-[var(--c-texto-2)] border-[var(--c-borda)]'
+                                          : 'bg-emerald-500/10 text-emerald-600 border-emerald-500/30'
+                                      }`}
+                                    >
+                                      {ehAjuste
+                                        ? 'RH'
+                                        : reg.metodo === 'codigo_manual'
+                                        ? 'Código'
+                                        : 'QR'}
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             </td>
                           </tr>
                         );
