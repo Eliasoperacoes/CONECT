@@ -53,7 +53,7 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
   const [avisoParaExcluirId, setAvisoParaExcluirId] = useState<string | null>(null);
 
   const carregarAvisos = () => {
-    setAvisos(bancoDados.obterAvisosRede());
+    setAvisos(bancoDados.obterAvisosVisiveisParaUsuarioAtual());
   };
 
   useEffect(() => {

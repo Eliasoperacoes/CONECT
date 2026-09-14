@@ -99,7 +99,8 @@ export interface Conversa {
   ehSistemaPadrao?: boolean;
 }
 
-export type AbaPrincipal = 'conversas' | 'grupos' | 'pessoas' | 'avisos' | 'admin' | 'eu';
+// Abas da barra inferior: Conversas | Grupos | Rede (painel) | Eu
+export type AbaPrincipal = 'conversas' | 'grupos' | 'painel' | 'eu';
 
 export interface RegistroAuditoria {
   id: string;

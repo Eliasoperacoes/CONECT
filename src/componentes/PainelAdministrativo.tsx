@@ -91,31 +91,6 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   aoFechar,
   aoAbrirConversa,
 }) => {
-  // Regra de segurança: Somente Administrador (N4) tem todas as funções liberadas
-  if (colaboradorAtual.nivel < 4) {
-    return (
-      <div className="fixed inset-0 z-50 bg-[var(--c-canvas)] flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-600 flex items-center justify-center mb-4 border border-red-500/20 shadow-sm">
-          <AlertTriangle className="w-8 h-8" />
-        </div>
-        <h2 className="text-xl font-bold text-[var(--c-texto)] mb-2">
-          Acesso Restrito ao Administrador
-        </h2>
-        <p className="text-sm text-[var(--c-texto-3)] max-w-md mb-6 leading-relaxed">
-          Somente o Administrador de TI possui todas as funções e permissões liberadas no sistema CONECTA.
-          Cada usuário possui acesso individual e limitado de acordo com o que está liberado para seu perfil.
-        </p>
-        <button
-          type="button"
-          onClick={aoFechar}
-          className="px-6 py-2.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-sm font-semibold shadow-xs hover:brightness-110 active:scale-95 transition-all"
-        >
-          Retornar ao Comunicador
-        </button>
-      </div>
-    );
-  }
-
   const [abaAtiva, setAbaAtiva] = useState<AbaAdmin>('colaboradores');
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [configuracoes, setConfiguracoes] = useState<ConfiguracaoSistema>(
@@ -197,6 +172,34 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     const cancelar = bancoDados.assinarAlteracoes(recarregar);
     return () => cancelar();
   }, []);
+
+  // Regra de segurança: somente Administrador (N4) tem todas as funções
+  // liberadas. A checagem fica DEPOIS dos hooks — sair antes deles mudaria a
+  // quantidade de hooks entre renderizações e quebraria o React caso o nível
+  // do usuário conectado mudasse com o painel aberto.
+  if (colaboradorAtual.nivel < 4) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[var(--c-canvas)] flex flex-col items-center justify-center p-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-600 flex items-center justify-center mb-4 border border-red-500/20 shadow-sm">
+          <AlertTriangle className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--c-texto)] mb-2">
+          Acesso Restrito ao Administrador
+        </h2>
+        <p className="text-sm text-[var(--c-texto-3)] max-w-md mb-6 leading-relaxed">
+          Somente o Administrador de TI possui todas as funções e permissões liberadas no sistema CONECTA.
+          Cada usuário possui acesso individual e limitado de acordo com o que está liberado para seu perfil.
+        </p>
+        <button
+          type="button"
+          onClick={aoFechar}
+          className="px-6 py-2.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-sm font-semibold shadow-xs hover:brightness-110 active:scale-95 transition-all"
+        >
+          Retornar ao Comunicador
+        </button>
+      </div>
+    );
+  }
 
   // Abre modal para novo colaborador
   const abrirModalNovoColab = () => {
@@ -368,8 +371,12 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   // Salvar parâmetros do sistema
   const salvarParametros = (e: React.FormEvent) => {
     e.preventDefault();
-    bancoDados.salvarConfiguracoes(configuracoes);
-    exibirToast('Configurações do sistema salvas com sucesso.');
+    const res = bancoDados.salvarConfiguracoes(configuracoes);
+    if (res.sucesso) {
+      exibirToast('Configurações do sistema salvas com sucesso.');
+    } else {
+      exibirToast(res.erro || 'Falha ao salvar configurações.', true);
+    }
   };
 
   // Salvar novo grupo oficial

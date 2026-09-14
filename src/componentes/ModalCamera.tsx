@@ -28,7 +28,9 @@ export const ModalCamera: React.FC<PropsModalCamera> = ({
   aoFechar,
   aoConfirmarFoto,
 }) => {
-  const [streamAtivo, setStreamAtivo] = useState<MediaStream | null>(null);
+  // O fluxo fica em ref, não em estado: a limpeza do efeito e o `capturarFoto`
+  // precisam enxergar o fluxo mais recente para desligar a câmera de verdade.
+  const refStream = useRef<MediaStream | null>(null);
   const [fotoCapturada, setFotoCapturada] = useState<string | null>(null);
   const [legenda, setLegenda] = useState('');
   const [erroCamera, setErroCamera] = useState<string | null>(null);
@@ -57,9 +59,12 @@ export const ModalCamera: React.FC<PropsModalCamera> = ({
   }, [aberto, cameraTraseira]);
 
   const encerrarCamera = () => {
-    if (streamAtivo) {
-      streamAtivo.getTracks().forEach((track) => track.stop());
-      setStreamAtivo(null);
+    if (refStream.current) {
+      refStream.current.getTracks().forEach((track) => track.stop());
+      refStream.current = null;
+    }
+    if (refVideo.current) {
+      refVideo.current.srcObject = null;
     }
   };
 
@@ -82,7 +87,7 @@ export const ModalCamera: React.FC<PropsModalCamera> = ({
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      setStreamAtivo(stream);
+      refStream.current = stream;
 
       if (refVideo.current) {
         refVideo.current.srcObject = stream;

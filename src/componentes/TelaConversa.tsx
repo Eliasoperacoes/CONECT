@@ -101,6 +101,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
     return () => {
       cancelarAssinatura();
+      // Desliga o microfone ao sair da conversa, senão ele fica aberto
+      servicoAudioRadio.liberarMicrofone();
     };
   }, [conversa.id]);
 
@@ -672,7 +674,14 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
           mensagensExibidas.map((msg) => {
             const ehMinha = msg.remetenteId === colaboradorAtual.id;
             const remetenteInfo = !ehMinha ? bancoDados.obterColaboradorPorId(msg.remetenteId) : null;
-            const reacoes = msg.reacoes || [];
+            // reacoes é gravado como { emoji: [idsDeQuemReagiu] }; aqui vira lista para exibir
+            const reacoes = Object.entries(msg.reacoes || {})
+              .filter(([, ids]) => ids.length > 0)
+              .map(([emoji, ids]) => ({
+                emoji,
+                quantidade: ids.length,
+                euReagi: ids.includes(colaboradorAtual.id),
+              }));
             const estaSelecionada = mensagensSelecionadasIds.includes(msg.id);
 
             return (
@@ -972,12 +981,17 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       ehMinha ? 'justify-end pr-1' : 'justify-start pl-1'
                     }`}
                   >
-                    {reacoes.map((r, i) => (
+                    {reacoes.map((r) => (
                       <button
-                        key={i}
+                        key={r.emoji}
                         type="button"
                         onClick={() => lidarReagirMensagem(msg.id, r.emoji)}
-                        className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] shadow-xs hover:scale-105 transition-transform"
+                        title={r.euReagi ? 'Remover sua reação' : 'Reagir'}
+                        className={`inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-full shadow-xs hover:scale-105 transition-transform ${
+                          r.euReagi
+                            ? 'bg-[var(--c-acento-suave)] border border-[var(--c-acento)]'
+                            : 'bg-[var(--c-superficie)] border border-[var(--c-borda)]'
+                        }`}
                       >
                         <span>{r.emoji}</span>
                         <span className="font-semibold text-[10px] text-[var(--c-texto-2)]">
@@ -1231,9 +1245,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       <ModalEncaminharMensagem
         aberto={modalEncaminharAberto}
         mensagensIds={mensagensParaEncaminhar}
-        conversaOrigemId={conversa.id}
         aoFechar={() => setModalEncaminharAberto(false)}
-        aoConcluir={lidarSucessoEncaminhamento}
+        aoSucesso={lidarSucessoEncaminhamento}
       />
 
       {/* Toast de Feedback Notificando Ação Realizada */}

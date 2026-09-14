@@ -27,6 +27,9 @@ const CHAVE_AVISO_LIDO = 'conecta_v4_aviso_direcao_lido';
 const CHAVE_AVISOS_REDE = 'conecta_v4_avisos_rede';
 const CHAVE_CONFIGURACOES = 'conecta_v4_configuracoes';
 const CHAVE_AUDITORIA = 'conecta_v4_auditoria';
+// Guarda apenas o ID do último colaborador que entrou NESTE dispositivo,
+// para sugerir a conta no próximo acesso. Nenhuma senha é armazenada.
+const CHAVE_ULTIMO_ACESSO_DISPOSITIVO = 'conecta_v4_ultimo_acesso_dispositivo';
 
 // Logo oficial da Malachias Autopeças como padrão de foto de usuário da rede
 export const FOTO_PADRAO_LOGO_EMPRESA = '/logo-malachias.svg';
@@ -594,14 +597,91 @@ class BancoDadosConecta {
       return { sucesso: false, erro: 'Esta conta está desativada pela administração.' };
     }
 
-    if (encontrado.senha && encontrado.senha !== limpoSenha) {
+    // Conta sem senha definida não entra: senão a comparação seria pulada e
+    // qualquer senha digitada abriria o acesso.
+    if (!encontrado.senha) {
+      return { sucesso: false, erro: 'Esta conta está sem senha definida. Procure o TI.' };
+    }
+
+    if (encontrado.senha !== limpoSenha) {
       return { sucesso: false, erro: 'Senha incorreta.' };
     }
 
     localStorage.setItem(CHAVE_COLABORADOR_ATUAL, encontrado.id);
+    this.salvarUltimoAcessoDoDispositivo(encontrado.id, limpoSenha);
+    this.garantirGruposDoSistemaPara(encontrado.id);
     this.registrarAuditoria('Login de Usuário', 'seguranca', `${encontrado.nome} (${encontrado.cargo}) entrou no sistema.`);
     this.notificar();
     return { sucesso: true, colaborador: encontrado };
+  }
+
+  /**
+   * Grava a conta do último login deste dispositivo junto com a senha, para que
+   * o acesso seguinte seja de um clique só. Uso interno em aparelhos da rede:
+   * a senha fica no localStorage do próprio dispositivo, no mesmo nível de
+   * exposição do cadastro de colaboradores.
+   */
+  private salvarUltimoAcessoDoDispositivo(id: string, senha: string): void {
+    localStorage.setItem(
+      CHAVE_ULTIMO_ACESSO_DISPOSITIVO,
+      JSON.stringify({ id, senha })
+    );
+  }
+
+  /**
+   * Retorna o colaborador que fez o último login neste dispositivo, para que a
+   * tela de acesso possa sugerir a conta. Retorna null se nunca houve login
+   * aqui, se a conta foi removida ou se ela foi desativada pela administração.
+   */
+  obterUltimoAcessoDoDispositivo(): Colaborador | null {
+    const salvo = this.lerUltimoAcessoDoDispositivo();
+    if (!salvo) return null;
+    const colaborador = this.obterColaboradorPorId(salvo.id);
+    if (!colaborador || !colaborador.ativo) {
+      this.esquecerUltimoAcessoDoDispositivo();
+      return null;
+    }
+    return colaborador;
+  }
+
+  private lerUltimoAcessoDoDispositivo(): { id: string; senha: string } | null {
+    if (typeof window === 'undefined') return null;
+    const bruto = localStorage.getItem(CHAVE_ULTIMO_ACESSO_DISPOSITIVO);
+    if (!bruto) return null;
+    try {
+      const dados = JSON.parse(bruto);
+      if (!dados || typeof dados.id !== 'string') return null;
+      return { id: dados.id, senha: typeof dados.senha === 'string' ? dados.senha : '' };
+    } catch {
+      // Registros do formato antigo guardavam apenas o ID em texto puro.
+      return { id: bruto, senha: '' };
+    }
+  }
+
+  /**
+   * Entra direto com a conta sugerida, sem digitar a senha. Se a senha tiver
+   * sido alterada pela administração desde o último acesso, a sugestão é
+   * descartada e o usuário volta a informar os dados manualmente.
+   */
+  autenticarContaSugerida(): { sucesso: boolean; colaborador?: Colaborador; erro?: string } {
+    const salvo = this.lerUltimoAcessoDoDispositivo();
+    const colaborador = salvo ? this.obterColaboradorPorId(salvo.id) : undefined;
+
+    if (!salvo || !colaborador || !salvo.senha) {
+      this.esquecerUltimoAcessoDoDispositivo();
+      return { sucesso: false, erro: 'Informe a senha para entrar.' };
+    }
+
+    const resultado = this.autenticar(colaborador.login, salvo.senha);
+    if (!resultado.sucesso) {
+      this.esquecerUltimoAcessoDoDispositivo();
+    }
+    return resultado;
+  }
+
+  /** Esquece a conta sugerida neste dispositivo (opção "Não sou eu"). */
+  esquecerUltimoAcessoDoDispositivo(): void {
+    localStorage.removeItem(CHAVE_ULTIMO_ACESSO_DISPOSITIVO);
   }
 
   deslogar(): void {
@@ -767,6 +847,7 @@ class BancoDadosConecta {
     let atualizados = 0;
     let ignorados = 0;
     const erros: string[] = [];
+    const idsNovos: string[] = [];
 
     for (const linha of linhasParaImportar) {
       if (!linha.nome || !linha.login) {
@@ -828,12 +909,19 @@ class BancoDadosConecta {
         };
 
         colaboradores.push(novoColab);
-        this.garantirGruposDoSistemaPara(novoId);
+        idsNovos.push(novoId);
         criados++;
       }
     }
 
     localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));
+
+    // A inscrição nos canais só pode acontecer DEPOIS de gravar a lista: o
+    // método lê o colaborador do armazenamento e, antes disso, não o encontra.
+    for (const novoId of idsNovos) {
+      this.garantirGruposDoSistemaPara(novoId);
+    }
+
     this.registrarAuditoria(
       'Importação de Planilha Excel',
       'usuario',
@@ -866,10 +954,35 @@ class BancoDadosConecta {
       return { sucesso: false, erro: 'Colaborador não encontrado.' };
     }
 
-    // Usuário comum não pode elevar seu próprio nível hierárquico
-    const dadosParaAplicar = { ...dados };
+    // Fora do Administrador, a pessoa só mexe nos próprios dados de contato e
+    // perfil. Cargo, nível, loja, setor e situação são decisões da gestão — e
+    // trocar a própria loja daria acesso ao canal de outra filial.
+    let dadosParaAplicar: Partial<Colaborador> = { ...dados };
+
+    // Campo de senha em branco significa "não mexer", nunca "apagar a senha" —
+    // uma conta sem senha ficaria acessível a qualquer um.
+    if (typeof dadosParaAplicar.senha === 'string' && !dadosParaAplicar.senha.trim()) {
+      delete dadosParaAplicar.senha;
+    }
+
     if (atual.nivel < 4) {
-      delete dadosParaAplicar.nivel;
+      const CAMPOS_LIBERADOS: Array<keyof Colaborador> = [
+        'foto',
+        'senha',
+        'ramal',
+        'telefone',
+        'email',
+        'presenca',
+        'vistoPorUltimo',
+        'observacoes',
+      ];
+      const filtrados: Partial<Colaborador> = {};
+      for (const campo of CAMPOS_LIBERADOS) {
+        if (campo in dadosParaAplicar) {
+          (filtrados as Record<string, unknown>)[campo] = dadosParaAplicar[campo];
+        }
+      }
+      dadosParaAplicar = filtrados;
     }
 
     // Se mudou login, valida se não duplica
@@ -921,12 +1034,43 @@ class BancoDadosConecta {
     const listaFiltrada = colaboradores.filter((c) => c.id !== id);
     localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(listaFiltrada));
 
-    // Remove das conversas
+    // Remove das conversas. As conversas individuais dele são descartadas por
+    // inteiro (junto das mensagens), senão sobrariam conversas sem interlocutor
+    // na lista do outro participante.
     const conversas = this.obterTodasConversas();
-    conversas.forEach((conv) => {
-      conv.participantesIds = conv.participantesIds.filter((pId) => pId !== id);
-    });
-    localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
+    const conversasRemovidas = conversas
+      .filter((conv) => conv.tipo === 'individual' && conv.participantesIds.includes(id))
+      .map((conv) => conv.id);
+
+    const conversasRestantes = conversas
+      .filter((conv) => !conversasRemovidas.includes(conv.id))
+      .map((conv) => ({
+        ...conv,
+        participantesIds: conv.participantesIds.filter((pId) => pId !== id),
+      }));
+    localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversasRestantes));
+
+    try {
+      const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+      const todasMensagens: Mensagem[] = bruto ? JSON.parse(bruto) : [];
+      const mensagensRestantes = todasMensagens
+        .filter((m) => !conversasRemovidas.includes(m.conversaId))
+        // Em grupos as mensagens permanecem como histórico; só a marcação de
+        // leitura do colaborador removido sai, para não inflar os contadores.
+        .map((m) => ({
+          ...m,
+          lidaPor: m.lidaPor ? m.lidaPor.filter((pId) => pId !== id) : m.lidaPor,
+        }));
+      localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(mensagensRestantes));
+    } catch {
+      // Mantém as mensagens como estão se o armazenamento falhar
+    }
+
+    // Se o aparelho tinha a conta removida como sugestão de acesso, esquece
+    const ultimoAcesso = this.lerUltimoAcessoDoDispositivo();
+    if (ultimoAcesso && ultimoAcesso.id === id) {
+      this.esquecerUltimoAcessoDoDispositivo();
+    }
 
     this.registrarAuditoria(
       'Remoção de Colaborador',
@@ -941,6 +1085,7 @@ class BancoDadosConecta {
   // Povoar equipe de exemplo para testes no Painel ADM
   gerarColaboradoresExemplo(): { sucesso: boolean; totalAdicionados: number } {
     const colaboradores = this.obterColaboradores();
+    const idsNovos: string[] = [];
     let adicionados = 0;
 
     COLABORADORES_EXEMPLO_REDE.forEach((exemplo, idx) => {
@@ -955,12 +1100,18 @@ class BancoDadosConecta {
           criadoEm: new Date().toISOString(),
         };
         colaboradores.push(novo);
-        this.garantirGruposDoSistemaPara(id);
+        idsNovos.push(id);
         adicionados++;
       }
     });
 
     localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));
+
+    // Inscrição nos canais só depois de gravar a lista (ver importação em lote)
+    for (const id of idsNovos) {
+      this.garantirGruposDoSistemaPara(id);
+    }
+
     this.registrarAuditoria(
       'Carga de Demonstração',
       'sistema',
@@ -1025,28 +1176,35 @@ class BancoDadosConecta {
     }
   }
 
-  // Formata os dados de exibição da conversa (nome, foto e contagem de não lidas) sob a perspectiva do usuário logado
-  private formatarConversaParaUsuario(conversa: Conversa, usuarioId: string): Conversa {
-    if (conversa.tipo !== 'individual') return conversa;
-
-    // Encontra o outro participante da conversa individual
-    const outroId = conversa.participantesIds.find((id) => id !== usuarioId) || usuarioId;
-    const outroColab = this.obterColaboradorPorId(outroId);
-
-    // Calcula mensagens não lidas exclusivamente para este usuário logado
-    let naoLidas = 0;
+  // Conta as mensagens que ESTE usuário ainda não leu numa conversa.
+  // A contagem nunca é gravada: é derivada de `lidaPor`, que é por pessoa.
+  private contarNaoLidasPara(conversaId: string, usuarioId: string): number {
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
       const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
-      naoLidas = todas.filter(
+      return todas.filter(
         (m) =>
-          m.conversaId === conversa.id &&
+          m.conversaId === conversaId &&
           m.remetenteId !== usuarioId &&
           (!m.lidaPor || !m.lidaPor.includes(usuarioId))
       ).length;
     } catch {
-      naoLidas = 0;
+      return 0;
     }
+  }
+
+  // Formata os dados de exibição da conversa (nome, foto e contagem de não lidas) sob a perspectiva do usuário logado
+  private formatarConversaParaUsuario(conversa: Conversa, usuarioId: string): Conversa {
+    const naoLidas = this.contarNaoLidasPara(conversa.id, usuarioId);
+
+    // Grupos e canais mantêm nome e foto próprios; só muda a contagem individual
+    if (conversa.tipo !== 'individual') {
+      return { ...conversa, naoLidas };
+    }
+
+    // Encontra o outro participante da conversa individual
+    const outroId = conversa.participantesIds.find((id) => id !== usuarioId) || usuarioId;
+    const outroColab = this.obterColaboradorPorId(outroId);
 
     return {
       ...conversa,
@@ -1066,16 +1224,19 @@ class BancoDadosConecta {
       .sort((a, b) => new Date(b.atualizadoEm).getTime() - new Date(a.atualizadoEm).getTime());
   }
 
+  /**
+   * Grupos e canais do usuário logado. A inclusão é sempre por participação:
+   * um colaborador de Descalvado não enxerga o canal de Palmeiras, mesmo os
+   * canais sendo padrão do sistema. A inscrição nos canais que lhe cabem
+   * (a própria loja, Avisos da Rede e TI/gestão) é garantida antes da leitura.
+   */
   obterGrupos(): Conversa[] {
     const atual = this.obterColaboradorAtual();
+    this.garantirGruposDoSistemaPara(atual.id);
     const todas = this.obterTodasConversas();
     return todas
-      .filter((c) => {
-        if (c.tipo !== 'grupo') return false;
-        if (c.participantesIds.includes(atual.id)) return true;
-        if (c.ehSistemaPadrao) return true;
-        return false;
-      })
+      .filter((c) => c.tipo === 'grupo' && c.participantesIds.includes(atual.id))
+      .map((c) => this.formatarConversaParaUsuario(c, atual.id))
       .sort((a, b) => {
         if (a.id === 'grupo-avisos-da-rede') return -1;
         if (b.id === 'grupo-avisos-da-rede') return 1;
@@ -1098,24 +1259,23 @@ class BancoDadosConecta {
       return this.formatarConversaParaUsuario(c, atual.id);
     }
 
-    // Para canais e grupos: se for canal oficial padrão da rede/loja, garante auto-inscrição se necessário
-    if (c.tipo === 'grupo') {
-      if (!c.participantesIds.includes(atual.id)) {
-        if (c.ehSistemaPadrao) {
-          c.participantesIds.push(atual.id);
-          const todasAtualizadas = this.obterTodasConversas();
-          const idx = todasAtualizadas.findIndex((conv) => conv.id === c.id);
-          if (idx !== -1) {
-            todasAtualizadas[idx] = c;
-            localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(todasAtualizadas));
-          }
-        } else {
-          return undefined;
-        }
+    // Canais e grupos: a auto-inscrição vale só para o canal da rede inteira
+    // (Avisos da Rede). Canais de loja e grupos comuns exigem participação —
+    // do contrário qualquer um abriria o canal de outra filial pelo ID.
+    if (c.tipo === 'grupo' && !c.participantesIds.includes(atual.id)) {
+      if (c.id !== 'grupo-avisos-da-rede') {
+        return undefined;
+      }
+      c.participantesIds.push(atual.id);
+      const todasAtualizadas = this.obterTodasConversas();
+      const idx = todasAtualizadas.findIndex((conv) => conv.id === c.id);
+      if (idx !== -1) {
+        todasAtualizadas[idx] = c;
+        localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(todasAtualizadas));
       }
     }
 
-    return c;
+    return this.formatarConversaParaUsuario(c, atual.id);
   }
 
   // Inicia ou abre uma conversa individual direta e estrita entre dois colegas
@@ -1535,20 +1695,16 @@ class BancoDadosConecta {
     }
   }
 
+  /**
+   * Marca como lidas, SOMENTE para o usuário logado, as mensagens da conversa.
+   * A leitura é registrada em `lidaPor` (por pessoa) — o contador `naoLidas`
+   * gravado na conversa nunca é alterado aqui, senão a leitura de um usuário
+   * apagaria o aviso de não lidas de todos os outros.
+   */
   marcarConversaComoLida(conversaId: string): void {
     const atual = this.obterColaboradorAtual();
     let houveAlteracao = false;
 
-    // 1. Zera contador na conversa
-    const conversas = this.obterTodasConversas();
-    const indice = conversas.findIndex((c) => c.id === conversaId);
-    if (indice !== -1 && conversas[indice].naoLidas > 0) {
-      conversas[indice].naoLidas = 0;
-      localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
-      houveAlteracao = true;
-    }
-
-    // 2. Confirmação de visualização nas mensagens
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
       const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
@@ -1556,16 +1712,17 @@ class BancoDadosConecta {
 
       todas.forEach((m) => {
         if (m.conversaId === conversaId && m.remetenteId !== atual.id) {
-          if (!m.lida) {
-            m.lida = true;
-            m.visualizadaEm = agoraIso;
-            houveAlteracao = true;
-          }
           if (!m.lidaPor) {
             m.lidaPor = [];
           }
           if (!m.lidaPor.includes(atual.id)) {
             m.lidaPor.push(atual.id);
+            houveAlteracao = true;
+          }
+          // `lida` é o indicador de "visto" mostrado ao remetente
+          if (!m.lida) {
+            m.lida = true;
+            m.visualizadaEm = agoraIso;
             houveAlteracao = true;
           }
         }
@@ -1681,6 +1838,23 @@ class BancoDadosConecta {
     }
   }
 
+  /**
+   * Avisos que o usuário logado deve enxergar: os da rede toda, os da própria
+   * loja e os que ele mesmo publicou. Administrador (N4) vê tudo para gestão.
+   * `obterAvisosRede()` segue devolvendo a lista bruta, usada no Painel ADM.
+   */
+  obterAvisosVisiveisParaUsuarioAtual(): AvisoRede[] {
+    const atual = this.obterColaboradorAtual();
+    if (atual.nivel === 4) return this.obterAvisosRede();
+
+    return this.obterAvisosRede().filter(
+      (a) =>
+        a.lojaDestino === 'Todas' ||
+        a.lojaDestino === atual.loja ||
+        a.autorId === atual.id
+    );
+  }
+
   criarAvisoRede(dados: {
     titulo: string;
     conteudo: string;
@@ -1794,18 +1968,40 @@ class BancoDadosConecta {
     return { sucesso: true };
   }
 
+  // Mapa { colaboradorId: ultimoAvisoDispensado } — cada pessoa dispensa a faixa
+  // por conta própria, sem sumir para os demais colaboradores.
+  private obterMapaAvisosDirecaoLidos(): Record<string, string> {
+    try {
+      const bruto = localStorage.getItem(CHAVE_AVISO_LIDO);
+      if (!bruto) return {};
+      const dados = JSON.parse(bruto);
+      return dados && typeof dados === 'object' && !Array.isArray(dados) ? dados : {};
+    } catch {
+      // Formato antigo guardava só o ID do aviso, valendo para todos. Descartado.
+      return {};
+    }
+  }
+
   obterAvisoDirecaoNaoLido(): Mensagem | null {
-    const idJaLido = localStorage.getItem(CHAVE_AVISO_LIDO);
+    const atual = this.obterColaboradorAtual();
     const msgsAvisos = this.obterMensagens('grupo-avisos-da-rede');
     if (msgsAvisos.length === 0) return null;
 
     const ultimoAviso = msgsAvisos[msgsAvisos.length - 1];
+
+    // Quem publicou o aviso não precisa ser avisado do próprio comunicado
+    if (ultimoAviso.remetenteId === atual.id) return null;
+
+    const idJaLido = this.obterMapaAvisosDirecaoLidos()[atual.id];
     if (ultimoAviso.id === idJaLido) return null;
     return ultimoAviso;
   }
 
   marcarAvisoDirecaoComoLido(avisoId: string): void {
-    localStorage.setItem(CHAVE_AVISO_LIDO, avisoId);
+    const atual = this.obterColaboradorAtual();
+    const mapa = this.obterMapaAvisosDirecaoLidos();
+    mapa[atual.id] = avisoId;
+    localStorage.setItem(CHAVE_AVISO_LIDO, JSON.stringify(mapa));
     this.notificar();
   }
 
@@ -1820,14 +2016,20 @@ class BancoDadosConecta {
     }
   }
 
-  salvarConfiguracoes(config: ConfiguracaoSistema): void {
+  salvarConfiguracoes(config: ConfiguracaoSistema): { sucesso: boolean; erro?: string } {
+    const atual = this.obterColaboradorAtual();
+    if (atual.nivel < 4) {
+      return { sucesso: false, erro: 'Apenas o Administrador de TI altera as diretrizes do sistema.' };
+    }
+
     localStorage.setItem(CHAVE_CONFIGURACOES, JSON.stringify(config));
     this.registrarAuditoria(
       'Alteração de Configurações',
       'sistema',
-      `${this.obterColaboradorAtual().nome} atualizou as diretrizes do sistema.`
+      `${atual.nome} atualizou as diretrizes do sistema.`
     );
     this.notificar();
+    return { sucesso: true };
   }
 
   obterAuditoria(): RegistroAuditoria[] {
@@ -1885,9 +2087,12 @@ class BancoDadosConecta {
   }
 
   importarBackup(jsonStr: string): boolean {
+    const atual = this.obterColaboradorAtual();
+    if (atual.nivel < 4) return false;
+
     try {
       const dados = JSON.parse(jsonStr);
-      if (!dados.colaboradores || !dados.conversas) return false;
+      if (!Array.isArray(dados.colaboradores) || !Array.isArray(dados.conversas)) return false;
 
       localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(dados.colaboradores));
       localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(dados.conversas));
@@ -1895,6 +2100,13 @@ class BancoDadosConecta {
       if (dados.avisos) localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(dados.avisos));
       if (dados.configuracoes) localStorage.setItem(CHAVE_CONFIGURACOES, JSON.stringify(dados.configuracoes));
       if (dados.auditoria) localStorage.setItem(CHAVE_AUDITORIA, JSON.stringify(dados.auditoria));
+
+      // Se a conta logada não existe no backup restaurado, encerra a sessão em
+      // vez de deixar o sistema cair no primeiro colaborador da lista.
+      if (!this.obterColaboradorPorId(atual.id)) {
+        localStorage.removeItem(CHAVE_COLABORADOR_ATUAL);
+        this.esquecerUltimoAcessoDoDispositivo();
+      }
 
       this.registrarAuditoria('Restauração de Backup', 'seguranca', 'Backup restaurado com sucesso.');
       this.notificar();

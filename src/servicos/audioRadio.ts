@@ -11,6 +11,8 @@ class GerenciadorAudioRadio {
   private gravadorMidia: MediaRecorder | null = null;
   private pedacosAudio: Blob[] = [];
   private canalTransmissao: BroadcastChannel | null = null;
+  // Invalida o loop de medição de volume anterior quando a captura é reiniciada
+  private tokenLoopVolume = 0;
 
   constructor() {
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
@@ -111,6 +113,32 @@ class GerenciadorAudioRadio {
     }
   }
 
+  /**
+   * Desliga o microfone e descarta a gravação pendente. Precisa ser chamado ao
+   * sair da conversa: sem isso o fluxo capturado em `prepararMicrofone` segue
+   * aberto, mantendo o indicador de microfone ativo no navegador.
+   */
+  liberarMicrofone(): void {
+    this.analisador = null;
+    this.tokenLoopVolume++;
+
+    if (this.gravadorMidia && this.gravadorMidia.state !== 'inactive') {
+      try {
+        this.gravadorMidia.onstop = null;
+        this.gravadorMidia.stop();
+      } catch {
+        // Ignora erro ao encerrar gravação
+      }
+    }
+    this.gravadorMidia = null;
+    this.pedacosAudio = [];
+
+    if (this.fluxoMicrofone) {
+      this.fluxoMicrofone.getTracks().forEach((faixa) => faixa.stop());
+      this.fluxoMicrofone = null;
+    }
+  }
+
   // Inicia a captura e monitoramento da onda sonora
   async iniciarCapturaVoz(aoObterVolume: (volume: number) => void): Promise<boolean> {
     try {
@@ -124,10 +152,11 @@ class GerenciadorAudioRadio {
       fonte.connect(this.analisador);
 
       const dadosFrequencia = new Uint8Array(this.analisador.frequencyBinCount);
-      let ativo = true;
+      // Só o loop mais recente continua rodando; os anteriores se encerram
+      const meuToken = ++this.tokenLoopVolume;
 
       const loopAnimacao = () => {
-        if (!ativo || !this.analisador) return;
+        if (meuToken !== this.tokenLoopVolume || !this.analisador) return;
         this.analisador.getByteFrequencyData(dadosFrequencia);
         let soma = 0;
         for (let i = 0; i < dadosFrequencia.length; i++) {
@@ -193,6 +222,7 @@ class GerenciadorAudioRadio {
   async pararCapturaVoz(): Promise<{ blob: Blob | null; tipoMime: string } | null> {
     return new Promise((resolver) => {
       this.analisador = null;
+      this.tokenLoopVolume++;
 
       if (this.gravadorMidia && this.gravadorMidia.state !== 'inactive') {
         this.gravadorMidia.onstop = () => {

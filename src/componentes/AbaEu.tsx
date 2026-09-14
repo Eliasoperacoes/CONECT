@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Colaborador, EstadoPresenca } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA } from '../servicos/bancoDados';
+import { PreferenciaTema, definirTema, obterTemaSalvo } from '../servicos/tema';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 
 interface PropsAbaEu {
@@ -29,24 +30,17 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
   aoAbrirAdmin,
 }) => {
   const [somAtivo, setSomAtivo] = useState(true);
-  const [temaEscolhido, setTemaEscolhido] = useState<'sistema' | 'claro' | 'escuro'>('sistema');
+  const [temaEscolhido, setTemaEscolhido] = useState<PreferenciaTema>(obterTemaSalvo);
   const [modalTrocaAberto, setModalTrocaAberto] = useState(false);
   const [modalFotoAberto, setModalFotoAberto] = useState(false);
 
   const todosColaboradores = bancoDados.obterColaboradores();
   const ehAdmin = colaboradorAtual.nivel === 4;
 
-  // Aplica o tema escolhido
-  const aplicarTema = (novoTema: 'sistema' | 'claro' | 'escuro') => {
+  // Aplica o tema escolhido e guarda a preferência no dispositivo
+  const aplicarTema = (novoTema: PreferenciaTema) => {
     setTemaEscolhido(novoTema);
-    const raiz = document.documentElement;
-    if (novoTema === 'escuro') {
-      raiz.setAttribute('data-tema', 'escuro');
-    } else if (novoTema === 'claro') {
-      raiz.setAttribute('data-tema', 'claro');
-    } else {
-      raiz.removeAttribute('data-tema');
-    }
+    definirTema(novoTema);
   };
 
   const mudarPresenca = (novaPresenca: EstadoPresenca) => {

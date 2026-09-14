@@ -1,17 +1,15 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Lock,
   User,
   Eye,
   EyeOff,
-  ShieldCheck,
   Building2,
   Radio,
   ArrowRight,
   AlertCircle,
-  Sparkles,
 } from 'lucide-react';
-import { bancoDados } from '../servicos/bancoDados';
+import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
 import { Colaborador } from '../tipos';
 
 interface PropsTelaLogin {
@@ -19,11 +17,16 @@ interface PropsTelaLogin {
 }
 
 export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
-  const [login, setLogin] = useState('');
+  // Conta sugerida: último colaborador que entrou NESTE dispositivo.
+  const [contaSugerida, setContaSugerida] = useState<Colaborador | null>(() =>
+    bancoDados.obterUltimoAcessoDoDispositivo()
+  );
+  const [login, setLogin] = useState(() => contaSugerida?.login ?? '');
   const [senha, setSenha] = useState('');
   const [mostrarSenha, setMostrarSenha] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const campoSenhaRef = useRef<HTMLInputElement>(null);
 
   const submeterLogin = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -50,9 +53,34 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
     }, 250);
   };
 
-  const preencherEliasAdmin = () => {
-    setLogin('Elias');
-    setSenha('123');
+  // Entra direto na conta sugerida, sem digitar a senha (acesso de um clique).
+  const usarContaSugerida = () => {
+    if (!contaSugerida || carregando) return;
+    setErro(null);
+    setLogin(contaSugerida.login);
+    setCarregando(true);
+
+    setTimeout(() => {
+      const resultado = bancoDados.autenticarContaSugerida();
+      setCarregando(false);
+      if (resultado.sucesso && resultado.colaborador) {
+        aoAutenticar(resultado.colaborador);
+        return;
+      }
+      // Senha alterada ou conta desativada: cai para o preenchimento manual.
+      setContaSugerida(null);
+      setSenha('');
+      setErro(resultado.erro || 'Não foi possível entrar automaticamente.');
+      campoSenhaRef.current?.focus();
+    }, 250);
+  };
+
+  // "Não sou eu": limpa a sugestão deste dispositivo e libera os campos.
+  const esquecerContaSugerida = () => {
+    bancoDados.esquecerUltimoAcessoDoDispositivo();
+    setContaSugerida(null);
+    setLogin('');
+    setSenha('');
     setErro(null);
   };
 
@@ -71,7 +99,7 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
             <span className="text-base font-black tracking-tight text-[var(--c-texto)] flex items-center gap-1.5">
               CONECTA
               <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                v4.0
+                v1.0.B
               </span>
             </span>
             <span className="text-[11px] text-[var(--c-texto-3)] font-medium block -mt-0.5">
@@ -128,7 +156,7 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
                   autoCapitalize="none"
                   value={login}
                   onChange={(e) => setLogin(e.target.value)}
-                  placeholder="Ex: Elias"
+                  placeholder="Seu login de acesso"
                   className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] placeholder-[var(--c-texto-3)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] focus:border-transparent transition-all"
                 />
               </div>
@@ -150,6 +178,7 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
                 </div>
                 <input
                   id="campo-senha"
+                  ref={campoSenhaRef}
                   type={mostrarSenha ? 'text' : 'password'}
                   autoComplete="current-password"
                   value={senha}
@@ -187,35 +216,53 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
             </button>
           </form>
 
-          {/* Atalho Prático de Teste para o Admin Elias */}
-          <div className="mt-6 pt-5 border-t border-[var(--c-borda)]">
-            <div className="p-3.5 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)]">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-bold text-[var(--c-texto)] flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                  Conta Administrador Criada
-                </span>
-                <span className="text-[10px] font-mono uppercase bg-emerald-500/10 text-emerald-600 px-1.5 py-0.5 rounded font-bold">
-                  Nível 4 Admin
-                </span>
+          {/* Conta sugerida — só aparece após o primeiro acesso neste dispositivo */}
+          {contaSugerida && (
+            <div className="mt-6 pt-5 border-t border-[var(--c-borda)]">
+              <span className="block text-[11px] font-bold text-[var(--c-texto-3)] uppercase tracking-wider mb-2">
+                Último acesso neste dispositivo
+              </span>
+              <div className="p-3 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex items-center gap-3">
+                <img
+                  src={obterFotoColaborador(contaSugerida)}
+                  alt={contaSugerida.nome}
+                  className="w-10 h-10 rounded-full object-cover border border-[var(--c-borda)] bg-[var(--c-canvas)] flex-shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-[var(--c-texto)] truncate">
+                    {contaSugerida.nome}
+                  </span>
+                  <span className="block text-[11px] text-[var(--c-texto-3)] truncate">
+                    {contaSugerida.cargo} · {contaSugerida.loja}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  id="botao-usar-conta-sugerida"
+                  onClick={usarContaSugerida}
+                  disabled={carregando}
+                  className="flex-shrink-0 py-2 px-3.5 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center gap-1.5 hover:brightness-110 active:scale-[0.98] disabled:opacity-50 transition-all shadow-sm"
+                >
+                  {carregando ? (
+                    <div className="w-3.5 h-3.5 border-2 border-[var(--c-sobre-acento)] border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <span>Continuar</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
               </div>
-              <p className="text-xs text-[var(--c-texto-3)] mb-2.5">
-                Credenciais configuradas conforme solicitação:
-                <br />
-                <strong>Login:</strong> <span className="font-mono text-[var(--c-texto)]">Elias</span> &nbsp;|&nbsp; 
-                <strong>Senha:</strong> <span className="font-mono text-[var(--c-texto)]">123</span>
-              </p>
               <button
                 type="button"
-                id="botao-preencher-admin-elias"
-                onClick={preencherEliasAdmin}
-                className="w-full py-2 px-3 rounded-lg bg-[var(--c-canvas)] border border-[var(--c-borda)] text-xs font-semibold text-[var(--c-texto)] hover:bg-[var(--c-superficie)] hover:border-[var(--c-acento)] flex items-center justify-center gap-1.5 transition-all"
+                id="botao-esquecer-conta-sugerida"
+                onClick={esquecerContaSugerida}
+                className="mt-2 w-full text-center text-[11px] font-semibold text-[var(--c-texto-3)] hover:text-[var(--c-acento)] transition-colors"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>Preencher Automaticamente (Elias / 123)</span>
+                Não sou eu · entrar com outra conta
               </button>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Rede de Lojas Indicator */}
