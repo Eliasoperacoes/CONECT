@@ -16,6 +16,7 @@ import {
   Building2,
   LogOut,
   Clock,
+  ClipboardList,
 } from 'lucide-react';
 import { AbaPrincipal, Colaborador, Conversa, Mensagem } from './tipos';
 import { bancoDados } from './servicos/bancoDados';
@@ -33,11 +34,23 @@ import { AbaPonto } from './componentes/AbaPonto';
 import { PainelRecursosHumanos } from './componentes/PainelRecursosHumanos';
 import { servicoPonto } from './servicos/ponto';
 
+/** Uma aba da barra inferior. `alvo` troca de aba; `acao` abre um painel. */
+interface ItemNavegacao {
+  id: string;
+  rotulo: string;
+  icone: React.ComponentType<{ className?: string }>;
+  visivel: boolean;
+  alvo?: AbaPrincipal;
+  acao?: () => void;
+  exibeAviso?: boolean;
+  classeFixa?: string;
+}
+
 export default function App() {
   const [autenticado, setAutenticado] = useState<boolean>(bancoDados.estaAutenticado());
   const [painelAdminAberto, setPainelAdminAberto] = useState<boolean>(false);
   const [painelRhAberto, setPainelRhAberto] = useState<boolean>(false);
-  const [abaAtiva, setAbaAtiva] = useState<AbaPrincipal>('conversas');
+  const [abaAtivaEscolhida, setAbaAtiva] = useState<AbaPrincipal>('conversas');
   const [colaboradorAtual, setColaboradorAtual] = useState<Colaborador>(
     bancoDados.obterColaboradorAtual()
   );
@@ -155,6 +168,51 @@ export default function App() {
   // RH e Administrador acessam o banco de horas de toda a rede
   const podeAbrirRh = servicoPonto.podeAcessarPainelRH(colaboradorAtual);
 
+  // A aba Rede reúne indicadores da rede, quadro de funcionários e comunicados:
+  // é informação de gestão, restrita a Administrador, RH e gestores (nível 3+).
+  const podeVerRede = ehAdmin || colaboradorAtual.setor === 'RH' || colaboradorAtual.nivel >= 3;
+
+  // Se o colaborador estiver na aba Rede e perder o acesso (por troca de conta
+  // ou mudança de cargo pela gestão), a navegação volta sozinha para Conversas.
+  const abaAtiva: AbaPrincipal =
+    abaAtivaEscolhida === 'painel' && !podeVerRede ? 'conversas' : abaAtivaEscolhida;
+
+  // Abas da barra inferior, montadas conforme a permissão de cada colaborador
+  const todasAsAbas: ItemNavegacao[] = [
+    { id: 'conversas', rotulo: 'Conversas', icone: MessageSquare, visivel: true, alvo: 'conversas' },
+    { id: 'grupos', rotulo: 'Grupos', icone: Users, visivel: true, alvo: 'grupos' },
+    { id: 'ponto', rotulo: 'Ponto', icone: Clock, visivel: true, alvo: 'ponto' },
+    {
+      id: 'painel',
+      rotulo: 'Rede',
+      icone: LayoutDashboard,
+      visivel: podeVerRede,
+      alvo: 'painel',
+      exibeAviso: true,
+    },
+    {
+      // O Administrador já chega ao RH pelo botão do topo e pelo Painel ADM;
+      // para o pessoal do RH esta é a única porta de entrada.
+      id: 'rh',
+      rotulo: 'RH',
+      icone: ClipboardList,
+      visivel: podeAbrirRh && !ehAdmin,
+      acao: () => setPainelRhAberto(true),
+      classeFixa: 'text-violet-600 hover:text-violet-700 font-bold',
+    },
+    {
+      id: 'admin',
+      rotulo: 'Admin',
+      icone: ShieldCheck,
+      visivel: ehAdmin,
+      acao: () => setPainelAdminAberto(true),
+      classeFixa: 'text-indigo-600 hover:text-indigo-700 font-bold',
+    },
+    { id: 'eu', rotulo: 'Eu', icone: User, visivel: true, alvo: 'eu' },
+  ];
+
+  const abasNavegacao = todasAsAbas.filter((aba) => aba.visivel);
+
   // Determina visibilidade do botão flutuante '+'
   // Conversas: liberado para todos iniciarem bate-papo privado com colega
   // Grupos: liberado estritamente para o Administrador
@@ -190,7 +248,8 @@ export default function App() {
 
         {/* Ações Rápidas do Topo: Painel ADM e Perfil */}
         <div className="flex items-center gap-2">
-          {podeAbrirRh && (
+          {/* No topo só para o Administrador; o pessoal do RH usa a aba inferior */}
+          {ehAdmin && (
             <button
               type="button"
               id="botao-topo-painel-rh"
@@ -433,104 +492,45 @@ export default function App() {
             id="barra-inferior-navegacao"
             className="w-full bg-[var(--c-superficie)] border-t border-[var(--c-borda)] h-16 flex items-center justify-around flex-shrink-0 z-20 pb-[env(safe-area-inset-bottom)]"
           >
-            <button
-              type="button"
-              id="aba-navegacao-conversas"
-              onClick={() => {
-                setAbaAtiva('conversas');
-              }}
-              className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-colors ${
-                abaAtiva === 'conversas'
-                  ? 'text-[var(--c-acento)] font-semibold'
-                  : 'text-[var(--c-texto-3)] hover:text-[var(--c-texto-2)]'
-              }`}
-            >
-              <MessageSquare className="w-5 h-5" />
-              <span className="text-xs">Conversas</span>
-            </button>
+            {abasNavegacao.map((aba) => {
+              const selecionada = !!aba.alvo && abaAtiva === aba.alvo;
 
-            <button
-              type="button"
-              id="aba-navegacao-grupos"
-              onClick={() => {
-                setAbaAtiva('grupos');
-              }}
-              className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-colors ${
-                abaAtiva === 'grupos'
-                  ? 'text-[var(--c-acento)] font-semibold'
-                  : 'text-[var(--c-texto-3)] hover:text-[var(--c-texto-2)]'
-              }`}
-            >
-              <Users className="w-5 h-5" />
-              <span className="text-xs">Grupos</span>
-            </button>
-
-            <button
-              type="button"
-              id="aba-navegacao-ponto"
-              onClick={() => {
-                setAbaAtiva('ponto');
-                setConversaAtivaId(null);
-              }}
-              className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-colors ${
-                abaAtiva === 'ponto'
-                  ? 'text-[var(--c-acento)] font-semibold'
-                  : 'text-[var(--c-texto-3)] hover:text-[var(--c-texto-2)]'
-              }`}
-            >
-              <Clock className="w-5 h-5" />
-              <span className="text-xs">Ponto</span>
-            </button>
-
-            <button
-              type="button"
-              id="aba-navegacao-painel"
-              onClick={() => {
-                setAbaAtiva('painel');
-                setConversaAtivaId(null);
-              }}
-              className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-colors relative ${
-                abaAtiva === 'painel'
-                  ? 'text-[var(--c-acento)] font-semibold'
-                  : 'text-[var(--c-texto-3)] hover:text-[var(--c-texto-2)]'
-              }`}
-            >
-              <LayoutDashboard className="w-5 h-5" />
-              <span className="text-xs">Rede</span>
-              {avisoNaoLido && (
-                <span className="absolute top-2 right-1/4 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[var(--c-superficie)]" />
-              )}
-            </button>
-
-            {ehAdmin && (
-              <button
-                type="button"
-                id="aba-navegacao-admin"
-                onClick={() => {
-                  setPainelAdminAberto(true);
-                }}
-                className="flex-1 h-full flex flex-col items-center justify-center gap-1 transition-colors text-indigo-600 hover:text-indigo-700"
-              >
-                <ShieldCheck className="w-5 h-5" />
-                <span className="text-xs font-bold">Admin</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              id="aba-navegacao-eu"
-              onClick={() => {
-                setAbaAtiva('eu');
-              }}
-              className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-colors ${
-                abaAtiva === 'eu'
-                  ? 'text-[var(--c-acento)] font-semibold'
-                  : 'text-[var(--c-texto-3)] hover:text-[var(--c-texto-2)]'
-              }`}
-            >
-              <User className="w-5 h-5" />
-              <span className="text-xs">Eu</span>
-            </button>
+              return (
+                <button
+                  key={aba.id}
+                  type="button"
+                  id={`aba-navegacao-${aba.id}`}
+                  onClick={() => {
+                    if (aba.acao) {
+                      aba.acao();
+                      return;
+                    }
+                    if (aba.alvo) {
+                      setAbaAtiva(aba.alvo);
+                      // Abas de painel não convivem com uma conversa aberta
+                      if (aba.alvo === 'ponto' || aba.alvo === 'painel') {
+                        setConversaAtivaId(null);
+                      }
+                    }
+                  }}
+                  className={`flex-1 min-w-0 h-full flex flex-col items-center justify-center gap-1 transition-colors relative ${
+                    aba.classeFixa
+                      ? aba.classeFixa
+                      : selecionada
+                      ? 'text-[var(--c-acento)] font-semibold'
+                      : 'text-[var(--c-texto-3)] hover:text-[var(--c-texto-2)]'
+                  }`}
+                >
+                  <aba.icone className="w-5 h-5" />
+                  <span className="text-[11px] leading-none max-w-full truncate px-0.5">
+                    {aba.rotulo}
+                  </span>
+                  {aba.exibeAviso && avisoNaoLido && (
+                    <span className="absolute top-2 right-1/4 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[var(--c-superficie)]" />
+                  )}
+                </button>
+              );
+            })}
           </nav>
         </div>
 
