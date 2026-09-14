@@ -409,19 +409,35 @@ create policy auditoria_registro on public.auditoria
 -- ------------------------------------------------------------
 
 do $$
+declare
+  tabela text;
 begin
   if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     create publication supabase_realtime;
   end if;
-end $$;
 
-alter publication supabase_realtime add table public.mensagens;
-alter publication supabase_realtime add table public.conversas;
-alter publication supabase_realtime add table public.participantes;
-alter publication supabase_realtime add table public.colaboradores;
-alter publication supabase_realtime add table public.avisos_rede;
-alter publication supabase_realtime add table public.registros_ponto;
-alter publication supabase_realtime add table public.leituras_mensagem;
+  -- Adicionar uma tabela que já está na publicação é erro, então cada uma é
+  -- conferida antes. É o que permite rodar este arquivo quantas vezes quiser.
+  foreach tabela in array array[
+    'mensagens',
+    'conversas',
+    'participantes',
+    'colaboradores',
+    'avisos_rede',
+    'registros_ponto',
+    'leituras_mensagem'
+  ]
+  loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = tabela
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', tabela);
+    end if;
+  end loop;
+end $$;
 
 -- ============================================================
 -- PRIMEIRO ACESSO
