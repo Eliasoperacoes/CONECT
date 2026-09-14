@@ -543,7 +543,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               aria-label="Chamar no rádio"
             >
               <Radio className={`w-3.5 h-3.5 ${estadoRadio !== 'ocioso' ? 'animate-spin' : ''}`} />
-              <span className="hidden xs:inline">
+              <span className="hidden sm:inline">
                 {outroFalandoNome ? 'Ocupado' : estadoRadio !== 'ocioso' ? 'Ao vivo' : 'Rádio'}
               </span>
               <span

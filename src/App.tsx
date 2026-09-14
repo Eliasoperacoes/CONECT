@@ -98,6 +98,10 @@ export default function App() {
           setConversaAtivaId(id);
           setPainelAdminAberto(false);
         }}
+        aoAbrirRh={() => {
+          setPainelAdminAberto(false);
+          setPainelRhAberto(true);
+        }}
       />
     );
   }
@@ -195,7 +199,7 @@ export default function App() {
               title="Banco de horas da rede (RH)"
             >
               <Clock className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">RH</span>
+              <span className="hidden sm:inline">RH</span>
             </button>
           )}
 
@@ -208,7 +212,7 @@ export default function App() {
               title="Abrir Painel Administrativo de TI"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">Painel ADM</span>
+              <span className="hidden sm:inline">Painel ADM</span>
             </button>
           )}
 
