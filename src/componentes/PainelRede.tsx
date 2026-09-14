@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Building2,
   Users,
@@ -46,6 +46,28 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
     return () => cancelar();
   }, []);
 
+  /**
+   * Unidades com equipe primeiro e, dentro disso, as maiores antes. As lojas
+   * ainda sem ninguém cadastrado vão para o fim, para que a leitura comece
+   * pelo que está em operação em vez de por cartões vazios.
+   */
+  const unidadesOrdenadas = useMemo(() => {
+    return [...INFORMACOES_LOJAS].sort((a, b) => {
+      const totalA = estatisticas.porLoja[a.nome]?.total || 0;
+      const totalB = estatisticas.porLoja[b.nome]?.total || 0;
+      if (totalA === 0 && totalB > 0) return 1;
+      if (totalB === 0 && totalA > 0) return -1;
+      if (totalA !== totalB) return totalB - totalA;
+      return a.nome.localeCompare(b.nome);
+    });
+  }, [estatisticas]);
+
+  /** Maior setor da rede, para as barras compararem entre si com honestidade. */
+  const maiorSetor = useMemo(() => {
+    const valores = Object.values(estatisticas.porSetor) as number[];
+    return valores.length > 0 ? Math.max(...valores) : 0;
+  }, [estatisticas]);
+
   const lidarIniciarConversaColega = (colegaId: string) => {
     const conversa = bancoDados.obterOuCriarConversaIndividual(colegaId);
     aoAbrirConversa(conversa.id);
@@ -64,7 +86,11 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               </h1>
             </div>
             <p className="text-xs sm:text-sm text-[var(--c-texto-3)]">
-              Rede de 5 lojas de autopeças · 80 colaboradores integrados · Rádio PTT & Mensageria
+              {estatisticas.totalColaboradores}{' '}
+              {estatisticas.totalColaboradores === 1 ? 'colaborador' : 'colaboradores'} em{' '}
+              {estatisticas.totalLojasComEquipe}{' '}
+              {estatisticas.totalLojasComEquipe === 1 ? 'unidade' : 'unidades'} · Rádio PTT &
+              Mensageria
             </p>
           </div>
 
@@ -151,11 +177,13 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                 </div>
                 <div>
                   <div className="text-2xl font-black text-[var(--c-texto)] tracking-tight">
-                    5 Lojas{' '}
-                    <span className="text-xs font-normal text-[var(--c-texto-3)]">+ Matriz</span>
+                    {estatisticas.totalLojasComEquipe}{' '}
+                    <span className="text-xs font-normal text-[var(--c-texto-3)]">
+                      {estatisticas.totalLojasComEquipe === 1 ? 'com equipe' : 'com equipe'} de 5
+                    </span>
                   </div>
                   <p className="text-xs text-[var(--c-texto-3)] mt-1">
-                    Pirassununga, Porto Ferreira, Palmeiras, Descalvado, Sta. Rita
+                    Pirassununga (matriz), Porto Ferreira, Palmeiras, Descalvado, Sta. Rita
                   </p>
                 </div>
               </div>
@@ -168,7 +196,9 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                 <div>
                   <div className="text-2xl font-black text-[var(--c-texto)] tracking-tight">
                     {estatisticas.totalAvisosVigentes}{' '}
-                    <span className="text-xs font-normal text-[var(--c-texto-3)]">avisos</span>
+                    <span className="text-xs font-normal text-[var(--c-texto-3)]">
+                      {estatisticas.totalAvisosVigentes === 1 ? 'aviso' : 'avisos'}
+                    </span>
                   </div>
                   <div className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">
                     {estatisticas.avisosUrgentes > 0 ? (
@@ -182,16 +212,19 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
 
               <div className="bg-[var(--c-superficie)] p-4 rounded-xl border border-[var(--c-borda)] shadow-xs flex flex-col justify-between gap-2">
                 <div className="flex items-center justify-between text-[var(--c-texto-3)]">
-                  <span className="text-xs font-medium">Rádio PTT Hoje</span>
+                  <span className="text-xs font-medium">Movimento de Hoje</span>
                   <Radio className="w-4 h-4 text-emerald-500" />
                 </div>
                 <div>
                   <div className="text-2xl font-black text-[var(--c-texto)] tracking-tight">
-                    {estatisticas.chamadasHoje}{' '}
-                    <span className="text-xs font-normal text-[var(--c-texto-3)]">transmissões</span>
+                    {estatisticas.mensagensHoje}{' '}
+                    <span className="text-xs font-normal text-[var(--c-texto-3)]">
+                      {estatisticas.mensagensHoje === 1 ? 'mensagem' : 'mensagens'}
+                    </span>
                   </div>
                   <p className="text-xs text-[var(--c-texto-3)] mt-1">
-                    Conexão ao vivo instantânea (&lt; 1s)
+                    {estatisticas.chamadasHoje}{' '}
+                    {estatisticas.chamadasHoje === 1 ? 'recado' : 'recados'} de voz no rádio PTT
                   </p>
                 </div>
               </div>
@@ -220,13 +253,18 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {INFORMACOES_LOJAS.map((loja) => {
+                {unidadesOrdenadas.map((loja) => {
                   const metricasLoja = estatisticas.porLoja[loja.nome] || { total: 0, online: 0 };
+                  const semEquipe = metricasLoja.total === 0;
 
                   return (
                     <div
                       key={loja.nome}
-                      className="bg-[var(--c-superficie)] rounded-xl border border-[var(--c-borda)] p-4 shadow-xs hover:shadow-sm transition-all flex flex-col justify-between gap-3"
+                      className={`bg-[var(--c-superficie)] rounded-xl border p-4 shadow-xs transition-all flex flex-col justify-between gap-3 ${
+                        semEquipe
+                          ? 'border-dashed border-[var(--c-borda)] opacity-60'
+                          : 'border-[var(--c-borda)] hover:shadow-sm'
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
@@ -329,7 +367,9 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                         <div
                           className="bg-[var(--c-acento)] h-full rounded-full"
                           style={{
-                            width: `${Math.min(100, (qtdNum / Math.max(1, estatisticas.totalColaboradores)) * 100 * 2.5)}%`,
+                            // Proporcional ao maior setor: a barra compara
+                            // setores entre si, sem fator de escala inventado
+                            width: `${Math.round((qtdNum / Math.max(1, maiorSetor)) * 100)}%`,
                           }}
                         />
                       </div>

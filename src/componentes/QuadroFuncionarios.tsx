@@ -15,7 +15,7 @@ import {
   ExternalLink,
   Camera,
 } from 'lucide-react';
-import { Colaborador, Loja, Setor, EstadoPresenca } from '../tipos';
+import { Colaborador, Loja, Setor, EstadoPresenca, INFORMACOES_LOJAS } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 
@@ -97,6 +97,39 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
       return true;
     });
   }, [todosColaboradores, busca, lojaSelecionada, setorSelecionado, apenasDisponiveis]);
+
+  /**
+   * Com 40+ pessoas, uma grade única vira uma parede de cartões. O quadro é
+   * quebrado em blocos por unidade, na mesma ordem das lojas do painel: quem
+   * tem equipe primeiro, unidades vazias nem aparecem.
+   */
+  const gruposPorLoja = useMemo(() => {
+    const ordem = INFORMACOES_LOJAS.map((i) => i.nome);
+
+    const porLoja = new Map<Loja, Colaborador[]>();
+    for (const colaborador of colaboradoresFiltrados) {
+      const lista = porLoja.get(colaborador.loja);
+      if (lista) lista.push(colaborador);
+      else porLoja.set(colaborador.loja, [colaborador]);
+    }
+
+    return Array.from(porLoja.entries())
+      .map(([loja, pessoas]) => ({
+        loja,
+        info: INFORMACOES_LOJAS.find((i) => i.nome === loja),
+        pessoas: pessoas.sort((a, b) => a.nome.localeCompare(b.nome)),
+        online: pessoas.filter(
+          (p) => p.presenca === 'disponivel' || p.presenca === 'ocupado'
+        ).length,
+      }))
+      .sort((a, b) => {
+        if (a.pessoas.length !== b.pessoas.length) return b.pessoas.length - a.pessoas.length;
+        return ordem.indexOf(a.loja) - ordem.indexOf(b.loja);
+      });
+  }, [colaboradoresFiltrados]);
+
+  /** Agrupar só ajuda quando há mais de uma unidade em tela. */
+  const deveAgrupar = gruposPorLoja.length > 1;
 
   const obterBadgePresenca = (presenca: EstadoPresenca) => {
     switch (presenca) {
@@ -258,15 +291,41 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
         )}
       </div>
 
-      {/* Lista / Grade de Funcionários */}
+      {/* Lista / Grade de Funcionários, quebrada por unidade */}
       {colaboradoresFiltrados.length === 0 ? (
         <div className="bg-[var(--c-superficie)] p-12 rounded-xl border border-[var(--c-borda)] text-center text-[var(--c-texto-3)] text-sm">
           Nenhum colaborador encontrado com os filtros selecionados.
         </div>
-      ) : modoVisualizacao === 'grade' ? (
-        /* MODO GRADE */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {colaboradoresFiltrados.map((colaborador) => {
+      ) : (
+        <div className="flex flex-col gap-6">
+          {(deveAgrupar
+            ? gruposPorLoja
+            : [{ loja: colaboradoresFiltrados[0].loja, info: undefined, pessoas: colaboradoresFiltrados, online: 0 }]
+          ).map((grupo) => (
+            <section key={grupo.loja} className="flex flex-col gap-3">
+              {deveAgrupar && (
+                <div className="flex items-center gap-2.5 sticky top-0 z-10 bg-[var(--c-canvas)] py-1.5">
+                  <Building2 className="w-4 h-4 text-[var(--c-acento)] flex-shrink-0" />
+                  <h3 className="text-sm font-bold text-[var(--c-texto)]">
+                    {grupo.loja === 'Rede' ? 'Operações Centrais' : `Loja ${grupo.loja}`}
+                  </h3>
+                  {grupo.info?.tipo === 'Matriz' && (
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-md uppercase tracking-wider bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200">
+                      Matriz
+                    </span>
+                  )}
+                  <span className="text-xs text-[var(--c-texto-3)] font-medium">
+                    {grupo.pessoas.length}{' '}
+                    {grupo.pessoas.length === 1 ? 'pessoa' : 'pessoas'}
+                    {grupo.online > 0 && ` · ${grupo.online} online`}
+                  </span>
+                  <span className="flex-1 h-px bg-[var(--c-borda)]" />
+                </div>
+              )}
+
+              {modoVisualizacao === 'grade' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {grupo.pessoas.map((colaborador) => {
             const ehProprio = colaborador.id === colaboradorAtual.id;
 
             return (
@@ -343,8 +402,18 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                   </span>
                 </div>
 
-                {/* Botões de Ação Imediata */}
-                {!ehProprio && (
+                {/* Botões de Ação Imediata. O próprio usuário recebe um atalho
+                    para o perfil, para o cartão não ficar com um vão vazio. */}
+                {ehProprio ? (
+                  <button
+                    type="button"
+                    onClick={() => setColaboradorModal(colaborador)}
+                    className="px-2.5 py-1.5 rounded-lg bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-[var(--c-texto-2)] font-semibold text-xs flex items-center justify-center gap-1.5 hover:border-[var(--c-acento)] transition-all"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Ver meu cadastro</span>
+                  </button>
+                ) : (
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     <button
                       type="button"
@@ -372,11 +441,11 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
               </div>
             );
           })}
-        </div>
-      ) : (
-        /* MODO LISTA */
-        <div className="bg-[var(--c-superficie)] rounded-xl border border-[var(--c-borda)] overflow-hidden shadow-sm divide-y divide-[var(--c-borda)]">
-          {colaboradoresFiltrados.map((colaborador) => {
+                </div>
+              ) : (
+                /* MODO LISTA */
+                <div className="bg-[var(--c-superficie)] rounded-xl border border-[var(--c-borda)] overflow-hidden shadow-sm divide-y divide-[var(--c-borda)]">
+                  {grupo.pessoas.map((colaborador) => {
             const ehProprio = colaborador.id === colaboradorAtual.id;
 
             return (
@@ -445,6 +514,10 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
               </div>
             );
           })}
+                </div>
+              )}
+            </section>
+          ))}
         </div>
       )}
 

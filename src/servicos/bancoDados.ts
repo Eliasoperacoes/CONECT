@@ -2160,9 +2160,20 @@ class BancoDadosConecta {
     });
 
     let totalMensagens = 0;
+    let mensagensHoje = 0;
+    let chamadasHoje = 0;
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
-      totalMensagens = bruto ? JSON.parse(bruto).length : 0;
+      const todasMensagens: Mensagem[] = bruto ? JSON.parse(bruto) : [];
+      totalMensagens = todasMensagens.length;
+
+      const inicioDoDia = new Date();
+      inicioDoDia.setHours(0, 0, 0, 0);
+      const doDia = todasMensagens.filter(
+        (m) => new Date(m.criadoEm).getTime() >= inicioDoDia.getTime()
+      );
+      mensagensHoje = doDia.length;
+      chamadasHoje = doDia.filter((m) => m.tipo === 'recado_voz').length;
     } catch {
       totalMensagens = 0;
     }
@@ -2180,7 +2191,10 @@ class BancoDadosConecta {
       avisosUrgentes: avisos.filter((a) => a.prioridade === 'urgente').length,
       totalConversas: conversas.length,
       totalMensagens,
-      chamadasHoje: 12,
+      mensagensHoje,
+      // Recados de voz do dia. Antes era um número fixo de demonstração.
+      chamadasHoje,
+      totalLojasComEquipe: Object.values(porLoja).filter((l) => l.total > 0).length,
     };
   }
 }
