@@ -56,7 +56,6 @@ interface PropsPainelAdministrativo {
   colaboradorAtual: Colaborador;
   aoFechar: () => void;
   aoAbrirConversa: (conversaId: string) => void;
-  aoAbrirRh?: () => void;
 }
 
 type AbaAdmin =
@@ -95,7 +94,6 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   colaboradorAtual,
   aoFechar,
   aoAbrirConversa,
-  aoAbrirRh,
 }) => {
   const [abaAtiva, setAbaAtiva] = useState<AbaAdmin>('colaboradores');
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
@@ -532,19 +530,6 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
               Nível {colaboradorAtual.nivel}
             </span>
           </div>
-
-          {aoAbrirRh && servicoPonto.podeAcessarPainelRH(colaboradorAtual) && (
-            <button
-              type="button"
-              id="botao-abrir-rh-do-adm"
-              onClick={aoAbrirRh}
-              className="px-3 py-2 rounded-xl bg-violet-600 text-white hover:bg-violet-700 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
-              title="Abrir o banco de horas da rede"
-            >
-              <Clock className="w-4 h-4" />
-              <span className="hidden sm:inline">Banco de Horas (RH)</span>
-            </button>
-          )}
 
           <button
             type="button"

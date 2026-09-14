@@ -31,7 +31,6 @@ import { IndicadorOffline } from './componentes/IndicadorOffline';
 import { TelaLogin } from './componentes/TelaLogin';
 import { PainelAdministrativo } from './componentes/PainelAdministrativo';
 import { AbaPonto } from './componentes/AbaPonto';
-import { PainelRecursosHumanos } from './componentes/PainelRecursosHumanos';
 import { servicoPonto } from './servicos/ponto';
 
 /** Uma aba da barra inferior. `alvo` troca de aba; `acao` abre um painel. */
@@ -49,7 +48,6 @@ interface ItemNavegacao {
 export default function App() {
   const [autenticado, setAutenticado] = useState<boolean>(bancoDados.estaAutenticado());
   const [painelAdminAberto, setPainelAdminAberto] = useState<boolean>(false);
-  const [painelRhAberto, setPainelRhAberto] = useState<boolean>(false);
   const [abaAtivaEscolhida, setAbaAtiva] = useState<AbaPrincipal>('conversas');
   const [colaboradorAtual, setColaboradorAtual] = useState<Colaborador>(
     bancoDados.obterColaboradorAtual()
@@ -91,16 +89,6 @@ export default function App() {
     );
   }
 
-  // Painel de RH (banco de horas): setor RH e Administrador
-  if (painelRhAberto) {
-    return (
-      <PainelRecursosHumanos
-        colaboradorAtual={colaboradorAtual}
-        aoFechar={() => setPainelRhAberto(false)}
-      />
-    );
-  }
-
   // Se o Painel Administrativo Geral estiver aberto, exibe a tela completa de gestão
   if (painelAdminAberto) {
     return (
@@ -110,10 +98,6 @@ export default function App() {
         aoAbrirConversa={(id) => {
           setConversaAtivaId(id);
           setPainelAdminAberto(false);
-        }}
-        aoAbrirRh={() => {
-          setPainelAdminAberto(false);
-          setPainelRhAberto(true);
         }}
       />
     );
@@ -165,14 +149,14 @@ export default function App() {
   };
 
   const ehAdmin = colaboradorAtual.nivel === 4;
-  // RH e Administrador acessam o banco de horas de toda a rede
-  const podeAbrirRh = servicoPonto.podeAcessarPainelRH(colaboradorAtual);
 
-  // A aba Rede reúne indicadores da rede, quadro de funcionários e comunicados:
-  // é informação de gestão, restrita a Administrador, RH e gestores (nível 3+).
+  // A aba RH reúne indicadores da rede, quadro de equipe, banco de horas e
+  // comunicados: é informação de gestão, restrita a Administrador, RH e
+  // gestores (nível 3+). Dentro dela, o banco de horas ainda exige RH ou
+  // Administrador — um gestor vê a rede, não o ponto de todo mundo.
   const podeVerRede = ehAdmin || colaboradorAtual.setor === 'RH' || colaboradorAtual.nivel >= 3;
 
-  // Se o colaborador estiver na aba Rede e perder o acesso (por troca de conta
+  // Se o colaborador estiver na aba RH e perder o acesso (por troca de conta
   // ou mudança de cargo pela gestão), a navegação volta sozinha para Conversas.
   const abaAtiva: AbaPrincipal =
     abaAtivaEscolhida === 'painel' && !podeVerRede ? 'conversas' : abaAtivaEscolhida;
@@ -183,22 +167,14 @@ export default function App() {
     { id: 'grupos', rotulo: 'Grupos', icone: Users, visivel: true, alvo: 'grupos' },
     { id: 'ponto', rotulo: 'Ponto', icone: Clock, visivel: true, alvo: 'ponto' },
     {
+      // Painel único de RH & Rede: visão das lojas, quadro de equipe, banco de
+      // horas (para RH e Administrador) e comunicados da direção.
       id: 'painel',
-      rotulo: 'Rede',
-      icone: LayoutDashboard,
+      rotulo: 'RH',
+      icone: ClipboardList,
       visivel: podeVerRede,
       alvo: 'painel',
       exibeAviso: true,
-    },
-    {
-      // O Administrador já chega ao RH pelo botão do topo e pelo Painel ADM;
-      // para o pessoal do RH esta é a única porta de entrada.
-      id: 'rh',
-      rotulo: 'RH',
-      icone: ClipboardList,
-      visivel: podeAbrirRh && !ehAdmin,
-      acao: () => setPainelRhAberto(true),
-      classeFixa: 'text-violet-600 hover:text-violet-700 font-bold',
     },
     {
       id: 'admin',
@@ -248,20 +224,6 @@ export default function App() {
 
         {/* Ações Rápidas do Topo: Painel ADM e Perfil */}
         <div className="flex items-center gap-2">
-          {/* No topo só para o Administrador; o pessoal do RH usa a aba inferior */}
-          {ehAdmin && (
-            <button
-              type="button"
-              id="botao-topo-painel-rh"
-              onClick={() => setPainelRhAberto(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
-              title="Banco de horas da rede (RH)"
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">RH</span>
-            </button>
-          )}
-
           {ehAdmin && (
             <button
               type="button"

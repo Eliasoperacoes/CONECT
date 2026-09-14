@@ -12,11 +12,14 @@ import {
   MapPin,
   PhoneCall,
   ShieldAlert,
+  Clock,
 } from 'lucide-react';
 import { Colaborador, Loja, Setor, INFORMACOES_LOJAS } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
+import { servicoPonto } from '../servicos/ponto';
 import { QuadroFuncionarios } from './QuadroFuncionarios';
 import { CentralAvisos } from './CentralAvisos';
+import { BancoDeHoras } from './BancoDeHoras';
 
 interface PropsPainelRede {
   colaboradorAtual: Colaborador;
@@ -25,7 +28,7 @@ interface PropsPainelRede {
   aoAlternarParaGestor?: () => void;
 }
 
-type SubAbaPainel = 'visao_geral' | 'quadro' | 'avisos';
+type SubAbaPainel = 'visao_geral' | 'quadro' | 'ponto' | 'avisos';
 
 export const PainelRede: React.FC<PropsPainelRede> = ({
   colaboradorAtual,
@@ -68,6 +71,9 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
     return valores.length > 0 ? Math.max(...valores) : 0;
   }, [estatisticas]);
 
+  /** Banco de horas e QR do ponto: só RH e Administrador. */
+  const podeVerBancoDeHoras = servicoPonto.podeAcessarPainelRH(colaboradorAtual);
+
   const lidarIniciarConversaColega = (colegaId: string) => {
     const conversa = bancoDados.obterOuCriarConversaIndividual(colegaId);
     aoAbrirConversa(conversa.id);
@@ -82,7 +88,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
               <h1 className="text-lg sm:text-xl font-black text-[var(--c-texto)] tracking-tight">
-                Painel da Rede Malachias
+                Recursos Humanos & Rede
               </h1>
             </div>
             <p className="text-xs sm:text-sm text-[var(--c-texto-3)]">
@@ -95,7 +101,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
           </div>
 
           {/* Seletor de Sub-Abas do Painel */}
-          <div className="flex items-center bg-[var(--c-canvas)] border border-[var(--c-borda)] p-1 rounded-xl gap-1 self-start sm:self-auto">
+          <div className="flex items-center bg-[var(--c-canvas)] border border-[var(--c-borda)] p-1 rounded-xl gap-1 self-start sm:self-auto max-w-full overflow-x-auto">
             <button
               type="button"
               id="subaba-visao-geral"
@@ -123,6 +129,23 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               <Users className="w-3.5 h-3.5" />
               <span>Quadro de Equipe</span>
             </button>
+
+            {/* Banco de horas: só quem cuida de RH */}
+            {podeVerBancoDeHoras && (
+              <button
+                type="button"
+                id="subaba-banco-horas"
+                onClick={() => setSubAbaAtiva('ponto')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                  subAbaAtiva === 'ponto'
+                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Banco de Horas</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -414,7 +437,10 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
           />
         )}
 
-        {/* SUB-ABA 3: CENTRAL DE AVISOS DA DIREÇÃO */}
+        {/* SUB-ABA 3: BANCO DE HORAS E QR DO PONTO */}
+        {subAbaAtiva === 'ponto' && <BancoDeHoras colaboradorAtual={colaboradorAtual} />}
+
+        {/* SUB-ABA 4: CENTRAL DE AVISOS DA DIREÇÃO */}
         {subAbaAtiva === 'avisos' && (
           <CentralAvisos
             colaboradorAtual={colaboradorAtual}

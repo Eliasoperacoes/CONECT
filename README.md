@@ -104,7 +104,7 @@ falhar, o mesmo modal aceita o código de 6 caracteres impresso no cartaz.
 O saldo é calculado contra a jornada diária cadastrada para cada pessoa
 (padrão 8h; sábados e domingos não geram jornada prevista).
 
-**Painel de RH** (setor `RH` e Administrador nível 4): espelho de ponto por
+**Aba RH** (setor `RH`, Administrador e gestores nível 3+): espelho de ponto por
 colaborador, saldo do período e acumulado, correção de marcações com
 justificativa obrigatória e autoria registrada na auditoria, exportação em CSV e
 geração/impressão dos QRs das lojas.

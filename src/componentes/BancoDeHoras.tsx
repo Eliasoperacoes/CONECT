@@ -1,9 +1,10 @@
 /**
- * Painel de Recursos Humanos — CONECTA / Malachias Autopeças
+ * Banco de Horas — seção do painel de RH / Malachias Autopeças
  *
- * Reúne o banco de horas de toda a rede: espelho de ponto por colaborador,
- * saldo do período e acumulado, correção de marcações com justificativa e os
- * QRs de ponto de cada loja, prontos para imprimir e afixar.
+ * Renderizada como uma aba dentro do painel de RH, junto de Visão & Lojas,
+ * Quadro de Equipe e Avisos. Reúne o espelho de ponto por colaborador, saldo
+ * do período e acumulado, correção de marcações com justificativa e os QRs de
+ * ponto de cada loja, prontos para imprimir e afixar.
  *
  * Acesso: setor RH e Administrador (nível 4).
  */
@@ -56,17 +57,13 @@ import {
   primeiroDiaDoMes,
 } from '../servicos/ponto';
 
-interface PropsPainelRecursosHumanos {
+interface PropsBancoDeHoras {
   colaboradorAtual: Colaborador;
-  aoFechar: () => void;
 }
 
 type AbaRH = 'banco_horas' | 'qrcodes';
 
-export const PainelRecursosHumanos: React.FC<PropsPainelRecursosHumanos> = ({
-  colaboradorAtual,
-  aoFechar,
-}) => {
+export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) => {
   const [abaAtiva, setAbaAtiva] = useState<AbaRH>('banco_horas');
   const [dataInicio, setDataInicio] = useState(primeiroDiaDoMes());
   const [dataFim, setDataFim] = useState(dataDeHoje());
@@ -202,21 +199,14 @@ export const PainelRecursosHumanos: React.FC<PropsPainelRecursosHumanos> = ({
   // Barreira de acesso
   if (!temAcesso) {
     return (
-      <div className="fixed inset-0 z-50 bg-[var(--c-canvas)] flex flex-col items-center justify-center p-6 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-600 flex items-center justify-center mb-4 border border-red-500/20">
-          <AlertTriangle className="w-8 h-8" />
+      <div className="p-10 flex flex-col items-center justify-center text-center gap-3">
+        <div className="w-14 h-14 rounded-2xl bg-red-500/10 text-red-600 flex items-center justify-center border border-red-500/20">
+          <AlertTriangle className="w-7 h-7" />
         </div>
-        <h2 className="text-xl font-bold text-[var(--c-texto)] mb-2">Acesso Restrito</h2>
-        <p className="text-sm text-[var(--c-texto-3)] max-w-md mb-6 leading-relaxed">
+        <h2 className="text-base font-bold text-[var(--c-texto)]">Acesso Restrito</h2>
+        <p className="text-xs text-[var(--c-texto-3)] max-w-md leading-relaxed">
           O banco de horas da rede é acessível apenas ao setor de RH e ao Administrador de TI.
         </p>
-        <button
-          type="button"
-          onClick={aoFechar}
-          className="px-6 py-2.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-sm font-semibold hover:brightness-110 active:scale-95 transition-all"
-        >
-          Retornar ao Comunicador
-        </button>
       </div>
     );
   }
@@ -291,38 +281,12 @@ export const PainelRecursosHumanos: React.FC<PropsPainelRecursosHumanos> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[var(--c-canvas)] flex flex-col text-[var(--c-texto)]">
-      {/* Cabeçalho */}
-      <header className="px-4 py-3 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-700 flex items-center justify-center text-white shadow-xs flex-shrink-0">
-            <Clock className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="font-black text-sm tracking-tight truncate">
-              Recursos Humanos · Banco de Horas
-            </h1>
-            <span className="text-[11px] text-[var(--c-texto-3)] font-medium block -mt-0.5 truncate">
-              {colaboradorAtual.nome} · {colaboradorAtual.setor}
-            </span>
-          </div>
-        </div>
-        <button
-          type="button"
-          id="botao-fechar-painel-rh"
-          onClick={aoFechar}
-          className="p-2 rounded-lg text-[var(--c-texto-3)] hover:text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)] transition-colors flex-shrink-0"
-          aria-label="Fechar painel"
-        >
-          <X className="w-5 h-5" />
-        </button>
-      </header>
-
-      {/* Abas */}
-      <nav className="px-3 pt-2 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] flex gap-1.5 flex-shrink-0 overflow-x-auto">
+    <div className="w-full flex flex-col text-[var(--c-texto)]">
+      {/* Alternância entre o banco de horas e os cartazes de QR das lojas */}
+      <nav className="px-4 sm:px-6 pt-4 flex gap-1.5 overflow-x-auto">
         {([
-          { id: 'banco_horas' as const, rotulo: 'Banco de Horas', icone: Users },
-          { id: 'qrcodes' as const, rotulo: 'QR das Lojas', icone: QrCode },
+          { id: 'banco_horas' as const, rotulo: 'Banco de Horas', icone: Clock },
+          { id: 'qrcodes' as const, rotulo: 'QR do Ponto', icone: QrCode },
         ]).map((aba) => (
           <button
             key={aba.id}
@@ -332,10 +296,10 @@ export const PainelRecursosHumanos: React.FC<PropsPainelRecursosHumanos> = ({
               setAbaAtiva(aba.id);
               setDetalheId(null);
             }}
-            className={`px-3.5 py-2 rounded-t-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-colors border-b-2 ${
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-colors border ${
               abaAtiva === aba.id
-                ? 'border-[var(--c-acento)] text-[var(--c-acento)]'
-                : 'border-transparent text-[var(--c-texto-3)] hover:text-[var(--c-texto-2)]'
+                ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] border-[var(--c-acento)] shadow-xs'
+                : 'bg-[var(--c-superficie)] text-[var(--c-texto-3)] border-[var(--c-borda)] hover:text-[var(--c-texto-2)]'
             }`}
           >
             <aba.icone className="w-3.5 h-3.5" />
@@ -344,7 +308,7 @@ export const PainelRecursosHumanos: React.FC<PropsPainelRecursosHumanos> = ({
         ))}
       </nav>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="px-0 sm:px-2">
         {/* ---------- BANCO DE HORAS ---------- */}
         {abaAtiva === 'banco_horas' && !detalhe && (
           <div className="p-4 flex flex-col gap-4">
