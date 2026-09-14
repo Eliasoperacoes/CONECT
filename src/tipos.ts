@@ -6,6 +6,7 @@
 export type Setor =
   | 'TI'
   | 'Diretoria'
+  | 'RH'
   | 'Tesouraria'
   | 'Compras'
   | 'Garantia'
@@ -13,6 +14,20 @@ export type Setor =
   | 'Balcão'
   | 'Caixas'
   | 'Estoque';
+
+// Lista única usada nos formulários e filtros, para não repetir os setores
+export const SETORES: Setor[] = [
+  'TI',
+  'Diretoria',
+  'RH',
+  'Tesouraria',
+  'Compras',
+  'Garantia',
+  'Callcenter',
+  'Balcão',
+  'Caixas',
+  'Estoque',
+];
 
 export type Loja =
   | 'Pirassununga'
@@ -50,7 +65,12 @@ export interface Colaborador {
   dataAdmissao?: string;
   permissoes?: string[];
   observacoes?: string;
+  // Jornada contratada por dia útil, em minutos. Base do banco de horas.
+  cargaHorariaDiariaMinutos?: number;
 }
+
+/** Jornada padrão quando o colaborador não tem carga própria cadastrada. */
+export const CARGA_HORARIA_PADRAO_MINUTOS = 480; // 8h
 
 export type TipoMensagem = 'texto' | 'recado_voz' | 'arquivo' | 'imagem';
 
@@ -100,7 +120,7 @@ export interface Conversa {
 }
 
 // Abas da barra inferior: Conversas | Grupos | Rede (painel) | Eu
-export type AbaPrincipal = 'conversas' | 'grupos' | 'painel' | 'eu';
+export type AbaPrincipal = 'conversas' | 'grupos' | 'ponto' | 'painel' | 'eu';
 
 export interface RegistroAuditoria {
   id: string;
@@ -154,4 +174,78 @@ export interface SolicitacaoRadioAoVivo {
   nomeFalante: string;
   fotoFalante: string;
   iniciadoEm: number;
+}
+
+// ============================================================
+// BANCO DE HORAS E REGISTRO DE PONTO
+// ============================================================
+
+/** As quatro marcações da jornada, sempre nesta ordem. */
+export type TipoMarcacao = 'entrada' | 'saida_almoco' | 'retorno_almoco' | 'saida';
+
+export const ORDEM_MARCACOES: TipoMarcacao[] = [
+  'entrada',
+  'saida_almoco',
+  'retorno_almoco',
+  'saida',
+];
+
+export const ROTULO_MARCACAO: Record<TipoMarcacao, string> = {
+  entrada: 'Entrada',
+  saida_almoco: 'Saída para almoço',
+  retorno_almoco: 'Retorno do almoço',
+  saida: 'Saída',
+};
+
+/** Como a marcação foi comprovada. */
+export type MetodoMarcacao = 'qrcode' | 'codigo_manual' | 'ajuste_rh';
+
+export interface RegistroPonto {
+  id: string;
+  colaboradorId: string;
+  data: string; // AAAA-MM-DD no fuso local
+  tipo: TipoMarcacao;
+  horario: string; // ISO completo do instante da marcação
+  horaFormatada: string; // ex: "08:03"
+  metodo: MetodoMarcacao;
+  loja: Loja; // loja onde o ponto foi comprovado
+  criadoEm: string;
+  // Preenchidos apenas quando o RH lança ou corrige uma marcação
+  ajustadoPorId?: string;
+  ajustadoPorNome?: string;
+  justificativa?: string;
+}
+
+/** Jornada consolidada de um dia para um colaborador. */
+export interface JornadaDia {
+  data: string; // AAAA-MM-DD
+  colaboradorId: string;
+  marcacoes: Partial<Record<TipoMarcacao, RegistroPonto>>;
+  minutosTrabalhados: number;
+  minutosIntervalo: number;
+  minutosPrevistos: number;
+  saldoMinutos: number; // trabalhados - previstos
+  completa: boolean; // as quatro marcações registradas
+  emAndamento: boolean; // começou e ainda não encerrou
+}
+
+/** Código de ponto de uma loja, materializado no QR impresso. */
+export interface CodigoPontoLoja {
+  loja: Loja;
+  codigo: string; // 6 caracteres, digitáveis à mão
+  atualizadoEm: string;
+  atualizadoPorNome?: string;
+}
+
+/** Linha do painel de RH: colaborador + números do período. */
+export interface ResumoPontoColaborador {
+  colaborador: Colaborador;
+  jornadas: JornadaDia[];
+  minutosTrabalhados: number;
+  minutosPrevistos: number;
+  saldoPeriodoMinutos: number;
+  saldoAcumuladoMinutos: number;
+  diasCompletos: number;
+  diasComPendencia: number;
+  registrouHoje: boolean;
 }

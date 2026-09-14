@@ -17,6 +17,7 @@ import {
   Setor,
   RegistroAuditoria,
   ConfiguracaoSistema,
+  CARGA_HORARIA_PADRAO_MINUTOS,
 } from '../tipos';
 
 const CHAVE_COLABORADORES = 'conecta_v4_colaboradores';
@@ -757,6 +758,7 @@ class BancoDadosConecta {
     telefone?: string;
     email?: string;
     foto?: string;
+    cargaHorariaDiariaMinutos?: number;
   }): { sucesso: boolean; colaborador?: Colaborador; erro?: string } {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel < 4) {
@@ -792,6 +794,8 @@ class BancoDadosConecta {
       ramal: dados.ramal?.trim() || '',
       telefone: dados.telefone?.trim() || '',
       email: dados.email?.trim() || '',
+      cargaHorariaDiariaMinutos:
+        dados.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS,
       ativo: true,
       criadoEm: new Date().toISOString(),
     };

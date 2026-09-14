@@ -15,6 +15,7 @@ import {
   Radio,
   Building2,
   LogOut,
+  Clock,
 } from 'lucide-react';
 import { AbaPrincipal, Colaborador, Conversa, Mensagem } from './tipos';
 import { bancoDados } from './servicos/bancoDados';
@@ -28,10 +29,14 @@ import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
 import { TelaLogin } from './componentes/TelaLogin';
 import { PainelAdministrativo } from './componentes/PainelAdministrativo';
+import { AbaPonto } from './componentes/AbaPonto';
+import { PainelRecursosHumanos } from './componentes/PainelRecursosHumanos';
+import { servicoPonto } from './servicos/ponto';
 
 export default function App() {
   const [autenticado, setAutenticado] = useState<boolean>(bancoDados.estaAutenticado());
   const [painelAdminAberto, setPainelAdminAberto] = useState<boolean>(false);
+  const [painelRhAberto, setPainelRhAberto] = useState<boolean>(false);
   const [abaAtiva, setAbaAtiva] = useState<AbaPrincipal>('conversas');
   const [colaboradorAtual, setColaboradorAtual] = useState<Colaborador>(
     bancoDados.obterColaboradorAtual()
@@ -69,6 +74,16 @@ export default function App() {
           setColaboradorAtual(colab);
           setAutenticado(true);
         }}
+      />
+    );
+  }
+
+  // Painel de RH (banco de horas): setor RH e Administrador
+  if (painelRhAberto) {
+    return (
+      <PainelRecursosHumanos
+        colaboradorAtual={colaboradorAtual}
+        aoFechar={() => setPainelRhAberto(false)}
       />
     );
   }
@@ -133,6 +148,8 @@ export default function App() {
   };
 
   const ehAdmin = colaboradorAtual.nivel === 4;
+  // RH e Administrador acessam o banco de horas de toda a rede
+  const podeAbrirRh = servicoPonto.podeAcessarPainelRH(colaboradorAtual);
 
   // Determina visibilidade do botão flutuante '+'
   // Conversas: liberado para todos iniciarem bate-papo privado com colega
@@ -169,6 +186,19 @@ export default function App() {
 
         {/* Ações Rápidas do Topo: Painel ADM e Perfil */}
         <div className="flex items-center gap-2">
+          {podeAbrirRh && (
+            <button
+              type="button"
+              id="botao-topo-painel-rh"
+              onClick={() => setPainelRhAberto(true)}
+              className="px-2.5 py-1.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
+              title="Banco de horas da rede (RH)"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span className="hidden xs:inline">RH</span>
+            </button>
+          )}
+
           {ehAdmin && (
             <button
               type="button"
@@ -361,6 +391,9 @@ export default function App() {
               </div>
             )}
 
+            {/* ABA PONTO: banco de horas individual do colaborador */}
+            {abaAtiva === 'ponto' && <AbaPonto colaboradorAtual={colaboradorAtual} />}
+
             {/* ABA 4: EU (Meu perfil, ramal, preferências, logout) */}
             {abaAtiva === 'eu' && (
               <AbaEu
@@ -426,6 +459,23 @@ export default function App() {
             >
               <Users className="w-5 h-5" />
               <span className="text-xs">Grupos</span>
+            </button>
+
+            <button
+              type="button"
+              id="aba-navegacao-ponto"
+              onClick={() => {
+                setAbaAtiva('ponto');
+                setConversaAtivaId(null);
+              }}
+              className={`flex-1 h-full flex flex-col items-center justify-center gap-1 transition-colors ${
+                abaAtiva === 'ponto'
+                  ? 'text-[var(--c-acento)] font-semibold'
+                  : 'text-[var(--c-texto-3)] hover:text-[var(--c-texto-2)]'
+              }`}
+            >
+              <Clock className="w-5 h-5" />
+              <span className="text-xs">Ponto</span>
             </button>
 
             <button

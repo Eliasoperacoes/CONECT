@@ -45,6 +45,7 @@ const SETORES_LISTA: (Setor | 'Todos')[] = [
   'TI',
   'Garantia',
   'Tesouraria',
+  'RH',
   'Diretoria',
 ];
 

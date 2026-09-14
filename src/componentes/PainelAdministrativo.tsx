@@ -43,8 +43,10 @@ import {
   RegistroAuditoria,
   AvisoRede,
   PrioridadeAviso,
+  CARGA_HORARIA_PADRAO_MINUTOS,
 } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA, obterFotoColaborador } from '../servicos/bancoDados';
+import { servicoPonto } from '../servicos/ponto';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 import { ImportacaoPlanilhaFuncionarios } from './ImportacaoPlanilhaFuncionarios';
 import { baixarPlanilhaModeloExcel } from '../servicos/planilhaFuncionarios';
@@ -84,6 +86,7 @@ const SETORES_TODOS: Setor[] = [
   'Garantia',
   'Callcenter',
   'Tesouraria',
+  'RH',
 ];
 
 export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
@@ -119,6 +122,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     telefone: '',
     email: '',
     foto: '',
+    cargaHorariaDiariaMinutos: CARGA_HORARIA_PADRAO_MINUTOS,
   });
 
   // Modal Novo Canal/Grupo
@@ -216,6 +220,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       telefone: '',
       email: '',
       foto: FOTO_PADRAO_LOGO_EMPRESA,
+      cargaHorariaDiariaMinutos: CARGA_HORARIA_PADRAO_MINUTOS,
     });
     setModalColabAberto(true);
   };
@@ -235,6 +240,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       telefone: colab.telefone || '',
       email: colab.email || '',
       foto: colab.foto || FOTO_PADRAO_LOGO_EMPRESA,
+      cargaHorariaDiariaMinutos:
+        colab.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS,
     });
     setModalColabAberto(true);
   };
@@ -301,6 +308,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
         telefone: formColab.telefone.trim(),
         email: formColab.email.trim(),
         foto: formColab.foto.trim() || colabEditando.foto,
+        cargaHorariaDiariaMinutos: formColab.cargaHorariaDiariaMinutos,
       });
       if (res.sucesso) {
         exibirToast(`Colaborador ${formColab.nome} atualizado com sucesso.`);
@@ -324,6 +332,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     if (!colabParaExcluir) return;
     const res = bancoDados.removerColaborador(colabParaExcluir.id);
     if (res.sucesso) {
+      // Limpa também o banco de horas, senão sobrariam registros sem dono
+      servicoPonto.removerRegistrosDoColaborador(colabParaExcluir.id);
       exibirToast(`Colaborador "${colabParaExcluir.nome}" removido com sucesso.`);
       recarregar();
     } else {
@@ -1635,6 +1645,38 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                   <option value={3}>Nível 3 - Gestor (Diretoria, Compras, Gerência)</option>
                   <option value={4}>Nível 4 - Administrador Geral (TI & Acesso Total)</option>
                 </select>
+              </div>
+
+              {/* Jornada contratada — base do cálculo do banco de horas */}
+              <div>
+                <label
+                  htmlFor="campo-carga-horaria"
+                  className="block font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1"
+                >
+                  Jornada Diária (Banco de Horas)
+                </label>
+                <select
+                  id="campo-carga-horaria"
+                  value={formColab.cargaHorariaDiariaMinutos}
+                  onChange={(e) =>
+                    setFormColab({
+                      ...formColab,
+                      cargaHorariaDiariaMinutos: Number(e.target.value),
+                    })
+                  }
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] font-semibold"
+                >
+                  <option value={240}>4h00 por dia útil</option>
+                  <option value={360}>6h00 por dia útil</option>
+                  <option value={396}>6h36 por dia útil (44h semanais em 6 dias)</option>
+                  <option value={440}>7h20 por dia útil</option>
+                  <option value={480}>8h00 por dia útil (padrão)</option>
+                  <option value={528}>8h48 por dia útil (44h semanais em 5 dias)</option>
+                </select>
+                <p className="mt-1 text-[11px] text-[var(--c-texto-3)]">
+                  Saldo positivo ou negativo é calculado contra esta jornada. Sábados e domingos
+                  não geram jornada prevista.
+                </p>
               </div>
 
               {/* Telefone e Email */}

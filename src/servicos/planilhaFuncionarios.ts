@@ -71,6 +71,10 @@ const SETORES_PADRAO: Record<string, Setor> = {
   informatica: 'TI',
   suporte: 'TI',
   diretoria: 'Diretoria',
+  rh: 'RH',
+  'recursos humanos': 'RH',
+  pessoal: 'RH',
+  dp: 'RH',
   gerencia: 'Diretoria',
 };
 

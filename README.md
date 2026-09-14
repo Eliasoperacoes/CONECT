@@ -92,3 +92,22 @@ Os dados ficam no `localStorage` do navegador e o rádio usa `BroadcastChannel`.
 Na prática isso significa que **cada navegador é uma instalação isolada**: mensagens
 enviadas em um aparelho não chegam a outro. Para operação real entre as cinco lojas
 é necessário um backend com banco de dados e transporte em tempo real.
+
+## Banco de horas e registro de ponto
+
+Cada loja tem um **QR de ponto** gerado pelo sistema, impresso pelo painel de RH
+e afixado na entrada. O funcionário abre a aba **Ponto**, toca no botão único e
+aponta a câmera para o QR — o sistema decide sozinho qual das quatro marcações do
+dia está sendo batida (entrada, saída para almoço, retorno, saída). Se a câmera
+falhar, o mesmo modal aceita o código de 6 caracteres impresso no cartaz.
+
+O saldo é calculado contra a jornada diária cadastrada para cada pessoa
+(padrão 8h; sábados e domingos não geram jornada prevista).
+
+**Painel de RH** (setor `RH` e Administrador nível 4): espelho de ponto por
+colaborador, saldo do período e acumulado, correção de marcações com
+justificativa obrigatória e autoria registrada na auditoria, exportação em CSV e
+geração/impressão dos QRs das lojas.
+
+Se um cartaz for fotografado ou copiado, o RH gera um código novo para a loja e o
+anterior deixa de funcionar imediatamente.
