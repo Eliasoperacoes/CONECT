@@ -15,6 +15,30 @@ export const ehArquivoDeImagem = (arquivo: File): boolean =>
 export const ehDataUrlDeImagem = (url?: string): boolean =>
   !!url && url.startsWith('data:image/');
 
+const EXTENSOES_DE_IMAGEM = [
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.svg',
+  '.heic',
+  '.heif',
+  '.avif',
+];
+
+/**
+ * Reconhece uma foto pelo nome do arquivo. Serve para as mensagens antigas,
+ * enviadas quando o sistema guardava apenas nome e tamanho: sem isso elas
+ * continuariam aparecendo como documento para baixar.
+ */
+export const ehNomeDeImagem = (nome?: string): boolean => {
+  if (!nome) return false;
+  const minusculo = nome.toLowerCase();
+  return EXTENSOES_DE_IMAGEM.some((ext) => minusculo.endsWith(ext));
+};
+
 /**
  * Reduz a imagem para caber em `dimensaoMaxima` e devolve em JPEG.
  * Se algo falhar (formato exótico, imagem corrompida), devolve null para o

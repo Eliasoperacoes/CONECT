@@ -23,6 +23,7 @@ import {
   Copy,
   CheckSquare,
   Trash2,
+  ImageOff,
 } from 'lucide-react';
 import {
   Conversa,
@@ -31,7 +32,12 @@ import {
   EstadoTransmissaoRadio,
 } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
-import { ehArquivoDeImagem, ehDataUrlDeImagem, comprimirImagem } from '../servicos/imagens';
+import {
+  ehArquivoDeImagem,
+  ehDataUrlDeImagem,
+  ehNomeDeImagem,
+  comprimirImagem,
+} from '../servicos/imagens';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoAudioRadio } from '../servicos/audioRadio';
 import { TelaRadioAoVivo } from './TelaRadioAoVivo';
@@ -764,7 +770,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
             // Se o conteúdo é uma imagem, mostra como foto em vez de download.
             const ehFoto =
               msg.tipo === 'imagem' ||
-              (msg.tipo === 'arquivo' && ehDataUrlDeImagem(msg.arquivoUrl));
+              (msg.tipo === 'arquivo' &&
+                (ehDataUrlDeImagem(msg.arquivoUrl) || ehNomeDeImagem(msg.arquivoNome)));
             const urlDaFoto = msg.tipo === 'imagem' ? msg.imagemUrl : msg.arquivoUrl;
 
             return (
@@ -926,6 +933,34 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                         >
                           <Download className="w-4 h-4" />
                         </button>
+                      </div>
+                    )}
+
+                    {/* Foto enviada antes do sistema guardar o conteúdo: a
+                        imagem não existe, mas continua sendo uma foto — melhor
+                        dizer isso do que oferecer um download que não entrega
+                        nada. */}
+                    {ehFoto && !urlDaFoto && (
+                      <div className="flex items-center gap-3 w-[220px] max-w-full py-1">
+                        <div
+                          className={`w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            ehMinha ? 'bg-white/20' : 'bg-[var(--c-superficie-2)]'
+                          }`}
+                        >
+                          <ImageOff className="w-5 h-5 opacity-70" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {msg.arquivoNome || 'Foto'}
+                          </p>
+                          <span
+                            className={`text-[11px] leading-snug block ${
+                              ehMinha ? 'text-white/75' : 'text-[var(--c-texto-3)]'
+                            }`}
+                          >
+                            Foto indisponível · peça para reenviar
+                          </span>
+                        </div>
                       </div>
                     )}
 
