@@ -1,0 +1,1 @@
+{"name":"CONECTA","description":"Comunicador interno da Malachias Autopeças com conversas, grupos, painel de controle da rede, quadro de funcionários, fotos da câmera e rádio ao vivo.","requestFramePermissions":["microphone","camera"],"majorCapabilities":["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]}

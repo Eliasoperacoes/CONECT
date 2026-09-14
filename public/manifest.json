@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "CONECTA — Malachias Autopeças",
+  "short_name": "CONECTA",
+  "description": "Comunicador interno da Malachias Autopeças com conversas, grupos e rádio ao vivo.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0E1216",
+  "theme_color": "#2563EB",
+  "icons": [
+    {
+      "src": "/icone.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

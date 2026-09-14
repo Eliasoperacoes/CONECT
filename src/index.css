@@ -1,0 +1,140 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+  --c-canvas: #F4F6F8;
+  --c-superficie: #FFFFFF;
+  --c-superficie-2: #EFF2F5;
+  --c-borda: #DCE1E7;
+  --c-borda-forte: #B9C1CA;
+  --c-texto: #151A21;
+  --c-texto-2: #4C5763;
+  --c-texto-3: #77828F;
+  --c-acento: #2563EB;
+  --c-acento-suave: #E8EFFD;
+  --c-sobre-acento: #FFFFFF;
+  --c-ok: #15803D;
+  --c-atencao: #B45309;
+  --c-erro: #B91C1C;
+  --c-info: #1D4ED8;
+  --fonte: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --fonte-num: ui-monospace, "SF Mono", Consolas, "Roboto Mono", monospace;
+  --t-xs: 12px;
+  --t-sm: 14px;
+  --t-base: 16px;
+  --t-md: 18px;
+  --t-lg: 22px;
+  --t-xl: 28px;
+  --t-2xl: 36px;
+  --t-3xl: 48px;
+  --e-1: 4px;
+  --e-2: 8px;
+  --e-3: 12px;
+  --e-4: 16px;
+  --e-5: 24px;
+  --e-6: 32px;
+  --e-7: 48px;
+  --e-8: 64px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --r-full: 999px;
+  --s-1: 0 1px 2px rgba(16, 24, 32, 0.06);
+  --s-2: 0 2px 6px rgba(16, 24, 32, 0.08), 0 1px 2px rgba(16, 24, 32, 0.04);
+  --s-3: 0 8px 24px rgba(16, 24, 32, 0.12);
+  --m-rapido: 120ms;
+  --m-normal: 200ms;
+  --m-curva: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) {
+    --c-canvas: #0E1216;
+    --c-superficie: #171C22;
+    --c-superficie-2: #1F262E;
+    --c-borda: #2C343D;
+    --c-borda-forte: #414B56;
+    --c-texto: #EDF1F5;
+    --c-texto-2: #B0BAC5;
+    --c-texto-3: #828D99;
+    --c-acento: #7EA6FA;
+    --c-acento-suave: #182338;
+    --c-sobre-acento: #0E1216;
+    --c-ok: #6EE7A0;
+    --c-atencao: #FBBF24;
+    --c-erro: #FCA5A5;
+    --c-info: #93B4FA;
+  }
+}
+
+:root[data-tema="escuro"] {
+  --c-canvas: #0E1216;
+  --c-superficie: #171C22;
+  --c-superficie-2: #1F262E;
+  --c-borda: #2C343D;
+  --c-borda-forte: #414B56;
+  --c-texto: #EDF1F5;
+  --c-texto-2: #B0BAC5;
+  --c-texto-3: #828D99;
+  --c-acento: #7EA6FA;
+  --c-acento-suave: #182338;
+  --c-sobre-acento: #0E1216;
+  --c-ok: #6EE7A0;
+  --c-atencao: #FBBF24;
+  --c-erro: #FCA5A5;
+  --c-info: #93B4FA;
+}
+
+:root[data-tema="claro"] {
+  --c-canvas: #F4F6F8;
+  --c-superficie: #FFFFFF;
+  --c-superficie-2: #EFF2F5;
+  --c-borda: #DCE1E7;
+  --c-borda-forte: #B9C1CA;
+  --c-texto: #151A21;
+  --c-texto-2: #4C5763;
+  --c-texto-3: #77828F;
+  --c-acento: #2563EB;
+  --c-acento-suave: #E8EFFD;
+  --c-sobre-acento: #FFFFFF;
+  --c-ok: #15803D;
+  --c-atencao: #B45309;
+  --c-erro: #B91C1C;
+  --c-info: #1D4ED8;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  font-family: var(--fonte);
+  background-color: var(--c-canvas);
+  color: var(--c-texto);
+  text-size-adjust: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  width: 100%;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Animações de pulso para o rádio */
+@keyframes onda-audio {
+  0%, 100% { height: 8px; }
+  50% { height: 48px; }
+}
+
+.anim-onda {
+  animation: onda-audio 0.8s ease-in-out infinite alternate;
+}
