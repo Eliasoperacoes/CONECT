@@ -596,13 +596,21 @@ class ServicoPonto {
     }
   }
 
-  /** Exportação do espelho de ponto do período em CSV. */
-  gerarCsvDoPeriodo(dataInicio: string, dataFim: string): string {
+  /**
+   * Exportação do espelho de ponto em CSV. Passando `colaboradorIds`, exporta
+   * só quem está em tela (a loja aberta ou o resultado da busca).
+   */
+  gerarCsvDoPeriodo(dataInicio: string, dataFim: string, colaboradorIds?: string[]): string {
     const linhas: string[] = [
       'Colaborador;Loja;Setor;Data;Entrada;Saida almoco;Retorno almoco;Saida;Trabalhado;Previsto;Saldo do dia',
     ];
 
-    for (const resumo of this.obterResumoDoPeriodo(dataInicio, dataFim)) {
+    const todos = this.obterResumoDoPeriodo(dataInicio, dataFim);
+    const selecionados = colaboradorIds
+      ? todos.filter((r) => colaboradorIds.includes(r.colaborador.id))
+      : todos;
+
+    for (const resumo of selecionados) {
       for (const jornada of resumo.jornadas) {
         const temAlgo = Object.keys(jornada.marcacoes).length > 0;
         if (!temAlgo) continue;

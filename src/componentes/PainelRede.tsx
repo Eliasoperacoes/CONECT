@@ -13,7 +13,7 @@ import {
   PhoneCall,
   ShieldAlert,
 } from 'lucide-react';
-import { Colaborador, Loja, Setor } from '../tipos';
+import { Colaborador, Loja, Setor, INFORMACOES_LOJAS } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import { QuadroFuncionarios } from './QuadroFuncionarios';
 import { CentralAvisos } from './CentralAvisos';
@@ -26,66 +26,6 @@ interface PropsPainelRede {
 }
 
 type SubAbaPainel = 'visao_geral' | 'quadro' | 'avisos';
-
-interface InfoLoja {
-  nome: Loja;
-  tipo: 'Matriz' | 'Filial' | 'Central';
-  cidade: string;
-  gerente: string;
-  telefone: string;
-  grupoId?: string;
-}
-
-const INFORMACOES_LOJAS: InfoLoja[] = [
-  {
-    nome: 'Pirassununga',
-    tipo: 'Matriz',
-    cidade: 'Pirassununga - SP',
-    gerente: 'Carlos Malachias / Marcos',
-    telefone: '(19) 3561-1000',
-    grupoId: 'grupo-loja-pirassununga',
-  },
-  {
-    nome: 'Porto Ferreira',
-    tipo: 'Filial',
-    cidade: 'Porto Ferreira - SP',
-    gerente: 'Roberto Fagundes',
-    telefone: '(19) 3581-2000',
-    grupoId: 'grupo-loja-porto-ferreira',
-  },
-  {
-    nome: 'Palmeiras',
-    tipo: 'Filial',
-    cidade: 'Santa Cruz das Palmeiras - SP',
-    gerente: 'Márcio Prado',
-    telefone: '(19) 3672-3000',
-    grupoId: 'grupo-loja-palmeiras',
-  },
-  {
-    nome: 'Descalvado',
-    tipo: 'Filial',
-    cidade: 'Descalvado - SP',
-    gerente: 'Fernanda Alves',
-    telefone: '(19) 3583-4000',
-    grupoId: 'grupo-loja-descalvado',
-  },
-  {
-    nome: 'Santa Rita',
-    tipo: 'Filial',
-    cidade: 'Santa Rita do Passa Quatro - SP',
-    gerente: 'André Villanova',
-    telefone: '(19) 3582-5000',
-    grupoId: 'grupo-loja-santa-rita',
-  },
-  {
-    nome: 'Rede',
-    tipo: 'Central',
-    cidade: 'Operações Centrais',
-    gerente: 'Vanessa / Marcelo',
-    telefone: '(19) 3561-9900',
-    grupoId: 'grupo-avisos-da-rede',
-  },
-];
 
 export const PainelRede: React.FC<PropsPainelRede> = ({
   colaboradorAtual,
