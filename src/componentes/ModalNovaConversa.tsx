@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Search } from 'lucide-react';
 import { Colaborador } from '../tipos';
+import { FotoPresenca } from './FotoPresenca';
 
 interface PropsModalNovaConversa {
   aberto: boolean;
@@ -92,30 +93,12 @@ export const ModalNovaConversa: React.FC<PropsModalNovaConversa> = ({
                 }}
                 className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-superficie-2)] transition-colors min-h-[58px]"
               >
-                <div className="relative w-11 h-11 rounded-full overflow-hidden bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex-shrink-0 flex items-center justify-center">
-                  {colega.foto ? (
-                    <img
-                      src={colega.foto}
-                      alt={colega.nome}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <span className="font-semibold text-sm text-[var(--c-texto-2)]">
-                      {colega.nome.charAt(0)}
-                    </span>
-                  )}
-                  {/* Ponto sutil de presença */}
-                  <span
-                    className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-[var(--c-superficie)] ${
-                      colega.presenca === 'disponivel'
-                        ? 'bg-[var(--c-ok)]'
-                        : colega.presenca === 'ocupado'
-                        ? 'bg-[var(--c-atencao)]'
-                        : 'bg-[var(--c-texto-3)]'
-                    }`}
-                  />
-                </div>
+                <FotoPresenca
+                  foto={colega.foto}
+                  nome={colega.nome}
+                  presenca={colega.presenca}
+                  tamanho="w-11 h-11"
+                />
 
                 <div className="flex-1 min-w-0">
                   <span className="font-medium text-base text-[var(--c-texto)] block truncate">

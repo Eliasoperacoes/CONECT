@@ -46,6 +46,7 @@ import {
 } from '../tipos';
 import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
+import { FotoPresenca } from './FotoPresenca';
 import {
   servicoPonto,
   LOJAS_COM_PONTO,
@@ -641,24 +642,29 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
                       >
                         {/* Identificação */}
                         <div className="flex items-start gap-3">
-                          <div className="relative flex-shrink-0">
-                            <img
-                              src={obterFotoColaborador(resumo.colaborador)}
-                              alt={resumo.colaborador.nome}
-                              className="w-12 h-12 rounded-full object-cover border border-[var(--c-borda)] bg-[var(--c-canvas)]"
-                            />
-                            {resumo.registrouHoje && (
-                              <span
-                                className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[var(--c-superficie)]"
-                                title="Registrou ponto hoje"
-                              />
-                            )}
-                          </div>
+                          <FotoPresenca
+                            foto={obterFotoColaborador(resumo.colaborador)}
+                            nome={resumo.colaborador.nome}
+                            presenca={resumo.colaborador.presenca}
+                            tamanho="w-12 h-12"
+                          />
 
                           <div className="min-w-0 flex-1">
-                            <h4 className="text-sm font-bold text-[var(--c-texto)] truncate">
-                              {resumo.colaborador.nome}
-                            </h4>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="text-sm font-bold text-[var(--c-texto)] truncate">
+                                {resumo.colaborador.nome}
+                              </h4>
+                              {/* "Bateu hoje" é informação de ponto, não de
+                                  presença: fica ao lado do nome, não na foto */}
+                              {resumo.registrouHoje && (
+                                <span
+                                  title="Registrou ponto hoje"
+                                  className="flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
+                                >
+                                  Hoje
+                                </span>
+                              )}
+                            </div>
                             <p className="text-xs text-[var(--c-texto-2)] truncate font-medium">
                               {resumo.colaborador.cargo}
                             </p>

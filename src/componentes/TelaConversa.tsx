@@ -29,6 +29,7 @@ import {
   Mensagem,
   EstadoTransmissaoRadio,
 } from '../tipos';
+import { FotoPresenca } from './FotoPresenca';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoAudioRadio } from '../servicos/audioRadio';
 import { TelaRadioAoVivo } from './TelaRadioAoVivo';
@@ -531,37 +532,15 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               <ArrowLeft className="w-5 h-5" />
             </button>
 
-            {/* Foto clicável para abrir detalhes */}
-            <div
-              onClick={() => setModalDetalhesAberto(true)}
-              className="relative w-10 h-10 rounded-full overflow-hidden bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex-shrink-0 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
-              title="Ver detalhes"
-            >
-              {conversa.foto || colegaDestinatario?.foto ? (
-                <img
-                  src={conversa.foto || colegaDestinatario?.foto}
-                  alt={conversa.nome}
-                  className="w-full h-full object-cover"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <span className="font-semibold text-sm text-[var(--c-texto-2)]">
-                  {conversa.nome.charAt(0)}
-                </span>
-              )}
-              {/* Presença para conversa individual */}
-              {colegaDestinatario && (
-                <span
-                  className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-[var(--c-superficie)] ${
-                    colegaDestinatario.presenca === 'disponivel'
-                      ? 'bg-[var(--c-ok)]'
-                      : colegaDestinatario.presenca === 'ocupado'
-                      ? 'bg-[var(--c-atencao)]'
-                      : 'bg-[var(--c-texto-3)]'
-                  }`}
-                />
-              )}
-            </div>
+            {/* Foto clicável para abrir detalhes. Em grupo não há presença. */}
+            <FotoPresenca
+              foto={conversa.foto || colegaDestinatario?.foto}
+              nome={conversa.nome}
+              presenca={colegaDestinatario?.presenca}
+              tamanho="w-10 h-10"
+              aoClicar={() => setModalDetalhesAberto(true)}
+              titulo="Ver detalhes"
+            />
 
             {/* Nome em destaque e cargo · loja em cinza pequeno - Clicável */}
             <div

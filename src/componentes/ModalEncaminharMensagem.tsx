@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { bancoDados } from '../servicos/bancoDados';
 import { Colaborador, Conversa } from '../tipos';
+import { FotoPresenca } from './FotoPresenca';
 
 interface PropsModalEncaminharMensagem {
   aberto: boolean;
@@ -238,27 +239,12 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="relative w-9 h-9 rounded-full overflow-hidden bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex-shrink-0 flex items-center justify-center font-bold text-xs">
-                          {c.foto ? (
-                            <img
-                              src={c.foto}
-                              alt={c.nome}
-                              className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            c.nome.charAt(0)
-                          )}
-                          <span
-                            className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-[var(--c-superficie)] ${
-                              c.presenca === 'disponivel'
-                                ? 'bg-emerald-500'
-                                : c.presenca === 'ocupado'
-                                ? 'bg-amber-500'
-                                : 'bg-slate-400'
-                            }`}
-                          />
-                        </div>
+                        <FotoPresenca
+                          foto={c.foto}
+                          nome={c.nome}
+                          presenca={c.presenca}
+                          tamanho="w-9 h-9"
+                        />
                         <div className="min-w-0">
                           <span className="text-xs font-semibold text-[var(--c-texto)] block truncate">
                             {c.nome}

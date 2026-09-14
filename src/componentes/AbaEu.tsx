@@ -14,6 +14,7 @@ import {
 import { Colaborador, EstadoPresenca } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA } from '../servicos/bancoDados';
 import { PreferenciaTema, definirTema, obterTemaSalvo } from '../servicos/tema';
+import { FotoPresenca } from './FotoPresenca';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 
 interface PropsAbaEu {
@@ -63,7 +64,15 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
             type="button"
             id="botao-avatar-perfil-eu"
             onClick={() => setModalFotoAberto(true)}
-            className="relative w-16 h-16 rounded-full overflow-hidden bg-white border-2 border-[var(--c-borda)] flex items-center justify-center cursor-pointer shadow-sm hover:ring-2 hover:ring-blue-500 transition-all text-left"
+            className={`relative w-16 h-16 rounded-full overflow-hidden bg-white flex items-center justify-center cursor-pointer shadow-sm transition-all text-left ring-2 ring-offset-2 ring-offset-[var(--c-superficie)] ${
+              colaboradorAtual.presenca === 'disponivel'
+                ? 'ring-emerald-500'
+                : colaboradorAtual.presenca === 'ocupado'
+                ? 'ring-amber-500'
+                : colaboradorAtual.presenca === 'ausente'
+                ? 'ring-slate-400'
+                : 'ring-[var(--c-borda-forte)]'
+            }`}
             title="Clique para alterar a foto do seu perfil"
           >
             <img
@@ -312,18 +321,12 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
                       : 'hover:bg-[var(--c-superficie-2)]'
                   }`}
                 >
-                  <div className="w-10 h-10 rounded-full overflow-hidden bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex-shrink-0 flex items-center justify-center">
-                    {colab.foto ? (
-                      <img
-                        src={colab.foto}
-                        alt={colab.nome}
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <span className="font-semibold text-sm">{colab.nome.charAt(0)}</span>
-                    )}
-                  </div>
+                  <FotoPresenca
+                    foto={colab.foto}
+                    nome={colab.nome}
+                    presenca={colab.presenca}
+                    tamanho="w-10 h-10"
+                  />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <span className="font-semibold text-sm text-[var(--c-texto)] truncate">

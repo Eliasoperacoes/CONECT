@@ -17,6 +17,7 @@ import {
   UserCog,
 } from 'lucide-react';
 import { Colaborador, Loja, Setor, EstadoPresenca, INFORMACOES_LOJAS } from '../tipos';
+import { FotoPresenca } from './FotoPresenca';
 import { bancoDados } from '../servicos/bancoDados';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
@@ -345,26 +346,13 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
               >
                 {/* Parte superior: Foto, Dados e Presença */}
                 <div className="flex items-start gap-3">
-                  <div
-                    onClick={() => setColaboradorModal(colaborador)}
-                    className="relative w-12 h-12 rounded-full overflow-hidden bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex-shrink-0 cursor-pointer hover:opacity-90 transition-opacity"
-                  >
-                    <img
-                      src={colaborador.foto}
-                      alt={colaborador.nome}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                    <span
-                      className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-[var(--c-superficie)] ${
-                        colaborador.presenca === 'disponivel'
-                          ? 'bg-emerald-500'
-                          : colaborador.presenca === 'ocupado'
-                          ? 'bg-amber-500'
-                          : 'bg-slate-400'
-                      }`}
-                    />
-                  </div>
+                  <FotoPresenca
+                    foto={colaborador.foto}
+                    nome={colaborador.nome}
+                    presenca={colaborador.presenca}
+                    tamanho="w-12 h-12"
+                    aoClicar={() => setColaboradorModal(colaborador)}
+                  />
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1">
@@ -473,14 +461,13 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                 className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[var(--c-superficie-2)] transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <div className="relative w-10 h-10 rounded-full overflow-hidden bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex-shrink-0">
-                    <img
-                      src={colaborador.foto}
-                      alt={colaborador.nome}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  </div>
+                  <FotoPresenca
+                    foto={colaborador.foto}
+                    nome={colaborador.nome}
+                    presenca={colaborador.presenca}
+                    tamanho="w-10 h-10"
+                    aoClicar={() => setColaboradorModal(colaborador)}
+                  />
 
                   <div>
                     <div className="flex items-center gap-2">
