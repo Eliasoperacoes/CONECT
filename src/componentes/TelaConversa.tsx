@@ -44,6 +44,16 @@ interface PropsTelaConversa {
 
 const REACOES_RAPIDAS = ['👍', '✅', '📦', '🚗'];
 
+/** Converte o áudio gravado em data URL, para sobreviver ao recarregamento. */
+const blobParaDataUrl = (blob: Blob): Promise<string | undefined> =>
+  new Promise((resolver) => {
+    const leitor = new FileReader();
+    leitor.onload = () =>
+      resolver(typeof leitor.result === 'string' ? leitor.result : undefined);
+    leitor.onerror = () => resolver(undefined);
+    leitor.readAsDataURL(blob);
+  });
+
 export const TelaConversa: React.FC<PropsTelaConversa> = ({
   conversa,
   colaboradorAtual,
@@ -72,10 +82,18 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   const [mensagensParaEncaminhar, setMensagensParaEncaminhar] = useState<string[]>([]);
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
 
+  /** Aviso rápido no rodapé da conversa. */
+  const exibirToast = (texto: string) => {
+    setToastFeedback(texto);
+    setTimeout(() => setToastFeedback(null), 4000);
+  };
+
   const refFimMensagens = useRef<HTMLDivElement>(null);
   const refTemporizadorPressione = useRef<NodeJS.Timeout | null>(null);
   const refAudioElemento = useRef<HTMLAudioElement | null>(null);
   const refInputArquivo = useRef<HTMLInputElement>(null);
+  // Instante em que a gravação do recado começou, para medir a duração real
+  const refInicioGravacao = useRef<number | null>(null);
 
   // Identifica o colega destinatário em conversas individuais
   const colegaDestinatario: Colaborador | undefined =
@@ -146,22 +164,50 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     setTextoMensagem('');
   };
 
-  // Envio de arquivo anexado
+  /**
+   * Envio de arquivo anexado. O conteúdo vai junto em data URL — antes só o
+   * nome e o tamanho eram guardados, e o download entregava um texto no lugar
+   * do arquivo original.
+   */
+  const LIMITE_ANEXO_BYTES = 2 * 1024 * 1024; // 2 MB
+
   const lidarEnvioArquivo = (e: React.ChangeEvent<HTMLInputElement>) => {
     const arquivos = e.target.files;
     if (!arquivos || arquivos.length === 0) return;
     const arquivo = arquivos[0];
 
+    const limparCampo = () => {
+      if (refInputArquivo.current) refInputArquivo.current.value = '';
+    };
+
+    if (arquivo.size > LIMITE_ANEXO_BYTES) {
+      exibirToast('Arquivo acima de 2 MB. Envie um menor ou compartilhe o link.');
+      limparCampo();
+      return;
+    }
+
     const tamanhoKb = Math.round(arquivo.size / 1024);
-    const tamanhoFormatado = tamanhoKb > 1024 ? `${(tamanhoKb / 1024).toFixed(1)} MB` : `${tamanhoKb} KB`;
+    const tamanhoFormatado =
+      tamanhoKb > 1024 ? `${(tamanhoKb / 1024).toFixed(1)} MB` : `${tamanhoKb} KB`;
 
-    bancoDados.enviarMensagem(conversa.id, {
-      tipo: 'arquivo',
-      arquivoNome: arquivo.name,
-      arquivoTamanho: tamanhoFormatado,
-    });
-
-    if (refInputArquivo.current) refInputArquivo.current.value = '';
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      const resultado = bancoDados.enviarMensagem(conversa.id, {
+        tipo: 'arquivo',
+        arquivoNome: arquivo.name,
+        arquivoTamanho: tamanhoFormatado,
+        arquivoUrl: typeof leitor.result === 'string' ? leitor.result : undefined,
+      });
+      if (!resultado.sucesso) {
+        exibirToast(resultado.erro || 'Não foi possível enviar o arquivo.');
+      }
+      limparCampo();
+    };
+    leitor.onerror = () => {
+      exibirToast('Não foi possível ler o arquivo.');
+      limparCampo();
+    };
+    leitor.readAsDataURL(arquivo);
   };
 
   // Ação de segurar a BARRA DO RÁDIO
@@ -204,6 +250,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     }
 
     // Inicia captura de voz e onda de áudio
+    refInicioGravacao.current = Date.now();
     await servicoAudioRadio.iniciarCapturaVoz((vol) => {
       setVolumeVoz(vol);
     });
@@ -239,17 +286,27 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       const nomeDest = colegaDestinatario?.nome || 'O destinatário';
       setAvisoRecadoTexto(`${nomeDest} não está disponível — virou recado`);
 
-      // Cria a mensagem de recado de voz
+      // Duração real da gravação, em vez de um valor fixo
+      const segundosGravados = refInicioGravacao.current
+        ? Math.max(1, Math.round((Date.now() - refInicioGravacao.current) / 1000))
+        : 1;
+      refInicioGravacao.current = null;
+
+      // O áudio vai em data URL: um blob: URL morre ao recarregar a página e o
+      // recado ficaria mudo para sempre.
       let urlAudio: string | undefined = undefined;
       if (resultadoAudio?.blob) {
-        urlAudio = URL.createObjectURL(resultadoAudio.blob);
+        urlAudio = await blobParaDataUrl(resultadoAudio.blob);
       }
 
-      bancoDados.enviarMensagem(conversa.id, {
+      const enviado = bancoDados.enviarMensagem(conversa.id, {
         tipo: 'recado_voz',
         audioUrl: urlAudio,
-        audioDuracao: 3, // Duração calculada
+        audioDuracao: segundosGravados,
       });
+      if (!enviado.sucesso) {
+        exibirToast(enviado.erro || 'Não foi possível salvar o recado de voz.');
+      }
 
       setTimeout(() => {
         setAvisoRecadoTexto(null);
@@ -273,7 +330,15 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       if (mensagem.audioUrl) {
         const audio = new Audio(mensagem.audioUrl);
         refAudioElemento.current = audio;
-        audio.play().catch(() => {});
+        // Recados gravados antes da correção usavam blob: e não tocam mais
+        audio.onerror = () => {
+          setAudioTocandoId(null);
+          exibirToast('Este recado foi gravado antes da correção e não pode mais ser reproduzido.');
+        };
+        audio.play().catch(() => {
+          setAudioTocandoId(null);
+          exibirToast('Não foi possível reproduzir este recado de voz.');
+        });
         setAudioTocandoId(mensagem.id);
 
         audio.ontimeupdate = () => {
@@ -302,17 +367,20 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   };
 
   // Download de arquivo com Blob simulado
-  const lidarDownloadArquivo = (nome: string) => {
-    const conteudo = `Malachias Autopeças - Documento Interno: ${nome}\nEnviado através do comunicador CONECTA.\nData: ${new Date().toLocaleString('pt-BR')}`;
-    const blob = new Blob([conteudo], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
+  /** Baixa o anexo de verdade. Sem conteúdo guardado, avisa em vez de entregar
+   *  um arquivo falso com o nome certo. */
+  const lidarDownloadArquivo = (nome: string, arquivoUrl?: string) => {
+    if (!arquivoUrl) {
+      exibirToast('Este anexo foi enviado antes do sistema guardar arquivos e não pode ser baixado.');
+      return;
+    }
+
     const link = document.createElement('a');
-    link.href = url;
+    link.href = arquivoUrl;
     link.download = nome;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   const lidarReagirMensagem = (msgId: string, emoji: string) => {
@@ -819,7 +887,9 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                         </div>
                         <button
                           type="button"
-                          onClick={() => lidarDownloadArquivo(msg.arquivoNome || 'documento.txt')}
+                          onClick={() =>
+                            lidarDownloadArquivo(msg.arquivoNome || 'documento', msg.arquivoUrl)
+                          }
                           className="p-1.5 opacity-80 hover:opacity-100 rounded-lg hover:bg-black/10 transition-colors"
                           title="Baixar arquivo"
                           aria-label="Baixar"

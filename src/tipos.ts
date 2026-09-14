@@ -84,6 +84,8 @@ export interface Mensagem {
   audioDuracao?: number; // em segundos
   arquivoNome?: string;
   arquivoTamanho?: string;
+  // Conteúdo do anexo em data URL. Sem ele o download não teria o que entregar.
+  arquivoUrl?: string;
   imagemUrl?: string;
   legenda?: string;
   criadoEm: string; // ISO string

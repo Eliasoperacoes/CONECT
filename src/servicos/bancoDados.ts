@@ -1669,6 +1669,7 @@ class BancoDadosConecta {
       audioDuracao?: number;
       arquivoNome?: string;
       arquivoTamanho?: string;
+      arquivoUrl?: string;
       imagemUrl?: string;
       legenda?: string;
       ehEncaminhada?: boolean;
@@ -1692,6 +1693,7 @@ class BancoDadosConecta {
       audioDuracao: conteudo.audioDuracao,
       arquivoNome: conteudo.arquivoNome,
       arquivoTamanho: conteudo.arquivoTamanho,
+      arquivoUrl: conteudo.arquivoUrl,
       imagemUrl: conteudo.imagemUrl,
       legenda: conteudo.legenda,
       criadoEm: agora.toISOString(),
@@ -1729,7 +1731,16 @@ class BancoDadosConecta {
 
       this.notificar();
       return { sucesso: true, mensagem: novaMensagem };
-    } catch {
+    } catch (erro) {
+      // Anexos e recados de voz ocupam espaço; o armazenamento do navegador
+      // tem limite e a mensagem de erro precisa dizer o que fazer.
+      const nome = erro instanceof Error ? erro.name : '';
+      if (nome === 'QuotaExceededError' || nome === 'NS_ERROR_DOM_QUOTA_REACHED') {
+        return {
+          sucesso: false,
+          erro: 'Armazenamento do aparelho cheio. Peça ao TI para limpar as conversas antigas.',
+        };
+      }
       return { sucesso: false, erro: 'Falha ao salvar mensagem.' };
     }
   }
@@ -1824,6 +1835,7 @@ class BancoDadosConecta {
             audioDuracao: msg.audioDuracao,
             arquivoNome: msg.arquivoNome,
             arquivoTamanho: msg.arquivoTamanho,
+            arquivoUrl: msg.arquivoUrl,
             imagemUrl: msg.imagemUrl,
             legenda: msg.legenda,
             ehEncaminhada: true,
