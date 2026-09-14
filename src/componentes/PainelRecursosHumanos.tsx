@@ -30,6 +30,7 @@ import {
   Building2,
   MapPin,
   ArrowRight,
+  UserCog,
 } from 'lucide-react';
 import {
   Colaborador,
@@ -42,7 +43,8 @@ import {
   CARGA_HORARIA_PADRAO_MINUTOS,
   INFORMACOES_LOJAS,
 } from '../tipos';
-import { obterFotoColaborador } from '../servicos/bancoDados';
+import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
+import { ModalCadastroColaborador } from './ModalCadastroColaborador';
 import {
   servicoPonto,
   LOJAS_COM_PONTO,
@@ -73,6 +75,10 @@ export const PainelRecursosHumanos: React.FC<PropsPainelRecursosHumanos> = ({
   // Com mais de 40 colaboradores, a lista única fica impraticável.
   const [lojaSelecionada, setLojaSelecionada] = useState<Loja | null>(null);
   const [detalheId, setDetalheId] = useState<string | null>(null);
+  const [colaboradorEmCadastro, setColaboradorEmCadastro] = useState<Colaborador | null>(null);
+
+  // Quem pode abrir o painel de RH também cuida da ficha das pessoas
+  const podeEditarCadastros = bancoDados.podeGerenciarPessoas(colaboradorAtual);
   const [versaoDados, setVersaoDados] = useState(0);
   const [toast, setToast] = useState<{ texto: string; erro: boolean } | null>(null);
 
@@ -605,63 +611,126 @@ export const PainelRecursosHumanos: React.FC<PropsPainelRecursosHumanos> = ({
                     Nenhum colaborador encontrado.
                   </p>
                 ) : (
-                  <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] divide-y divide-[var(--c-borda)] overflow-hidden">
+                  /* Cartões no mesmo formato do Quadro de Equipe, trocando os
+                     dados de contato pelos números do banco de horas. */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {equipeExibida.map((resumo) => (
-                  <button
-                    key={resumo.colaborador.id}
-                    type="button"
-                    id={`linha-rh-${resumo.colaborador.id}`}
-                    onClick={() => setDetalheId(resumo.colaborador.id)}
-                    className="w-full px-3.5 py-3 flex items-center gap-3 text-left hover:bg-[var(--c-superficie-2)] transition-colors"
-                  >
-                    <img
-                      src={obterFotoColaborador(resumo.colaborador)}
-                      alt={resumo.colaborador.nome}
-                      className="w-10 h-10 rounded-full object-cover border border-[var(--c-borda)] bg-[var(--c-canvas)] flex-shrink-0"
-                    />
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-bold text-[var(--c-texto)] truncate">
-                          {resumo.colaborador.nome}
-                        </span>
-                        {resumo.registrouHoje && (
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0"
-                            title="Registrou ponto hoje"
-                          />
-                        )}
-                      </div>
-                      <span className="text-[11px] text-[var(--c-texto-3)] block truncate">
-                        {resumo.colaborador.cargo} · {resumo.colaborador.loja}
-                      </span>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-[10px] text-[var(--c-texto-3)] font-medium">
-                          {resumo.diasCompletos} dias completos
-                        </span>
-                        {resumo.diasComPendencia > 0 && (
-                          <span className="text-[10px] font-bold text-amber-600">
-                            {resumo.diasComPendencia} pendente
-                            {resumo.diasComPendencia > 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="text-right flex-shrink-0">
-                      <span className="text-xs text-[var(--c-texto-3)] block">Período</span>
-                      <span
-                        className={`text-sm font-black tabular-nums block ${
-                          resumo.saldoPeriodoMinutos >= 0 ? 'text-emerald-600' : 'text-red-600'
-                        }`}
+                      <div
+                        key={resumo.colaborador.id}
+                        id={`cartao-rh-${resumo.colaborador.id}`}
+                        className="bg-[var(--c-superficie)] rounded-xl border border-[var(--c-borda)] p-4 shadow-xs hover:shadow-sm transition-all flex flex-col gap-3"
                       >
-                        {formatarSaldo(resumo.saldoPeriodoMinutos)}
-                      </span>
-                      <span className="text-[10px] text-[var(--c-texto-3)] block">
-                        Acum. {formatarSaldo(resumo.saldoAcumuladoMinutos)}
-                      </span>
-                    </div>
-                      </button>
+                        {/* Identificação */}
+                        <div className="flex items-start gap-3">
+                          <div className="relative flex-shrink-0">
+                            <img
+                              src={obterFotoColaborador(resumo.colaborador)}
+                              alt={resumo.colaborador.nome}
+                              className="w-12 h-12 rounded-full object-cover border border-[var(--c-borda)] bg-[var(--c-canvas)]"
+                            />
+                            {resumo.registrouHoje && (
+                              <span
+                                className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[var(--c-superficie)]"
+                                title="Registrou ponto hoje"
+                              />
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-sm font-bold text-[var(--c-texto)] truncate">
+                              {resumo.colaborador.nome}
+                            </h4>
+                            <p className="text-xs text-[var(--c-texto-2)] truncate font-medium">
+                              {resumo.colaborador.cargo}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              <span className="px-1.5 py-0.5 rounded text-[11px] bg-[var(--c-canvas)] text-[var(--c-texto-2)] border border-[var(--c-borda)]">
+                                {resumo.colaborador.loja}
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded text-[11px] bg-[var(--c-canvas)] text-[var(--c-texto-3)] border border-[var(--c-borda)]">
+                                {resumo.colaborador.setor}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Números do banco de horas */}
+                        <div className="grid grid-cols-2 gap-2 text-center">
+                          <div className="rounded-lg bg-[var(--c-canvas)] border border-[var(--c-borda)] p-2">
+                            <span className="text-[10px] font-bold text-[var(--c-texto-3)] uppercase tracking-wider block">
+                              Período
+                            </span>
+                            <span
+                              className={`text-base font-black tabular-nums ${
+                                resumo.saldoPeriodoMinutos >= 0
+                                  ? 'text-emerald-600'
+                                  : 'text-red-600'
+                              }`}
+                            >
+                              {formatarSaldo(resumo.saldoPeriodoMinutos)}
+                            </span>
+                          </div>
+                          <div className="rounded-lg bg-[var(--c-canvas)] border border-[var(--c-borda)] p-2">
+                            <span className="text-[10px] font-bold text-[var(--c-texto-3)] uppercase tracking-wider block">
+                              Acumulado
+                            </span>
+                            <span
+                              className={`text-base font-black tabular-nums ${
+                                resumo.saldoAcumuladoMinutos >= 0
+                                  ? 'text-emerald-600'
+                                  : 'text-red-600'
+                              }`}
+                            >
+                              {formatarSaldo(resumo.saldoAcumuladoMinutos)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Situação do período */}
+                        <div className="flex items-center justify-between text-[11px] pt-2 border-t border-[var(--c-borda)]">
+                          <span className="text-[var(--c-texto-3)] font-medium">
+                            {resumo.diasCompletos} dia
+                            {resumo.diasCompletos === 1 ? '' : 's'} completo
+                            {resumo.diasCompletos === 1 ? '' : 's'}
+                          </span>
+                          {resumo.diasComPendencia > 0 ? (
+                            <span className="font-bold text-amber-600 flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              {resumo.diasComPendencia} pendente
+                              {resumo.diasComPendencia > 1 ? 's' : ''}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-600 font-semibold">Sem pendências</span>
+                          )}
+                        </div>
+
+                        {/* Ações */}
+                        <div
+                          className={`grid gap-2 ${podeEditarCadastros ? 'grid-cols-2' : 'grid-cols-1'}`}
+                        >
+                          <button
+                            type="button"
+                            id={`botao-espelho-${resumo.colaborador.id}`}
+                            onClick={() => setDetalheId(resumo.colaborador.id)}
+                            className="px-2.5 py-1.5 rounded-lg bg-[var(--c-acento)] hover:brightness-110 text-[var(--c-sobre-acento)] font-semibold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs"
+                          >
+                            <CalendarRange className="w-3.5 h-3.5" />
+                            <span>Espelho</span>
+                          </button>
+
+                          {podeEditarCadastros && (
+                            <button
+                              type="button"
+                              id={`botao-cadastro-rh-${resumo.colaborador.id}`}
+                              onClick={() => setColaboradorEmCadastro(resumo.colaborador)}
+                              className="px-2.5 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs"
+                            >
+                              <UserCog className="w-3.5 h-3.5" />
+                              <span>Cadastro</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -922,6 +991,16 @@ export const PainelRecursosHumanos: React.FC<PropsPainelRecursosHumanos> = ({
           </div>
         )}
       </div>
+
+      {/* Ficha funcional do colaborador, aberta pelos cartões da equipe */}
+      <ModalCadastroColaborador
+        colaborador={colaboradorEmCadastro}
+        aoFechar={() => setColaboradorEmCadastro(null)}
+        aoSalvar={(nome) => {
+          exibirToast(`Cadastro de ${nome} atualizado.`);
+          setVersaoDados((v) => v + 1);
+        }}
+      />
 
       {/* Modal de ajuste de marcação */}
       {ajuste && (

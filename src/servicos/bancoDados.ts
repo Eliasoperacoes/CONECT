@@ -943,13 +943,29 @@ class BancoDadosConecta {
   }
 
   // Atualizar colaborador existente
+  /**
+   * Quem cuida da ficha das pessoas: Administrador (TI) e o setor de RH.
+   * O RH mexe nos dados funcionais; hierarquia e credenciais seguem sendo do
+   * Administrador.
+   */
+  podeGerenciarPessoas(colaborador?: Colaborador): boolean {
+    const alvo = colaborador || this.obterColaboradorAtual();
+    return alvo.nivel === 4 || alvo.setor === 'RH';
+  }
+
   atualizarColaborador(
     id: string,
     dados: Partial<Colaborador>
   ): { sucesso: boolean; erro?: string } {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 4 && atual.id !== id) {
-      return { sucesso: false, erro: 'Apenas o Administrador de TI possui permissão para editar outros colaboradores.' };
+    const ehAdmin = atual.nivel === 4;
+    const ehRh = !ehAdmin && atual.setor === 'RH';
+
+    if (!ehAdmin && !ehRh && atual.id !== id) {
+      return {
+        sucesso: false,
+        erro: 'Apenas o Administrador de TI e o RH possuem permissão para editar outros colaboradores.',
+      };
     }
 
     const colaboradores = this.obterColaboradores();
@@ -969,8 +985,28 @@ class BancoDadosConecta {
       delete dadosParaAplicar.senha;
     }
 
-    if (atual.nivel < 4) {
-      const CAMPOS_LIBERADOS: Array<keyof Colaborador> = [
+    if (!ehAdmin) {
+      // O RH cuida da ficha funcional (cargo, setor, loja, jornada, admissão e
+      // desligamento). Nível hierárquico, login e senha continuam com o TI,
+      // senão o RH poderia se promover ou assumir a conta de outra pessoa.
+      const CAMPOS_RH: Array<keyof Colaborador> = [
+        'nome',
+        'cargo',
+        'setor',
+        'loja',
+        'ramal',
+        'telefone',
+        'email',
+        'foto',
+        'matricula',
+        'departamento',
+        'dataAdmissao',
+        'observacoes',
+        'cargaHorariaDiariaMinutos',
+        'ativo',
+      ];
+      // Fora do RH, cada pessoa só mexe nos próprios dados de contato e perfil.
+      const CAMPOS_PROPRIOS: Array<keyof Colaborador> = [
         'foto',
         'senha',
         'ramal',
@@ -980,8 +1016,17 @@ class BancoDadosConecta {
         'vistoPorUltimo',
         'observacoes',
       ];
+
+      // Editando a si mesmo, o RH também pode trocar a própria senha
+      const liberados =
+        ehRh && atual.id !== id
+          ? CAMPOS_RH
+          : ehRh
+          ? [...new Set([...CAMPOS_RH, ...CAMPOS_PROPRIOS])]
+          : CAMPOS_PROPRIOS;
+
       const filtrados: Partial<Colaborador> = {};
-      for (const campo of CAMPOS_LIBERADOS) {
+      for (const campo of liberados) {
         if (campo in dadosParaAplicar) {
           (filtrados as Record<string, unknown>)[campo] = dadosParaAplicar[campo];
         }

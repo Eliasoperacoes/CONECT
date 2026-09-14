@@ -14,10 +14,12 @@ import {
   X,
   ExternalLink,
   Camera,
+  UserCog,
 } from 'lucide-react';
 import { Colaborador, Loja, Setor, EstadoPresenca, INFORMACOES_LOJAS } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
+import { ModalCadastroColaborador } from './ModalCadastroColaborador';
 
 interface PropsQuadroFuncionarios {
   colaboradorAtual: Colaborador;
@@ -61,6 +63,11 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
   const [modoVisualizacao, setModoVisualizacao] = useState<'grade' | 'lista'>('grade');
   const [colaboradorModal, setColaboradorModal] = useState<Colaborador | null>(null);
   const [colaboradorFotoAlvo, setColaboradorFotoAlvo] = useState<Colaborador | null>(null);
+  const [colaboradorEmCadastro, setColaboradorEmCadastro] = useState<Colaborador | null>(null);
+  const [avisoCadastro, setAvisoCadastro] = useState<string | null>(null);
+
+  // RH e Administrador editam a ficha das pessoas sem sair do quadro
+  const podeEditarCadastros = bancoDados.podeGerenciarPessoas(colaboradorAtual);
 
   const todosColaboradores = bancoDados.obterColaboradores();
 
@@ -415,6 +422,18 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                   </button>
                 ) : (
                   <div className="grid grid-cols-2 gap-2 pt-1">
+                    {podeEditarCadastros && (
+                      <button
+                        type="button"
+                        id={`botao-cadastro-funcionario-${colaborador.id}`}
+                        onClick={() => setColaboradorEmCadastro(colaborador)}
+                        className="col-span-2 px-2.5 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-semibold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs"
+                        title="Abrir a ficha funcional deste colaborador"
+                      >
+                        <UserCog className="w-3.5 h-3.5" />
+                        <span>Editar cadastro</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       id={`botao-radio-funcionario-${colaborador.id}`}
@@ -657,6 +676,28 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
             setColaboradorFotoAlvo(null);
           }}
         />
+      )}
+
+      {/* Ficha funcional aberta pelo RH direto do quadro */}
+      <ModalCadastroColaborador
+        colaborador={colaboradorEmCadastro}
+        aoFechar={() => setColaboradorEmCadastro(null)}
+        aoSalvar={(nome) => {
+          setAvisoCadastro(`Cadastro de ${nome} atualizado.`);
+          setTimeout(() => setAvisoCadastro(null), 3500);
+          // Mantém o modal de detalhes coerente com o que acabou de ser salvo
+          if (colaboradorModal && colaboradorEmCadastro?.id === colaboradorModal.id) {
+            const atualizado = bancoDados.obterColaboradorPorId(colaboradorModal.id);
+            if (atualizado) setColaboradorModal(atualizado);
+          }
+        }}
+      />
+
+      {avisoCadastro && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[70] bg-[var(--c-superficie)] text-[var(--c-texto)] border border-[var(--c-borda)] shadow-xl px-4 py-2.5 rounded-full text-xs font-semibold flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+          {avisoCadastro}
+        </div>
       )}
     </div>
   );
