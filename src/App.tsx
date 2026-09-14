@@ -28,6 +28,7 @@ import { PainelRede } from './componentes/PainelRede';
 import { ModalNovaConversa } from './componentes/ModalNovaConversa';
 import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
+import { IndicadorNuvem } from './componentes/IndicadorNuvem';
 import { TelaLogin } from './componentes/TelaLogin';
 import { PainelAdministrativo } from './componentes/PainelAdministrativo';
 import { AbaPonto } from './componentes/AbaPonto';
@@ -214,7 +215,7 @@ export default function App() {
               <span className="text-[10px] text-[var(--c-texto-3)] font-semibold hidden sm:inline">
                 · Malachias Autopeças
               </span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ml-1" title="Conectado à Rede" />
+              <IndicadorNuvem />
             </div>
             <span className="text-[11px] text-[var(--c-texto-3)] font-medium block -mt-0.5">
               {colaboradorAtual.loja} · {colaboradorAtual.cargo}

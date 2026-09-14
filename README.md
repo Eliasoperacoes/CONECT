@@ -111,3 +111,48 @@ geração/impressão dos QRs das lojas.
 
 Se um cartaz for fotografado ou copiado, o RH gera um código novo para a loja e o
 anterior deixa de funcionar imediatamente.
+
+## Banco de dados na nuvem (Supabase)
+
+O sistema roda em dois modos. **Sem** as variáveis de ambiente configuradas,
+tudo é guardado no navegador — cada aparelho é uma instalação isolada, bom para
+testar. **Com** as variáveis, os dados passam a viver no banco e as cinco lojas
+enxergam a mesma informação. O indicador no topo da tela mostra em qual modo o
+sistema está: **Local** (âmbar) ou **Rede** (verde).
+
+### Configurando
+
+1. Crie um projeto em [supabase.com](https://supabase.com) (o plano gratuito
+   atende com folga o tamanho da rede).
+2. Abra **SQL Editor → New query**, cole o conteúdo de
+   [supabase/esquema.sql](supabase/esquema.sql) e execute. Isso cria as tabelas,
+   as regras de acesso e o tempo real. O arquivo pode ser rodado novamente sem
+   quebrar nada.
+3. Em **Settings → API**, copie a *Project URL* e a chave *anon public*.
+4. Crie um arquivo `.env` na raiz do projeto (veja
+   [.env.example](.env.example)):
+
+   ```
+   VITE_SUPABASE_URL="https://seu-projeto.supabase.co"
+   VITE_SUPABASE_ANON_KEY="sua-chave-anon"
+   ```
+
+5. Na Vercel, cadastre as mesmas duas variáveis em
+   **Settings → Environment Variables** e refaça o deploy.
+
+A chave *anon* é pública por natureza — ela vai para o navegador. Quem protege
+os dados são as regras de acesso (RLS) definidas no esquema, que repetem no
+banco as mesmas permissões que existem na tela. Nunca use a chave *service_role*
+no aplicativo.
+
+### Como o acesso é protegido no banco
+
+As regras não confiam na interface: mesmo que alguém chame a API diretamente,
+
+- conversas e mensagens só são lidas por quem participa delas;
+- ninguém envia mensagem no nome de outra pessoa;
+- cada um apaga as próprias mensagens; o Administrador apaga qualquer uma;
+- o ponto é batido pelo próprio colaborador, e só RH e Administrador corrigem;
+- nível hierárquico e credenciais continuam exclusivos do Administrador;
+- a auditoria aceita novos registros, mas não permite alterar nem apagar os
+  existentes.
