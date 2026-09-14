@@ -1745,6 +1745,81 @@ class BancoDadosConecta {
     }
   }
 
+  /**
+   * Quem pode apagar uma mensagem: quem a enviou e o Administrador, que
+   * precisa poder remover conteúdo indevido de qualquer conversa.
+   */
+  podeExcluirMensagem(mensagem: Mensagem): boolean {
+    const atual = this.obterColaboradorAtual();
+    if (atual.nivel === 4) return true;
+    if (mensagem.remetenteId !== atual.id) return false;
+    // Só é possível apagar o que está numa conversa da qual se participa
+    const conversa = this.obterConversaPorId(mensagem.conversaId);
+    return !!conversa;
+  }
+
+  /**
+   * Apaga uma mensagem e recalcula a prévia da conversa, para a lista não
+   * continuar mostrando o texto de algo que não existe mais.
+   */
+  excluirMensagem(mensagemId: string): { sucesso: boolean; erro?: string } {
+    const atual = this.obterColaboradorAtual();
+
+    try {
+      const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+      const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
+      const alvo = todas.find((m) => m.id === mensagemId);
+
+      if (!alvo) return { sucesso: false, erro: 'Mensagem não encontrada.' };
+      if (!this.podeExcluirMensagem(alvo)) {
+        return { sucesso: false, erro: 'Você só pode apagar as próprias mensagens.' };
+      }
+
+      const restantes = todas.filter((m) => m.id !== mensagemId);
+      localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(restantes));
+
+      // Atualiza a prévia da conversa com a última mensagem que sobrou
+      const conversas = this.obterTodasConversas();
+      const indice = conversas.findIndex((c) => c.id === alvo.conversaId);
+      if (indice !== -1) {
+        const daConversa = restantes
+          .filter((m) => m.conversaId === alvo.conversaId)
+          .sort((a, b) => new Date(a.criadoEm).getTime() - new Date(b.criadoEm).getTime());
+        const ultima = daConversa[daConversa.length - 1];
+
+        conversas[indice].ultimaMensagem = ultima
+          ? {
+              texto: this.montarPreviaDaMensagem(ultima),
+              hora: ultima.horaFormatada,
+              remetenteId: ultima.remetenteId,
+              tipo: ultima.tipo,
+            }
+          : undefined;
+        localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
+      }
+
+      this.registrarAuditoria(
+        'Exclusão de Mensagem',
+        'seguranca',
+        `${atual.nome} apagou uma mensagem${
+          alvo.remetenteId !== atual.id ? ' de outro colaborador' : ''
+        } na conversa ${alvo.conversaId}.`
+      );
+      this.notificar();
+      return { sucesso: true };
+    } catch {
+      return { sucesso: false, erro: 'Falha ao apagar a mensagem.' };
+    }
+  }
+
+  /** Texto curto da mensagem, como aparece na lista de conversas. */
+  private montarPreviaDaMensagem(m: Mensagem): string {
+    if (m.tipo === 'recado_voz') return '🎤 Recado de voz';
+    if (m.tipo === 'arquivo') return `📎 ${m.arquivoNome || 'Arquivo'}`;
+    if (m.tipo === 'imagem') return `📷 Foto ${m.legenda ? `· ${m.legenda}` : ''}`;
+    return m.ehEncaminhada ? `↪ ${m.texto || 'Mensagem encaminhada'}` : m.texto || '';
+  }
+
   obterMensagemPorId(mensagemId: string): Mensagem | undefined {
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);

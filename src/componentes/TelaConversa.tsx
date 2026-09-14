@@ -22,6 +22,7 @@ import {
   Forward,
   Copy,
   CheckSquare,
+  Trash2,
 } from 'lucide-react';
 import {
   Conversa,
@@ -45,6 +46,14 @@ interface PropsTelaConversa {
 }
 
 const REACOES_RAPIDAS = ['👍', '✅', '📦', '🚗'];
+
+/** Segundos em M:SS — 3 vira "0:03" e 75 vira "1:15". */
+const formatarSegundos = (total: number): string => {
+  const seguros = Math.max(0, Math.round(total));
+  const minutos = Math.floor(seguros / 60);
+  const segundos = seguros % 60;
+  return `${minutos}:${String(segundos).padStart(2, '0')}`;
+};
 
 /** Converte o áudio gravado em data URL, para sobreviver ao recarregamento. */
 const blobParaDataUrl = (blob: Blob): Promise<string | undefined> =>
@@ -83,6 +92,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   const [modalEncaminharAberto, setModalEncaminharAberto] = useState(false);
   const [mensagensParaEncaminhar, setMensagensParaEncaminhar] = useState<string[]>([]);
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
+  const [mensagemParaExcluir, setMensagemParaExcluir] = useState<Mensagem | null>(null);
 
   /** Aviso rápido no rodapé da conversa. */
   const exibirToast = (texto: string) => {
@@ -829,7 +839,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
                     {/* Tipo: Recado de Voz */}
                     {msg.tipo === 'recado_voz' && (
-                      <div className="flex items-center gap-3 min-w-[200px] py-1">
+                      <div className="flex items-center gap-3 w-[220px] max-w-full py-1">
                         <button
                           type="button"
                           id={`botao-play-recado-${msg.id}`}
@@ -849,18 +859,23 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                         </button>
 
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between text-xs mb-1">
-                            <span className="font-medium flex items-center gap-1">
-                              <Volume2 className="w-3.5 h-3.5 inline" />
-                              Recado de voz
+                          <div className="flex items-center justify-between gap-2 text-xs mb-1">
+                            <span className="font-medium flex items-center gap-1 min-w-0">
+                              <Volume2 className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span className="truncate">Recado de voz</span>
                             </span>
-                            <span className="font-mono">
-                              {audioTocandoId === msg.id && tempoAudioAtual[msg.id] !== undefined
-                                ? `0:0${tempoAudioAtual[msg.id]}`
-                                : `0:0${msg.audioDuracao || 3}`}
+                            {/* Antes era montado como `0:0${segundos}`, que virava
+                                "0:015" em qualquer recado de 10 segundos ou mais */}
+                            <span className="font-mono tabular-nums flex-shrink-0">
+                              {formatarSegundos(
+                                audioTocandoId === msg.id && tempoAudioAtual[msg.id] !== undefined
+                                  ? tempoAudioAtual[msg.id]
+                                  : msg.audioDuracao || 0
+                              )}
                             </span>
                           </div>
-                          {/* Linha de progresso */}
+
+                          {/* Linha de progresso acompanhando a reprodução */}
                           <div
                             className={`h-1.5 rounded-full overflow-hidden ${
                               ehMinha ? 'bg-white/30' : 'bg-[var(--c-superficie-2)]'
@@ -869,7 +884,17 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                             <div
                               className={`h-full transition-all duration-200 ${
                                 ehMinha ? 'bg-white' : 'bg-[var(--c-acento)]'
-                              } ${audioTocandoId === msg.id ? 'w-full animate-pulse' : 'w-1/3'}`}
+                              }`}
+                              style={{
+                                width: `${
+                                  audioTocandoId === msg.id && msg.audioDuracao
+                                    ? Math.min(
+                                        100,
+                                        ((tempoAudioAtual[msg.id] || 0) / msg.audioDuracao) * 100
+                                      )
+                                    : 0
+                                }%`,
+                              }}
                             />
                           </div>
                         </div>
@@ -1045,6 +1070,20 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       >
                         <CheckSquare className="w-3.5 h-3.5" />
                       </button>
+
+                      {/* Excluir: própria mensagem, ou qualquer uma se Admin */}
+                      {bancoDados.podeExcluirMensagem(msg) && (
+                        <button
+                          type="button"
+                          id={`botao-excluir-mensagem-${msg.id}`}
+                          onClick={() => setMensagemParaExcluir(msg)}
+                          className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/40 hover:bg-red-500/10 flex items-center justify-center shadow-xs transition-colors"
+                          title="Apagar esta mensagem"
+                          aria-label="Apagar mensagem"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1323,6 +1362,53 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
         aoFechar={() => setModalEncaminharAberto(false)}
         aoSucesso={lidarSucessoEncaminhamento}
       />
+
+      {/* Confirmação de exclusão de mensagem */}
+      {mensagemParaExcluir && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4 backdrop-blur-xs"
+          onClick={() => setMensagemParaExcluir(null)}
+        >
+          <div
+            className="bg-[var(--c-superficie)] w-full max-w-sm rounded-2xl border border-[var(--c-borda)] shadow-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 flex flex-col items-center text-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-red-500/10 text-red-600 border border-red-500/20 flex items-center justify-center">
+                <Trash2 className="w-7 h-7" />
+              </div>
+              <h3 className="text-base font-bold text-[var(--c-texto)]">Apagar mensagem?</h3>
+              <p className="text-xs text-[var(--c-texto-3)] leading-relaxed">
+                {mensagemParaExcluir.remetenteId === colaboradorAtual.id
+                  ? 'A mensagem sai da conversa para todos os participantes e não pode ser recuperada.'
+                  : 'Você está apagando a mensagem de outro colaborador. A ação fica registrada na auditoria.'}
+              </p>
+            </div>
+
+            <div className="p-4 pt-0 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setMensagemParaExcluir(null)}
+                className="py-2.5 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto)] hover:border-[var(--c-borda-forte)] transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                id="botao-confirmar-exclusao-mensagem"
+                onClick={() => {
+                  const res = bancoDados.excluirMensagem(mensagemParaExcluir.id);
+                  setMensagemParaExcluir(null);
+                  exibirToast(res.sucesso ? 'Mensagem apagada.' : res.erro || 'Falha ao apagar.');
+                }}
+                className="py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold active:scale-[0.99] transition-all"
+              >
+                Apagar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast de Feedback Notificando Ação Realizada */}
       {toastFeedback && (
