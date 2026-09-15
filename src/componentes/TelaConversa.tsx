@@ -24,6 +24,7 @@ import {
   CheckSquare,
   Trash2,
   ImageOff,
+  Pencil,
 } from 'lucide-react';
 import {
   Conversa,
@@ -99,11 +100,33 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   const [mensagensParaEncaminhar, setMensagensParaEncaminhar] = useState<string[]>([]);
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
   const [mensagemParaExcluir, setMensagemParaExcluir] = useState<Mensagem | null>(null);
+  // Mensagem sendo editada no próprio balão, e o texto em andamento
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [textoEditado, setTextoEditado] = useState('');
 
   /** Aviso rápido no rodapé da conversa. */
   const exibirToast = (texto: string) => {
     setToastFeedback(texto);
     setTimeout(() => setToastFeedback(null), 4000);
+  };
+
+  const iniciarEdicao = (msg: Mensagem) => {
+    setEditandoId(msg.id);
+    setTextoEditado(msg.texto || '');
+  };
+
+  const cancelarEdicao = () => {
+    setEditandoId(null);
+    setTextoEditado('');
+  };
+
+  const salvarEdicao = (msgId: string) => {
+    const res = bancoDados.editarMensagem(msgId, textoEditado);
+    if (res.sucesso) {
+      cancelarEdicao();
+    } else {
+      exibirToast(res.erro || 'Não foi possível editar a mensagem.');
+    }
   };
 
   const refFimMensagens = useRef<HTMLDivElement>(null);
@@ -838,10 +861,61 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                     )}
 
                     {/* Tipo: Texto */}
-                    {msg.tipo === 'texto' && (
+                    {msg.tipo === 'texto' && editandoId !== msg.id && (
                       <p className="whitespace-pre-wrap break-words leading-relaxed text-base sm:text-sm">
                         {msg.texto}
                       </p>
+                    )}
+
+                    {/* Edição acontece no próprio balão, para a pessoa ver o
+                        texto no contexto da conversa enquanto reescreve. */}
+                    {msg.tipo === 'texto' && editandoId === msg.id && (
+                      <div className="flex flex-col gap-2 min-w-[200px]">
+                        <textarea
+                          id={`campo-edicao-${msg.id}`}
+                          value={textoEditado}
+                          onChange={(e) => setTextoEditado(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') cancelarEdicao();
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              salvarEdicao(msg.id);
+                            }
+                          }}
+                          rows={Math.min(6, textoEditado.split('\n').length + 1)}
+                          autoFocus
+                          className={`w-full rounded-lg px-2.5 py-2 text-sm resize-none outline-none border ${
+                            ehMinha
+                              ? 'bg-white/15 border-white/30 text-[var(--c-sobre-acento)] placeholder-white/50'
+                              : 'bg-[var(--c-canvas)] border-[var(--c-borda)] text-[var(--c-texto)]'
+                          }`}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={cancelarEdicao}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                              ehMinha
+                                ? 'text-white/80 hover:text-white hover:bg-white/15'
+                                : 'text-[var(--c-texto-3)] hover:text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)]'
+                            }`}
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            id={`botao-salvar-edicao-${msg.id}`}
+                            onClick={() => salvarEdicao(msg.id)}
+                            className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all active:scale-95 ${
+                              ehMinha
+                                ? 'bg-white text-[var(--c-acento)]'
+                                : 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                            }`}
+                          >
+                            Salvar
+                          </button>
+                        </div>
+                      </div>
                     )}
 
                     {/* Tipo: Recado de Voz */}
@@ -1020,6 +1094,22 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                         <Smile className="w-3.5 h-3.5" />
                       </button>
 
+                      {/* Marca de edição: quem lê precisa saber que o texto
+                          mudou depois de enviado. */}
+                      {msg.editadaEm && (
+                        <span
+                          title={`Editada às ${new Date(msg.editadaEm).toLocaleTimeString('pt-BR', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}`}
+                          className={`text-[10px] italic ${
+                            ehMinha ? 'text-white/70' : 'text-[var(--c-texto-3)]'
+                          }`}
+                        >
+                          Editada
+                        </span>
+                      )}
+
                       <span
                         className={`text-[10px] font-mono ${
                           ehMinha ? 'text-white/80' : 'text-[var(--c-texto-3)]'
@@ -1105,6 +1195,20 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       >
                         <CheckSquare className="w-3.5 h-3.5" />
                       </button>
+
+                      {/* Editar: só o autor, e só mensagem de texto */}
+                      {bancoDados.podeEditarMensagem(msg) && (
+                        <button
+                          type="button"
+                          id={`botao-editar-mensagem-${msg.id}`}
+                          onClick={() => iniciarEdicao(msg)}
+                          className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-acento)] hover:border-[var(--c-acento)]/40 flex items-center justify-center shadow-xs transition-colors"
+                          title="Editar esta mensagem"
+                          aria-label="Editar mensagem"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
 
                       {/* Excluir: própria mensagem, ou qualquer uma se Admin */}
                       {bancoDados.podeExcluirMensagem(msg) && (

@@ -1776,6 +1776,73 @@ class BancoDadosConecta {
   }
 
   /**
+   * Editar é diferente de apagar: só o autor pode, nem o Administrador.
+   * Reescrever a fala de outra pessoa mantendo o nome dela seria falsificar
+   * o que ela disse. O Administrador continua podendo remover.
+   *
+   * Vale apenas para texto — em foto, arquivo e recado de voz não há o que
+   * reescrever.
+   */
+  podeEditarMensagem(mensagem: Mensagem): boolean {
+    const atual = this.obterColaboradorAtual();
+    if (mensagem.remetenteId !== atual.id) return false;
+    if (mensagem.tipo !== 'texto') return false;
+    return this.podePublicarNaConversa(mensagem.conversaId);
+  }
+
+  /** Reescreve o texto da própria mensagem e marca que ela foi editada. */
+  editarMensagem(
+    mensagemId: string,
+    novoTexto: string
+  ): { sucesso: boolean; erro?: string } {
+    const texto = novoTexto.trim();
+    if (!texto) {
+      return { sucesso: false, erro: 'A mensagem não pode ficar vazia.' };
+    }
+
+    try {
+      const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+      const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
+      const indice = todas.findIndex((m) => m.id === mensagemId);
+
+      if (indice === -1) return { sucesso: false, erro: 'Mensagem não encontrada.' };
+      if (!this.podeEditarMensagem(todas[indice])) {
+        return { sucesso: false, erro: 'Só o autor pode editar a própria mensagem.' };
+      }
+      if (todas[indice].texto === texto) {
+        return { sucesso: true }; // Nada mudou: não marca como editada à toa
+      }
+
+      todas[indice] = { ...todas[indice], texto, editadaEm: new Date().toISOString() };
+      localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(todas));
+
+      // Se era a última da conversa, a prévia da lista precisa acompanhar
+      const conversas = this.obterTodasConversas();
+      const iConversa = conversas.findIndex((c) => c.id === todas[indice].conversaId);
+      if (iConversa !== -1) {
+        const daConversa = todas
+          .filter((m) => m.conversaId === todas[indice].conversaId)
+          .sort((a, b) => new Date(a.criadoEm).getTime() - new Date(b.criadoEm).getTime());
+        const ultima = daConversa[daConversa.length - 1];
+        if (ultima && ultima.id === mensagemId) {
+          conversas[iConversa].ultimaMensagem = {
+            texto: this.montarPreviaDaMensagem(ultima),
+            hora: ultima.horaFormatada,
+            remetenteId: ultima.remetenteId,
+            tipo: ultima.tipo,
+          };
+          localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
+        }
+      }
+
+      this.notificar();
+      return { sucesso: true };
+    } catch {
+      return { sucesso: false, erro: 'Falha ao salvar a edição.' };
+    }
+  }
+
+  /**
    * Quem pode apagar uma mensagem: quem a enviou e o Administrador, que
    * precisa poder remover conteúdo indevido de qualquer conversa.
    */
