@@ -194,6 +194,16 @@ const explicarRecusa = async (error: { code?: string; message: string }): Promis
   return `Sem permissão no banco para esta ação (${error.message}).`;
 };
 
+/** Números do banco mostrados no painel de administração. */
+export interface UsoDoBanco {
+  mensagens: number;
+  imagens: number;
+  imagensComArquivo: number;
+  imagensLimpas: number;
+  registrosPonto: number;
+  mensagemMaisAntiga?: string;
+}
+
 type Ouvinte = () => void;
 
 class PonteComunicacao {
@@ -497,6 +507,31 @@ class PonteComunicacao {
       sucesso: true,
       limpas: linha?.limpas ?? 0,
       caminhos: linha?.caminhos ?? [],
+    };
+  }
+
+  /**
+   * Números do banco para o painel. Vêm de uma função no servidor porque a
+   * contagem precisa ser da rede inteira — o Administrador não participa de
+   * toda conversa, e o que a RLS devolve para ele é menos do que existe.
+   */
+  async obterUsoDoBanco(): Promise<UsoDoBanco | null> {
+    if (!supabase) return null;
+
+    const { data, error } = await supabase.rpc('uso_do_banco').maybeSingle();
+    if (error || !data) {
+      console.error('Falha ao ler o uso do banco:', error?.message);
+      return null;
+    }
+
+    const linha = data as Record<string, number | string | null>;
+    return {
+      mensagens: Number(linha.mensagens ?? 0),
+      imagens: Number(linha.imagens ?? 0),
+      imagensComArquivo: Number(linha.imagens_com_arquivo ?? 0),
+      imagensLimpas: Number(linha.imagens_limpas ?? 0),
+      registrosPonto: Number(linha.registros_ponto ?? 0),
+      mensagemMaisAntiga: (linha.mensagem_mais_antiga as string) || undefined,
     };
   }
 

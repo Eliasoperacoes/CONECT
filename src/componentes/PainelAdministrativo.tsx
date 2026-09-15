@@ -13,6 +13,8 @@ import {
   Edit2,
   KeyRound,
   Download,
+  Database,
+  HardDrive,
   Upload,
   RefreshCw,
   Search,
@@ -47,6 +49,7 @@ import {
   CARGA_HORARIA_PADRAO_MINUTOS,
   SENHA_PADRAO_PRIMEIRO_ACESSO,
 } from '../tipos';
+import { nuvemComunicacao, UsoDoBanco } from '../servicos/nuvemComunicacao';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA, obterFotoColaborador } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
 import { usandoNuvem } from '../servicos/supabase';
@@ -69,6 +72,7 @@ type AbaAdmin =
   | 'avisos'
   | 'parametros'
   | 'auditoria'
+  | 'banco'
   | 'backup';
 
 const LOJAS_TODAS: Loja[] = [
@@ -105,6 +109,13 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   );
   const [auditoria, setAuditoria] = useState<RegistroAuditoria[]>([]);
   const [avisos, setAvisos] = useState<AvisoRede[]>([]);
+
+  // Aba Banco de Dados
+  const [usoBanco, setUsoBanco] = useState<UsoDoBanco | null>(null);
+  const [carregandoUso, setCarregandoUso] = useState(false);
+  const [dataLimpezaManual, setDataLimpezaManual] = useState('');
+  const [confirmandoLimpeza, setConfirmandoLimpeza] = useState(false);
+  const [limpando, setLimpando] = useState(false);
 
   // Filtros de colaboradores
   const [buscaColab, setBuscaColab] = useState('');
@@ -173,6 +184,51 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     setConfiguracoes(bancoDados.obterConfiguracoes());
     setAuditoria(bancoDados.obterAuditoria());
     setAvisos(bancoDados.obterAvisosRede());
+  };
+
+  // Os números do banco custam uma consulta; só busca ao abrir a aba
+  const carregarUsoDoBanco = async () => {
+    setCarregandoUso(true);
+    setUsoBanco(await nuvemComunicacao.obterUsoDoBanco());
+    setCarregandoUso(false);
+  };
+
+  useEffect(() => {
+    if (abaAtiva === 'banco' && usandoNuvem()) carregarUsoDoBanco();
+  }, [abaAtiva]);
+
+  const salvarRegraDeLimpeza = async (meses: number) => {
+    const atualizada = { ...configuracoes, mesesHistoricoImagens: meses };
+    setConfiguracoes(atualizada);
+
+    const res = await bancoDados.salvarConfiguracoes(atualizada);
+    exibirToast(
+      res.sucesso
+        ? meses > 0
+          ? `Regra salva: as imagens ficam guardadas por ${meses} ${meses === 1 ? 'mês' : 'meses'}.`
+          : 'Limpeza automática desligada. Nada será removido sem você mandar.'
+        : res.erro || 'Falha ao salvar a regra.',
+      !res.sucesso
+    );
+    if (!res.sucesso) setConfiguracoes(bancoDados.obterConfiguracoes());
+  };
+
+  const executarLimpezaManual = async () => {
+    setLimpando(true);
+    const res = await bancoDados.limparImagensAntigas(dataLimpezaManual);
+    setLimpando(false);
+    setConfirmandoLimpeza(false);
+
+    if (res.sucesso) {
+      exibirToast(
+        `${res.imagens} imagem(ns) removida(s), ${res.arquivos} arquivo(s) liberado(s). As mensagens foram mantidas.`
+      );
+      setDataLimpezaManual('');
+      carregarUsoDoBanco();
+      recarregar();
+    } else {
+      exibirToast(res.erro || 'Falha ao limpar as imagens.', true);
+    }
   };
 
   useEffect(() => {
@@ -546,6 +602,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
           { id: 'avisos', rotulo: 'Comunicados Oficiais', icone: Megaphone, contador: avisos.length },
           { id: 'parametros', rotulo: 'Parâmetros & Rádio PTT', icone: Sliders },
           { id: 'auditoria', rotulo: 'Auditoria & Logs', icone: FileText, contador: auditoria.length },
+          { id: 'banco', rotulo: 'Banco de Dados', icone: Database },
           { id: 'backup', rotulo: 'Backup & Dados', icone: Download },
         ].map((tab) => {
           const Icone = tab.icone;
@@ -1317,6 +1374,209 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
           )}
 
           {/* ================= ABA 7: BACKUP & DADOS ================= */}
+          {abaAtiva === 'banco' && (
+            <div className="space-y-4">
+              {/* O que existe hoje no banco */}
+              <div className="bg-[var(--c-superficie)] p-5 rounded-2xl border border-[var(--c-borda)] shadow-sm">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <h2 className="text-sm font-bold text-[var(--c-texto)]">O que está guardado</h2>
+                    <p className="text-xs text-[var(--c-texto-3)]">
+                      Contagem da rede inteira, direto do banco.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={carregarUsoDoBanco}
+                    disabled={carregandoUso}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-texto)] disabled:opacity-50 cursor-pointer"
+                  >
+                    {carregandoUso ? 'Consultando…' : 'Atualizar'}
+                  </button>
+                </div>
+
+                {!usandoNuvem() ? (
+                  <p className="text-xs text-amber-600">
+                    Sistema em modo local: não há banco da rede para consultar.
+                  </p>
+                ) : !usoBanco ? (
+                  <p className="text-xs text-[var(--c-texto-3)]">
+                    {carregandoUso ? 'Consultando o banco…' : 'Não foi possível ler os números.'}
+                  </p>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      {[
+                        { rotulo: 'Mensagens', valor: usoBanco.mensagens },
+                        { rotulo: 'Imagens', valor: usoBanco.imagens },
+                        { rotulo: 'Com arquivo guardado', valor: usoBanco.imagensComArquivo },
+                        { rotulo: 'Já limpas', valor: usoBanco.imagensLimpas },
+                      ].map((item) => (
+                        <div
+                          key={item.rotulo}
+                          className="p-3 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)]"
+                        >
+                          <span className="block text-lg font-bold text-[var(--c-texto)]">
+                            {item.valor.toLocaleString('pt-BR')}
+                          </span>
+                          <span className="text-[11px] text-[var(--c-texto-3)] leading-tight block">
+                            {item.rotulo}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="text-[11px] text-[var(--c-texto-3)] mt-3 leading-relaxed">
+                      {usoBanco.mensagemMaisAntiga ? (
+                        <>
+                          Histórico desde{' '}
+                          <strong className="text-[var(--c-texto-2)]">
+                            {new Date(usoBanco.mensagemMaisAntiga).toLocaleDateString('pt-BR')}
+                          </strong>
+                          .{' '}
+                        </>
+                      ) : null}
+                      O banco de horas tem{' '}
+                      <strong className="text-[var(--c-texto-2)]">
+                        {usoBanco.registrosPonto.toLocaleString('pt-BR')}
+                      </strong>{' '}
+                      marcações de ponto — que nenhuma limpeza toca.
+                    </p>
+                  </>
+                )}
+              </div>
+
+              {/* A regra de guarda */}
+              <div className="bg-[var(--c-superficie)] p-5 rounded-2xl border border-[var(--c-borda)] shadow-sm space-y-4">
+                <div>
+                  <h2 className="text-sm font-bold text-[var(--c-texto)]">
+                    Regra de guarda das imagens
+                  </h2>
+                  <p className="text-xs text-[var(--c-texto-3)]">
+                    O que ocupa espaço é a foto, não o registro. Passado o prazo, a imagem sai e a
+                    mensagem fica na conversa, marcada como imagem removida.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1.5">
+                      Guardar imagens por
+                    </label>
+                    <select
+                      value={configuracoes.mesesHistoricoImagens ?? 2}
+                      onChange={(e) => salvarRegraDeLimpeza(Number(e.target.value))}
+                      className="px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-xs text-[var(--c-texto)] cursor-pointer"
+                    >
+                      <option value={0}>Não limpar (guardar tudo)</option>
+                      <option value={1}>1 mês</option>
+                      <option value={2}>2 meses</option>
+                      <option value={3}>3 meses</option>
+                      <option value={6}>6 meses</option>
+                      <option value={12}>12 meses</option>
+                    </select>
+                  </div>
+
+                  <div className="text-[11px] text-[var(--c-texto-3)] pb-2">
+                    {configuracoes.ultimaLimpezaImagens ? (
+                      <>
+                        Última limpeza em{' '}
+                        <strong className="text-[var(--c-texto-2)]">
+                          {new Date(configuracoes.ultimaLimpezaImagens).toLocaleDateString('pt-BR')}
+                        </strong>
+                      </>
+                    ) : (
+                      'Ainda não houve limpeza.'
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)]">
+                  <p className="text-[11px] text-[var(--c-texto-3)] leading-relaxed">
+                    <strong className="text-[var(--c-texto-2)]">Nunca são apagados:</strong> ponto e
+                    banco de horas, cadastro de colaboradores, comunicados, auditoria, e o texto das
+                    conversas. Recado de voz e documento também ficam — a regra vale só para imagem.
+                  </p>
+                </div>
+
+                <p className="text-[11px] text-[var(--c-texto-3)]">
+                  A limpeza roda sozinha uma vez por dia, quando um Administrador abre o sistema.
+                </p>
+              </div>
+
+              {/* Limpeza avulsa */}
+              <div className="bg-[var(--c-superficie)] p-5 rounded-2xl border border-[var(--c-borda)] shadow-sm space-y-3">
+                <div>
+                  <h2 className="text-sm font-bold text-[var(--c-texto)]">
+                    Limpar agora, até uma data
+                  </h2>
+                  <p className="text-xs text-[var(--c-texto-3)]">
+                    Para liberar espaço sem esperar a regra. Remove as imagens anteriores à data
+                    escolhida.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-end gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1.5">
+                      Remover imagens anteriores a
+                    </label>
+                    <input
+                      type="date"
+                      value={dataLimpezaManual}
+                      max={new Date(Date.now() - 86400000).toISOString().slice(0, 10)}
+                      onChange={(e) => setDataLimpezaManual(e.target.value)}
+                      className="px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-xs text-[var(--c-texto)]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!dataLimpezaManual || limpando || !usandoNuvem()}
+                    onClick={() => setConfirmandoLimpeza(true)}
+                    className="py-2 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-2 cursor-pointer"
+                  >
+                    <HardDrive className="w-3.5 h-3.5" />
+                    {limpando ? 'Limpando…' : 'Limpar imagens'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Confirmacao: a acao nao tem volta */}
+              {confirmandoLimpeza && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                  <div className="bg-[var(--c-superficie)] rounded-2xl border border-[var(--c-borda)] shadow-xl max-w-sm w-full p-5 space-y-3">
+                    <h3 className="text-sm font-bold text-[var(--c-texto)]">
+                      Remover as imagens anteriores a{' '}
+                      {dataLimpezaManual.split('-').reverse().join('/')}?
+                    </h3>
+                    <p className="text-xs text-[var(--c-texto-3)] leading-relaxed">
+                      As mensagens continuam na conversa, com o balão marcado como imagem removida.
+                      Os arquivos saem do armazenamento e{' '}
+                      <strong className="text-[var(--c-texto-2)]">não há como recuperar</strong>.
+                    </p>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmandoLimpeza(false)}
+                        className="py-2 px-3.5 rounded-xl border border-[var(--c-borda)] text-[var(--c-texto-3)] hover:text-[var(--c-texto)] text-xs font-semibold cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={executarLimpezaManual}
+                        disabled={limpando}
+                        className="py-2 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
+                      >
+                        {limpando ? 'Limpando…' : 'Confirmar'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {abaAtiva === 'backup' && (
             <div className="space-y-4">
               <div className="bg-[var(--c-superficie)] p-5 rounded-2xl border border-[var(--c-borda)] shadow-sm space-y-4">

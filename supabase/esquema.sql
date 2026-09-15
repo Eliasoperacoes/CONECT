@@ -694,6 +694,35 @@ begin
 end;
 $$;
 
+-- Números do banco para o painel de administração.
+--
+-- Precisa ser `security definer` porque a contagem tem que ser da REDE
+-- inteira: o Administrador não participa de toda conversa, e uma contagem
+-- filtrada pela RLS mostraria menos do que existe — o que, num painel que
+-- serve para decidir sobre espaço, seria pior do que não mostrar nada.
+create or replace function public.uso_do_banco()
+returns table (
+  mensagens         bigint,
+  imagens           bigint,
+  imagens_com_arquivo bigint,
+  imagens_limpas    bigint,
+  registros_ponto   bigint,
+  mensagem_mais_antiga timestamptz
+)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    (select count(*) from public.mensagens),
+    (select count(*) from public.mensagens where tipo = 'imagem'),
+    (select count(*) from public.mensagens where anexo_caminho is not null),
+    (select count(*) from public.mensagens where anexo_limpo_em is not null),
+    (select count(*) from public.registros_ponto),
+    (select min(criado_em) from public.mensagens)
+  where public.sou_admin();
+$$;
+
 -- Meses de imagem que ficam guardados, e quando a limpeza rodou pela última
 -- vez. Ficam nas configurações da rede porque a regra é da empresa, não do
 -- aparelho de quem abriu o sistema.
