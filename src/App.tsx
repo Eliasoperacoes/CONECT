@@ -175,6 +175,46 @@ export default function App() {
     ? bancoDados.obterConversaPorId(conversaFlutuanteId)
     : null;
 
+  /**
+   * Lista de conversas da coluna lateral nas abas que NÃO são de conversa —
+   * RH, Ponto e Eu. Sem ela não havia como chamar ninguém sem sair da tela
+   * em que se estava, que era justamente o problema: quem consultava a ficha
+   * de um colaborador no RH tinha que abandonar a consulta para escrever
+   * para ele. Clicar aqui abre a conversa por cima.
+   */
+  const listaLateralDeConversas = (
+    <div className="hidden md:block border-t border-[var(--c-borda)] mt-1">
+      <div className="px-4 py-2.5">
+        <span className="text-xs font-bold text-[var(--c-texto-3)] uppercase tracking-wider">
+          Conversas
+        </span>
+      </div>
+      {conversasIndividuais.length === 0 ? (
+        <div className="px-4 pb-4 space-y-2">
+          <p className="text-xs text-[var(--c-texto-3)]">Nenhuma conversa iniciada.</p>
+          <button
+            type="button"
+            onClick={() => setModalNovaConversaAberto(true)}
+            className="py-1.5 px-3 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-xs cursor-pointer"
+          >
+            + Chamar um colega
+          </button>
+        </div>
+      ) : (
+        <div className="divide-y divide-[var(--c-borda)]">
+          {conversasIndividuais.map((c) => (
+            <ItemConversa
+              key={c.id}
+              conversa={c}
+              selecionada={conversaFlutuanteId === c.id}
+              aoClicar={() => setConversaFlutuanteId(c.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   // Colegas para conversas (exceto o próprio colaborador)
   const outrosColegas = bancoDados
     .obterColaboradores()
@@ -439,6 +479,7 @@ export default function App() {
 
             {/* ABA 3 (Desktop): Atalhos rápidos das 5 lojas e setores */}
             {abaAtiva === 'painel' && (
+              <>
               <div className="hidden md:flex flex-col p-3 gap-3">
                 <div className="p-3 bg-[var(--c-superficie-2)] rounded-xl border border-[var(--c-borda)]">
                   <span className="text-xs font-bold text-[var(--c-texto)] block">
@@ -469,9 +510,9 @@ export default function App() {
                     <button
                       key={g.id}
                       type="button"
-                      onClick={() => setConversaAtivaId(g.id)}
-                      className={`p-2.5 rounded-lg text-left text-xs font-semibold flex items-center justify-between border transition-all ${
-                        conversaAtivaId === g.id
+                      onClick={() => setConversaFlutuanteId(g.id)}
+                      className={`p-2.5 rounded-lg text-left text-xs font-semibold flex items-center justify-between border transition-all cursor-pointer ${
+                        conversaFlutuanteId === g.id
                           ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] border-[var(--c-acento)]'
                           : 'bg-[var(--c-canvas)] text-[var(--c-texto)] border-[var(--c-borda)] hover:bg-[var(--c-superficie-2)]'
                       }`}
@@ -484,6 +525,8 @@ export default function App() {
                   ))}
                 </div>
               </div>
+              {listaLateralDeConversas}
+              </>
             )}
 
             {/* PONTO e EU: no celular moram aqui, na coluna única. No
@@ -507,34 +550,8 @@ export default function App() {
             )}
 
             {/* Com o ponto e o "eu" ocupando a área principal no computador,
-                esta coluna ficaria vazia. Ela passa a servir de atalho para as
-                conversas: clicar abre por cima, sem tirar da tela o que a
-                pessoa estava consultando. */}
-            {(abaAtiva === 'ponto' || abaAtiva === 'eu') && (
-              <div className="hidden md:block">
-                <div className="px-4 py-2.5 border-b border-[var(--c-borda)]">
-                  <span className="text-[11px] font-bold text-[var(--c-texto-3)] uppercase tracking-wider">
-                    Conversas
-                  </span>
-                </div>
-                {conversasIndividuais.length === 0 ? (
-                  <p className="p-6 text-center text-xs text-[var(--c-texto-3)]">
-                    Nenhuma conversa iniciada ainda.
-                  </p>
-                ) : (
-                  <div className="divide-y divide-[var(--c-borda)]">
-                    {conversasIndividuais.map((c) => (
-                      <ItemConversa
-                        key={c.id}
-                        conversa={c}
-                        selecionada={conversaFlutuanteId === c.id}
-                        aoClicar={() => setConversaFlutuanteId(c.id)}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+                esta coluna serviria de nada. Ela passa a dar acesso ao chat. */}
+            {(abaAtiva === 'ponto' || abaAtiva === 'eu') && listaLateralDeConversas}
           </div>
 
           {/* Botão flutuante '+' no canto inferior direito */}
