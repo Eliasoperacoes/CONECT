@@ -45,9 +45,11 @@ import {
   AvisoRede,
   PrioridadeAviso,
   CARGA_HORARIA_PADRAO_MINUTOS,
+  SENHA_PADRAO_PRIMEIRO_ACESSO,
 } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA, obterFotoColaborador } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
+import { usandoNuvem } from '../servicos/supabase';
 import { ehArquivoDeImagem, comprimirImagem } from '../servicos/imagens';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 import { ImportacaoPlanilhaFuncionarios } from './ImportacaoPlanilhaFuncionarios';
@@ -607,17 +609,6 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
 
                   <button
                     type="button"
-                    id="botao-ir-para-subir-planilha"
-                    onClick={() => setAbaAtiva('planilha')}
-                    className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
-                    title="Subir planilha Excel com os funcionários das 5 lojas da empresa"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Subir Planilha Excel</span>
-                  </button>
-
-                  <button
-                    type="button"
                     id="botao-novo-colaborador"
                     onClick={abrirModalNovoColab}
                     className="py-2 px-3.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center gap-1.5 hover:brightness-110 shadow-sm transition-all"
@@ -749,10 +740,21 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                               </td>
 
                               <td className="py-3 px-3 font-mono">
-                                <div className="text-[var(--c-texto)] font-semibold">{colab.login || '—'}</div>
-                                <span className="text-[10px] text-[var(--c-texto-3)]">
-                                  Senha: {colab.senha || '123'}
-                                </span>
+                                <div className="text-[var(--c-texto)] font-semibold">
+                                  {colab.login || '—'}
+                                </div>
+                                {/* No modo rede a senha vive na autenticação e
+                                    ninguém a lê, nem o administrador. O que
+                                    interessa aqui é se o acesso já foi ativado. */}
+                                {usandoNuvem() ? (
+                                  <span className="text-[10px] text-[var(--c-texto-3)]">
+                                    Senha definida pelo colaborador
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-[var(--c-texto-3)]">
+                                    Senha: {colab.senha || SENHA_PADRAO_PRIMEIRO_ACESSO}
+                                  </span>
+                                )}
                               </td>
 
                               <td className="py-3 px-3">
@@ -1530,13 +1532,26 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                   <label className="block font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1">
                     Senha Inicial
                   </label>
-                  <input
-                    type="text"
-                    value={formColab.senha}
-                    onChange={(e) => setFormColab({ ...formColab, senha: e.target.value })}
-                    placeholder="123456"
-                    className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] font-mono"
-                  />
+
+                  {/* No modo rede o administrador não define senha de ninguém:
+                      a pessoa ativa o acesso com a padrão e cria a dela. */}
+                  {usandoNuvem() ? (
+                    <div className="w-full px-3 py-2 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-[11px] text-[var(--c-texto-3)] leading-snug">
+                      Entra com{' '}
+                      <strong className="font-mono text-[var(--c-texto-2)]">
+                        {SENHA_PADRAO_PRIMEIRO_ACESSO}
+                      </strong>{' '}
+                      e cria a própria senha na primeira entrada.
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      value={formColab.senha}
+                      onChange={(e) => setFormColab({ ...formColab, senha: e.target.value })}
+                      placeholder={SENHA_PADRAO_PRIMEIRO_ACESSO}
+                      className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] font-mono"
+                    />
+                  )}
                 </div>
               </div>
 
