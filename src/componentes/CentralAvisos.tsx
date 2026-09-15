@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { NIVEL_TI, NIVEL_GERENTE } from '../tipos';
 import {
   Megaphone,
   Plus,
@@ -62,7 +63,7 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
     return () => cancelar();
   }, []);
 
-  const podePublicar = colaboradorAtual.nivel === 4;
+  const podePublicar = colaboradorAtual.nivel >= NIVEL_TI;
 
   const lidarEnviarAviso = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -376,7 +377,7 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
           avisosFiltrados.map((aviso) => {
             const jaConfirmou = (aviso.confirmacoesIds || []).includes(colaboradorAtual.id);
             const totalConfirmacoes = (aviso.confirmacoesIds || []).length;
-            const podeExcluir = colaboradorAtual.nivel >= 3 || aviso.autorId === colaboradorAtual.id;
+            const podeExcluir = colaboradorAtual.nivel >= NIVEL_GERENTE || aviso.autorId === colaboradorAtual.id;
 
             return (
               <article

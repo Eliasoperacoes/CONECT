@@ -21,7 +21,7 @@ const armazenamento = new ArmazenamentoFalso();
 
 const ELIAS = {
   id: 'colab-elias', nome: 'Elias', login: 'elias', cargo: 'Diretor',
-  setor: 'Diretoria', loja: 'Pirassununga', nivel: 4, foto: '', presenca: 'online',
+  setor: 'TI', loja: 'Pirassununga', nivel: 5, foto: '', presenca: 'online',
   vistoPorUltimo: 'Agora', cargaHorariaDiariaMinutos: 480, ativo: true,
   criadoEm: new Date().toISOString(),
 };
@@ -40,12 +40,14 @@ mock.module('./supabase', () => ({
 }));
 
 let colaboradorLogado: any = ELIAS;
+/** Equipe visível ao serviço; cada teste monta a sua. */
+let equipe: any[] = [ELIAS, ANA];
 
 mock.module('./bancoDados', () => ({
   bancoDados: {
     obterColaboradorAtual: () => colaboradorLogado,
     obterColaboradorPorId: (id: string) => [ELIAS, ANA].find((c) => c.id === id),
-    obterColaboradores: () => [ELIAS, ANA],
+    obterColaboradores: () => equipe,
     estaAutenticado: () => true,
     registrarAuditoria: () => {},
     assinarAlteracoes: () => () => {},
@@ -92,7 +94,8 @@ mock.module('./nuvem', () => ({
     },
     provisionarCodigosPonto: async (lista: any[]) => {
       // Só o RH passa pela RLS
-      if (!(colaboradorLogado.nivel === 4 || colaboradorLogado.setor === 'RH')) return false;
+      // RH, Diretoria e TI cuidam de pessoas — a mesma regra do banco
+      if (!(colaboradorLogado.nivel >= 4 || colaboradorLogado.setor === 'RH')) return false;
       lista.forEach((c) => {
         if (!bancoCodigos.some((x) => x.loja === c.loja)) bancoCodigos.push({ ...c });
       });
@@ -112,6 +115,7 @@ beforeEach(() => {
   sincronizacoes = 0;
   modoNuvem = true;
   colaboradorLogado = ELIAS;
+  equipe = [ELIAS, ANA];
 });
 
 // ============================================================
@@ -357,4 +361,61 @@ test('colaborador comum não gera código novo', async () => {
   const res = await servicoPonto.regenerarCodigoDaLoja('Palmeiras');
   expect(res.sucesso).toBe(false);
   expect(res.erro).toContain('Apenas RH');
+});
+
+// ============================================================
+// ALCANCE DE CADA NÍVEL NO BANCO DE HORAS
+// ============================================================
+
+/** Equipe montada para exercitar o alcance: duas lojas, três setores. */
+const MARIA_COMPRAS_MATRIZ = {
+  ...ANA, id: 'colab-maria', nome: 'Maria', login: 'maria',
+  nivel: 2, setor: 'Compras', loja: 'Pirassununga', cargo: 'Líder de Compras',
+};
+const JOAO_COMPRAS_FILIAL = {
+  ...ANA, id: 'colab-joao', nome: 'João', login: 'joao',
+  nivel: 1, setor: 'Compras', loja: 'Porto Ferreira', cargo: 'Comprador',
+};
+const PEDRO_BALCAO_MATRIZ = {
+  ...ANA, id: 'colab-pedro', nome: 'Pedro', login: 'pedro',
+  nivel: 1, setor: 'Balcão', loja: 'Pirassununga', cargo: 'Balconista',
+};
+const CARLA_GERENTE_FILIAL = {
+  ...ANA, id: 'colab-carla', nome: 'Carla', login: 'carla',
+  nivel: 3, setor: 'Balcão', loja: 'Porto Ferreira', cargo: 'Gerente',
+};
+
+const comEquipeCompleta = (quem: any) => {
+  equipe = [ELIAS, ANA, MARIA_COMPRAS_MATRIZ, JOAO_COMPRAS_FILIAL, PEDRO_BALCAO_MATRIZ, CARLA_GERENTE_FILIAL];
+  colaboradorLogado = quem;
+};
+
+test('LÍDER DE COMPRAS: enxerga o setor nas cinco lojas, não só a dela', () => {
+  comEquipeCompleta(MARIA_COMPRAS_MATRIZ);
+
+  const nomes = servicoPonto.obterColaboradoresVisiveis().map((c) => c.nome).sort();
+
+  // O João é de Compras em Porto Ferreira: limitar pela loja esconderia dele
+  expect(nomes).toEqual(['João', 'Maria']);
+  // E ninguém de outro setor entra
+  expect(nomes).not.toContain('Pedro');
+});
+
+test('gerente enxerga a loja inteira, de todos os setores', () => {
+  comEquipeCompleta(CARLA_GERENTE_FILIAL);
+
+  const nomes = servicoPonto.obterColaboradoresVisiveis().map((c) => c.nome).sort();
+
+  expect(nomes).toEqual(['Carla', 'João']);
+  expect(nomes).not.toContain('Maria');
+});
+
+test('colaborador comum vê só o próprio ponto', () => {
+  comEquipeCompleta(PEDRO_BALCAO_MATRIZ);
+  expect(servicoPonto.obterColaboradoresVisiveis().map((c) => c.nome)).toEqual(['Pedro']);
+});
+
+test('TI enxerga a rede inteira', () => {
+  comEquipeCompleta(ELIAS);
+  expect(servicoPonto.obterColaboradoresVisiveis()).toHaveLength(6);
 });

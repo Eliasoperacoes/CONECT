@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { NIVEL_TI, NIVEL_GERENTE, vePainelDeRede } from './tipos';
 import {
   MessageSquare,
   Users,
@@ -300,13 +301,13 @@ export default function App() {
     }
   };
 
-  const ehAdmin = colaboradorAtual.nivel === 4;
+  const ehAdmin = colaboradorAtual.nivel >= NIVEL_TI;
 
   // A aba RH reúne indicadores da rede, quadro de equipe, banco de horas e
   // comunicados: é informação de gestão, restrita a Administrador, RH e
   // gestores (nível 3+). Dentro dela, o banco de horas ainda exige RH ou
   // Administrador — um gestor vê a rede, não o ponto de todo mundo.
-  const podeVerRede = ehAdmin || colaboradorAtual.setor === 'RH' || colaboradorAtual.nivel >= 3;
+  const podeVerRede = vePainelDeRede(colaboradorAtual);
 
   // Se o colaborador estiver na aba RH e perder o acesso (por troca de conta
   // ou mudança de cargo pela gestão), a navegação volta sozinha para Conversas.

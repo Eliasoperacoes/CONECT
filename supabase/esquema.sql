@@ -22,7 +22,7 @@ create table if not exists public.colaboradores (
   cargo                           text not null default 'Colaborador',
   setor                           text not null,
   loja                            text not null,
-  nivel                           smallint not null default 1 check (nivel between 1 and 4),
+  nivel                           smallint not null default 1 check (nivel between 1 and 5),
   foto                            text,
   presenca                        text not null default 'desconectado',
   visto_por_ultimo                text default 'Agora',
@@ -590,6 +590,48 @@ values
   ('Descalvado',     upper(substr(md5(random()::text), 1, 6))),
   ('Santa Rita',     upper(substr(md5(random()::text), 1, 6)))
 on conflict (loja) do nothing;
+
+-- ============================================================
+-- HIERARQUIA DA REDE
+--
+--   5  TI             administra o sistema e os cadastros
+--   4  Diretoria      enxerga a rede e publica comunicado oficial
+--   3  Gerente        responde pela loja inteira
+--   2  Líder de setor acompanha o próprio setor
+--   1  Colaborador    conversa e bate o próprio ponto
+--
+-- Na matriz existem líderes de setor além do gerente; nas filiais o gerente
+-- acumula. Mas o nível vale em qualquer loja, porque há exceção real: a
+-- liderança de Compras atua nas cinco.
+--
+-- MIGRAÇÃO: quem estava no 4 sobe para 5. No modelo antigo o 4 era o
+-- administrador único, com o painel inteiro na mão — deixá-lo no 4 novo
+-- (Diretoria) tiraria em silêncio um acesso que a pessoa já usa. Quem for
+-- Diretoria e não TI, o administrador rebaixa pelo painel, de propósito.
+-- ============================================================
+
+alter table public.colaboradores drop constraint if exists colaboradores_nivel_check;
+update public.colaboradores set nivel = 5 where nivel = 4;
+alter table public.colaboradores
+  add constraint colaboradores_nivel_check check (nivel between 1 and 5);
+
+-- Administrar o sistema é do TI, e só dele
+create or replace function public.sou_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.meu_nivel() >= 5;
+$$;
+
+-- Cuidar de pessoas — cadastrar, ajustar ponto dos outros — é do RH, da
+-- Diretoria e do TI. Gerente responde pela loja, mas não mexe em ficha.
+create or replace function public.cuido_de_pessoas()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.meu_nivel() >= 4 or public.meu_setor() = 'RH';
+$$;
+
+-- Publicar comunicado oficial da rede: Diretoria e TI
+drop policy if exists avisos_insercao on public.avisos_rede;
+create policy avisos_insercao on public.avisos_rede
+  for insert to authenticated with check (public.meu_nivel() >= 4);
 
 -- ============================================================
 -- ARQUIVOS DAS MENSAGENS

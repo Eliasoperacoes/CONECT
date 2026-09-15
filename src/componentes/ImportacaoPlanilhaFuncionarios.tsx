@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { NIVEL_TI, NIVEL_GERENTE } from '../tipos';
 import {
   FileSpreadsheet,
   Download,
@@ -596,9 +597,9 @@ export const ImportacaoPlanilhaFuncionarios: React.FC<PropsImportacaoPlanilhaFun
                         <td className="py-2.5 px-3 whitespace-nowrap">
                           <span
                             className={`px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${
-                              item.dados.nivel === 4
+                              item.dados.nivel >= NIVEL_TI
                                 ? 'bg-indigo-500/10 text-indigo-600 border border-indigo-500/20'
-                                : item.dados.nivel === 3
+                                : item.dados.nivel === NIVEL_GERENTE
                                 ? 'bg-purple-500/10 text-purple-600'
                                 : item.dados.nivel === 2
                                 ? 'bg-blue-500/10 text-blue-600'

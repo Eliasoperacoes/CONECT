@@ -30,7 +30,7 @@ const CHAVE_AVISOS_REDE = 'conecta_v4_avisos_rede';
 
 const ELIAS = {
   id: 'colab-elias', nome: 'Elias', login: 'elias', cargo: 'Diretor',
-  setor: 'Diretoria', loja: 'Pirassununga', nivel: 4, foto: '', presenca: 'online',
+  setor: 'TI', loja: 'Pirassununga', nivel: 5, foto: '', presenca: 'online',
   vistoPorUltimo: 'Agora', cargaHorariaDiariaMinutos: 480, ativo: true,
   criadoEm: '2026-01-01T00:00:00.000Z',
 };

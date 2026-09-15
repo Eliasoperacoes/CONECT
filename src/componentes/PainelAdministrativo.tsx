@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
+  NIVEL_TI,
+  NIVEL_GERENTE,
+  NIVEIS_EM_ORDEM,
+  ROTULO_NIVEL,
+  DESCRICAO_NIVEL,
+} from '../tipos';
+import {
   ShieldCheck,
   Users,
   Building2,
@@ -241,7 +248,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   // liberadas. A checagem fica DEPOIS dos hooks — sair antes deles mudaria a
   // quantidade de hooks entre renderizações e quebraria o React caso o nível
   // do usuário conectado mudasse com o painel aberto.
-  if (colaboradorAtual.nivel < 4) {
+  if (colaboradorAtual.nivel < NIVEL_TI) {
     return (
       <div className="fixed inset-0 z-50 bg-[var(--c-canvas)] flex flex-col items-center justify-center p-6 text-center">
         <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-600 flex items-center justify-center mb-4 border border-red-500/20 shadow-sm">
@@ -844,22 +851,16 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                               <td className="py-3 px-3">
                                 <span
                                   className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                    colab.nivel === 4
+                                    colab.nivel >= NIVEL_TI
                                       ? 'bg-purple-500/10 text-purple-600 border border-purple-500/20'
-                                      : colab.nivel === 3
+                                      : colab.nivel === NIVEL_GERENTE
                                       ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20'
                                       : colab.nivel === 2
                                       ? 'bg-amber-500/10 text-amber-600 border border-amber-500/20'
                                       : 'bg-zinc-500/10 text-zinc-600 border border-zinc-500/20'
                                   }`}
                                 >
-                                  {colab.nivel === 4
-                                    ? '4 - Administrador'
-                                    : colab.nivel === 3
-                                    ? '3 - Gestor'
-                                    : colab.nivel === 2
-                                    ? '2 - Supervisor'
-                                    : '1 - Operador'}
+                                  {colab.nivel} · {ROTULO_NIVEL[colab.nivel] || 'Colaborador'}
                                 </span>
                               </td>
 
@@ -1907,10 +1908,16 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                   }
                   className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] font-semibold"
                 >
-                  <option value={1}>Nível 1 - Operador (Balcão, Caixa, Estoque)</option>
-                  <option value={2}>Nível 2 - Supervisor (Líder de Filial, Estoque)</option>
-                  <option value={3}>Nível 3 - Gestor (Diretoria, Compras, Gerência)</option>
-                  <option value={4}>Nível 4 - Administrador Geral (TI & Acesso Total)</option>
+                  {/* Todos os níveis ficam disponíveis em qualquer loja. Na
+                      matriz há líder de setor além do gerente; nas filiais o
+                      gerente acumula — mas a escolha é de quem cadastra,
+                      porque há exceção real: a liderança de Compras atua nas
+                      cinco lojas. */}
+                  {NIVEIS_EM_ORDEM.map((n) => (
+                    <option key={n} value={n}>
+                      Nível {n} - {ROTULO_NIVEL[n]} · {DESCRICAO_NIVEL[n]}
+                    </option>
+                  ))}
                 </select>
               </div>
 

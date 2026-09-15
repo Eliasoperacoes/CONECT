@@ -29,6 +29,10 @@ import {
   ORDEM_MARCACOES,
   ROTULO_MARCACAO,
   CARGA_HORARIA_PADRAO_MINUTOS,
+  NIVEL_TI,
+  NIVEL_GERENTE,
+  NIVEL_LIDER_SETOR,
+  cuidaDePessoas,
 } from '../tipos';
 import { bancoDados } from './bancoDados';
 import { nuvem } from './nuvem';
@@ -520,7 +524,7 @@ class ServicoPonto {
 
   /** RH e Administrador enxergam o painel completo de banco de horas. */
   podeAcessarPainelRH(colaborador: Colaborador): boolean {
-    return colaborador.nivel === 4 || colaborador.setor === 'RH';
+    return cuidaDePessoas(colaborador);
   }
 
   /**
@@ -531,8 +535,23 @@ class ServicoPonto {
     const atual = bancoDados.obterColaboradorAtual();
     const todos = bancoDados.obterColaboradores().filter((c) => c.ativo);
 
-    if (this.podeAcessarPainelRH(atual)) return todos;
-    if (atual.nivel >= 3) return todos.filter((c) => c.loja === atual.loja);
+    // RH, Diretoria e TI: a rede inteira
+    if (cuidaDePessoas(atual)) return todos;
+
+    // Gerente responde pela loja dele, de ponta a ponta
+    if (atual.nivel >= NIVEL_GERENTE) return todos.filter((c) => c.loja === atual.loja);
+
+    /**
+     * Líder de setor acompanha o PRÓPRIO SETOR, e não a própria loja.
+     *
+     * A diferença importa: a liderança de Compras atua nas cinco lojas, e
+     * limitar pela loja esconderia dela justamente a equipe que ela lidera.
+     * Na matriz, onde o setor é todo local, dá no mesmo.
+     */
+    if (atual.nivel >= NIVEL_LIDER_SETOR) {
+      return todos.filter((c) => c.setor === atual.setor);
+    }
+
     return todos.filter((c) => c.id === atual.id);
   }
 

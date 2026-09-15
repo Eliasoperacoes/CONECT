@@ -1,5 +1,16 @@
 import * as XLSX from 'xlsx';
-import { Colaborador, Loja, Setor, NivelHierarquico, SENHA_PADRAO_PRIMEIRO_ACESSO } from '../tipos';
+import {
+  Colaborador,
+  Loja,
+  Setor,
+  NivelHierarquico,
+  SENHA_PADRAO_PRIMEIRO_ACESSO,
+  NIVEL_COLABORADOR,
+  NIVEL_LIDER_SETOR,
+  NIVEL_GERENTE,
+  NIVEL_DIRETORIA,
+  NIVEL_TI,
+} from '../tipos';
 import { loginEhValido, normalizarLogin, sugerirLoginValido } from './supabase';
 
 export interface LinhaPlanilhaProcessada {
@@ -481,17 +492,32 @@ export async function processarArquivoPlanilha(
       avisos.push(`Setor "${setorBruto}" ajustado para "Balcão".`);
     }
 
-    // Validação de Nível Hierárquico
-    let nivelResolvido: NivelHierarquico = 1;
+    /**
+     * Nível hierárquico da planilha.
+     *
+     * Aceita o número e também o nome, porque quem preenche a planilha
+     * escreve "Gerente", não "3". A ordem de teste vai do mais alto para o
+     * mais baixo: "líder de setor" contém "setor", e "diretoria" contém
+     * "diretor" — testar do menor para o maior classificaria errado.
+     */
+    let nivelResolvido: NivelHierarquico = NIVEL_COLABORADOR;
     const nivelNorm = String(nivelBruto).toLowerCase().trim();
-    if (nivelNorm === '4' || nivelNorm.includes('admin') || nivelNorm.includes('ti')) {
-      nivelResolvido = 4;
-    } else if (nivelNorm === '3' || nivelNorm.includes('gestor') || nivelNorm.includes('gerente')) {
-      nivelResolvido = 3;
-    } else if (nivelNorm === '2' || nivelNorm.includes('supervisor') || nivelNorm.includes('lider')) {
-      nivelResolvido = 2;
+
+    if (nivelNorm === '5' || nivelNorm.includes('ti') || nivelNorm.includes('admin')) {
+      nivelResolvido = NIVEL_TI;
+    } else if (nivelNorm === '4' || nivelNorm.includes('diretor')) {
+      nivelResolvido = NIVEL_DIRETORIA;
+    } else if (nivelNorm === '3' || nivelNorm.includes('gerente') || nivelNorm.includes('gestor')) {
+      nivelResolvido = NIVEL_GERENTE;
+    } else if (
+      nivelNorm === '2' ||
+      nivelNorm.includes('lider') ||
+      nivelNorm.includes('líder') ||
+      nivelNorm.includes('supervisor')
+    ) {
+      nivelResolvido = NIVEL_LIDER_SETOR;
     } else {
-      nivelResolvido = 1;
+      nivelResolvido = NIVEL_COLABORADOR;
     }
 
     const ehAtualizacao = loginsExistentes.has(login.toLowerCase().trim());

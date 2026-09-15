@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { NIVEL_TI } from '../tipos';
 import {
   Bell,
   Moon,
@@ -50,7 +51,7 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
   const [modalFotoAberto, setModalFotoAberto] = useState(false);
 
   const todosColaboradores = bancoDados.obterColaboradores();
-  const ehAdmin = colaboradorAtual.nivel === 4;
+  const ehAdmin = colaboradorAtual.nivel >= NIVEL_TI;
 
   // Aplica o tema escolhido e guarda a preferência no dispositivo
   const aplicarTema = (novoTema: PreferenciaTema) => {
@@ -114,7 +115,7 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
             <h2 className="text-lg font-bold text-[var(--c-texto)] truncate">
               {colaboradorAtual.nome}
             </h2>
-            {colaboradorAtual.nivel === 4 && (
+            {colaboradorAtual.nivel >= NIVEL_TI && (
               <span className="text-[10px] bg-indigo-500/10 text-indigo-600 font-bold px-1.5 py-0.5 rounded border border-indigo-500/20">
                 ADMIN
               </span>

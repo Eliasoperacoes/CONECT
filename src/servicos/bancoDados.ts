@@ -11,6 +11,7 @@
  */
 
 import { usandoNuvem, temSessaoViva } from './supabase';
+import { NIVEL_TI, NIVEL_DIRETORIA, NIVEL_GERENTE } from '../tipos';
 import { nuvem } from './nuvem';
 import {
   nuvemComunicacao,
@@ -608,7 +609,7 @@ class BancoDadosConecta {
     // 2. Cria os canais de cada uma das 5 lojas da rede
     for (const def of DEFINICAO_CANAIS_LOJAS_REDE) {
       const membrosLoja = colaboradores
-        .filter((c) => c.loja === def.loja || c.nivel >= 3 || c.id === adminId)
+        .filter((c) => c.loja === def.loja || c.nivel >= NIVEL_GERENTE || c.id === adminId)
         .map((c) => c.id);
       if (adminId && !membrosLoja.includes(adminId)) membrosLoja.push(adminId);
 
@@ -644,7 +645,7 @@ class BancoDadosConecta {
 
     // 3. TI & Operações — Rede
     const membrosTI = colaboradores
-      .filter((c) => c.setor === 'TI' || c.nivel >= 3 || c.id === adminId)
+      .filter((c) => c.setor === 'TI' || c.nivel >= NIVEL_GERENTE || c.id === adminId)
       .map((c) => c.id);
     if (adminId && !membrosTI.includes(adminId)) membrosTI.push(adminId);
 
@@ -899,7 +900,7 @@ class BancoDadosConecta {
     cargaHorariaDiariaMinutos?: number;
   }): { sucesso: boolean; colaborador?: Colaborador; erro?: string } {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 4) {
+    if (atual.nivel < NIVEL_TI) {
       return { sucesso: false, erro: 'Apenas o Administrador de TI possui permissão para cadastrar colaboradores.' };
     }
 
@@ -977,7 +978,7 @@ class BancoDadosConecta {
     atualizarExistentes: boolean = true
   ): { sucesso: boolean; criados: number; atualizados: number; ignorados: number; erros: string[] } {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 4) {
+    if (atual.nivel < NIVEL_TI) {
       return {
         sucesso: false,
         criados: 0,
@@ -1106,7 +1107,7 @@ class BancoDadosConecta {
    */
   podeGerenciarPessoas(colaborador?: Colaborador): boolean {
     const alvo = colaborador || this.obterColaboradorAtual();
-    return alvo.nivel === 4 || alvo.setor === 'RH';
+    return alvo.nivel >= NIVEL_TI || alvo.setor === 'RH';
   }
 
   atualizarColaborador(
@@ -1114,7 +1115,7 @@ class BancoDadosConecta {
     dados: Partial<Colaborador>
   ): { sucesso: boolean; erro?: string } {
     const atual = this.obterColaboradorAtual();
-    const ehAdmin = atual.nivel === 4;
+    const ehAdmin = atual.nivel >= NIVEL_TI;
     const ehRh = !ehAdmin && atual.setor === 'RH';
 
     if (!ehAdmin && !ehRh && atual.id !== id) {
@@ -1224,7 +1225,7 @@ class BancoDadosConecta {
   // Excluir ou desativar colaborador
   removerColaborador(id: string): { sucesso: boolean; erro?: string } {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 4) {
+    if (atual.nivel < NIVEL_TI) {
       return { sucesso: false, erro: 'Apenas Administradores podem excluir colaboradores.' };
     }
 
@@ -1610,7 +1611,7 @@ class BancoDadosConecta {
     participantesSeString?: string[]
   ): { sucesso: boolean; grupo?: Conversa; erro?: string } {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 4) {
+    if (atual.nivel < NIVEL_TI) {
       return { sucesso: false, erro: 'Apenas o Administrador de TI possui permissão para criar novos grupos na rede.' };
     }
 
@@ -1673,7 +1674,7 @@ class BancoDadosConecta {
      */
     const adminId =
       todosColabs.find((c) => c.id === COLABORADOR_ADMIN_ELIAS.id)?.id ||
-      todosColabs.find((c) => c.nivel === 4)?.id ||
+      todosColabs.find((c) => c.nivel >= NIVEL_TI)?.id ||
       todosColabs[0]?.id;
 
     let houveAlteracao = false;
@@ -1715,7 +1716,7 @@ class BancoDadosConecta {
     for (const def of DEFINICAO_CANAIS_LOJAS_REDE) {
       let grupoLoja = conversas.find((c) => c.id === def.id);
       const membrosLoja = todosColabs
-        .filter((c) => c.loja === def.loja || c.nivel >= 3 || c.id === adminId)
+        .filter((c) => c.loja === def.loja || c.nivel >= NIVEL_GERENTE || c.id === adminId)
         .map((c) => c.id);
       if (adminId && !membrosLoja.includes(adminId)) membrosLoja.push(adminId);
 
@@ -1760,7 +1761,7 @@ class BancoDadosConecta {
     // 3. TI & Operações — Rede
     let grupoTI = conversas.find((c) => c.id === 'grupo-setor-ti-rede');
     const membrosTI = todosColabs
-      .filter((c) => c.setor === 'TI' || c.nivel >= 3 || c.id === adminId)
+      .filter((c) => c.setor === 'TI' || c.nivel >= NIVEL_GERENTE || c.id === adminId)
       .map((c) => c.id);
     if (adminId && !membrosTI.includes(adminId)) membrosTI.push(adminId);
 
@@ -1829,7 +1830,7 @@ class BancoDadosConecta {
     }
 
     // 3. TI ou Gestor
-    if (colab.setor === 'TI' || colab.nivel >= 3) {
+    if (colab.setor === 'TI' || colab.nivel >= NIVEL_GERENTE) {
       const grupoTI = conversas.find((c) => c.id === 'grupo-setor-ti-rede');
       if (grupoTI && !grupoTI.participantesIds.includes(colab.id)) {
         grupoTI.participantesIds.push(colab.id);
@@ -1878,11 +1879,11 @@ class BancoDadosConecta {
 
     // Avisos da Rede: somente Administrador (N4) tem liberação para publicar comunicados
     if (conversaId === 'grupo-avisos-da-rede') {
-      return atual.nivel === 4;
+      return atual.nivel >= NIVEL_TI;
     }
 
     // Grupos restritos a gestores/admin
-    if (conversa.apenasGestoresPublicam && atual.nivel < 4) {
+    if (conversa.apenasGestoresPublicam && atual.nivel < NIVEL_TI) {
       return false;
     }
 
@@ -2127,7 +2128,7 @@ class BancoDadosConecta {
    */
   podeExcluirMensagem(mensagem: Mensagem): boolean {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel === 4) return true;
+    if (atual.nivel >= NIVEL_TI) return true;
     if (mensagem.remetenteId !== atual.id) return false;
     // Só é possível apagar o que está numa conversa da qual se participa
     const conversa = this.obterConversaPorId(mensagem.conversaId);
@@ -2371,7 +2372,7 @@ class BancoDadosConecta {
    */
   obterAvisosVisiveisParaUsuarioAtual(): AvisoRede[] {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel === 4) return this.obterAvisosRede();
+    if (atual.nivel >= NIVEL_TI) return this.obterAvisosRede();
 
     return this.obterAvisosRede().filter(
       (a) =>
@@ -2389,7 +2390,7 @@ class BancoDadosConecta {
     fixadoNoTopo?: boolean;
   }): Promise<{ sucesso: boolean; aviso?: AvisoRede; erro?: string }> {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 2) {
+    if (atual.nivel < NIVEL_DIRETORIA) {
       return { sucesso: false, erro: 'Permissão restrita à gestão e supervisão.' };
     }
 
@@ -2489,7 +2490,7 @@ class BancoDadosConecta {
 
   alternarFixadoAviso(avisoId: string): void {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 2) return;
+    if (atual.nivel < NIVEL_DIRETORIA) return;
 
     const lista = this.obterAvisosRede();
     const indice = lista.findIndex((a) => a.id === avisoId);
@@ -2511,7 +2512,7 @@ class BancoDadosConecta {
     const aviso = lista.find((a) => a.id === avisoId);
     if (!aviso) return { sucesso: false, erro: 'Aviso não encontrado.' };
 
-    if (atual.nivel < 3 && aviso.autorId !== atual.id) {
+    if (atual.nivel < NIVEL_DIRETORIA && aviso.autorId !== atual.id) {
       return { sucesso: false, erro: 'Permissão negada para excluir este aviso.' };
     }
 
@@ -2605,7 +2606,7 @@ class BancoDadosConecta {
     config: ConfiguracaoSistema
   ): Promise<{ sucesso: boolean; erro?: string }> {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 4) {
+    if (atual.nivel < NIVEL_TI) {
       return { sucesso: false, erro: 'Apenas o Administrador de TI altera as diretrizes do sistema.' };
     }
 
@@ -2689,7 +2690,7 @@ class BancoDadosConecta {
     dataCorte: string
   ): Promise<{ sucesso: boolean; mensagens?: number; arquivos?: number; erro?: string }> {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 4) {
+    if (atual.nivel < NIVEL_TI) {
       return { sucesso: false, erro: 'Apenas o Administrador pode limpar o histórico.' };
     }
     if (!usandoNuvem()) {
@@ -2734,7 +2735,7 @@ class BancoDadosConecta {
     if (!usandoNuvem()) return { executou: false };
 
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 4) return { executou: false };
+    if (atual.nivel < NIVEL_TI) return { executou: false };
 
     const config = this.obterConfiguracoes();
     const meses = config.mesesHistoricoConversas ?? 0;
@@ -2781,7 +2782,7 @@ class BancoDadosConecta {
 
   importarBackup(jsonStr: string): { sucesso: boolean; erro?: string } {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 4) {
+    if (atual.nivel < NIVEL_TI) {
       return { sucesso: false, erro: 'Apenas o Administrador pode importar um backup.' };
     }
     if (usandoNuvem()) {

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { NIVEL_GERENTE, ROTULO_NIVEL } from '../tipos';
 import {
   Search,
   Radio,
@@ -602,13 +603,8 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                 <div className="p-3 bg-[var(--c-canvas)] rounded-xl border border-[var(--c-borda)]">
                   <span className="text-xs text-[var(--c-texto-3)] block font-medium">Nível Hierárquico</span>
                   <strong className="text-[var(--c-texto)]">
-                    {colaboradorModal.nivel === 1
-                      ? 'N1 · Operador'
-                      : colaboradorModal.nivel === 2
-                      ? 'N2 · Supervisor'
-                      : colaboradorModal.nivel === 3
-                      ? 'N3 · Gestor'
-                      : 'N4 · Administrador/TI'}
+                    N{colaboradorModal.nivel} ·{' '}
+                    {ROTULO_NIVEL[colaboradorModal.nivel] || 'Colaborador'}
                   </strong>
                 </div>
               </div>

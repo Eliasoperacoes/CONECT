@@ -37,8 +37,59 @@ export type Loja =
   | 'Santa Rita'
   | 'Rede';
 
-export type NivelHierarquico = 1 | 2 | 3 | 4;
-// 1 = Operador, 2 = Supervisor, 3 = Gestor, 4 = Administrador (só TI)
+/**
+ * Hierarquia da rede, do chão para a cúpula.
+ *
+ * Na matriz (Pirassununga) existem líderes de setor além do gerente. Nas
+ * filiais essa responsabilidade fica com o gerente — mas o nível continua
+ * disponível em qualquer loja, porque há exceção real: a liderança de
+ * Compras atua nas cinco lojas.
+ */
+export type NivelHierarquico = 1 | 2 | 3 | 4 | 5;
+
+export const NIVEL_COLABORADOR = 1;
+export const NIVEL_LIDER_SETOR = 2;
+export const NIVEL_GERENTE = 3;
+export const NIVEL_DIRETORIA = 4;
+export const NIVEL_TI = 5;
+
+export const ROTULO_NIVEL: Record<NivelHierarquico, string> = {
+  1: 'Colaborador',
+  2: 'Líder de Setor',
+  3: 'Gerente',
+  4: 'Diretoria',
+  5: 'TI',
+};
+
+export const DESCRICAO_NIVEL: Record<NivelHierarquico, string> = {
+  1: 'Conversa com a equipe e bate o próprio ponto.',
+  2: 'Acompanha o próprio setor — inclusive em outras lojas, quando o setor é da rede.',
+  3: 'Responde pela loja inteira.',
+  4: 'Enxerga a rede e publica comunicados oficiais.',
+  5: 'Administra o sistema, os cadastros e o banco de dados.',
+};
+
+export const NIVEIS_EM_ORDEM: NivelHierarquico[] = [1, 2, 3, 4, 5];
+
+/**
+ * Quem cuida de pessoas: RH, Diretoria e TI. É a permissão que abre o
+ * cadastro de colaborador e o ajuste de ponto dos outros.
+ */
+export const cuidaDePessoas = (c: { nivel: number; setor: string }): boolean =>
+  c.nivel >= NIVEL_DIRETORIA || c.setor === 'RH';
+
+/** Administra o sistema: só o TI. */
+export const ehAdministrador = (c: { nivel: number }): boolean => c.nivel >= NIVEL_TI;
+
+/**
+ * Enxerga o painel de RH & Rede. O líder de setor entra aqui, mas o que ele
+ * vê lá dentro é o setor dele, não a rede.
+ */
+export const vePainelDeRede = (c: { nivel: number; setor: string }): boolean =>
+  c.nivel >= NIVEL_LIDER_SETOR || c.setor === 'RH';
+
+/** Publica comunicado oficial da rede: Diretoria e TI. */
+export const publicaComunicado = (c: { nivel: number }): boolean => c.nivel >= NIVEL_DIRETORIA;
 
 export type EstadoPresenca = 'disponivel' | 'ocupado' | 'ausente' | 'desconectado';
 
