@@ -243,6 +243,34 @@ alter table public.registros_ponto     enable row level security;
 alter table public.configuracoes       enable row level security;
 alter table public.auditoria           enable row level security;
 
+-- Apaga TODA política destas tabelas antes de recriá-las.
+--
+-- Cada regra abaixo é removida pelo nome antes de ser criada, mas isso só
+-- alcança o nome que este arquivo conhece: uma política de uma versão
+-- anterior, com outro nome, continuaria valendo ao lado da nova. Pior ainda
+-- quando a versão antiga era mais restritiva — o sistema passa a recusar
+-- gravações sem nenhum erro visível na hora de rodar este arquivo.
+--
+-- Varrer tudo primeiro é o que garante que o banco fique exatamente com o
+-- que está escrito aqui, não importa o que havia antes.
+do $$
+declare
+  regra record;
+begin
+  for regra in
+    select tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in (
+        'colaboradores', 'conversas', 'participantes', 'mensagens',
+        'leituras_mensagem', 'avisos_rede', 'avisos_leitura',
+        'codigos_ponto_loja', 'registros_ponto', 'configuracoes', 'auditoria'
+      )
+  loop
+    execute format('drop policy %I on public.%I', regra.policyname, regra.tablename);
+  end loop;
+end $$;
+
 -- COLABORADORES: todos se enxergam (é a agenda interna).
 -- Editar: o próprio, o RH e o Administrador.
 drop policy if exists colaboradores_leitura on public.colaboradores;
@@ -562,3 +590,30 @@ values
   ('Descalvado',     upper(substr(md5(random()::text), 1, 6))),
   ('Santa Rita',     upper(substr(md5(random()::text), 1, 6)))
 on conflict (loja) do nothing;
+
+-- ============================================================
+-- CONFERÊNCIA
+--
+-- "Success" no editor não diz o que ficou valendo: um arquivo antigo também
+-- termina com sucesso. Esta consulta mostra a regra de gravação de cada
+-- tabela, para dar para ver com os próprios olhos o que o banco aceita.
+--
+-- O esperado é `auth.uid() IS NOT NULL` em conversas, participantes,
+-- leituras_mensagem e auditoria: gravar ali depende apenas de estar
+-- autenticado. Se alguma delas aparecer exigindo sou_admin(), nivel ou
+-- participo_da_conversa(), é uma versão anterior deste arquivo que ficou no
+-- banco — e é ela que faz o envio de mensagem ser recusado.
+-- ============================================================
+
+select
+  tablename  as tabela,
+  policyname as regra,
+  with_check as exige_para_gravar
+from pg_policies
+where schemaname = 'public'
+  and cmd = 'INSERT'
+  and tablename in (
+    'conversas', 'participantes', 'mensagens', 'leituras_mensagem',
+    'avisos_rede', 'registros_ponto', 'auditoria'
+  )
+order by tablename;
