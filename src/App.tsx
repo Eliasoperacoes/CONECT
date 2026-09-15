@@ -33,6 +33,7 @@ import { TelaLogin } from './componentes/TelaLogin';
 import { TelaDefinirSenha } from './componentes/TelaDefinirSenha';
 import { PainelAdministrativo } from './componentes/PainelAdministrativo';
 import { AbaPonto } from './componentes/AbaPonto';
+import { JanelaChat } from './componentes/JanelaChat';
 import { servicoPonto } from './servicos/ponto';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
@@ -65,6 +66,9 @@ export default function App() {
   const [conversasIndividuais, setConversasIndividuais] = useState<Conversa[]>([]);
   const [grupos, setGrupos] = useState<Conversa[]>([]);
   const [conversaAtivaId, setConversaAtivaId] = useState<string | null>(null);
+  // Conversa aberta POR CIMA do que estiver na tela, sem trocar de aba.
+  // Usada quando a pessoa pede o chat de dentro do RH ou do ponto.
+  const [conversaFlutuanteId, setConversaFlutuanteId] = useState<string | null>(null);
   const [avisoNaoLido, setAvisoNaoLido] = useState<Mensagem | null>(null);
 
   // Modais acionados pelo botão '+'
@@ -165,6 +169,10 @@ export default function App() {
   // Conversa ativa selecionada
   const conversaAtiva = conversaAtivaId
     ? bancoDados.obterConversaPorId(conversaAtivaId)
+    : null;
+
+  const conversaFlutuante = conversaFlutuanteId
+    ? bancoDados.obterConversaPorId(conversaFlutuanteId)
     : null;
 
   // Colegas para conversas (exceto o próprio colaborador)
@@ -422,7 +430,7 @@ export default function App() {
               <div className="block md:hidden h-full">
                 <PainelRede
                   colaboradorAtual={colaboradorAtual}
-                  aoAbrirConversa={(id) => setConversaAtivaId(id)}
+                  aoAbrirConversa={(id) => setConversaFlutuanteId(id)}
                   aoChamarRadio={(colegaId) => lidarSelecionarColega(colegaId)}
                   aoAlternarParaGestor={() => setPainelAdminAberto(true)}
                 />
@@ -478,17 +486,54 @@ export default function App() {
               </div>
             )}
 
-            {/* ABA PONTO: banco de horas individual do colaborador */}
-            {abaAtiva === 'ponto' && <AbaPonto colaboradorAtual={colaboradorAtual} />}
+            {/* PONTO e EU: no celular moram aqui, na coluna única. No
+                computador vão para a área principal, que é larga — espremer
+                o banco de horas em 340px deixava metade da tela vazia. */}
+            {abaAtiva === 'ponto' && (
+              <div className="block md:hidden h-full">
+                <AbaPonto colaboradorAtual={colaboradorAtual} />
+              </div>
+            )}
 
-            {/* ABA 4: EU (Meu perfil, ramal, preferências, logout) */}
             {abaAtiva === 'eu' && (
-              <AbaEu
-                colaboradorAtual={colaboradorAtual}
-                aoTrocarColaborador={lidarTrocarColaborador}
-                aoSair={lidarDeslogar}
-                aoAbrirAdmin={() => setPainelAdminAberto(true)}
-              />
+              <div className="block md:hidden h-full">
+                <AbaEu
+                  colaboradorAtual={colaboradorAtual}
+                  aoTrocarColaborador={lidarTrocarColaborador}
+                  aoSair={lidarDeslogar}
+                  aoAbrirAdmin={() => setPainelAdminAberto(true)}
+                />
+              </div>
+            )}
+
+            {/* Com o ponto e o "eu" ocupando a área principal no computador,
+                esta coluna ficaria vazia. Ela passa a servir de atalho para as
+                conversas: clicar abre por cima, sem tirar da tela o que a
+                pessoa estava consultando. */}
+            {(abaAtiva === 'ponto' || abaAtiva === 'eu') && (
+              <div className="hidden md:block">
+                <div className="px-4 py-2.5 border-b border-[var(--c-borda)]">
+                  <span className="text-[11px] font-bold text-[var(--c-texto-3)] uppercase tracking-wider">
+                    Conversas
+                  </span>
+                </div>
+                {conversasIndividuais.length === 0 ? (
+                  <p className="p-6 text-center text-xs text-[var(--c-texto-3)]">
+                    Nenhuma conversa iniciada ainda.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-[var(--c-borda)]">
+                    {conversasIndividuais.map((c) => (
+                      <ItemConversa
+                        key={c.id}
+                        conversa={c}
+                        selecionada={conversaFlutuanteId === c.id}
+                        aoClicar={() => setConversaFlutuanteId(c.id)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -576,9 +621,22 @@ export default function App() {
             <div className="w-full h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
               <PainelRede
                 colaboradorAtual={colaboradorAtual}
-                aoAbrirConversa={(id) => setConversaAtivaId(id)}
+                aoAbrirConversa={(id) => setConversaFlutuanteId(id)}
                 aoChamarRadio={(colegaId) => lidarSelecionarColega(colegaId)}
                 aoAlternarParaGestor={() => setPainelAdminAberto(true)}
+              />
+            </div>
+          ) : abaAtiva === 'ponto' ? (
+            <div className="w-full max-w-[900px] h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
+              <AbaPonto colaboradorAtual={colaboradorAtual} />
+            </div>
+          ) : abaAtiva === 'eu' ? (
+            <div className="w-full max-w-[900px] h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
+              <AbaEu
+                colaboradorAtual={colaboradorAtual}
+                aoTrocarColaborador={lidarTrocarColaborador}
+                aoSair={lidarDeslogar}
+                aoAbrirAdmin={() => setPainelAdminAberto(true)}
               />
             </div>
           ) : (
@@ -622,6 +680,16 @@ export default function App() {
         aoCriar={lidarCriarGrupo}
         aoFechar={() => setModalCriarGrupoAberto(false)}
       />
+
+      {/* Conversa por cima do que estiver aberto — quem pediu o chat de
+          dentro do RH não perde a consulta que estava fazendo */}
+      {conversaFlutuante && (
+        <JanelaChat
+          conversa={conversaFlutuante}
+          colaboradorAtual={colaboradorAtual}
+          aoFechar={() => setConversaFlutuanteId(null)}
+        />
+      )}
     </div>
   );
 }
