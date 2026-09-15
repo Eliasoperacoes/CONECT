@@ -100,7 +100,6 @@ export interface Mensagem {
   anexoCaminho?: string;
   // Preenchido quando a limpeza de espaco removeu a imagem. A mensagem fica,
   // o arquivo sai - o registro e o controle, o peso e o arquivo.
-  anexoLimpoEm?: string;
   ehAvisoDirecao?: boolean;
   reacoes?: Record<string, string[]>; // ex: { '👍': ['colab-1', 'colab-2'], '✅': ['colab-3'] }
 }
@@ -144,10 +143,10 @@ export interface ConfiguracaoSistema {
   nomeEmpresa: string;
   bipeRadioAtivo: boolean;
   tempoMaximoRadioSegundos: number;
-  /** Meses de imagem guardados antes da limpeza automatica. */
-  mesesHistoricoImagens: number;
+  /** Meses de conversa guardados antes da limpeza automatica. */
+  mesesHistoricoConversas: number;
   /** Quando a limpeza rodou pela ultima vez. */
-  ultimaLimpezaImagens?: string;
+  ultimaLimpezaConversas?: string;
   modoManutencao: boolean;
   permitirCriacaoGruposPorOperadores: boolean;
 }

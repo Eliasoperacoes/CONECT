@@ -98,7 +98,7 @@ const CONFIGURACAO_PADRAO: ConfiguracaoSistema = {
   nomeEmpresa: 'Malachias Autopeças',
   bipeRadioAtivo: true,
   tempoMaximoRadioSegundos: 45,
-  mesesHistoricoImagens: 2,
+  mesesHistoricoConversas: 2,
   modoManutencao: false,
   permitirCriacaoGruposPorOperadores: false,
 };
@@ -2640,26 +2640,24 @@ class BancoDadosConecta {
   }
 
   /**
-   * Remove as IMAGENS anteriores à data de corte, e só elas.
+   * Apaga as mensagens anteriores à data de corte: texto, foto, áudio e
+   * documento. A conversa passa a começar na data de corte.
    *
-   * A mensagem fica: quem enviou, quando, em qual conversa e a legenda
-   * continuam na conversa, com o balão marcado como imagem removida. O que
-   * ocupa espaço é o arquivo, não o registro — e o registro é o controle.
+   * NADA FORA DA CONVERSA É TOCADO — ponto e banco de horas, cadastro de
+   * colaboradores, comunicados da rede, códigos das lojas, configurações e
+   * auditoria ficam intactos. A função do banco só conhece a tabela de
+   * mensagens; não é uma verificação que alguém possa desligar por engano.
    *
-   * Ponto, banco de horas, colaboradores, avisos e auditoria NÃO são tocados
-   * aqui em hipótese alguma. Recado de voz e documento também ficam: a regra
-   * da casa fala de imagem.
-   *
-   * O banco devolve os caminhos que ficaram órfãos, porque limpar a
-   * referência não alcança o armazenamento: sem isso o espaço continuaria
-   * ocupado por arquivos que nenhuma mensagem mais aponta.
+   * O banco devolve os caminhos dos arquivos que ficaram órfãos, porque
+   * apagar a linha não alcança o armazenamento: sem isso o espaço
+   * continuaria ocupado por anexos que nenhuma mensagem mais aponta.
    */
-  async limparImagensAntigas(
+  async limparConversasAntigas(
     dataCorte: string
-  ): Promise<{ sucesso: boolean; imagens?: number; arquivos?: number; erro?: string }> {
+  ): Promise<{ sucesso: boolean; mensagens?: number; arquivos?: number; erro?: string }> {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel < 4) {
-      return { sucesso: false, erro: 'Apenas o Administrador pode limpar as imagens antigas.' };
+      return { sucesso: false, erro: 'Apenas o Administrador pode limpar o histórico.' };
     }
     if (!usandoNuvem()) {
       return { sucesso: false, erro: 'Disponível apenas com o banco da rede ligado.' };
@@ -2671,61 +2669,61 @@ class BancoDadosConecta {
       return { sucesso: false, erro: 'A data de corte precisa ser anterior a hoje.' };
     }
 
-    const resultado = await nuvemComunicacao.limparImagensAte(dataCorte);
+    const resultado = await nuvemComunicacao.limparConversasAte(dataCorte);
     if (!resultado.sucesso) {
-      return { sucesso: false, erro: resultado.erro || 'Falha ao limpar as imagens antigas.' };
+      return { sucesso: false, erro: resultado.erro || 'Falha ao limpar o histórico.' };
     }
 
     const arquivos = await apagarAnexos(resultado.caminhos || []);
 
     this.registrarAuditoria(
-      'Limpeza de Imagens Antigas',
-      'sistema',
-      `${atual.nome} removeu ${resultado.limpas} imagem(ns) anteriores a ${dataCorte}, liberando ${arquivos} arquivo(s). As mensagens foram mantidas.`
+      'Limpeza de Histórico',
+      'seguranca',
+      `${atual.nome} apagou ${resultado.removidas} mensagem(ns) anteriores a ${dataCorte}, liberando ${arquivos} arquivo(s). Ponto e cadastros não foram tocados.`
     );
 
     await nuvemComunicacao.sincronizarConversas();
-    return { sucesso: true, imagens: resultado.limpas, arquivos };
+    return { sucesso: true, mensagens: resultado.removidas, arquivos };
   }
 
   /**
-   * Aplica a regra da casa: guardar os últimos N meses de imagem e limpar o
-   * que passou disso.
+   * Aplica a regra da casa: guardar os últimos N meses de conversa e apagar
+   * o que passou disso.
    *
    * Roda na sessão de um Administrador e no máximo uma vez por dia. A marca
    * da última execução fica nas configurações da REDE, não no aparelho —
    * senão cada computador rodaria a sua.
    *
-   * Nada acontece sem regra escrita: com `mesesHistoricoImagens` em zero a
+   * Nada acontece sem regra escrita: com `mesesHistoricoConversas` em zero a
    * limpeza automática fica desligada e só a ação manual funciona.
    */
-  async aplicarRegraDeLimpeza(): Promise<{ executou: boolean; imagens?: number }> {
+  async aplicarRegraDeLimpeza(): Promise<{ executou: boolean; mensagens?: number }> {
     if (!usandoNuvem()) return { executou: false };
 
     const atual = this.obterColaboradorAtual();
     if (atual.nivel < 4) return { executou: false };
 
     const config = this.obterConfiguracoes();
-    const meses = config.mesesHistoricoImagens ?? 0;
+    const meses = config.mesesHistoricoConversas ?? 0;
     if (meses <= 0) return { executou: false };
 
     // Uma vez por dia basta: a regra é mensal, não de minuto em minuto
-    if (config.ultimaLimpezaImagens?.slice(0, 10) === hojeEmIso()) {
+    if (config.ultimaLimpezaConversas?.slice(0, 10) === hojeEmIso()) {
       return { executou: false };
     }
 
     const corte = new Date();
     corte.setMonth(corte.getMonth() - meses);
 
-    const res = await this.limparImagensAntigas(emIso(corte));
+    const res = await this.limparConversasAntigas(emIso(corte));
     if (!res.sucesso) return { executou: false };
 
     await this.salvarConfiguracoes({
       ...config,
-      ultimaLimpezaImagens: new Date().toISOString(),
+      ultimaLimpezaConversas: new Date().toISOString(),
     });
 
-    return { executou: true, imagens: res.imagens };
+    return { executou: true, mensagens: res.mensagens };
   }
 
   exportarBackup(): string {

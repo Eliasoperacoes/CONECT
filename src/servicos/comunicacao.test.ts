@@ -157,18 +157,16 @@ mock.module('./nuvemComunicacao', () => ({
     registrarAuditoria: async (r: any) => {
       bancoAuditoria.push({ ...r });
     },
-    limparImagensAte: async (dataCorte: string) => {
+    limparConversasAte: async (dataCorte: string) => {
       if (recusarEscrita) return recusa;
-      // Só imagem, e a mensagem continua na tabela — como no banco
-      const alvo = bancoMensagens.filter(
-        (m) => m.tipo === 'imagem' && m.criadoEm < dataCorte && m.anexoCaminho
-      );
-      const caminhos = alvo.map((m) => m.anexoCaminho);
-      alvo.forEach((m) => {
-        m.anexoCaminho = undefined;
-        m.anexoLimpoEm = new Date().toISOString();
-      });
-      return { sucesso: true, limpas: alvo.length, caminhos };
+      // A mensagem sai da tabela por inteiro, como no banco
+      const alvo = bancoMensagens.filter((m) => m.criadoEm < dataCorte);
+      bancoMensagens = bancoMensagens.filter((m) => m.criadoEm >= dataCorte);
+      return {
+        sucesso: true,
+        removidas: alvo.length,
+        caminhos: alvo.map((m) => m.anexoCaminho).filter(Boolean),
+      };
     },
     limparCache: () => {},
     iniciarTempoReal: () => {},
@@ -477,7 +475,7 @@ test('diretriz do sistema vale para a rede, não para o aparelho', async () => {
     nomeEmpresa: 'Malachias Autopeças',
     bipeRadioAtivo: false,
     tempoMaximoRadioSegundos: 30,
-    mesesHistoricoImagens: 2,
+    mesesHistoricoConversas: 2,
     modoManutencao: false,
     permitirCriacaoGruposPorOperadores: true,
   });
@@ -493,7 +491,7 @@ test('diretriz recusada pelo banco não fica valendo só aqui', async () => {
     nomeEmpresa: 'Outra',
     bipeRadioAtivo: true,
     tempoMaximoRadioSegundos: 999,
-    mesesHistoricoImagens: 2,
+    mesesHistoricoConversas: 2,
     modoManutencao: true,
     permitirCriacaoGruposPorOperadores: false,
   });
@@ -549,7 +547,7 @@ test('resets de demonstração são recusados com o banco ligado', () => {
 });
 
 // ============================================================
-// LIMPEZA DE IMAGENS ANTIGAS
+// LIMPEZA DO HISTÓRICO DE CONVERSAS
 // ============================================================
 
 /** Mensagem no banco como se fosse de meses atrás. */
@@ -557,83 +555,76 @@ const mensagemAntiga = (id: string, data: string, tipo = 'imagem') => {
   bancoMensagens.push({
     id, conversaId: 'grupo-teste', remetenteId: 'colab-elias', tipo,
     texto: tipo === 'texto' ? 'combinado da semana' : undefined,
-    legenda: tipo === 'imagem' ? 'peça trocada' : undefined,
     criadoEm: data, anexoCaminho: tipo === 'texto' ? undefined : `grupo-teste/${id}.bin`,
   });
 };
 
-test('A MENSAGEM FICA, A IMAGEM SAI: limpeza preserva o registro', async () => {
-  mensagemAntiga('img-velha', '2026-01-10T09:00:00.000Z');
-  mensagemAntiga('img-recente', '2026-09-10T09:00:00.000Z');
+test('A CONVERSA ANTIGA SAI INTEIRA: texto, foto, áudio e documento', async () => {
+  mensagemAntiga('txt-velho', '2026-01-10T09:00:00.000Z', 'texto');
+  mensagemAntiga('img-velha', '2026-01-11T09:00:00.000Z', 'imagem');
+  mensagemAntiga('voz-velha', '2026-01-12T09:00:00.000Z', 'recado_voz');
+  mensagemAntiga('doc-velho', '2026-01-13T09:00:00.000Z', 'arquivo');
+  mensagemAntiga('msg-recente', '2026-09-10T09:00:00.000Z', 'texto');
 
-  const res = await bancoDados.limparImagensAntigas('2026-06-01');
+  const res = await bancoDados.limparConversasAntigas('2026-06-01');
 
   expect(res.sucesso).toBe(true);
-  expect(res.imagens).toBe(1);
+  expect(res.mensagens).toBe(4);
+  expect(bancoMensagens.map((m) => m.id)).toEqual(['msg-recente']);
 
-  // Nenhuma mensagem sai do histórico — o registro é o controle
-  expect(bancoMensagens).toHaveLength(2);
-
-  const velha = bancoMensagens.find((m) => m.id === 'img-velha');
-  expect(velha.anexoCaminho).toBeUndefined();
-  expect(velha.anexoLimpoEm).toBeTruthy();
-  // Quem enviou, quando e a legenda continuam lá
-  expect(velha.remetenteId).toBe('colab-elias');
-  expect(velha.legenda).toBe('peça trocada');
-
-  // O arquivo tem que sair do armazenamento, senão o espaço não é liberado
-  expect(res.arquivos).toBe(1);
-  expect(anexosApagados).toEqual(['grupo-teste/img-velha.bin']);
+  // Apagar a linha não alcança o armazenamento: os arquivos têm que sair
+  // junto, senão o espaço continua ocupado por anexo sem dono
+  expect(res.arquivos).toBe(3);
+  expect(anexosApagados.sort()).toEqual([
+    'grupo-teste/doc-velho.bin',
+    'grupo-teste/img-velha.bin',
+    'grupo-teste/voz-velha.bin',
+  ]);
 });
 
-test('SÓ IMAGEM: recado de voz, documento e texto antigos não são tocados', async () => {
-  mensagemAntiga('voz-velha', '2026-01-10T09:00:00.000Z', 'recado_voz');
-  mensagemAntiga('doc-velho', '2026-01-11T09:00:00.000Z', 'arquivo');
-  mensagemAntiga('txt-velho', '2026-01-12T09:00:00.000Z', 'texto');
-  mensagemAntiga('img-velha', '2026-01-13T09:00:00.000Z');
+test('o que está dentro do prazo não é tocado', async () => {
+  mensagemAntiga('dentro', '2026-07-15T09:00:00.000Z', 'imagem');
 
-  const res = await bancoDados.limparImagensAntigas('2026-06-01');
+  const res = await bancoDados.limparConversasAntigas('2026-06-01');
 
-  expect(res.imagens).toBe(1);
-  expect(anexosApagados).toEqual(['grupo-teste/img-velha.bin']);
-  expect(bancoMensagens.find((m) => m.id === 'voz-velha').anexoCaminho).toBeTruthy();
-  expect(bancoMensagens.find((m) => m.id === 'doc-velho').anexoCaminho).toBeTruthy();
-  expect(bancoMensagens.find((m) => m.id === 'txt-velho').texto).toBe('combinado da semana');
+  expect(res.mensagens).toBe(0);
+  expect(bancoMensagens).toHaveLength(1);
+  expect(anexosApagados).toHaveLength(0);
 });
 
 test('a limpeza fica registrada na auditoria, que não é apagada', async () => {
-  mensagemAntiga('img-velha', '2026-01-10T09:00:00.000Z');
-  await bancoDados.limparImagensAntigas('2026-06-01');
+  mensagemAntiga('velha', '2026-01-10T09:00:00.000Z');
+  await bancoDados.limparConversasAntigas('2026-06-01');
 
-  const registro = bancoAuditoria.find((a) => a.acao === 'Limpeza de Imagens Antigas');
+  const registro = bancoAuditoria.find((a) => a.acao === 'Limpeza de Histórico');
   expect(registro).toBeTruthy();
   expect(registro.detalhes).toContain('2026-06-01');
-  expect(registro.detalhes).toContain('mensagens foram mantidas');
+  expect(registro.detalhes).toContain('Ponto e cadastros não foram tocados');
   expect(registro.usuarioNome).toBe('Elias');
 });
 
-test('só o Administrador limpa imagens', async () => {
-  mensagemAntiga('img-velha', '2026-01-10T09:00:00.000Z');
+test('só o Administrador limpa o histórico', async () => {
+  mensagemAntiga('velha', '2026-01-10T09:00:00.000Z');
   entrarComo(ANA);
 
-  const res = await bancoDados.limparImagensAntigas('2026-06-01');
+  const res = await bancoDados.limparConversasAntigas('2026-06-01');
 
   expect(res.sucesso).toBe(false);
   expect(res.erro).toContain('Apenas o Administrador');
-  expect(bancoMensagens[0].anexoCaminho).toBeTruthy();
+  expect(bancoMensagens).toHaveLength(1);
 });
 
 test('data de corte precisa ser válida e anterior a hoje', async () => {
-  const semData = await bancoDados.limparImagensAntigas('');
+  const semData = await bancoDados.limparConversasAntigas('');
   expect(semData.sucesso).toBe(false);
   expect(semData.erro).toContain('AAAA-MM-DD');
 
-  // Cortar "até hoje" levaria as fotos do próprio dia
+  // Cortar "até hoje" levaria a conversa do próprio dia
   const hoje = new Date();
   const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(
     hoje.getDate()
   ).padStart(2, '0')}`;
-  const ateHoje = await bancoDados.limparImagensAntigas(hojeIso);
+  const ateHoje = await bancoDados.limparConversasAntigas(hojeIso);
   expect(ateHoje.sucesso).toBe(false);
   expect(ateHoje.erro).toContain('anterior a hoje');
 });
@@ -647,8 +638,8 @@ const configurarRegra = (meses: number, ultimaLimpeza?: string) => {
       nomeEmpresa: 'Malachias Autopeças',
       bipeRadioAtivo: true,
       tempoMaximoRadioSegundos: 45,
-      mesesHistoricoImagens: meses,
-      ultimaLimpezaImagens: ultimaLimpeza,
+      mesesHistoricoConversas: meses,
+      ultimaLimpezaConversas: ultimaLimpeza,
       modoManutencao: false,
       permitirCriacaoGruposPorOperadores: false,
     })
@@ -662,49 +653,47 @@ const mesesAtras = (n: number): string => {
   return d.toISOString();
 };
 
-test('REGRA DA CASA: guarda os últimos meses e limpa o que passou', async () => {
+test('REGRA DA CASA: guarda os últimos meses e apaga o que passou', async () => {
   configurarRegra(2);
-  mensagemAntiga('img-fora', mesesAtras(5));
-  mensagemAntiga('img-dentro', mesesAtras(1));
+  mensagemAntiga('fora', mesesAtras(5), 'texto');
+  mensagemAntiga('dentro', mesesAtras(1), 'texto');
 
   const res = await bancoDados.aplicarRegraDeLimpeza();
 
   expect(res.executou).toBe(true);
-  expect(res.imagens).toBe(1);
-  expect(bancoMensagens.find((m) => m.id === 'img-fora').anexoCaminho).toBeUndefined();
-  // Dentro da janela de guarda, a foto continua lá
-  expect(bancoMensagens.find((m) => m.id === 'img-dentro').anexoCaminho).toBeTruthy();
+  expect(res.mensagens).toBe(1);
+  expect(bancoMensagens.map((m) => m.id)).toEqual(['dentro']);
 });
 
 test('a regra roda uma vez por dia, não a cada abertura do sistema', async () => {
   configurarRegra(2, new Date().toISOString());
-  mensagemAntiga('img-fora', mesesAtras(5));
+  mensagemAntiga('fora', mesesAtras(5));
 
   const res = await bancoDados.aplicarRegraDeLimpeza();
 
   expect(res.executou).toBe(false);
-  expect(anexosApagados).toHaveLength(0);
+  expect(bancoMensagens).toHaveLength(1);
 });
 
 test('regra em zero mês deixa a limpeza automática desligada', async () => {
   configurarRegra(0);
-  mensagemAntiga('img-antiquissima', mesesAtras(24));
+  mensagemAntiga('antiquissima', mesesAtras(24));
 
   const res = await bancoDados.aplicarRegraDeLimpeza();
 
   expect(res.executou).toBe(false);
-  expect(bancoMensagens[0].anexoCaminho).toBeTruthy();
+  expect(bancoMensagens).toHaveLength(1);
 });
 
 test('a regra não roda na sessão de quem não é Administrador', async () => {
   configurarRegra(2);
-  mensagemAntiga('img-fora', mesesAtras(5));
+  mensagemAntiga('fora', mesesAtras(5));
   entrarComo(ANA);
 
   const res = await bancoDados.aplicarRegraDeLimpeza();
 
   expect(res.executou).toBe(false);
-  expect(bancoMensagens[0].anexoCaminho).toBeTruthy();
+  expect(bancoMensagens).toHaveLength(1);
 });
 
 test('ACESSO DE UM CLIQUE: no modo rede não entra pela verificação local', () => {

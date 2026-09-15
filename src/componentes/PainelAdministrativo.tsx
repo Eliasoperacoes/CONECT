@@ -198,7 +198,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   }, [abaAtiva]);
 
   const salvarRegraDeLimpeza = async (meses: number) => {
-    const atualizada = { ...configuracoes, mesesHistoricoImagens: meses };
+    const atualizada = { ...configuracoes, mesesHistoricoConversas: meses };
     setConfiguracoes(atualizada);
 
     const res = await bancoDados.salvarConfiguracoes(atualizada);
@@ -215,19 +215,19 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
 
   const executarLimpezaManual = async () => {
     setLimpando(true);
-    const res = await bancoDados.limparImagensAntigas(dataLimpezaManual);
+    const res = await bancoDados.limparConversasAntigas(dataLimpezaManual);
     setLimpando(false);
     setConfirmandoLimpeza(false);
 
     if (res.sucesso) {
       exibirToast(
-        `${res.imagens} imagem(ns) removida(s), ${res.arquivos} arquivo(s) liberado(s). As mensagens foram mantidas.`
+        `${res.mensagens} mensagem(ns) apagada(s) e ${res.arquivos} arquivo(s) liberado(s). Ponto e cadastros não foram tocados.`
       );
       setDataLimpezaManual('');
       carregarUsoDoBanco();
       recarregar();
     } else {
-      exibirToast(res.erro || 'Falha ao limpar as imagens.', true);
+      exibirToast(res.erro || 'Falha ao limpar o histórico.', true);
     }
   };
 
@@ -1408,9 +1408,9 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                       {[
                         { rotulo: 'Mensagens', valor: usoBanco.mensagens },
-                        { rotulo: 'Imagens', valor: usoBanco.imagens },
-                        { rotulo: 'Com arquivo guardado', valor: usoBanco.imagensComArquivo },
-                        { rotulo: 'Já limpas', valor: usoBanco.imagensLimpas },
+                        { rotulo: 'Com arquivo', valor: usoBanco.comArquivo },
+                        { rotulo: 'Fotos', valor: usoBanco.imagens },
+                        { rotulo: 'Recados de voz', valor: usoBanco.audios },
                       ].map((item) => (
                         <div
                           key={item.rotulo}
@@ -1450,21 +1450,21 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
               <div className="bg-[var(--c-superficie)] p-5 rounded-2xl border border-[var(--c-borda)] shadow-sm space-y-4">
                 <div>
                   <h2 className="text-sm font-bold text-[var(--c-texto)]">
-                    Regra de guarda das imagens
+                    Regra de guarda do histórico
                   </h2>
                   <p className="text-xs text-[var(--c-texto-3)]">
-                    O que ocupa espaço é a foto, não o registro. Passado o prazo, a imagem sai e a
-                    mensagem fica na conversa, marcada como imagem removida.
+                    Passado o prazo, a mensagem antiga é apagada por inteiro: texto, foto,
+                    recado de voz e documento. A conversa passa a começar na data de corte.
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-end gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1.5">
-                      Guardar imagens por
+                      Guardar conversas por
                     </label>
                     <select
-                      value={configuracoes.mesesHistoricoImagens ?? 2}
+                      value={configuracoes.mesesHistoricoConversas ?? 2}
                       onChange={(e) => salvarRegraDeLimpeza(Number(e.target.value))}
                       className="px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-xs text-[var(--c-texto)] cursor-pointer"
                     >
@@ -1478,11 +1478,11 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                   </div>
 
                   <div className="text-[11px] text-[var(--c-texto-3)] pb-2">
-                    {configuracoes.ultimaLimpezaImagens ? (
+                    {configuracoes.ultimaLimpezaConversas ? (
                       <>
                         Última limpeza em{' '}
                         <strong className="text-[var(--c-texto-2)]">
-                          {new Date(configuracoes.ultimaLimpezaImagens).toLocaleDateString('pt-BR')}
+                          {new Date(configuracoes.ultimaLimpezaConversas).toLocaleDateString('pt-BR')}
                         </strong>
                       </>
                     ) : (
@@ -1494,8 +1494,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                 <div className="p-3 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)]">
                   <p className="text-[11px] text-[var(--c-texto-3)] leading-relaxed">
                     <strong className="text-[var(--c-texto-2)]">Nunca são apagados:</strong> ponto e
-                    banco de horas, cadastro de colaboradores, comunicados, auditoria, e o texto das
-                    conversas. Recado de voz e documento também ficam — a regra vale só para imagem.
+                    banco de horas, cadastro de colaboradores, comunicados da rede, códigos das
+                    lojas e auditoria. A limpeza alcança apenas o histórico de conversas.
                   </p>
                 </div>
 
@@ -1519,7 +1519,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                 <div className="flex flex-wrap items-end gap-3">
                   <div>
                     <label className="block text-[11px] font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1.5">
-                      Remover imagens anteriores a
+                      Apagar mensagens anteriores a
                     </label>
                     <input
                       type="date"
@@ -1536,7 +1536,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     className="py-2 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold flex items-center gap-2 cursor-pointer"
                   >
                     <HardDrive className="w-3.5 h-3.5" />
-                    {limpando ? 'Limpando…' : 'Limpar imagens'}
+                    {limpando ? 'Apagando…' : 'Apagar histórico'}
                   </button>
                 </div>
               </div>
@@ -1546,12 +1546,12 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                   <div className="bg-[var(--c-superficie)] rounded-2xl border border-[var(--c-borda)] shadow-xl max-w-sm w-full p-5 space-y-3">
                     <h3 className="text-sm font-bold text-[var(--c-texto)]">
-                      Remover as imagens anteriores a{' '}
+                      Apagar as mensagens anteriores a{' '}
                       {dataLimpezaManual.split('-').reverse().join('/')}?
                     </h3>
                     <p className="text-xs text-[var(--c-texto-3)] leading-relaxed">
-                      As mensagens continuam na conversa, com o balão marcado como imagem removida.
-                      Os arquivos saem do armazenamento e{' '}
+                      Sai tudo dessas conversas: texto, fotos, recados de voz e documentos. Ponto,
+                      cadastros, comunicados e auditoria ficam intactos. Depois de confirmar{' '}
                       <strong className="text-[var(--c-texto-2)]">não há como recuperar</strong>.
                     </p>
                     <div className="flex justify-end gap-2 pt-1">

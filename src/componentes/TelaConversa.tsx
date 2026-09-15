@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { formatarDataBR } from '../servicos/ponto';
 import {
   ArrowLeft,
   MoreVertical,
@@ -1042,14 +1041,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                               ehMinha ? 'text-white/75' : 'text-[var(--c-texto-3)]'
                             }`}
                           >
-                            {/* Removida pela regra de espaço não é a mesma coisa que
-                                perdida: aqui a mensagem foi mantida de propósito, e
-                                pedir para reenviar seria um conselho errado. */}
-                            {msg.anexoLimpoEm
-                              ? `Imagem removida na limpeza de espaço · ${formatarDataBR(
-                                  msg.anexoLimpoEm.slice(0, 10)
-                                )}`
-                              : 'Foto indisponível · peça para reenviar'}
+                            Foto indisponível · peça para reenviar
                           </span>
                         </div>
                       </div>

@@ -638,27 +638,26 @@ create policy anexos_remocao on storage.objects
   using (bucket_id = 'anexos' and public.sou_admin());
 
 -- ============================================================
--- LIMPEZA DE IMAGENS ANTIGAS
+-- LIMPEZA DO HISTÓRICO DE CONVERSAS
 --
--- O que ocupa espaço é o arquivo, não o registro. Por isso a limpeza apaga
--- A IMAGEM e preserva a mensagem: quem enviou, quando, em qual conversa e a
--- legenda continuam na conversa, com o balão marcado como imagem removida.
--- O histórico segue servindo de controle; só o peso sai.
+-- Passado o prazo de guarda, a mensagem antiga sai por inteiro: texto,
+-- foto, áudio e documento. É o que libera espaço de verdade — o arquivo
+-- pesa, mas a linha também ocupa, e meia mensagem na conversa não serve
+-- para nada.
 --
--- NADA MAIS É TOCADO. Ponto, banco de horas, colaboradores, avisos e
--- auditoria não entram aqui em hipótese alguma — esta função não conhece
--- essas tabelas.
+-- O QUE ESTA FUNÇÃO NÃO ALCANÇA, por construção: ponto e banco de horas,
+-- colaboradores, comunicados da rede, códigos das lojas, configurações e
+-- auditoria. Ela só conhece a tabela de mensagens. As leituras saem junto
+-- pelo `on delete cascade`, porque leitura de mensagem que não existe mais
+-- não é informação, é resto.
 --
--- Devolve os caminhos que ficaram órfãos, porque apagar a referência não
--- alcança o armazenamento: o sistema apaga os arquivos em seguida.
+-- Devolve os caminhos dos arquivos que ficaram órfãos: apagar a linha não
+-- alcança o armazenamento, e sem isso o espaço continuaria ocupado por
+-- anexos que nenhuma mensagem mais aponta.
 -- ============================================================
 
--- A limpeza apagou a imagem desta mensagem? É o que faz o balão dizer
--- "imagem removida" em vez de mostrar uma foto quebrada.
-alter table public.mensagens add column if not exists anexo_limpo_em timestamptz;
-
-create or replace function public.limpar_imagens_ate(data_corte date)
-returns table (limpas integer, caminhos text[])
+create or replace function public.limpar_conversas_ate(data_corte date)
+returns table (removidas integer, caminhos text[])
 language plpgsql
 security definer
 set search_path = public
@@ -668,45 +667,46 @@ declare
   total    integer;
 begin
   if not public.sou_admin() then
-    raise exception 'Apenas o Administrador pode limpar as imagens antigas';
+    raise exception 'Apenas o Administrador pode limpar o historico de conversas';
   end if;
 
   select coalesce(array_agg(anexo_caminho), '{}')
     into arquivos
     from public.mensagens
-   where tipo = 'imagem'
-     and criado_em < data_corte
+   where criado_em < data_corte
      and anexo_caminho is not null;
 
-  with limpas_agora as (
-    update public.mensagens
-       set anexo_caminho     = null,
-           imagem_url        = null,
-           anexo_limpo_em    = now()
-     where tipo = 'imagem'
-       and criado_em < data_corte
-       and anexo_caminho is not null
+  with apagadas as (
+    delete from public.mensagens
+     where criado_em < data_corte
     returning 1
   )
-  select count(*) into total from limpas_agora;
+  select count(*) into total from apagadas;
 
   return query select total, arquivos;
 end;
 $$;
 
+-- A função anterior limpava só a imagem e mantinha a mensagem. A regra da
+-- casa passou a apagar a mensagem inteira, então ela não vale mais.
+drop function if exists public.limpar_imagens_ate(date);
+alter table public.mensagens drop column if exists anexo_limpo_em;
 -- Números do banco para o painel de administração.
 --
 -- Precisa ser `security definer` porque a contagem tem que ser da REDE
 -- inteira: o Administrador não participa de toda conversa, e uma contagem
 -- filtrada pela RLS mostraria menos do que existe — o que, num painel que
 -- serve para decidir sobre espaço, seria pior do que não mostrar nada.
+-- A assinatura mudou junto com a regra; trocar o retorno exige remover antes
+drop function if exists public.uso_do_banco();
+
 create or replace function public.uso_do_banco()
 returns table (
-  mensagens         bigint,
-  imagens           bigint,
-  imagens_com_arquivo bigint,
-  imagens_limpas    bigint,
-  registros_ponto   bigint,
+  mensagens            bigint,
+  com_arquivo          bigint,
+  imagens              bigint,
+  audios               bigint,
+  registros_ponto      bigint,
   mensagem_mais_antiga timestamptz
 )
 language sql
@@ -715,21 +715,39 @@ set search_path = public
 as $$
   select
     (select count(*) from public.mensagens),
-    (select count(*) from public.mensagens where tipo = 'imagem'),
     (select count(*) from public.mensagens where anexo_caminho is not null),
-    (select count(*) from public.mensagens where anexo_limpo_em is not null),
+    (select count(*) from public.mensagens where tipo = 'imagem'),
+    (select count(*) from public.mensagens where tipo = 'recado_voz'),
     (select count(*) from public.registros_ponto),
     (select min(criado_em) from public.mensagens)
   where public.sou_admin();
 $$;
 
--- Meses de imagem que ficam guardados, e quando a limpeza rodou pela última
--- vez. Ficam nas configurações da rede porque a regra é da empresa, não do
--- aparelho de quem abriu o sistema.
+-- Meses de conversa que ficam guardados, e quando a limpeza rodou pela
+-- última vez. Ficam nas configurações da rede porque a regra é da empresa,
+-- não do aparelho de quem abriu o sistema.
 alter table public.configuracoes
-  add column if not exists meses_historico_imagens integer not null default 2;
+  add column if not exists meses_historico_conversas integer not null default 2;
 alter table public.configuracoes
-  add column if not exists ultima_limpeza_imagens timestamptz;
+  add column if not exists ultima_limpeza_conversas timestamptz;
+
+-- Aproveita o que já estava configurado antes de a regra passar a valer
+-- para a conversa inteira, para o prazo escolhido não voltar ao padrão.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'configuracoes'
+      and column_name = 'meses_historico_imagens'
+  ) then
+    update public.configuracoes
+       set meses_historico_conversas = meses_historico_imagens,
+           ultima_limpeza_conversas  = ultima_limpeza_imagens;
+
+    alter table public.configuracoes drop column meses_historico_imagens;
+    alter table public.configuracoes drop column ultima_limpeza_imagens;
+  end if;
+end $$;
 
 -- ============================================================
 -- CONFERÊNCIA

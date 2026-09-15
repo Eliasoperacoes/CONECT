@@ -94,7 +94,6 @@ interface LinhaMensagem {
   reacoes: Record<string, string[]> | null;
   editada_em: string | null;
   anexo_caminho: string | null;
-  anexo_limpo_em: string | null;
   criado_em: string;
 }
 
@@ -197,9 +196,9 @@ const explicarRecusa = async (error: { code?: string; message: string }): Promis
 /** Números do banco mostrados no painel de administração. */
 export interface UsoDoBanco {
   mensagens: number;
+  comArquivo: number;
   imagens: number;
-  imagensComArquivo: number;
-  imagensLimpas: number;
+  audios: number;
   registrosPonto: number;
   mensagemMaisAntiga?: string;
 }
@@ -481,31 +480,31 @@ class PonteComunicacao {
   }
 
   /**
-   * Limpa as imagens antigas no banco. A mensagem continua lá — some só o
-   * arquivo, que é o que ocupa espaço. Acontece numa função do banco para a
-   * regra de quem pode limpar valer no servidor, não só na tela.
+   * Apaga as mensagens anteriores à data de corte — texto, foto, áudio e
+   * documento. Acontece numa função do banco para a regra de quem pode
+   * apagar valer no servidor, não só na tela.
    */
-  async limparImagensAte(dataCorte: string): Promise<{
+  async limparConversasAte(dataCorte: string): Promise<{
     sucesso: boolean;
-    limpas?: number;
+    removidas?: number;
     caminhos?: string[];
     erro?: string;
   }> {
     if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
 
     const { data, error } = await supabase
-      .rpc('limpar_imagens_ate', { data_corte: dataCorte })
+      .rpc('limpar_conversas_ate', { data_corte: dataCorte })
       .maybeSingle();
 
     if (error) {
-      console.error('Falha ao limpar as imagens antigas:', error.message);
+      console.error('Falha ao limpar o histórico de conversas:', error.message);
       return { sucesso: false, erro: await explicarRecusa(error) };
     }
 
-    const linha = data as { limpas: number; caminhos: string[] } | null;
+    const linha = data as { removidas: number; caminhos: string[] } | null;
     return {
       sucesso: true,
-      limpas: linha?.limpas ?? 0,
+      removidas: linha?.removidas ?? 0,
       caminhos: linha?.caminhos ?? [],
     };
   }
@@ -527,9 +526,9 @@ class PonteComunicacao {
     const linha = data as Record<string, number | string | null>;
     return {
       mensagens: Number(linha.mensagens ?? 0),
+      comArquivo: Number(linha.com_arquivo ?? 0),
       imagens: Number(linha.imagens ?? 0),
-      imagensComArquivo: Number(linha.imagens_com_arquivo ?? 0),
-      imagensLimpas: Number(linha.imagens_limpas ?? 0),
+      audios: Number(linha.audios ?? 0),
       registrosPonto: Number(linha.registros_ponto ?? 0),
       mensagemMaisAntiga: (linha.mensagem_mais_antiga as string) || undefined,
     };
@@ -651,8 +650,8 @@ class PonteComunicacao {
       nomeEmpresa: data.nome_empresa,
       bipeRadioAtivo: data.bipe_radio_ativo,
       tempoMaximoRadioSegundos: data.tempo_maximo_radio_segundos,
-      mesesHistoricoImagens: data.meses_historico_imagens ?? 2,
-      ultimaLimpezaImagens: data.ultima_limpeza_imagens ?? undefined,
+      mesesHistoricoConversas: data.meses_historico_conversas ?? 2,
+      ultimaLimpezaConversas: data.ultima_limpeza_conversas ?? undefined,
       modoManutencao: data.modo_manutencao,
       permitirCriacaoGruposPorOperadores: data.permitir_criacao_grupos_por_operadores,
     };
@@ -673,8 +672,8 @@ class PonteComunicacao {
         nome_empresa: config.nomeEmpresa,
         bipe_radio_ativo: config.bipeRadioAtivo,
         tempo_maximo_radio_segundos: config.tempoMaximoRadioSegundos,
-        meses_historico_imagens: config.mesesHistoricoImagens,
-        ultima_limpeza_imagens: config.ultimaLimpezaImagens ?? null,
+        meses_historico_conversas: config.mesesHistoricoConversas,
+        ultima_limpeza_conversas: config.ultimaLimpezaConversas ?? null,
         modo_manutencao: config.modoManutencao,
         permitir_criacao_grupos_por_operadores: config.permitirCriacaoGruposPorOperadores,
       },
