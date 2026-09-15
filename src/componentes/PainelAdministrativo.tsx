@@ -1534,7 +1534,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     type="text"
                     value={formColab.senha}
                     onChange={(e) => setFormColab({ ...formColab, senha: e.target.value })}
-                    placeholder="123"
+                    placeholder="123456"
                     className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] font-mono"
                   />
                 </div>

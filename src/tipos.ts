@@ -316,3 +316,10 @@ export const INFORMACOES_LOJAS: InfoLoja[] = [
     grupoId: 'grupo-avisos-da-rede',
   },
 ];
+
+/**
+ * Senha entregue pelo RH para o primeiro acesso de cada colaborador.
+ * Trocá-la é obrigatório na primeira entrada. O mínimo de 6 caracteres é
+ * exigência da autenticação do Supabase, por isso não pode ser menor.
+ */
+export const SENHA_PADRAO_PRIMEIRO_ACESSO = '123456';

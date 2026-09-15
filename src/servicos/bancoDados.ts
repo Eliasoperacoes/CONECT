@@ -19,6 +19,7 @@ import {
   RegistroAuditoria,
   ConfiguracaoSistema,
   CARGA_HORARIA_PADRAO_MINUTOS,
+  SENHA_PADRAO_PRIMEIRO_ACESSO,
 } from '../tipos';
 
 const CHAVE_COLABORADORES = 'conecta_v4_colaboradores';
@@ -48,7 +49,7 @@ export const COLABORADOR_ADMIN_ELIAS: Colaborador = {
   id: 'colab-admin-elias',
   nome: 'Elias Malachias',
   login: 'Elias',
-  senha: '123',
+  senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
   cargo: 'Administrador Geral',
   setor: 'TI',
   loja: 'Pirassununga',
@@ -76,7 +77,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Carlos Malachias',
     login: 'carlos',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Diretor de Operações',
     setor: 'Diretoria',
     loja: 'Pirassununga',
@@ -92,7 +93,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Rodrigo Lima',
     login: 'rodrigo',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Balconista Especialista',
     setor: 'Balcão',
     loja: 'Pirassununga',
@@ -108,7 +109,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Marcos Silveira',
     login: 'marcos',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Supervisor de Estoque',
     setor: 'Estoque',
     loja: 'Pirassununga',
@@ -124,7 +125,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Renata Souza',
     login: 'renata',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Operadora de Caixa',
     setor: 'Caixas',
     loja: 'Pirassununga',
@@ -140,7 +141,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Juliana Costa',
     login: 'juliana',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Balconista Líder',
     setor: 'Balcão',
     loja: 'Porto Ferreira',
@@ -156,7 +157,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Roberto Fagundes',
     login: 'roberto',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Gerente de Filial',
     setor: 'Balcão',
     loja: 'Porto Ferreira',
@@ -172,7 +173,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Lucas Mendonça',
     login: 'lucas',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Supervisor de Filial',
     setor: 'Balcão',
     loja: 'Palmeiras',
@@ -188,7 +189,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Fernanda Alves',
     login: 'fernanda',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Gerente de Filial',
     setor: 'Balcão',
     loja: 'Descalvado',
@@ -204,7 +205,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Tiago Rocha',
     login: 'tiago',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Balconista Peças Linha Diesel',
     setor: 'Balcão',
     loja: 'Descalvado',
@@ -220,7 +221,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'André Villanova',
     login: 'andre',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Gerente de Filial',
     setor: 'Balcão',
     loja: 'Santa Rita',
@@ -236,7 +237,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Mariana Castro',
     login: 'mariana',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Balconista Especialista',
     setor: 'Balcão',
     loja: 'Santa Rita',
@@ -252,7 +253,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Vanessa Toledo',
     login: 'vanessa',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Supervisora de Callcenter',
     setor: 'Callcenter',
     loja: 'Rede',
@@ -268,7 +269,7 @@ const COLABORADORES_EXEMPLO_REDE: Omit<Colaborador, 'id'>[] = [
   {
     nome: 'Marcelo Guimarães',
     login: 'marcelo',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: 'Comprador Sênior da Rede',
     setor: 'Compras',
     loja: 'Rede',
@@ -789,7 +790,7 @@ class BancoDadosConecta {
       id: novoId,
       nome: dados.nome.trim(),
       login: dados.login.trim(),
-      senha: dados.senha?.trim() || '123',
+      senha: dados.senha?.trim() || SENHA_PADRAO_PRIMEIRO_ACESSO,
       cargo: dados.cargo.trim() || 'Colaborador',
       setor: dados.setor,
       loja: dados.loja,
@@ -885,7 +886,7 @@ class BancoDadosConecta {
             ramal: linha.ramal?.trim() || colabExistente.ramal,
             telefone: linha.telefone?.trim() || colabExistente.telefone,
             email: linha.email?.trim() || colabExistente.email,
-            senha: linha.senha?.trim() || colabExistente.senha || '123',
+            senha: linha.senha?.trim() || colabExistente.senha || SENHA_PADRAO_PRIMEIRO_ACESSO,
             matricula: linha.matricula?.trim() || colabExistente.matricula,
             dataAdmissao: linha.dataAdmissao?.trim() || colabExistente.dataAdmissao,
             observacoes: linha.observacoes?.trim() || colabExistente.observacoes,
@@ -900,7 +901,7 @@ class BancoDadosConecta {
           id: novoId,
           nome: linha.nome.trim(),
           login: linha.login.trim(),
-          senha: linha.senha?.trim() || '123',
+          senha: linha.senha?.trim() || SENHA_PADRAO_PRIMEIRO_ACESSO,
           cargo: linha.cargo.trim() || 'Colaborador',
           setor: linha.setor,
           loja: linha.loja,
