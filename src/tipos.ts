@@ -112,6 +112,9 @@ export interface Colaborador {
   criadoEm?: string;
   // Campos complementares para dados individuais e permissões do sistema
   matricula?: string;
+  /** CNPJ em que o colaborador esta registrado. O grupo tem mais de um, e
+   *  nem sempre e o da loja onde a pessoa trabalha. */
+  cnpj?: string;
   departamento?: string;
   dataAdmissao?: string;
   permissoes?: string[];
@@ -149,8 +152,6 @@ export interface Mensagem {
   // Caminho do anexo no armazenamento. As URLs acima trazem o conteudo
   // pronto para exibir; este campo e o endereco permanente dele no banco.
   anexoCaminho?: string;
-  // Preenchido quando a limpeza de espaco removeu a imagem. A mensagem fica,
-  // o arquivo sai - o registro e o controle, o peso e o arquivo.
   ehAvisoDirecao?: boolean;
   reacoes?: Record<string, string[]>; // ex: { '👍': ['colab-1', 'colab-2'], '✅': ['colab-3'] }
 }

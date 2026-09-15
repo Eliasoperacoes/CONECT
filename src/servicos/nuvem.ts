@@ -53,6 +53,7 @@ interface LinhaColaborador {
   loja: string;
   nivel: number;
   foto: string | null;
+  cnpj: string | null;
   presenca: string;
   visto_por_ultimo: string | null;
   ramal: string | null;
@@ -82,6 +83,7 @@ const paraColaborador = (linha: LinhaColaborador): Colaborador => ({
   telefone: linha.telefone || undefined,
   email: linha.email || undefined,
   matricula: linha.matricula || undefined,
+  cnpj: linha.cnpj || undefined,
   departamento: linha.departamento || undefined,
   dataAdmissao: linha.data_admissao || undefined,
   observacoes: linha.observacoes || undefined,
@@ -106,6 +108,7 @@ const paraLinha = (c: Colaborador) => ({
   telefone: c.telefone ?? null,
   email: c.email ?? null,
   matricula: c.matricula ?? null,
+  cnpj: c.cnpj ?? null,
   departamento: c.departamento ?? null,
   data_admissao: c.dataAdmissao ?? null,
   observacoes: c.observacoes ?? null,

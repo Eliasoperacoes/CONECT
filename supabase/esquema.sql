@@ -30,6 +30,7 @@ create table if not exists public.colaboradores (
   telefone                        text,
   email                           text,
   matricula                       text,
+  cnpj                            text,
   departamento                    text,
   data_admissao                   text,
   observacoes                     text,
@@ -89,8 +90,10 @@ create table if not exists public.mensagens (
   criado_em         timestamptz not null default now()
 );
 
--- A coluna nasceu depois da tabela: quem já rodou este arquivo antes não a tem
+-- Colunas que nasceram depois das tabelas: quem já rodou este arquivo antes
+-- não as tem, e "create table if not exists" não volta para criá-las
 alter table public.mensagens add column if not exists editada_em timestamptz;
+alter table public.colaboradores add column if not exists cnpj text;
 
 create index if not exists mensagens_por_conversa
   on public.mensagens (conversa_id, criado_em);

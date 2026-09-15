@@ -12,6 +12,7 @@ import {
   NIVEL_TI,
 } from '../tipos';
 import { loginEhValido, normalizarLogin, sugerirLoginValido } from './supabase';
+import { cnpjEhValido, formatarCnpj } from './documentos';
 
 export interface LinhaPlanilhaProcessada {
   indiceLinha: number;
@@ -31,6 +32,7 @@ export interface LinhaPlanilhaProcessada {
     telefone?: string;
     email?: string;
     matricula?: string;
+    cnpj?: string;
     dataAdmissao?: string;
     observacoes?: string;
   };
@@ -136,11 +138,12 @@ export function baixarPlanilhaModeloExcel(): void {
     'Cargo / Função *',
     'Loja / Filial *',
     'Setor *',
-    'Nível de Acesso (1 a 4) *',
+    'Nível de Acesso (1 a 5) *',
     'Ramal',
     'Telefone / WhatsApp',
     'E-mail',
     'Matrícula',
+    'CNPJ da Empresa',
     'Data de Admissão',
     'Observações',
   ];
@@ -158,6 +161,7 @@ export function baixarPlanilhaModeloExcel(): void {
       '(19) 99123-4567',
       'joao.silva@malachiasautopecas.com.br',
       'MAL-0105',
+      '12.345.678/0001-90',
       '2023-03-10',
       'Vendedor peças pesadas linha diesel',
     ],
@@ -172,6 +176,7 @@ export function baixarPlanilhaModeloExcel(): void {
       '(19) 99234-5678',
       'mariana.pf@malachiasautopecas.com.br',
       'MAL-0204',
+      '98.765.432/0001-10',
       '2022-06-15',
       'Responsável abertura/fechamento caixa',
     ],
@@ -186,6 +191,7 @@ export function baixarPlanilhaModeloExcel(): void {
       '(19) 99345-6789',
       'lucas.palmeiras@malachiasautopecas.com.br',
       'MAL-0302',
+      '12.345.678/0002-71',
       '2024-01-10',
       'Conferência e triagem de mercadorias',
     ],
@@ -200,6 +206,7 @@ export function baixarPlanilhaModeloExcel(): void {
       '(19) 99456-7890',
       'patricia.compras@malachiasautopecas.com.br',
       'MAL-0106',
+      '',
       '2021-11-20',
       'Supervisão de cotações com fornecedores',
     ],
@@ -214,6 +221,7 @@ export function baixarPlanilhaModeloExcel(): void {
       '(19) 99567-8901',
       'roberto.descalvado@malachiasautopecas.com.br',
       'MAL-0401',
+      '12.345.678/0003-52',
       '2020-04-01',
       'Gestor da unidade Descalvado',
     ],
@@ -234,6 +242,7 @@ export function baixarPlanilhaModeloExcel(): void {
     { wch: 20 }, // Telefone
     { wch: 34 }, // Email
     { wch: 14 }, // Matricula
+    { wch: 22 }, // CNPJ
     { wch: 16 }, // Admissão
     { wch: 38 }, // Observações
   ];
@@ -256,6 +265,7 @@ export function baixarPlanilhaModeloExcel(): void {
     ['Telefone / WhatsApp', 'Opcional. Contato direto do colaborador com DDD.'],
     ['E-mail', 'Opcional. E-mail corporativo ou pessoal do colaborador.'],
     ['Matrícula', 'Opcional. Código interno de RH/Matrícula do funcionário.'],
+    ['CNPJ da Empresa', 'Opcional. CNPJ em que o colaborador está registrado. O grupo tem mais de um, e nem sempre é o da loja onde a pessoa trabalha — por isso o campo é da pessoa. Pode vir com ou sem pontuação. Se os dígitos não conferirem, a ficha entra sem o CNPJ e a linha traz um aviso.'],
     ['Data de Admissão', 'Opcional. Data de início na empresa (Ex: 2023-05-15 ou 15/05/2023).'],
     ['Observações', 'Opcional. Turno, especialidade ou notas cadastrais.'],
   ];
@@ -283,6 +293,7 @@ export function baixarPlanilhaModeloCSV(): void {
     'Telefone',
     'Email',
     'Matricula',
+    'CNPJ',
     'Data Admissao',
     'Observacoes',
   ].join(';');
@@ -290,7 +301,6 @@ export function baixarPlanilhaModeloCSV(): void {
   const exemplo1 = [
     'João Carlos da Silva',
     'joao.silva',
-    '123',
     'Balconista Especialista',
     'Pirassununga',
     'Balcão',
@@ -299,6 +309,7 @@ export function baixarPlanilhaModeloCSV(): void {
     '(19) 99123-4567',
     'joao.silva@malachiasautopecas.com.br',
     'MAL-0105',
+    '12.345.678/0001-90',
     '2023-03-10',
     'Vendedor peças pesadas linha diesel',
   ].join(';');
@@ -306,7 +317,6 @@ export function baixarPlanilhaModeloCSV(): void {
   const exemplo2 = [
     'Mariana de Oliveira',
     'mariana.oliveira',
-    '123',
     'Operadora de Caixa',
     'Porto Ferreira',
     'Caixas',
@@ -315,6 +325,7 @@ export function baixarPlanilhaModeloCSV(): void {
     '(19) 99234-5678',
     'mariana.pf@malachiasautopecas.com.br',
     'MAL-0204',
+    '98.765.432/0001-10',
     '2022-06-15',
     'Responsável abertura/fechamento caixa',
   ].join(';');
@@ -409,7 +420,10 @@ export async function processarArquivoPlanilha(
       mapaValores['area'] ||
       '';
 
+    // A grafia antiga "(1 a 4)" continua aceita: planilhas já preenchidas
+    // com o cabeçalho anterior não podem parar de funcionar por causa disso.
     const nivelBruto =
+      mapaValores['niveldeacesso1a5'] ||
       mapaValores['niveldeacesso1a4'] ||
       mapaValores['niveldeacesso'] ||
       mapaValores['nivel'] ||
@@ -420,6 +434,12 @@ export async function processarArquivoPlanilha(
     const telefone = mapaValores['telefonewhatsapp'] || mapaValores['telefone'] || mapaValores['whatsapp'] || mapaValores['celular'] || '';
     const email = mapaValores['email'] || mapaValores['correio'] || '';
     const matricula = mapaValores['matricula'] || mapaValores['codigo'] || mapaValores['re'] || '';
+    const cnpjBruto =
+      mapaValores['cnpjdaempresa'] ||
+      mapaValores['cnpj'] ||
+      mapaValores['empresa'] ||
+      mapaValores['cnpjempregador'] ||
+      '';
     const dataAdmissao = mapaValores['datadeadmissao'] || mapaValores['dataadmissao'] || mapaValores['admissao'] || '';
     const observacoes = mapaValores['observacoes'] || mapaValores['observacao'] || mapaValores['obs'] || '';
 
@@ -520,6 +540,23 @@ export async function processarArquivoPlanilha(
       nivelResolvido = NIVEL_COLABORADOR;
     }
 
+    /**
+     * CNPJ é opcional — planilhas antigas não têm a coluna e continuam
+     * valendo. Mas quando vem preenchido, os dígitos são conferidos: número
+     * trocado passa despercebido na tela e só aparece meses depois, num
+     * documento trabalhista.
+     */
+    let cnpj = '';
+    if (cnpjBruto.trim()) {
+      if (cnpjEhValido(cnpjBruto)) {
+        cnpj = formatarCnpj(cnpjBruto);
+      } else {
+        avisos.push(
+          `CNPJ "${cnpjBruto}" não confere nos dígitos verificadores — a ficha entra sem ele.`
+        );
+      }
+    }
+
     const ehAtualizacao = loginsExistentes.has(login.toLowerCase().trim());
 
     linhasProcessadas.push({
@@ -540,6 +577,7 @@ export async function processarArquivoPlanilha(
         telefone,
         email,
         matricula,
+        cnpj,
         dataAdmissao,
         observacoes,
       },

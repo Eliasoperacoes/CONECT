@@ -6,6 +6,7 @@
  * continuam sendo do Administrador de TI.
  */
 
+import { cnpjEhValido, formatarCnpj } from '../servicos/documentos';
 import React, { useEffect, useState } from 'react';
 import { X, UserCog, AlertCircle, Save, Clock } from 'lucide-react';
 import {
@@ -38,6 +39,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
     telefone: '',
     email: '',
     matricula: '',
+    cnpj: '',
     dataAdmissao: '',
     cargaHorariaDiariaMinutos: CARGA_HORARIA_PADRAO_MINUTOS,
     observacoes: '',
@@ -59,6 +61,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       telefone: colaborador.telefone || '',
       email: colaborador.email || '',
       matricula: colaborador.matricula || '',
+      cnpj: colaborador.cnpj || '',
       dataAdmissao: colaborador.dataAdmissao || '',
       cargaHorariaDiariaMinutos:
         colaborador.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS,
@@ -88,6 +91,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       telefone: form.telefone.trim(),
       email: form.email.trim(),
       matricula: form.matricula.trim(),
+      cnpj: form.cnpj.trim() ? formatarCnpj(form.cnpj) : undefined,
       dataAdmissao: form.dataAdmissao.trim(),
       cargaHorariaDiariaMinutos: form.cargaHorariaDiariaMinutos,
       observacoes: form.observacoes.trim(),
@@ -189,6 +193,38 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                 className={campo}
               />
             </div>
+          </div>
+
+          <div>
+            <label htmlFor="cad-cnpj" className={rotuloCampo}>
+              CNPJ da empresa
+            </label>
+            <input
+              id="cad-cnpj"
+              type="text"
+              inputMode="numeric"
+              value={form.cnpj}
+              placeholder="00.000.000/0000-00"
+              /* Formata ao sair do campo, não a cada tecla: reescrever o que
+                 está sendo digitado empurra o cursor e atrapalha quem digita
+                 rápido. */
+              onChange={(e) => setForm({ ...form, cnpj: e.target.value })}
+              onBlur={(e) => {
+                const valor = e.target.value.trim();
+                if (valor && cnpjEhValido(valor)) {
+                  setForm({ ...form, cnpj: formatarCnpj(valor) });
+                }
+              }}
+              className={campo}
+            />
+            {form.cnpj.trim() && !cnpjEhValido(form.cnpj) && (
+              <span className="text-[11px] text-amber-600 mt-1 block">
+                Os dígitos não conferem. Confira o número antes de salvar.
+              </span>
+            )}
+            <span className="text-[11px] text-[var(--c-texto-3)] mt-1 block">
+              Onde a pessoa está registrada — nem sempre é o CNPJ da loja onde trabalha.
+            </span>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
