@@ -33,6 +33,8 @@ import { TelaLogin } from './componentes/TelaLogin';
 import { PainelAdministrativo } from './componentes/PainelAdministrativo';
 import { AbaPonto } from './componentes/AbaPonto';
 import { servicoPonto } from './servicos/ponto';
+import { usandoNuvem } from './servicos/supabase';
+import { nuvem } from './servicos/nuvem';
 
 /** Uma aba da barra inferior. `alvo` troca de aba; `acao` abre um painel. */
 interface ItemNavegacao {
@@ -136,6 +138,8 @@ export default function App() {
 
   const lidarDeslogar = () => {
     bancoDados.deslogar();
+    // No modo rede a sessão vive no banco e também precisa ser encerrada
+    if (usandoNuvem()) nuvem.sair();
     setAutenticado(false);
     setConversaAtivaId(null);
   };

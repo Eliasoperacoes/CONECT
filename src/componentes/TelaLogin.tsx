@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Lock,
   User,
@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
 import { Colaborador } from '../tipos';
+import { usandoNuvem } from '../servicos/supabase';
+import { nuvem } from '../servicos/nuvem';
 
 interface PropsTelaLogin {
   aoAutenticar: (colaborador: Colaborador) => void;
@@ -28,7 +30,22 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
   const [carregando, setCarregando] = useState(false);
   const campoSenhaRef = useRef<HTMLInputElement>(null);
 
-  const submeterLogin = (e?: React.FormEvent) => {
+  // Banco vazio: a primeira pessoa a entrar cria a conta do Administrador
+  const [primeiroAcesso, setPrimeiroAcesso] = useState(false);
+  const [nome, setNome] = useState('');
+
+  useEffect(() => {
+    if (!usandoNuvem()) return;
+    let cancelado = false;
+    nuvem.redeVazia().then((vazia) => {
+      if (!cancelado) setPrimeiroAcesso(vazia);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  const submeterLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErro(null);
 
@@ -42,6 +59,33 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
     }
 
     setCarregando(true);
+
+    // No modo rede a autenticação é do banco; no modo local segue como antes
+    if (usandoNuvem()) {
+      if (primeiroAcesso) {
+        const res = await nuvem.criarPrimeiroAdministrador({
+          nome: nome.trim() || login.trim(),
+          login: login.trim(),
+          senha,
+        });
+        if (!res.sucesso) {
+          setCarregando(false);
+          setErro(res.erro || 'Não foi possível criar a conta.');
+          return;
+        }
+        // A conta acabou de nascer: entra com ela em seguida
+      }
+
+      const entrada = await nuvem.entrar(login, senha);
+      setCarregando(false);
+      if (entrada.sucesso && entrada.colaborador) {
+        aoAutenticar(entrada.colaborador);
+      } else {
+        setErro(entrada.erro || 'Falha ao autenticar.');
+      }
+      return;
+    }
+
     setTimeout(() => {
       const resultado = bancoDados.autenticar(login, senha);
       setCarregando(false);
@@ -119,12 +163,21 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
         <div className="bg-[var(--c-superficie)] rounded-2xl border border-[var(--c-borda)] shadow-[var(--s-3)] p-6 sm:p-8">
           <div className="mb-6 text-center">
             <h1 className="text-xl sm:text-2xl font-black text-[var(--c-texto)] tracking-tight">
-              Acesso ao Sistema
+              {primeiroAcesso ? 'Primeiro Acesso' : 'Acesso ao Sistema'}
             </h1>
             <p className="text-xs sm:text-sm text-[var(--c-texto-3)] mt-1">
-              Comunicação Instantânea, Rádio PTT e Gestão de Pessoas
+              {primeiroAcesso
+                ? 'A rede ainda não tem nenhum usuário. Crie a conta do Administrador.'
+                : 'Comunicação Instantânea, Rádio PTT e Gestão de Pessoas'}
             </p>
           </div>
+
+          {primeiroAcesso && (
+            <div className="mb-5 p-3 rounded-xl bg-[var(--c-acento-suave)] border border-[var(--c-acento)]/30 text-xs text-[var(--c-texto-2)] leading-relaxed">
+              Esta conta será o <strong>Administrador Geral</strong> da rede, com acesso total.
+              Quem vier depois entra como operador, e você ajusta o nível pelo painel.
+            </div>
+          )}
 
           {erro && (
             <div
@@ -137,6 +190,31 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
           )}
 
           <form onSubmit={submeterLogin} className="space-y-4">
+            {/* Nome completo: só no cadastro do primeiro administrador */}
+            {primeiroAcesso && (
+              <div>
+                <label
+                  htmlFor="campo-nome"
+                  className="block text-xs font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1.5"
+                >
+                  Nome completo
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[var(--c-texto-3)]">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <input
+                    id="campo-nome"
+                    type="text"
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    placeholder="Ex: Elias Malachias"
+                    className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] placeholder-[var(--c-texto-3)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] focus:border-transparent transition-all"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Campo Login */}
             <div>
               <label
@@ -209,15 +287,16 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
                 <div className="w-5 h-5 border-2 border-[var(--c-sobre-acento)] border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
-                  <span>Entrar no Sistema</span>
+                  <span>{primeiroAcesso ? 'Criar conta e entrar' : 'Entrar no Sistema'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-          {/* Conta sugerida — só aparece após o primeiro acesso neste dispositivo */}
-          {contaSugerida && (
+          {/* Conta sugerida — so apos o primeiro acesso neste dispositivo. No
+              modo rede a sessao ja fica guardada, entao nao se aplica. */}
+          {contaSugerida && !usandoNuvem() && (
             <div className="mt-6 pt-5 border-t border-[var(--c-borda)]">
               <span className="block text-[11px] font-bold text-[var(--c-texto-3)] uppercase tracking-wider mb-2">
                 Último acesso neste dispositivo
