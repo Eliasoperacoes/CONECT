@@ -35,7 +35,7 @@ export const ModalNovaConversa: React.FC<PropsModalNovaConversa> = ({
   return (
     <div
       id="modal-nova-conversa"
-      className="fixed inset-0 z-50 bg-[var(--c-canvas)] flex flex-col w-full h-[100dvh]"
+      className="fixed z-50 top-0 left-0 right-0 bottom-0 w-full h-[100dvh] md:top-auto md:left-auto md:right-6 md:bottom-0 md:w-[340px] md:h-[520px] md:max-h-[calc(100dvh-96px)] bg-[var(--c-canvas)] flex flex-col md:rounded-t-2xl md:border md:border-b-0 md:border-[var(--c-borda)] md:shadow-[var(--s-3)] overflow-hidden"
     >
       {/* Cabeçalho */}
       <header className="w-full bg-[var(--c-superficie)] border-b border-[var(--c-borda)] px-3 py-2.5 flex items-center gap-3">

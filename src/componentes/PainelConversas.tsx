@@ -45,7 +45,7 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
   return (
     <div
       id="painel-conversas-flutuante"
-      className="fixed z-40 top-0 left-0 right-0 bottom-0 w-full h-full md:top-auto md:left-auto md:right-[452px] md:bottom-0 md:w-[340px] md:h-[520px] md:max-h-[calc(100dvh-96px)] flex flex-col bg-[var(--c-superficie)] md:rounded-t-2xl md:border md:border-b-0 md:border-[var(--c-borda)] md:shadow-[var(--s-3)] overflow-hidden"
+      className="fixed z-40 top-0 left-0 right-0 bottom-0 w-full h-full md:top-auto md:left-auto md:right-6 md:bottom-0 md:w-[340px] md:h-[520px] md:max-h-[calc(100dvh-96px)] flex flex-col bg-[var(--c-superficie)] md:rounded-t-2xl md:border md:border-b-0 md:border-[var(--c-borda)] md:shadow-[var(--s-3)] overflow-hidden"
     >
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--c-borda)] flex-shrink-0">
         <div className="flex items-center gap-1">
