@@ -47,8 +47,11 @@ let bancoConfig: any = null;
 let bancoAuditoria: any[] = [];
 let recusarEscrita = false;
 
+let sessaoViva = true;
+
 mock.module('./supabase', () => ({
   usandoNuvem: () => modoNuvem,
+  temSessaoViva: () => sessaoViva,
   supabase: null,
 }));
 
@@ -164,6 +167,7 @@ beforeEach(() => {
   bancoAuditoria = [];
   recusarEscrita = false;
   modoNuvem = true;
+  sessaoViva = true;
 
   armazenamento.setItem(CHAVE_COLABORADORES, JSON.stringify([ELIAS, ANA]));
   armazenamento.setItem(CHAVE_CONVERSAS, JSON.stringify([CONVERSA_EQUIPE]));
@@ -191,6 +195,20 @@ test('mensagem enviada vai para o banco, não só para o aparelho', async () => 
 test('a conversa sobe antes da mensagem, senão a mensagem aponta para o nada', async () => {
   await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'oi' });
   expect(bancoConversas.some((c) => c.id === 'grupo-teste')).toBe(true);
+});
+
+test('SEM SESSÃO: não tenta gravar e explica o que houve', async () => {
+  // O banco responde a um pedido sem credencial exatamente como responde a um
+  // visitante anônimo: "violates row-level security policy". Tentar e mostrar
+  // isso na tela não ajuda ninguém — o que resolve é entrar de novo.
+  sessaoViva = false;
+
+  const res = await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'oi' });
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('sessão terminou');
+  expect(bancoMensagens).toHaveLength(0);
+  expect(lerCacheMensagens()).toHaveLength(0);
 });
 
 test('PARTICIPANTE FANTASMA: id que o banco não conhece não derruba a conversa', async () => {

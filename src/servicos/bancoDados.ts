@@ -10,7 +10,7 @@
  * logado nele e a sugestão de conta do último acesso.
  */
 
-import { usandoNuvem } from './supabase';
+import { usandoNuvem, temSessaoViva } from './supabase';
 import { nuvem } from './nuvem';
 import {
   nuvemComunicacao,
@@ -405,6 +405,12 @@ class BancoDadosConecta {
    */
   private empurrarConversas(lista: Conversa[]): void {
     if (!usandoNuvem()) return;
+
+    // A aplicação monta as telas antes de a sessão estar de pé, e o preparo
+    // dos canais acontece nessa montagem. Gravar aí sairia sem credencial e
+    // seria recusado pela RLS. O que ficou de fora sobe no próximo preparo,
+    // já com a pessoa autenticada.
+    if (!temSessaoViva()) return;
 
     Promise.all(
       lista.map((conversa) =>
@@ -1886,6 +1892,13 @@ class BancoDadosConecta {
 
     const conversas = this.obterTodasConversas();
     const indice = conversas.findIndex((c) => c.id === conversaId);
+
+    if (usandoNuvem() && !temSessaoViva()) {
+      return {
+        sucesso: false,
+        erro: 'Sua sessão terminou. Saia e entre de novo para enviar mensagens.',
+      };
+    }
 
     // No modo rede a mensagem só vale depois de entrar no banco: mandar para
     // a rede é o objetivo, e uma mensagem que ficou no aparelho não foi

@@ -153,6 +153,29 @@ const paraLinhaAviso = (a: AvisoRede) => ({
   criado_em: a.criadoEm,
 });
 
+/**
+ * Traduz a recusa do banco para algo que diga o que fazer.
+ *
+ * "violates row-level security policy" é a mesma frase para dois problemas
+ * muito diferentes: estar sem sessão, ou estar logado e não ter direito
+ * àquilo. Sem separar os dois, a pessoa fica tentando de novo sem saber que
+ * precisa entrar outra vez. A pergunta ao servidor só acontece quando já
+ * falhou, então não custa nada no caminho normal.
+ */
+const explicarRecusa = async (error: { code?: string; message: string }): Promise<string> => {
+  const ehRecusaDeAcesso =
+    error.code === '42501' || error.message.toLowerCase().includes('row-level security');
+
+  if (!ehRecusaDeAcesso || !supabase) return error.message;
+
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) {
+    return 'Sua sessão terminou. Saia e entre de novo para continuar.';
+  }
+
+  return `Sem permissão no banco para esta ação (${error.message}).`;
+};
+
 type Ouvinte = () => void;
 
 class PonteComunicacao {
@@ -293,7 +316,7 @@ class PonteComunicacao {
 
     if (error) {
       console.error('Falha ao criar conversa:', error.message);
-      return { sucesso: false, erro: error.message };
+      return { sucesso: false, erro: await explicarRecusa(error) };
     }
 
     if (conversa.participantesIds.length > 0) {
@@ -307,7 +330,7 @@ class PonteComunicacao {
 
       if (erroParticipantes) {
         console.error('Falha ao salvar participantes:', erroParticipantes.message);
-        return { sucesso: false, erro: erroParticipantes.message };
+        return { sucesso: false, erro: await explicarRecusa(erroParticipantes) };
       }
     }
 
@@ -328,7 +351,7 @@ class PonteComunicacao {
     const { error } = await supabase.from('mensagens').insert(paraLinhaMensagem(mensagem));
     if (error) {
       console.error('Falha ao enviar mensagem ao banco:', error.message);
-      return { sucesso: false, erro: error.message };
+      return { sucesso: false, erro: await explicarRecusa(error) };
     }
 
     // Quem envia já leu a própria mensagem

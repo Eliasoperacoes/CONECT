@@ -84,6 +84,28 @@ export const supabase: SupabaseClient | null = configurado
     })
   : null;
 
+/**
+ * Há sessão aberta AGORA? Pergunta síncrona, de propósito.
+ *
+ * O cliente do Supabase restaura a sessão do armazenamento de forma
+ * assíncrona: quem grava no banco nos primeiros instantes da página sai sem
+ * credencial e leva uma recusa da RLS — a mesma que um visitante anônimo
+ * levaria. Como a aplicação monta as telas antes disso terminar, ela precisa
+ * de uma resposta imediata para saber se já pode escrever.
+ */
+let sessaoViva = false;
+
+if (supabase) {
+  supabase.auth.getSession().then(({ data }) => {
+    sessaoViva = !!data.session;
+  });
+  supabase.auth.onAuthStateChange((_evento, sessao) => {
+    sessaoViva = !!sessao;
+  });
+}
+
+export const temSessaoViva = (): boolean => sessaoViva;
+
 /** Cliente garantido, para trechos que só rodam no modo nuvem. */
 export const exigirSupabase = (): SupabaseClient => {
   if (!supabase) {
