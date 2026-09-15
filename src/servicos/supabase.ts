@@ -21,11 +21,41 @@ const CHAVE_SUPABASE = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefi
 const DOMINIO_INTERNO = 'conecta.malachias.local';
 
 /**
+ * Caracteres aceitos num login. É a mesma restrição da parte local de um
+ * e-mail, porque é nisso que o login se transforma para a autenticação.
+ */
+const FORMATO_LOGIN = /^[a-z0-9][a-z0-9._-]*$/;
+
+/** Minúsculas e sem espaços nas pontas — a forma canônica do login. */
+export const normalizarLogin = (login: string): string => login.trim().toLowerCase();
+
+/**
+ * O login serve para autenticar? Acento, espaço, cedilha e símbolos são
+ * recusados porque seriam removidos na conversão para e-mail, e dois logins
+ * diferentes poderiam virar o mesmo endereço ("José" e "Jose" viram "jose").
+ */
+export const loginEhValido = (login: string): boolean =>
+  FORMATO_LOGIN.test(normalizarLogin(login));
+
+/**
+ * Sugere um login válido a partir de um texto qualquer, tirando acentos e
+ * trocando o que não é aceito por ponto.
+ */
+export const sugerirLoginValido = (texto: string): string =>
+  texto
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+    .replace(/\.{2,}/g, '.');
+
+/**
  * O funcionário digita "Elias"; o Supabase exige um e-mail. A conversão é
  * feita aqui e é sempre a mesma, para o login continuar simples na tela.
  */
 export const loginParaEmailInterno = (login: string): string =>
-  `${login.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '')}@${DOMINIO_INTERNO}`;
+  `${normalizarLogin(login).replace(/[^a-z0-9._-]/g, '')}@${DOMINIO_INTERNO}`;
 
 const configurado = !!(
   URL_SUPABASE &&

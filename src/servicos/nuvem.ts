@@ -314,6 +314,48 @@ class PonteNuvem {
     return { sucesso: true };
   }
 
+  /**
+   * Grava no banco as fichas vindas da planilha. Elas nascem SEM acesso
+   * ativado: cada colaborador ativa o próprio na primeira entrada, usando a
+   * senha padrão, e define a senha dele em seguida. Isso evita ter que criar
+   * quarenta contas de autenticação a partir do navegador, o que trocaria a
+   * sessão do administrador a cada uma.
+   */
+  async salvarColaboradoresEmLote(
+    lista: Colaborador[]
+  ): Promise<{ sucesso: boolean; gravados: number; erro?: string }> {
+    if (!supabase) return { sucesso: true, gravados: lista.length };
+    if (lista.length === 0) return { sucesso: true, gravados: 0 };
+
+    const { error } = await supabase
+      .from('colaboradores')
+      .upsert(lista.map(paraLinha), { onConflict: 'id' });
+
+    if (error) {
+      console.error('Falha ao importar colaboradores:', error.message);
+      // Login repetido é o erro esperado quando a planilha traz alguém que já existe
+      if (error.code === '23505') {
+        return {
+          sucesso: false,
+          gravados: 0,
+          erro: 'Há login repetido: algum já está cadastrado na rede com outra ficha.',
+        };
+      }
+      return { sucesso: false, gravados: 0, erro: error.message };
+    }
+
+    await this.sincronizarColaboradores();
+    return { sucesso: true, gravados: lista.length };
+  }
+
+  /** Fichas já cadastradas, para a planilha saber quem é novo e quem é atualização. */
+  async obterColaboradores(): Promise<Colaborador[]> {
+    if (!supabase) return [];
+    const { data, error } = await supabase.from('colaboradores').select('*').order('nome');
+    if (error || !data) return [];
+    return (data as LinhaColaborador[]).map(paraColaborador);
+  }
+
   async removerColaborador(id: string): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
 

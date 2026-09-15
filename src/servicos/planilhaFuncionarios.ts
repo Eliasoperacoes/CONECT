@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
-import { Colaborador, Loja, Setor, NivelHierarquico } from '../tipos';
+import { Colaborador, Loja, Setor, NivelHierarquico, SENHA_PADRAO_PRIMEIRO_ACESSO } from '../tipos';
+import { loginEhValido, normalizarLogin, sugerirLoginValido } from './supabase';
 
 export interface LinhaPlanilhaProcessada {
   indiceLinha: number;
@@ -102,7 +103,6 @@ export function baixarPlanilhaModeloExcel(): void {
   const cabecalhos = [
     'Nome Completo *',
     'Login de Acesso *',
-    'Senha Inicial',
     'Cargo / Função *',
     'Loja / Filial *',
     'Setor *',
@@ -120,7 +120,6 @@ export function baixarPlanilhaModeloExcel(): void {
     [
       'João Carlos da Silva',
       'joao.silva',
-      '123',
       'Balconista Especialista',
       'Pirassununga',
       'Balcão',
@@ -135,7 +134,6 @@ export function baixarPlanilhaModeloExcel(): void {
     [
       'Mariana de Oliveira',
       'mariana.oliveira',
-      '123',
       'Operadora de Caixa',
       'Porto Ferreira',
       'Caixas',
@@ -150,7 +148,6 @@ export function baixarPlanilhaModeloExcel(): void {
     [
       'Lucas Henrique Santos',
       'lucas.estoque',
-      '123',
       'Conferente de Estoque',
       'Palmeiras',
       'Estoque',
@@ -165,7 +162,6 @@ export function baixarPlanilhaModeloExcel(): void {
     [
       'Patrícia Mendes',
       'patricia.compras',
-      '123',
       'Supervisora de Compras',
       'Rede',
       'Compras',
@@ -180,7 +176,6 @@ export function baixarPlanilhaModeloExcel(): void {
     [
       'Roberto Almeida',
       'roberto.gerente',
-      '123',
       'Gerente de Loja',
       'Descalvado',
       'Balcão',
@@ -201,7 +196,6 @@ export function baixarPlanilhaModeloExcel(): void {
   ws1['!cols'] = [
     { wch: 28 }, // Nome Completo
     { wch: 20 }, // Login
-    { wch: 14 }, // Senha
     { wch: 26 }, // Cargo
     { wch: 18 }, // Loja
     { wch: 16 }, // Setor
@@ -222,11 +216,11 @@ export function baixarPlanilhaModeloExcel(): void {
     ['', ''],
     ['CAMPO', 'REGRA / VALORES PERMITIDOS'],
     ['Nome Completo', 'Obrigatório. Nome e sobrenome do funcionário.'],
-    ['Login de Acesso', 'Obrigatório. Identificador único para entrar no sistema (sem espaços e sem acentos).'],
-    ['Senha Inicial', 'Opcional. Se em branco, o sistema definirá "123" por padrão.'],
+    ['Login de Acesso', 'Obrigatório e único na rede. Use apenas letras sem acento, números, ponto, hífen ou sublinhado. Sem espaços, sem cedilha e sem acento — ex: "joao.silva". Se ficar em branco, o sistema gera a partir do nome.'],
+    ['Senha', `NÃO vai na planilha. Todo colaborador entra pela primeira vez com a senha padrão "${SENHA_PADRAO_PRIMEIRO_ACESSO}" e o sistema obriga a criar a senha dele em seguida.`],
     ['Cargo / Função', 'Obrigatório. Cargo da função (ex: Balconista, Gerente, Estoquista, Caixa).'],
     ['Loja / Filial', 'Obrigatório. Escolha uma das 5 unidades: Pirassununga, Porto Ferreira, Palmeiras, Descalvado, Santa Rita ou Rede.'],
-    ['Setor', 'Obrigatório: Balcão, Estoque, Caixas, Compras, Garantia, Callcenter, Tesouraria, Diretoria ou TI.'],
+    ['Setor', 'Obrigatório: Balcão, Estoque, Caixas, Compras, Garantia, Callcenter, Tesouraria, RH, Diretoria ou TI.'],
     ['Nível de Acesso', '1 = Colaborador/Operador (acesso básico às suas conversas e funções diárias)\n2 = Supervisor\n3 = Gestor da Unidade\n4 = Administrador Geral (Total acesso ao painel de controle).'],
     ['Ramal', 'Opcional. Número do ramal interno telefônico.'],
     ['Telefone / WhatsApp', 'Opcional. Contato direto do colaborador com DDD.'],
@@ -251,7 +245,6 @@ export function baixarPlanilhaModeloCSV(): void {
   const cabecalhos = [
     'Nome Completo',
     'Login de Acesso',
-    'Senha Inicial',
     'Cargo',
     'Loja',
     'Setor',
@@ -337,7 +330,11 @@ export async function processarArquivoPlanilha(
 
   const linhasProcessadas: LinhaPlanilhaProcessada[] = [];
 
+  // Logins já vistos nesta planilha, para apontar repetição entre as linhas
+  const loginsVistos = new Map<string, number>();
+
   dadosBrutos.forEach((linhaOriginal, index) => {
+    const numeroLinha = index + 2; // +1 do cabeçalho, +1 porque o Excel conta de 1
     // Normalizar chaves dos cabeçalhos para aceitar variações comuns
     const mapaValores: Record<string, string> = {};
     for (const [chave, valor] of Object.entries(linhaOriginal)) {
@@ -360,7 +357,7 @@ export async function processarArquivoPlanilha(
       mapaValores['user'] ||
       '';
 
-    const senha = mapaValores['senhainicial'] || mapaValores['senha'] || '123';
+    const senha = mapaValores['senhainicial'] || mapaValores['senha'] || SENHA_PADRAO_PRIMEIRO_ACESSO;
 
     const cargo =
       mapaValores['cargofuncao'] ||
@@ -420,6 +417,31 @@ export async function processarArquivoPlanilha(
       avisos.push(`Login gerado automaticamente: "${login}"`);
     }
 
+    // O login vira o endereço usado pela autenticação. Acento, espaço e
+    // símbolos seriam removidos nessa conversão, e dois logins diferentes
+    // poderiam virar o mesmo acesso — por isso são recusados aqui.
+    if (login && !loginEhValido(login)) {
+      const sugestao = sugerirLoginValido(login);
+      erros.push(
+        `Login "${login}" tem caracteres não aceitos. Use letras sem acento, ` +
+          `números, ponto, hífen ou sublinhado` +
+          (sugestao ? ` — sugestão: "${sugestao}"` : '')
+      );
+    }
+
+    login = normalizarLogin(login);
+
+    // Login repetido dentro da própria planilha: o segundo sobrescreveria o
+    // primeiro em silêncio e uma das pessoas ficaria sem acesso.
+    if (login) {
+      const linhaAnterior = loginsVistos.get(login);
+      if (linhaAnterior !== undefined) {
+        erros.push(`Login "${login}" repetido na planilha (linha ${linhaAnterior}).`);
+      } else {
+        loginsVistos.set(login, numeroLinha);
+      }
+    }
+
     // Validação de Loja
     let lojaResolvida: Loja = 'Pirassununga';
     const lojaChave = normalizarChave(lojaBruta);
@@ -464,7 +486,7 @@ export async function processarArquivoPlanilha(
       dados: {
         nome,
         login,
-        senha: senha || '123',
+        senha: senha || SENHA_PADRAO_PRIMEIRO_ACESSO,
         cargo: cargo || 'Colaborador',
         loja: lojaResolvida,
         setor: setorResolvido,

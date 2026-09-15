@@ -5,6 +5,7 @@
  */
 
 import { usandoNuvem } from './supabase';
+import { nuvem } from './nuvem';
 import {
   Colaborador,
   Conversa,
@@ -813,6 +814,9 @@ class BancoDadosConecta {
     // Adiciona o novo colaborador automaticamente aos canais padrões da loja e da rede
     this.garantirGruposDoSistemaPara(novoId);
 
+    // Espelha a ficha no banco, senão o cadastro ficaria só neste navegador
+    if (usandoNuvem()) nuvem.salvarColaborador(novoColab);
+
     this.registrarAuditoria(
       'Cadastro de Colaborador',
       'usuario',
@@ -931,6 +935,21 @@ class BancoDadosConecta {
     // método lê o colaborador do armazenamento e, antes disso, não o encontra.
     for (const novoId of idsNovos) {
       this.garantirGruposDoSistemaPara(novoId);
+    }
+
+    // No modo rede as fichas precisam existir no banco, senão a importação
+    // ficaria presa neste navegador e ninguém conseguiria entrar.
+    if (usandoNuvem()) {
+      const enviados = colaboradores.filter(
+        (c) => idsNovos.includes(c.id) || linhasParaImportar.some(
+          (l) => l.login.trim().toLowerCase() === (c.login || '').toLowerCase()
+        )
+      );
+      nuvem.salvarColaboradoresEmLote(enviados).then((res) => {
+        if (!res.sucesso) {
+          console.error('Importação não chegou ao banco:', res.erro);
+        }
+      });
     }
 
     this.registrarAuditoria(
@@ -1055,6 +1074,8 @@ class BancoDadosConecta {
     };
 
     localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));
+    if (usandoNuvem()) nuvem.salvarColaborador(colaboradores[indice]);
+
     this.registrarAuditoria(
       'Atualização de Colaborador',
       'usuario',
@@ -1127,6 +1148,8 @@ class BancoDadosConecta {
     if (ultimoAcesso && ultimoAcesso.id === id) {
       this.esquecerUltimoAcessoDoDispositivo();
     }
+
+    if (usandoNuvem()) nuvem.removerColaborador(id);
 
     this.registrarAuditoria(
       'Remoção de Colaborador',
