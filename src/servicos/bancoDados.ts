@@ -405,11 +405,30 @@ class BancoDadosConecta {
    */
   private empurrarConversas(lista: Conversa[]): void {
     if (!usandoNuvem()) return;
-    lista.forEach((conversa) => {
-      nuvemComunicacao.salvarConversa(conversa).catch(() => {
-        /* o erro já é registrado na ponte */
-      });
-    });
+
+    Promise.all(
+      lista.map((conversa) =>
+        nuvemComunicacao.salvarConversa(conversa).catch(() => ({ sucesso: false }))
+      )
+    ).then(() => this.recarregarConversasEmBreve());
+  }
+
+  /**
+   * Recarrega o cache de conversa depois de entrar em canais novos — sem isso
+   * a pessoa vira participante no banco mas continua sem enxergar o que já
+   * foi dito lá.
+   *
+   * O intervalo mínimo existe porque isto é disparado durante a montagem das
+   * telas: sem ele, recarregar avisaria as telas, que chamariam de novo, e o
+   * sistema ficaria girando sozinho.
+   */
+  private ultimaRecarga = 0;
+
+  private recarregarConversasEmBreve(): void {
+    const agora = Date.now();
+    if (agora - this.ultimaRecarga < 3000) return;
+    this.ultimaRecarga = agora;
+    nuvemComunicacao.sincronizarConversas().catch(() => {});
   }
 
   // Inicializa dados no localStorage removendo todos os usuários antigos e mantendo apenas Elias

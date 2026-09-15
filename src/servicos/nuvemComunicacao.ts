@@ -276,16 +276,23 @@ class PonteComunicacao {
     return true;
   }
 
-  /** Cria ou atualiza a conversa e a lista de quem participa dela. */
+  /**
+   * Garante que a conversa exista e que estas pessoas estejam nela.
+   *
+   * A conversa é apenas CRIADA, nunca atualizada: quem participa mora na
+   * tabela `participantes`, não numa coluna daqui. E atualizar exigiria já
+   * ser participante — o que criaria um impasse, porque é exatamente isso
+   * que se está tentando conseguir ao entrar num canal.
+   */
   async salvarConversa(conversa: Conversa): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
 
     const { error } = await supabase
       .from('conversas')
-      .upsert(paraLinhaConversa(conversa), { onConflict: 'id' });
+      .upsert(paraLinhaConversa(conversa), { onConflict: 'id', ignoreDuplicates: true });
 
     if (error) {
-      console.error('Falha ao salvar conversa:', error.message);
+      console.error('Falha ao criar conversa:', error.message);
       return { sucesso: false, erro: error.message };
     }
 
