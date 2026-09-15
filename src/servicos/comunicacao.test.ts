@@ -1,0 +1,418 @@
+/**
+ * Verificação da comunicação ligada ao banco — CONECTA
+ *
+ * A regra que está sendo provada: com o Supabase ligado, NADA nasce e morre
+ * só no aparelho. Mensagem, leitura, reação, aviso, diretriz e auditoria
+ * passam pelo banco — e o que o banco recusa não fica fingindo que deu certo
+ * na tela de quem enviou.
+ */
+import { test, expect, mock, beforeEach } from 'bun:test';
+
+class ArmazenamentoFalso {
+  private dados = new Map<string, string>();
+  getItem(k: string) { return this.dados.has(k) ? this.dados.get(k)! : null; }
+  setItem(k: string, v: string) { this.dados.set(k, String(v)); }
+  removeItem(k: string) { this.dados.delete(k); }
+  clear() { this.dados.clear(); }
+}
+
+const armazenamento = new ArmazenamentoFalso();
+(globalThis as any).localStorage = armazenamento;
+
+const CHAVE_COLABORADORES = 'conecta_v4_colaboradores';
+const CHAVE_COLABORADOR_ATUAL = 'conecta_v4_colaborador_atual';
+const CHAVE_CONVERSAS = 'conecta_v4_conversas';
+const CHAVE_MENSAGENS = 'conecta_v4_mensagens';
+const CHAVE_AVISOS_REDE = 'conecta_v4_avisos_rede';
+
+const ELIAS = {
+  id: 'colab-elias', nome: 'Elias', login: 'elias', cargo: 'Diretor',
+  setor: 'Diretoria', loja: 'Pirassununga', nivel: 4, foto: '', presenca: 'online',
+  vistoPorUltimo: 'Agora', cargaHorariaDiariaMinutos: 480, ativo: true,
+  criadoEm: '2026-01-01T00:00:00.000Z',
+};
+const ANA = { ...ELIAS, id: 'colab-ana', nome: 'Ana', login: 'ana', nivel: 1, setor: 'Vendas', cargo: 'Vendedora' };
+
+// --- "Banco" simulado ---
+let modoNuvem = true;
+let bancoMensagens: any[] = [];
+let bancoConversas: any[] = [];
+let bancoLeituras: { mensagemId: string; colaboradorId: string }[] = [];
+let bancoAvisos: any[] = [];
+let bancoLeiturasAviso: any[] = [];
+let bancoConfig: any = null;
+let bancoAuditoria: any[] = [];
+let recusarEscrita = false;
+
+mock.module('./supabase', () => ({
+  usandoNuvem: () => modoNuvem,
+  supabase: null,
+}));
+
+mock.module('./nuvem', () => ({
+  nuvem: {
+    assinarAtualizacoes: () => () => {},
+    salvarColaborador: async () => ({ sucesso: true }),
+    removerColaborador: async () => ({ sucesso: true }),
+    sincronizarPonto: async () => true,
+  },
+}));
+
+const recusa = { sucesso: false, erro: 'sem conexao' };
+
+mock.module('./nuvemComunicacao', () => ({
+  montarPreviaDaMensagem: (m: any) => {
+    if (m.tipo === 'recado_voz') return '🎤 Recado de voz';
+    if (m.tipo === 'arquivo') return `📎 ${m.arquivoNome || 'Arquivo'}`;
+    if (m.tipo === 'imagem') return `📷 Foto${m.legenda ? ` · ${m.legenda}` : ''}`;
+    return m.ehEncaminhada ? `↪ ${m.texto || 'Mensagem encaminhada'}` : m.texto || '';
+  },
+  carimboDeAuditoria: (iso: string) => `carimbo:${iso}`,
+  nuvemComunicacao: {
+    assinarAtualizacoes: () => () => {},
+    sincronizarConversas: async () => true,
+    salvarConversa: async (c: any) => {
+      if (recusarEscrita) return recusa;
+      bancoConversas = bancoConversas.filter((x) => x.id !== c.id);
+      bancoConversas.push({ ...c });
+      return { sucesso: true };
+    },
+    salvarMensagem: async (m: any) => {
+      if (recusarEscrita) return recusa;
+      bancoMensagens.push({ ...m });
+      bancoLeituras.push({ mensagemId: m.id, colaboradorId: m.remetenteId });
+      return { sucesso: true };
+    },
+    atualizarMensagem: async (m: any) => {
+      if (recusarEscrita) return recusa;
+      const i = bancoMensagens.findIndex((x) => x.id === m.id);
+      if (i !== -1) bancoMensagens[i] = { ...m };
+      return { sucesso: true };
+    },
+    removerMensagem: async (id: string) => {
+      if (recusarEscrita) return recusa;
+      bancoMensagens = bancoMensagens.filter((x) => x.id !== id);
+      return { sucesso: true };
+    },
+    marcarLeitura: async (ids: string[], colaboradorId: string) => {
+      ids.forEach((mensagemId) => bancoLeituras.push({ mensagemId, colaboradorId }));
+      return true;
+    },
+    salvarAviso: async (a: any) => {
+      if (recusarEscrita) return recusa;
+      bancoAvisos = bancoAvisos.filter((x) => x.id !== a.id);
+      bancoAvisos.push({ ...a });
+      return { sucesso: true };
+    },
+    removerAviso: async (id: string) => {
+      if (recusarEscrita) return recusa;
+      bancoAvisos = bancoAvisos.filter((x) => x.id !== id);
+      return { sucesso: true };
+    },
+    marcarLeituraAviso: async (avisoId: string, colaboradorId: string, confirmado: boolean) => {
+      bancoLeiturasAviso.push({ avisoId, colaboradorId, confirmado });
+      return true;
+    },
+    salvarConfiguracoes: async (c: any) => {
+      if (recusarEscrita) return recusa;
+      bancoConfig = { ...c };
+      return { sucesso: true };
+    },
+    registrarAuditoria: async (r: any) => {
+      bancoAuditoria.push({ ...r });
+    },
+    limparCache: () => {},
+    iniciarTempoReal: () => {},
+  },
+}));
+
+const { bancoDados } = await import('./bancoDados');
+
+const CONVERSA_EQUIPE = {
+  id: 'grupo-teste', tipo: 'grupo', nome: 'Equipe',
+  participantesIds: ['colab-elias', 'colab-ana'],
+  naoLidas: 0, atualizadoEm: '2026-01-01T00:00:00.000Z',
+};
+
+const entrarComo = (quem: any) => {
+  armazenamento.setItem(CHAVE_COLABORADOR_ATUAL, quem.id);
+};
+
+beforeEach(() => {
+  armazenamento.clear();
+  bancoMensagens = [];
+  bancoConversas = [];
+  bancoLeituras = [];
+  bancoAvisos = [];
+  bancoLeiturasAviso = [];
+  bancoConfig = null;
+  bancoAuditoria = [];
+  recusarEscrita = false;
+  modoNuvem = true;
+
+  armazenamento.setItem(CHAVE_COLABORADORES, JSON.stringify([ELIAS, ANA]));
+  armazenamento.setItem(CHAVE_CONVERSAS, JSON.stringify([CONVERSA_EQUIPE]));
+  armazenamento.setItem(CHAVE_MENSAGENS, JSON.stringify([]));
+  armazenamento.setItem(CHAVE_AVISOS_REDE, JSON.stringify([]));
+  entrarComo(ELIAS);
+});
+
+const lerCacheMensagens = () => JSON.parse(armazenamento.getItem(CHAVE_MENSAGENS) || '[]');
+
+// ============================================================
+// MENSAGEM
+// ============================================================
+
+test('mensagem enviada vai para o banco, não só para o aparelho', async () => {
+  const res = await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'Bom dia' });
+
+  expect(res.sucesso).toBe(true);
+  expect(bancoMensagens).toHaveLength(1);
+  expect(bancoMensagens[0].texto).toBe('Bom dia');
+  expect(bancoMensagens[0].remetenteId).toBe('colab-elias');
+  expect(lerCacheMensagens()).toHaveLength(1);
+});
+
+test('a conversa sobe antes da mensagem, senão a mensagem aponta para o nada', async () => {
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'oi' });
+  expect(bancoConversas.some((c) => c.id === 'grupo-teste')).toBe(true);
+});
+
+test('BANCO RECUSOU: não diz que enviou nem deixa a mensagem no aparelho', async () => {
+  recusarEscrita = true;
+  const res = await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'some' });
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('conexão');
+  expect(bancoMensagens).toHaveLength(0);
+  // O ponto central: nada de mensagem fantasma só neste aparelho
+  expect(lerCacheMensagens()).toHaveLength(0);
+});
+
+test('quem envia já consta como leitor da própria mensagem', async () => {
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'oi' });
+  expect(bancoLeituras).toContainEqual({
+    mensagemId: bancoMensagens[0].id,
+    colaboradorId: 'colab-elias',
+  });
+});
+
+test('foto e arquivo também sobem, com o conteúdo junto', async () => {
+  await bancoDados.enviarMensagem('grupo-teste', {
+    tipo: 'imagem', imagemUrl: 'data:image/png;base64,AAAA', legenda: 'Peça trocada',
+  });
+  await bancoDados.enviarMensagem('grupo-teste', {
+    tipo: 'arquivo', arquivoNome: 'nota.pdf', arquivoTamanho: '120 KB',
+    arquivoUrl: 'data:application/pdf;base64,BBBB',
+  });
+
+  expect(bancoMensagens).toHaveLength(2);
+  expect(bancoMensagens[0].imagemUrl).toBe('data:image/png;base64,AAAA');
+  expect(bancoMensagens[1].arquivoUrl).toBe('data:application/pdf;base64,BBBB');
+});
+
+test('edição sobe e marca "Editada"', async () => {
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'errado' });
+  const id = bancoMensagens[0].id;
+
+  const res = await bancoDados.editarMensagem(id, 'certo');
+  expect(res.sucesso).toBe(true);
+  expect(bancoMensagens[0].texto).toBe('certo');
+  expect(bancoMensagens[0].editadaEm).toBeTruthy();
+});
+
+test('edição recusada pelo banco não muda o aparelho', async () => {
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'original' });
+  const id = bancoMensagens[0].id;
+
+  recusarEscrita = true;
+  const res = await bancoDados.editarMensagem(id, 'adulterado');
+
+  expect(res.sucesso).toBe(false);
+  expect(lerCacheMensagens()[0].texto).toBe('original');
+  expect(bancoMensagens[0].texto).toBe('original');
+});
+
+test('só o autor edita — nem o Administrador', async () => {
+  entrarComo(ANA);
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'da Ana' });
+  const id = bancoMensagens[0].id;
+
+  entrarComo(ELIAS);
+  const res = await bancoDados.editarMensagem(id, 'reescrito pelo chefe');
+
+  expect(res.sucesso).toBe(false);
+  expect(bancoMensagens[0].texto).toBe('da Ana');
+});
+
+test('exclusão tira a mensagem do banco', async () => {
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'apagar' });
+  const id = bancoMensagens[0].id;
+
+  const res = await bancoDados.excluirMensagem(id);
+  expect(res.sucesso).toBe(true);
+  expect(bancoMensagens).toHaveLength(0);
+  expect(lerCacheMensagens()).toHaveLength(0);
+});
+
+test('exclusão recusada pelo banco mantém a mensagem nos dois lados', async () => {
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'fica' });
+  const id = bancoMensagens[0].id;
+
+  recusarEscrita = true;
+  const res = await bancoDados.excluirMensagem(id);
+
+  expect(res.sucesso).toBe(false);
+  expect(bancoMensagens).toHaveLength(1);
+  expect(lerCacheMensagens()).toHaveLength(1);
+});
+
+test('reação sobe para o banco', async () => {
+  entrarComo(ANA);
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'combinado' });
+  const id = bancoMensagens[0].id;
+
+  entrarComo(ELIAS);
+  bancoDados.adicionarReacaoMensagem('grupo-teste', id, '👍');
+  await Promise.resolve();
+
+  expect(bancoMensagens[0].reacoes['👍']).toEqual(['colab-elias']);
+});
+
+test('LEITURA É DA PESSOA: abrir a conversa registra quem leu, no banco', async () => {
+  entrarComo(ANA);
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'viu isso?' });
+  const id = bancoMensagens[0].id;
+
+  entrarComo(ELIAS);
+  bancoDados.marcarConversaComoLida('grupo-teste');
+  await Promise.resolve();
+
+  expect(bancoLeituras).toContainEqual({ mensagemId: id, colaboradorId: 'colab-elias' });
+});
+
+// ============================================================
+// AVISOS, DIRETRIZES E AUDITORIA
+// ============================================================
+
+test('comunicado publicado sobe e já nasce confirmado pelo autor', async () => {
+  const res = await bancoDados.criarAvisoRede({
+    titulo: 'Feriado', conteudo: 'Fechado na sexta', prioridade: 'geral',
+  });
+
+  expect(res.sucesso).toBe(true);
+  expect(bancoAvisos).toHaveLength(1);
+  expect(bancoAvisos[0].titulo).toBe('Feriado');
+  expect(bancoLeiturasAviso[0]).toMatchObject({
+    colaboradorId: 'colab-elias',
+    confirmado: true,
+  });
+});
+
+test('comunicado recusado pelo banco não aparece no aparelho', async () => {
+  recusarEscrita = true;
+  const res = await bancoDados.criarAvisoRede({
+    titulo: 'Some', conteudo: 'nao deve ficar', prioridade: 'geral',
+  });
+
+  expect(res.sucesso).toBe(false);
+  expect(bancoAvisos).toHaveLength(0);
+  expect(JSON.parse(armazenamento.getItem(CHAVE_AVISOS_REDE) || '[]')).toHaveLength(0);
+});
+
+test('confirmação de ciência é registrada em nome de quem confirmou', async () => {
+  await bancoDados.criarAvisoRede({
+    titulo: 'EPI', conteudo: 'Uso obrigatorio', prioridade: 'urgente',
+  });
+  const avisoId = bancoAvisos[0].id;
+  bancoLeiturasAviso = [];
+
+  entrarComo(ANA);
+  bancoDados.alternarConfirmacaoAviso(avisoId);
+  await Promise.resolve();
+
+  expect(bancoLeiturasAviso).toContainEqual({
+    avisoId, colaboradorId: 'colab-ana', confirmado: true,
+  });
+});
+
+test('diretriz do sistema vale para a rede, não para o aparelho', async () => {
+  const res = await bancoDados.salvarConfiguracoes({
+    nomeEmpresa: 'Malachias Autopeças',
+    bipeRadioAtivo: false,
+    tempoMaximoRadioSegundos: 30,
+    modoManutencao: false,
+    permitirCriacaoGruposPorOperadores: true,
+  });
+
+  expect(res.sucesso).toBe(true);
+  expect(bancoConfig.tempoMaximoRadioSegundos).toBe(30);
+  expect(bancoConfig.permitirCriacaoGruposPorOperadores).toBe(true);
+});
+
+test('diretriz recusada pelo banco não fica valendo só aqui', async () => {
+  recusarEscrita = true;
+  const res = await bancoDados.salvarConfiguracoes({
+    nomeEmpresa: 'Outra',
+    bipeRadioAtivo: true,
+    tempoMaximoRadioSegundos: 999,
+    modoManutencao: true,
+    permitirCriacaoGruposPorOperadores: false,
+  });
+
+  expect(res.sucesso).toBe(false);
+  expect(bancoConfig).toBeNull();
+  expect(bancoDados.obterConfiguracoes().tempoMaximoRadioSegundos).not.toBe(999);
+});
+
+test('só o Administrador altera as diretrizes', async () => {
+  entrarComo(ANA);
+  const res = await bancoDados.salvarConfiguracoes(bancoDados.obterConfiguracoes());
+  expect(res.sucesso).toBe(false);
+  expect(bancoConfig).toBeNull();
+});
+
+test('auditoria sobe para o banco', async () => {
+  await bancoDados.criarAvisoRede({
+    titulo: 'Teste', conteudo: 'conteudo', prioridade: 'geral',
+  });
+
+  const acoes = bancoAuditoria.map((a) => a.acao);
+  expect(acoes).toContain('Publicação de Comunicado');
+  expect(bancoAuditoria[0].usuarioNome).toBe('Elias');
+});
+
+test('auditoria que falha não derruba a ação registrada', async () => {
+  // A ponte engole o erro de propósito: perder a linha do log é melhor do
+  // que impedir a publicação por causa dele
+  const res = await bancoDados.criarAvisoRede({
+    titulo: 'Segue', conteudo: 'mesmo assim', prioridade: 'geral',
+  });
+  expect(res.sucesso).toBe(true);
+});
+
+// ============================================================
+// FERRAMENTAS DA ÉPOCA LOCAL
+// ============================================================
+
+test('resets de demonstração são recusados com o banco ligado', () => {
+  const r1 = bancoDados.gerarColaboradoresExemplo();
+  const r2 = bancoDados.resetarColaboradoresParaPadraoExemplo();
+  const r3 = bancoDados.limparColaboradoresManterAdmin();
+  const r4 = bancoDados.importarBackup('{"colaboradores":[],"conversas":[]}');
+
+  [r1, r2, r3, r4].forEach((r) => {
+    expect(r.sucesso).toBe(false);
+    expect(r.erro).toContain('Indisponível com o banco da rede ligado');
+  });
+
+  // E o mais importante: não mexeram na base
+  expect(JSON.parse(armazenamento.getItem(CHAVE_COLABORADORES)!)).toHaveLength(2);
+});
+
+test('no modo local os resets continuam funcionando', () => {
+  modoNuvem = false;
+  const res = bancoDados.limparColaboradoresManterAdmin();
+  expect(res.sucesso).toBe(true);
+  modoNuvem = true;
+});

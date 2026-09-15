@@ -83,8 +83,14 @@ create table if not exists public.mensagens (
   eh_encaminhada    boolean not null default false,
   eh_aviso_direcao  boolean not null default false,
   reacoes           jsonb not null default '{}'::jsonb,
+  -- Preenchido só quando o autor reescreve a mensagem; é o que sustenta o
+  -- selo "Editada" ao lado do horário
+  editada_em        timestamptz,
   criado_em         timestamptz not null default now()
 );
+
+-- A coluna nasceu depois da tabela: quem já rodou este arquivo antes não a tem
+alter table public.mensagens add column if not exists editada_em timestamptz;
 
 create index if not exists mensagens_por_conversa
   on public.mensagens (conversa_id, criado_em);
@@ -307,6 +313,41 @@ drop policy if exists mensagens_edicao on public.mensagens;
 create policy mensagens_edicao on public.mensagens
   for update to authenticated using (public.participo_da_conversa(conversa_id));
 
+-- A política acima precisa liberar o UPDATE para todo participante, porque
+-- REAGIR a uma mensagem altera a linha dela. Só que reagir não é reescrever:
+-- sem o gatilho abaixo, qualquer um da conversa poderia trocar o texto da
+-- fala de outra pessoa pela API, mantendo o nome dela embaixo. O gatilho
+-- deixa passar a reação e barra a troca de texto de quem não é o autor.
+create or replace function public.apenas_autor_reescreve()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if (new.texto is distinct from old.texto)
+     or (new.legenda is distinct from old.legenda)
+     or (new.editada_em is distinct from old.editada_em) then
+    if old.remetente_id is distinct from public.meu_colaborador_id() then
+      raise exception 'Apenas o autor pode editar a propria mensagem';
+    end if;
+  end if;
+
+  -- Remetente, conversa e data de envio não mudam nunca
+  new.id           := old.id;
+  new.conversa_id  := old.conversa_id;
+  new.remetente_id := old.remetente_id;
+  new.criado_em    := old.criado_em;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists mensagens_edicao_somente_autor on public.mensagens;
+create trigger mensagens_edicao_somente_autor
+  before update on public.mensagens
+  for each row execute function public.apenas_autor_reescreve();
+
 drop policy if exists mensagens_remocao on public.mensagens;
 create policy mensagens_remocao on public.mensagens
   for delete to authenticated
@@ -426,7 +467,10 @@ begin
     'avisos_rede',
     'registros_ponto',
     'codigos_ponto_loja',
-    'leituras_mensagem'
+    'leituras_mensagem',
+    'avisos_leitura',
+    'configuracoes',
+    'auditoria'
   ]
   loop
     if not exists (

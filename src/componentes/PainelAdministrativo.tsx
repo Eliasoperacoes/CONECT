@@ -330,16 +330,21 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       exibirToast(`${res.totalAdicionados} colaboradores de demonstração foram adicionados à rede.`);
       recarregar();
     } else {
-      exibirToast('Colaboradores de exemplo já cadastrados na base.');
+      exibirToast(res.erro || 'Colaboradores de exemplo já cadastrados na base.', !!res.erro);
     }
   };
 
   // Limpar mantendo exclusivamente a conta Admin Elias
   const executarResetManterElias = () => {
-    bancoDados.limparColaboradoresManterAdmin();
+    const res = bancoDados.limparColaboradoresManterAdmin();
     setModalResetUsuariosAberto(false);
     recarregar();
-    exibirToast('Base redefinida com sucesso. Apenas o Administrador Elias está ativo no sistema.');
+    exibirToast(
+      res.sucesso
+        ? 'Base redefinida com sucesso. Apenas o Administrador Elias está ativo no sistema.'
+        : res.erro || 'Falha ao redefinir a base.',
+      !res.sucesso
+    );
   };
 
   // Restaurar integralmente os usuários de teste padrão da rede
@@ -347,22 +352,30 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     const res = bancoDados.resetarColaboradoresParaPadraoExemplo();
     setModalResetUsuariosAberto(false);
     recarregar();
-    exibirToast(`Equipe de testes restaurada com sucesso (${res.total} colaboradores na rede).`);
+    exibirToast(
+      res.sucesso
+        ? `Equipe de testes restaurada com sucesso (${res.total} colaboradores na rede).`
+        : res.erro || 'Falha ao restaurar a equipe de testes.',
+      !res.sucesso
+    );
   };
 
   // Confirmar exclusão de comunicado oficial via modal in-app
-  const confirmarExclusaoAviso = () => {
+  const confirmarExclusaoAviso = async () => {
     if (!avisoParaExcluirId) return;
-    bancoDados.removerAviso(avisoParaExcluirId);
+    const res = await bancoDados.removerAviso(avisoParaExcluirId);
     setAvisoParaExcluirId(null);
     recarregar();
-    exibirToast('Comunicado oficial removido da rede.');
+    exibirToast(
+      res.sucesso ? 'Comunicado oficial removido da rede.' : res.erro || 'Falha ao remover.',
+      !res.sucesso
+    );
   };
 
   // Salvar parâmetros do sistema
-  const salvarParametros = (e: React.FormEvent) => {
+  const salvarParametros = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = bancoDados.salvarConfiguracoes(configuracoes);
+    const res = await bancoDados.salvarConfiguracoes(configuracoes);
     if (res.sucesso) {
       exibirToast('Configurações do sistema salvas com sucesso.');
     } else {
@@ -395,9 +408,9 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   };
 
   // Salvar comunicado oficial
-  const salvarComunicado = (e: React.FormEvent) => {
+  const salvarComunicado = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = bancoDados.criarAvisoRede(formAviso);
+    const res = await bancoDados.criarAvisoRede(formAviso);
     if (res.sucesso) {
       exibirToast('Comunicado oficial publicado na rede.');
       setModalAvisoAberto(false);
@@ -434,12 +447,12 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     const leitor = new FileReader();
     leitor.onload = (evento) => {
       const conteudo = evento.target?.result as string;
-      const ok = bancoDados.importarBackup(conteudo);
-      if (ok) {
+      const res = bancoDados.importarBackup(conteudo);
+      if (res.sucesso) {
         exibirToast('Backup importado com sucesso!');
         recarregar();
       } else {
-        exibirToast('Arquivo de backup inválido ou corrompido.', true);
+        exibirToast(res.erro || 'Arquivo de backup inválido ou corrompido.', true);
       }
     };
     leitor.readAsText(arquivo);

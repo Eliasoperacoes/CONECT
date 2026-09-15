@@ -22,6 +22,21 @@ import {
   TipoMarcacao,
 } from '../tipos';
 import { supabase, usandoNuvem, loginParaEmailInterno } from './supabase';
+import { nuvemComunicacao } from './nuvemComunicacao';
+
+/**
+ * Enche o cache de conversa, aviso, configuração e auditoria. Fica aqui e não
+ * dentro da classe porque é a entrada no sistema que dispara isso, e a ponte
+ * de comunicação não precisa saber nada sobre autenticação.
+ */
+const carregarComunicacao = async (): Promise<void> => {
+  await Promise.all([
+    nuvemComunicacao.sincronizarConversas(),
+    nuvemComunicacao.sincronizarAvisos(),
+    nuvemComunicacao.sincronizarConfiguracoes(),
+    nuvemComunicacao.sincronizarAuditoria(),
+  ]);
+};
 
 const CHAVE_COLABORADORES = 'conecta_v4_colaboradores';
 const CHAVE_COLABORADOR_ATUAL = 'conecta_v4_colaborador_atual';
@@ -284,6 +299,7 @@ class PonteNuvem {
     localStorage.setItem(CHAVE_COLABORADOR_ATUAL, colaborador.id);
     await this.sincronizarColaboradores();
     await this.sincronizarPonto();
+    await carregarComunicacao();
 
     return {
       sucesso: true,
@@ -332,8 +348,10 @@ class PonteNuvem {
     if (!supabase) return;
     await supabase.auth.signOut();
     localStorage.removeItem(CHAVE_COLABORADOR_ATUAL);
-    // O ponto é pessoal: o cache não pode sobrar para quem usar o aparelho depois
+    // Ponto e conversa são pessoais: o cache não pode sobrar no aparelho para
+    // quem entrar depois
     localStorage.removeItem(CHAVE_REGISTROS_PONTO);
+    nuvemComunicacao.limparCache();
   }
 
   /** Há uma sessão válida guardada neste aparelho? */
@@ -669,8 +687,10 @@ export const iniciarNuvem = async (): Promise<void> => {
       if (eu) localStorage.setItem(CHAVE_COLABORADOR_ATUAL, eu.id);
       await nuvem.sincronizarColaboradores();
       await nuvem.sincronizarPonto();
+      await carregarComunicacao();
     }
     nuvem.iniciarTempoReal();
+    nuvemComunicacao.iniciarTempoReal();
   } catch (erro) {
     console.error('Falha ao iniciar a conexão com o banco:', erro);
   }

@@ -120,8 +120,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     setTextoEditado('');
   };
 
-  const salvarEdicao = (msgId: string) => {
-    const res = bancoDados.editarMensagem(msgId, textoEditado);
+  const salvarEdicao = async (msgId: string) => {
+    const res = await bancoDados.editarMensagem(msgId, textoEditado);
     if (res.sucesso) {
       cancelarEdicao();
     } else {
@@ -193,16 +193,22 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   }, [conversa.id, colaboradorAtual.id]);
 
   // Envio de mensagem de texto normal
-  const lidarEnvioTexto = (e?: React.FormEvent) => {
+  const lidarEnvioTexto = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const textoLimpo = textoMensagem.trim();
     if (!textoLimpo) return;
 
-    bancoDados.enviarMensagem(conversa.id, {
+    // A caixa esvazia antes da ida ao banco para a digitação não travar. Se o
+    // envio falhar, o texto volta para a caixa em vez de se perder.
+    setTextoMensagem('');
+    const res = await bancoDados.enviarMensagem(conversa.id, {
       tipo: 'texto',
       texto: textoLimpo,
     });
-    setTextoMensagem('');
+    if (!res.sucesso) {
+      setTextoMensagem(textoLimpo);
+      exibirToast(res.erro || 'Não foi possível enviar a mensagem.');
+    }
   };
 
   /**
@@ -226,7 +232,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     if (ehArquivoDeImagem(arquivo)) {
       const imagem = await comprimirImagem(arquivo);
       if (imagem) {
-        const resultado = bancoDados.enviarMensagem(conversa.id, {
+        const resultado = await bancoDados.enviarMensagem(conversa.id, {
           tipo: 'imagem',
           imagemUrl: imagem,
         });
@@ -250,8 +256,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       tamanhoKb > 1024 ? `${(tamanhoKb / 1024).toFixed(1)} MB` : `${tamanhoKb} KB`;
 
     const leitor = new FileReader();
-    leitor.onload = () => {
-      const resultado = bancoDados.enviarMensagem(conversa.id, {
+    leitor.onload = async () => {
+      const resultado = await bancoDados.enviarMensagem(conversa.id, {
         tipo: 'arquivo',
         arquivoNome: arquivo.name,
         arquivoTamanho: tamanhoFormatado,
@@ -358,7 +364,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
         urlAudio = await blobParaDataUrl(resultadoAudio.blob);
       }
 
-      const enviado = bancoDados.enviarMensagem(conversa.id, {
+      const enviado = await bancoDados.enviarMensagem(conversa.id, {
         tipo: 'recado_voz',
         audioUrl: urlAudio,
         audioDuracao: segundosGravados,
@@ -447,12 +453,15 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     setMensagemReagindoId(null);
   };
 
-  const lidarConfirmarFoto = (fotoDataUrl: string, legenda?: string) => {
-    bancoDados.enviarMensagem(conversa.id, {
+  const lidarConfirmarFoto = async (fotoDataUrl: string, legenda?: string) => {
+    const res = await bancoDados.enviarMensagem(conversa.id, {
       tipo: 'imagem',
       imagemUrl: fotoDataUrl,
       legenda: legenda,
     });
+    if (!res.sucesso) {
+      exibirToast(res.erro || 'Não foi possível enviar a foto.');
+    }
   };
 
   // Mensagens filtradas se busca estiver ativa
@@ -1535,8 +1544,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               <button
                 type="button"
                 id="botao-confirmar-exclusao-mensagem"
-                onClick={() => {
-                  const res = bancoDados.excluirMensagem(mensagemParaExcluir.id);
+                onClick={async () => {
+                  const res = await bancoDados.excluirMensagem(mensagemParaExcluir.id);
                   setMensagemParaExcluir(null);
                   exibirToast(res.sucesso ? 'Mensagem apagada.' : res.erro || 'Falha ao apagar.');
                 }}

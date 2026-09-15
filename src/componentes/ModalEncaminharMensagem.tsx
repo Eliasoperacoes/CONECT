@@ -84,12 +84,12 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
     );
   };
 
-  const lidarEncaminhar = () => {
+  const lidarEncaminhar = async () => {
     if (destinosSelecionados.length === 0 || enviando) return;
     setEnviando(true);
 
     try {
-      const res = bancoDados.encaminharMensagens(mensagensIds, destinosSelecionados);
+      const res = await bancoDados.encaminharMensagens(mensagensIds, destinosSelecionados);
       if (res.sucesso) {
         // Nome de exibição para feedback
         let destinoNome = `${destinosSelecionados.length} destinatários`;

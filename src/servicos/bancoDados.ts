@@ -1,11 +1,22 @@
 /**
  * Banco de Dados e Serviços do CONECTA — Malachias Autopeças
- * Persistência local robusta com suporte à autenticação, administração da rede,
- * gestão de pessoas e auditoria.
+ *
+ * No modo rede, TUDO vive no Supabase: pessoas, conversas, mensagens,
+ * leituras, avisos, configurações, auditoria e ponto. O armazenamento do
+ * navegador continua no papel de cache — é o que deixa a leitura instantânea
+ * e segura a oscilação de wi-fi da loja —, mas nada nasce e morre só nele.
+ *
+ * Fica de propósito preso ao aparelho apenas o que É do aparelho: quem está
+ * logado nele e a sugestão de conta do último acesso.
  */
 
 import { usandoNuvem } from './supabase';
 import { nuvem } from './nuvem';
+import {
+  nuvemComunicacao,
+  montarPreviaDaMensagem,
+  carimboDeAuditoria,
+} from './nuvemComunicacao';
 import {
   Colaborador,
   Conversa,
@@ -37,6 +48,15 @@ const CHAVE_ULTIMO_ACESSO_DISPOSITIVO = 'conecta_v4_ultimo_acesso_dispositivo';
 
 // Logo oficial da Malachias Autopeças como padrão de foto de usuário da rede
 export const FOTO_PADRAO_LOGO_EMPRESA = '/logo-malachias.svg';
+
+/**
+ * Resposta das ferramentas de demonstração quando o sistema está ligado ao
+ * banco. Elas mexiam só no armazenamento deste aparelho: rodar uma delas na
+ * rede criaria gente que não existe para o banco e sumiria na sincronização
+ * seguinte — parecendo que o sistema perdeu dados.
+ */
+const RECUSA_MODO_REDE =
+  'Indisponível com o banco da rede ligado. Os dados agora vêm do Supabase, e esta ferramenta só altera este aparelho.';
 
 export const obterFotoColaborador = (colaborador?: { foto?: string } | null): string => {
   if (!colaborador || !colaborador.foto || !colaborador.foto.trim() || colaborador.foto.includes('unsplash.com')) {
@@ -357,6 +377,11 @@ class BancoDadosConecta {
 
   constructor() {
     this.inicializarSeVazio();
+
+    // O que os outros aparelhos mudarem no banco tem que chegar nas telas
+    if (usandoNuvem()) {
+      nuvemComunicacao.assinarAtualizacoes(() => this.notificar());
+    }
   }
 
   // Notifica componentes React sobre alterações no banco
@@ -369,6 +394,22 @@ class BancoDadosConecta {
 
   private notificar(): void {
     this.ouvintes.forEach((o) => o());
+  }
+
+  /**
+   * Empurra conversas para o banco sem segurar a tela. Usado no preparo dos
+   * canais oficiais, que acontece durante a entrada e o cadastro — momentos
+   * em que travar a interface esperando a rede seria pior do que deixar o
+   * envio terminar sozinho. Quem depende da conversa existir no banco (o
+   * envio de mensagem) garante isso por conta própria antes de gravar.
+   */
+  private empurrarConversas(lista: Conversa[]): void {
+    if (!usandoNuvem()) return;
+    lista.forEach((conversa) => {
+      nuvemComunicacao.salvarConversa(conversa).catch(() => {
+        /* o erro já é registrado na ponte */
+      });
+    });
   }
 
   // Inicializa dados no localStorage removendo todos os usuários antigos e mantendo apenas Elias
@@ -749,6 +790,12 @@ class BancoDadosConecta {
       todos[indice].presenca = presenca;
       todos[indice].vistoPorUltimo = presenca === 'disponivel' ? 'Agora' : 'Recente';
       localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(todos));
+
+      // Estar disponível é informação para os colegas: não pode ficar só aqui
+      if (usandoNuvem()) {
+        nuvem.salvarColaborador(todos[indice]).catch(() => {});
+      }
+
       this.notificar();
     }
   }
@@ -1162,7 +1209,15 @@ class BancoDadosConecta {
   }
 
   // Povoar equipe de exemplo para testes no Painel ADM
-  gerarColaboradoresExemplo(): { sucesso: boolean; totalAdicionados: number } {
+  gerarColaboradoresExemplo(): {
+    sucesso: boolean;
+    totalAdicionados: number;
+    erro?: string;
+  } {
+    if (usandoNuvem()) {
+      return { sucesso: false, totalAdicionados: 0, erro: RECUSA_MODO_REDE };
+    }
+
     const colaboradores = this.obterColaboradores();
     const idsNovos: string[] = [];
     let adicionados = 0;
@@ -1201,7 +1256,11 @@ class BancoDadosConecta {
   }
 
   // Restaura integralmente a equipe de testes padrão (Elias + todos os exemplos da rede)
-  resetarColaboradoresParaPadraoExemplo(): { sucesso: boolean; total: number } {
+  resetarColaboradoresParaPadraoExemplo(): { sucesso: boolean; total: number; erro?: string } {
+    if (usandoNuvem()) {
+      return { sucesso: false, total: 0, erro: RECUSA_MODO_REDE };
+    }
+
     const listaCompleta: Colaborador[] = [
       COLABORADOR_ADMIN_ELIAS,
       ...COLABORADORES_EXEMPLO_REDE.map((ex, idx) => ({
@@ -1230,7 +1289,11 @@ class BancoDadosConecta {
   }
 
   // Limpa todos os colaboradores mantendo exclusivamente a conta Admin Elias
-  limparColaboradoresManterAdmin(): { sucesso: boolean } {
+  limparColaboradoresManterAdmin(): { sucesso: boolean; erro?: string } {
+    if (usandoNuvem()) {
+      return { sucesso: false, erro: RECUSA_MODO_REDE };
+    }
+
     localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify([COLABORADOR_ADMIN_ELIAS]));
     localStorage.setItem(CHAVE_COLABORADOR_ATUAL, COLABORADOR_ADMIN_ELIAS.id);
     this.gerarConversasIniciais();
@@ -1351,6 +1414,8 @@ class BancoDadosConecta {
       if (idx !== -1) {
         todasAtualizadas[idx] = c;
         localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(todasAtualizadas));
+        // A inscrição vale para a rede, não só para este aparelho
+        this.empurrarConversas([c]);
       }
     }
 
@@ -1406,6 +1471,7 @@ class BancoDadosConecta {
 
     conversas.push(novaConversa);
     localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
+    this.empurrarConversas([novaConversa]);
     this.notificar();
     return this.formatarConversaParaUsuario(novaConversa, atual.id);
   }
@@ -1463,6 +1529,7 @@ class BancoDadosConecta {
 
     conversas.push(novoGrupo);
     localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
+    this.empurrarConversas([novoGrupo]);
 
     this.registrarAuditoria(
       'Criação de Grupo',
@@ -1602,6 +1669,7 @@ class BancoDadosConecta {
 
     if (houveAlteracao) {
       localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
+      this.empurrarConversas(conversas.filter((c) => c.ehSistemaPadrao));
     }
   }
 
@@ -1641,6 +1709,7 @@ class BancoDadosConecta {
 
     if (houveAlteracao) {
       localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
+      this.empurrarConversas(conversas.filter((c) => c.ehSistemaPadrao));
     }
   }
 
@@ -1690,7 +1759,7 @@ class BancoDadosConecta {
     return conversa.participantesIds.includes(atual.id);
   }
 
-  enviarMensagem(
+  async enviarMensagem(
     conversaId: string,
     conteudo: {
       texto?: string;
@@ -1704,7 +1773,7 @@ class BancoDadosConecta {
       legenda?: string;
       ehEncaminhada?: boolean;
     }
-  ): { sucesso: boolean; mensagem?: Mensagem; erro?: string } {
+  ): Promise<{ sucesso: boolean; mensagem?: Mensagem; erro?: string }> {
     if (!this.podePublicarNaConversa(conversaId)) {
       return { sucesso: false, erro: 'Permissão negada para publicar nesta conversa.' };
     }
@@ -1734,24 +1803,39 @@ class BancoDadosConecta {
       ehAvisoDirecao: conversaId === 'grupo-avisos-da-rede',
     };
 
+    const conversas = this.obterTodasConversas();
+    const indice = conversas.findIndex((c) => c.id === conversaId);
+
+    // No modo rede a mensagem só vale depois de entrar no banco: mandar para
+    // a rede é o objetivo, e uma mensagem que ficou no aparelho não foi
+    // enviada. A conversa sobe antes porque a mensagem aponta para ela.
+    if (usandoNuvem()) {
+      if (indice !== -1) {
+        const resConversa = await nuvemComunicacao.salvarConversa(conversas[indice]);
+        if (!resConversa.sucesso) {
+          return { sucesso: false, erro: 'Falha ao abrir a conversa no banco. Verifique a conexão.' };
+        }
+      }
+
+      const res = await nuvemComunicacao.salvarMensagem(novaMensagem);
+      if (!res.sucesso) {
+        return {
+          sucesso: false,
+          erro: 'Não foi possível enviar. Verifique a conexão e tente de novo.',
+        };
+      }
+    }
+
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
       const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
       todas.push(novaMensagem);
       localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(todas));
 
-      const conversas = this.obterTodasConversas();
-      const indice = conversas.findIndex((c) => c.id === conversaId);
       if (indice !== -1) {
-        let textoPrevia = conteudo.texto || '';
-        if (conteudo.ehEncaminhada) textoPrevia = `↪ ${textoPrevia || 'Mensagem encaminhada'}`;
-        if (conteudo.tipo === 'recado_voz') textoPrevia = '🎤 Recado de voz';
-        if (conteudo.tipo === 'arquivo') textoPrevia = `📎 ${conteudo.arquivoNome || 'Arquivo'}`;
-        if (conteudo.tipo === 'imagem') textoPrevia = `📷 Foto ${conteudo.legenda ? `· ${conteudo.legenda}` : ''}`;
-
         conversas[indice].atualizadoEm = agora.toISOString();
         conversas[indice].ultimaMensagem = {
-          texto: textoPrevia,
+          texto: montarPreviaDaMensagem(novaMensagem),
           hora: horaFormatada,
           remetenteId: atual.id,
           tipo: conteudo.tipo,
@@ -1762,6 +1846,15 @@ class BancoDadosConecta {
       this.notificar();
       return { sucesso: true, mensagem: novaMensagem };
     } catch (erro) {
+      // No modo rede a mensagem já está no banco neste ponto. Se o cache do
+      // aparelho encheu, quem falhou foi o cache — a mensagem foi enviada, e
+      // dizer o contrário faria a pessoa mandar tudo de novo.
+      if (usandoNuvem()) {
+        nuvemComunicacao.sincronizarConversas().catch(() => {});
+        this.notificar();
+        return { sucesso: true, mensagem: novaMensagem };
+      }
+
       // Anexos e recados de voz ocupam espaço; o armazenamento do navegador
       // tem limite e a mensagem de erro precisa dizer o que fazer.
       const nome = erro instanceof Error ? erro.name : '';
@@ -1791,10 +1884,10 @@ class BancoDadosConecta {
   }
 
   /** Reescreve o texto da própria mensagem e marca que ela foi editada. */
-  editarMensagem(
+  async editarMensagem(
     mensagemId: string,
     novoTexto: string
-  ): { sucesso: boolean; erro?: string } {
+  ): Promise<{ sucesso: boolean; erro?: string }> {
     const texto = novoTexto.trim();
     if (!texto) {
       return { sucesso: false, erro: 'A mensagem não pode ficar vazia.' };
@@ -1814,6 +1907,14 @@ class BancoDadosConecta {
       }
 
       todas[indice] = { ...todas[indice], texto, editadaEm: new Date().toISOString() };
+
+      if (usandoNuvem()) {
+        const res = await nuvemComunicacao.atualizarMensagem(todas[indice]);
+        if (!res.sucesso) {
+          return { sucesso: false, erro: 'Falha ao salvar a edição no banco.' };
+        }
+      }
+
       localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(todas));
 
       // Se era a última da conversa, a prévia da lista precisa acompanhar
@@ -1826,7 +1927,7 @@ class BancoDadosConecta {
         const ultima = daConversa[daConversa.length - 1];
         if (ultima && ultima.id === mensagemId) {
           conversas[iConversa].ultimaMensagem = {
-            texto: this.montarPreviaDaMensagem(ultima),
+            texto: montarPreviaDaMensagem(ultima),
             hora: ultima.horaFormatada,
             remetenteId: ultima.remetenteId,
             tipo: ultima.tipo,
@@ -1859,7 +1960,7 @@ class BancoDadosConecta {
    * Apaga uma mensagem e recalcula a prévia da conversa, para a lista não
    * continuar mostrando o texto de algo que não existe mais.
    */
-  excluirMensagem(mensagemId: string): { sucesso: boolean; erro?: string } {
+  async excluirMensagem(mensagemId: string): Promise<{ sucesso: boolean; erro?: string }> {
     const atual = this.obterColaboradorAtual();
 
     try {
@@ -1870,6 +1971,13 @@ class BancoDadosConecta {
       if (!alvo) return { sucesso: false, erro: 'Mensagem não encontrada.' };
       if (!this.podeExcluirMensagem(alvo)) {
         return { sucesso: false, erro: 'Você só pode apagar as próprias mensagens.' };
+      }
+
+      if (usandoNuvem()) {
+        const res = await nuvemComunicacao.removerMensagem(mensagemId);
+        if (!res.sucesso) {
+          return { sucesso: false, erro: 'Falha ao apagar a mensagem no banco.' };
+        }
       }
 
       const restantes = todas.filter((m) => m.id !== mensagemId);
@@ -1886,7 +1994,7 @@ class BancoDadosConecta {
 
         conversas[indice].ultimaMensagem = ultima
           ? {
-              texto: this.montarPreviaDaMensagem(ultima),
+              texto: montarPreviaDaMensagem(ultima),
               hora: ultima.horaFormatada,
               remetenteId: ultima.remetenteId,
               tipo: ultima.tipo,
@@ -1910,13 +2018,6 @@ class BancoDadosConecta {
   }
 
   /** Texto curto da mensagem, como aparece na lista de conversas. */
-  private montarPreviaDaMensagem(m: Mensagem): string {
-    if (m.tipo === 'recado_voz') return '🎤 Recado de voz';
-    if (m.tipo === 'arquivo') return `📎 ${m.arquivoNome || 'Arquivo'}`;
-    if (m.tipo === 'imagem') return `📷 Foto ${m.legenda ? `· ${m.legenda}` : ''}`;
-    return m.ehEncaminhada ? `↪ ${m.texto || 'Mensagem encaminhada'}` : m.texto || '';
-  }
-
   obterMensagemPorId(mensagemId: string): Mensagem | undefined {
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
@@ -1936,6 +2037,7 @@ class BancoDadosConecta {
   marcarConversaComoLida(conversaId: string): void {
     const atual = this.obterColaboradorAtual();
     let houveAlteracao = false;
+    const recemLidas: string[] = [];
 
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
@@ -1949,6 +2051,7 @@ class BancoDadosConecta {
           }
           if (!m.lidaPor.includes(atual.id)) {
             m.lidaPor.push(atual.id);
+            recemLidas.push(m.id);
             houveAlteracao = true;
           }
           // `lida` é o indicador de "visto" mostrado ao remetente
@@ -1962,6 +2065,13 @@ class BancoDadosConecta {
 
       if (houveAlteracao) {
         localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(todas));
+
+        // Abrir a conversa não pode esperar a rede: a marcação sobe sozinha,
+        // e o "visto" aparece para o remetente quando chegar.
+        if (usandoNuvem() && recemLidas.length > 0) {
+          nuvemComunicacao.marcarLeitura(recemLidas, atual.id).catch(() => {});
+        }
+
         this.notificar();
       }
     } catch (err) {
@@ -1970,10 +2080,10 @@ class BancoDadosConecta {
   }
 
   // Encaminha uma ou mais mensagens para conversas de destino selecionadas
-  encaminharMensagens(
+  async encaminharMensagens(
     mensagensIds: string[],
     destinosConversasIds: string[]
-  ): { sucesso: boolean; totalEncaminhadas: number; erro?: string } {
+  ): Promise<{ sucesso: boolean; totalEncaminhadas: number; erro?: string }> {
     if (mensagensIds.length === 0 || destinosConversasIds.length === 0) {
       return { sucesso: false, totalEncaminhadas: 0, erro: 'Selecione mensagens e destinatários.' };
     }
@@ -2000,7 +2110,7 @@ class BancoDadosConecta {
         if (!this.podePublicarNaConversa(destinoId)) continue;
 
         for (const msg of msgsParaEncaminhar) {
-          this.enviarMensagem(destinoId, {
+          const enviado = await this.enviarMensagem(destinoId, {
             texto: msg.texto,
             tipo: msg.tipo,
             audioUrl: msg.audioUrl,
@@ -2012,7 +2122,7 @@ class BancoDadosConecta {
             legenda: msg.legenda,
             ehEncaminhada: true,
           });
-          count++;
+          if (enviado.sucesso) count++;
         }
       }
 
@@ -2048,6 +2158,11 @@ class BancoDadosConecta {
 
         todas[indice].reacoes = reacoes;
         localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(todas));
+
+        if (usandoNuvem()) {
+          nuvemComunicacao.atualizarMensagem(todas[indice]).catch(() => {});
+        }
+
         this.notificar();
       }
     } catch {
@@ -2088,13 +2203,13 @@ class BancoDadosConecta {
     );
   }
 
-  criarAvisoRede(dados: {
+  async criarAvisoRede(dados: {
     titulo: string;
     conteudo: string;
     prioridade: PrioridadeAviso;
     lojaDestino?: Loja | 'Todas';
     fixadoNoTopo?: boolean;
-  }): { sucesso: boolean; aviso?: AvisoRede; erro?: string } {
+  }): Promise<{ sucesso: boolean; aviso?: AvisoRede; erro?: string }> {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel < 2) {
       return { sucesso: false, erro: 'Permissão restrita à gestão e supervisão.' };
@@ -2124,12 +2239,20 @@ class BancoDadosConecta {
       confirmacoesIds: [atual.id],
     };
 
+    if (usandoNuvem()) {
+      const res = await nuvemComunicacao.salvarAviso(novoAviso);
+      if (!res.sucesso) {
+        return { sucesso: false, erro: 'Falha ao publicar o comunicado no banco.' };
+      }
+      await nuvemComunicacao.marcarLeituraAviso(novoAviso.id, atual.id, true);
+    }
+
     const lista = this.obterAvisosRede();
     lista.unshift(novoAviso);
     localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(lista));
 
     // Publica no grupo "Avisos da Rede"
-    this.enviarMensagem('grupo-avisos-da-rede', {
+    await this.enviarMensagem('grupo-avisos-da-rede', {
       tipo: 'texto',
       texto: `📢 [${dados.titulo.trim().toUpperCase()}]\n${dados.conteudo.trim()}`,
     });
@@ -2147,6 +2270,14 @@ class BancoDadosConecta {
       if (!lista[indice].lidoPorIds.includes(atual.id)) {
         lista[indice].lidoPorIds.push(atual.id);
         localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(lista));
+
+        if (usandoNuvem()) {
+          const confirmou = lista[indice].confirmacoesIds.includes(atual.id);
+          nuvemComunicacao
+            .marcarLeituraAviso(avisoId, atual.id, confirmou)
+            .catch(() => {});
+        }
+
         this.notificar();
       }
     }
@@ -2167,6 +2298,13 @@ class BancoDadosConecta {
         lista[indice].lidoPorIds.push(atual.id);
       }
       localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(lista));
+
+      // Confirmar ciência é um ato da pessoa: a linha no banco é dela
+      if (usandoNuvem()) {
+        const confirmou = lista[indice].confirmacoesIds.includes(atual.id);
+        nuvemComunicacao.marcarLeituraAviso(avisoId, atual.id, confirmou).catch(() => {});
+      }
+
       this.notificar();
     }
   }
@@ -2180,11 +2318,16 @@ class BancoDadosConecta {
     if (indice !== -1) {
       lista[indice].fixadoNoTopo = !lista[indice].fixadoNoTopo;
       localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(lista));
+
+      if (usandoNuvem()) {
+        nuvemComunicacao.salvarAviso(lista[indice]).catch(() => {});
+      }
+
       this.notificar();
     }
   }
 
-  removerAviso(avisoId: string): { sucesso: boolean; erro?: string } {
+  async removerAviso(avisoId: string): Promise<{ sucesso: boolean; erro?: string }> {
     const atual = this.obterColaboradorAtual();
     const lista = this.obterAvisosRede();
     const aviso = lista.find((a) => a.id === avisoId);
@@ -2192,6 +2335,13 @@ class BancoDadosConecta {
 
     if (atual.nivel < 3 && aviso.autorId !== atual.id) {
       return { sucesso: false, erro: 'Permissão negada para excluir este aviso.' };
+    }
+
+    if (usandoNuvem()) {
+      const res = await nuvemComunicacao.removerAviso(avisoId);
+      if (!res.sucesso) {
+        return { sucesso: false, erro: 'Falha ao remover o comunicado no banco.' };
+      }
     }
 
     const filtrada = lista.filter((a) => a.id !== avisoId);
@@ -2225,6 +2375,13 @@ class BancoDadosConecta {
     // Quem publicou o aviso não precisa ser avisado do próprio comunicado
     if (ultimoAviso.remetenteId === atual.id) return null;
 
+    // No modo rede quem responde "já vi isso" é a própria leitura da
+    // mensagem, que vale em qualquer aparelho. O mapa local só continua
+    // valendo no modo de demonstração.
+    if (usandoNuvem()) {
+      return ultimoAviso.lidaPor?.includes(atual.id) ? null : ultimoAviso;
+    }
+
     const idJaLido = this.obterMapaAvisosDirecaoLidos()[atual.id];
     if (ultimoAviso.id === idJaLido) return null;
     return ultimoAviso;
@@ -2232,6 +2389,23 @@ class BancoDadosConecta {
 
   marcarAvisoDirecaoComoLido(avisoId: string): void {
     const atual = this.obterColaboradorAtual();
+
+    if (usandoNuvem()) {
+      // Dispensar a faixa é dizer que leu — e isso é da pessoa, não do
+      // aparelho: dispensou no celular, não reaparece no computador.
+      const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+      const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
+      const indice = todas.findIndex((m) => m.id === avisoId);
+      if (indice !== -1) {
+        todas[indice].lidaPor = [...(todas[indice].lidaPor || []), atual.id];
+        todas[indice].lida = true;
+        localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(todas));
+      }
+      nuvemComunicacao.marcarLeitura([avisoId], atual.id).catch(() => {});
+      this.notificar();
+      return;
+    }
+
     const mapa = this.obterMapaAvisosDirecaoLidos();
     mapa[atual.id] = avisoId;
     localStorage.setItem(CHAVE_AVISO_LIDO, JSON.stringify(mapa));
@@ -2249,10 +2423,20 @@ class BancoDadosConecta {
     }
   }
 
-  salvarConfiguracoes(config: ConfiguracaoSistema): { sucesso: boolean; erro?: string } {
+  async salvarConfiguracoes(
+    config: ConfiguracaoSistema
+  ): Promise<{ sucesso: boolean; erro?: string }> {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel < 4) {
       return { sucesso: false, erro: 'Apenas o Administrador de TI altera as diretrizes do sistema.' };
+    }
+
+    // Diretriz que vale para a rede tem que valer para a rede inteira
+    if (usandoNuvem()) {
+      const res = await nuvemComunicacao.salvarConfiguracoes(config);
+      if (!res.sucesso) {
+        return { sucesso: false, erro: 'Falha ao salvar as diretrizes no banco.' };
+      }
     }
 
     localStorage.setItem(CHAVE_CONFIGURACOES, JSON.stringify(config));
@@ -2282,14 +2466,25 @@ class BancoDadosConecta {
     try {
       const atual = this.obterColaboradorAtual();
       const registros = this.obterAuditoria();
+      const agora = new Date().toISOString();
       const novo: RegistroAuditoria = {
         id: `aud-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-        dataHora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        dataHora: carimboDeAuditoria(agora),
         usuarioNome: atual ? atual.nome : 'Sistema',
         acao,
         categoria,
         detalhes,
       };
+
+      // A auditoria sobe sozinha e nunca derruba a ação que ela registra:
+      // travar uma exclusão de mensagem porque o log falhou seria pior do
+      // que perder a linha do log.
+      if (usandoNuvem()) {
+        nuvemComunicacao
+          .registrarAuditoria({ ...novo, dataHora: agora })
+          .catch(() => {});
+      }
+
       registros.unshift(novo);
       // Mantém últimos 100 registros
       if (registros.length > 100) registros.pop();
@@ -2319,13 +2514,20 @@ class BancoDadosConecta {
     return JSON.stringify(dados, null, 2);
   }
 
-  importarBackup(jsonStr: string): boolean {
+  importarBackup(jsonStr: string): { sucesso: boolean; erro?: string } {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < 4) return false;
+    if (atual.nivel < 4) {
+      return { sucesso: false, erro: 'Apenas o Administrador pode importar um backup.' };
+    }
+    if (usandoNuvem()) {
+      return { sucesso: false, erro: RECUSA_MODO_REDE };
+    }
 
     try {
       const dados = JSON.parse(jsonStr);
-      if (!Array.isArray(dados.colaboradores) || !Array.isArray(dados.conversas)) return false;
+      if (!Array.isArray(dados.colaboradores) || !Array.isArray(dados.conversas)) {
+        return { sucesso: false, erro: 'Arquivo de backup inválido ou corrompido.' };
+      }
 
       localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(dados.colaboradores));
       localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(dados.conversas));
@@ -2343,9 +2545,9 @@ class BancoDadosConecta {
 
       this.registrarAuditoria('Restauração de Backup', 'seguranca', 'Backup restaurado com sucesso.');
       this.notificar();
-      return true;
+      return { sucesso: true };
     } catch {
-      return false;
+      return { sucesso: false, erro: 'Arquivo de backup inválido ou corrompido.' };
     }
   }
 

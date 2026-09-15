@@ -64,14 +64,14 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
 
   const podePublicar = colaboradorAtual.nivel === 4;
 
-  const lidarEnviarAviso = (e: React.FormEvent) => {
+  const lidarEnviarAviso = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!titulo.trim() || !conteudo.trim()) {
       setMensagemStatus('Preencha o título e o conteúdo do aviso.');
       return;
     }
 
-    const resultado = bancoDados.criarAvisoRede({
+    const resultado = await bancoDados.criarAvisoRede({
       titulo,
       conteudo,
       prioridade,
@@ -515,8 +515,8 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  bancoDados.removerAviso(avisoParaExcluirId);
+                onClick={async () => {
+                  await bancoDados.removerAviso(avisoParaExcluirId);
                   setAvisoParaExcluirId(null);
                   setMensagemStatus('Comunicado oficial removido.');
                   setTimeout(() => setMensagemStatus(null), 3000);
