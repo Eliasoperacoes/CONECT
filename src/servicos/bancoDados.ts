@@ -1403,6 +1403,39 @@ class BancoDadosConecta {
 
   // Conta as mensagens que ESTE usuário ainda não leu numa conversa.
   // A contagem nunca é gravada: é derivada de `lidaPor`, que é por pessoa.
+  /**
+   * Mensagens que chegaram para o usuário logado e ele ainda não leu, das mais
+   * antigas para as mais novas.
+   *
+   * É o que sustenta o aviso de mensagem nova: a conta de não lidas por
+   * conversa diz QUANTAS, mas para avisar é preciso saber QUAIS — sem os
+   * identificadores não dá para distinguir o que acabou de chegar do que já
+   * estava lá quando o sistema abriu.
+   */
+  obterMensagensPorLer(): Mensagem[] {
+    const atual = this.obterColaboradorAtual();
+    const conversasMinhas = new Set(
+      this.obterTodasConversas()
+        .filter((c) => c.participantesIds.includes(atual.id))
+        .map((c) => c.id)
+    );
+
+    try {
+      const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+      const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
+      return todas
+        .filter(
+          (m) =>
+            conversasMinhas.has(m.conversaId) &&
+            m.remetenteId !== atual.id &&
+            (!m.lidaPor || !m.lidaPor.includes(atual.id))
+        )
+        .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
+    } catch {
+      return [];
+    }
+  }
+
   private contarNaoLidasPara(conversaId: string, usuarioId: string): number {
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);

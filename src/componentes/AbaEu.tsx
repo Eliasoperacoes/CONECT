@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   Bell,
   Moon,
+  BellOff,
   LogOut,
   Users,
   Check,
@@ -14,6 +15,14 @@ import {
 import { Colaborador, EstadoPresenca } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA } from '../servicos/bancoDados';
 import { PreferenciaTema, definirTema, obterTemaSalvo } from '../servicos/tema';
+import {
+  PermissaoAviso,
+  definirSom,
+  pedirPermissaoDeAviso,
+  permissaoDeAviso,
+  somLigado,
+  tocarAvisoDeMensagem,
+} from '../servicos/notificacoes';
 import { FotoPresenca } from './FotoPresenca';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 
@@ -32,6 +41,8 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
 }) => {
   const [somAtivo, setSomAtivo] = useState(true);
   const [temaEscolhido, setTemaEscolhido] = useState<PreferenciaTema>(obterTemaSalvo);
+  const [permissao, setPermissao] = useState<PermissaoAviso>(permissaoDeAviso);
+  const [comSom, setComSom] = useState<boolean>(somLigado);
   const [modalTrocaAberto, setModalTrocaAberto] = useState(false);
   const [modalFotoAberto, setModalFotoAberto] = useState(false);
 
@@ -243,6 +254,73 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
           ))}
         </div>
       </div>
+      {/* 5. Avisos de mensagem */}
+      <div className="mt-4 bg-[var(--c-superficie)] border-y border-[var(--c-borda)]">
+        <div className="px-4 py-2 text-xs font-semibold text-[var(--c-texto-3)] uppercase tracking-wider">
+          Avisos de Mensagem
+        </div>
+
+        <div className="p-3 space-y-2.5">
+          {/* Aviso do sistema: aparece por cima de qualquer programa */}
+          <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-[var(--c-superficie-2)] border border-[var(--c-borda)]">
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-[var(--c-texto)] block">
+                Aviso na tela do computador
+              </span>
+              <span className="text-[11px] text-[var(--c-texto-3)] leading-snug block">
+                {permissao === 'concedida'
+                  ? 'Ligado. Aparece mesmo com o CONECTA atrás de outro programa.'
+                  : permissao === 'negada'
+                  ? 'Bloqueado no navegador. Libere no cadeado ao lado do endereço.'
+                  : permissao === 'indisponivel'
+                  ? 'Este navegador não mostra avisos do sistema.'
+                  : 'Desligado. O som e a contagem no título continuam funcionando.'}
+              </span>
+            </div>
+
+            {permissao === 'nao_perguntada' && (
+              <button
+                type="button"
+                id="botao-ligar-avisos"
+                onClick={async () => setPermissao(await pedirPermissaoDeAviso())}
+                className="flex-shrink-0 py-1.5 px-3 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold cursor-pointer"
+              >
+                Ligar
+              </button>
+            )}
+            {permissao === 'concedida' && (
+              <Bell className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            )}
+            {(permissao === 'negada' || permissao === 'indisponivel') && (
+              <BellOff className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
+            )}
+          </div>
+
+          {/* Som: escolha de quem senta neste aparelho */}
+          <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-[var(--c-superficie-2)] border border-[var(--c-borda)]">
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-[var(--c-texto)] block">
+                Som ao chegar mensagem
+              </span>
+              <span className="text-[11px] text-[var(--c-texto-3)] leading-snug block">
+                Dois toques curtos. Vale só neste aparelho.
+              </span>
+            </div>
+            <input
+              type="checkbox"
+              id="alternar-som-mensagem"
+              checked={comSom}
+              onChange={(e) => {
+                setComSom(e.target.checked);
+                definirSom(e.target.checked);
+                if (e.target.checked) tocarAvisoDeMensagem();
+              }}
+              className="w-5 h-5 rounded flex-shrink-0 cursor-pointer accent-[var(--c-acento)]"
+            />
+          </div>
+        </div>
+      </div>
+
 
       {/* 5. Alternância de Colaborador (Exclusivo para testes do Administrador) */}
       {ehAdmin && (

@@ -547,6 +547,75 @@ test('resets de demonstração são recusados com o banco ligado', () => {
 });
 
 // ============================================================
+// AVISO DE MENSAGEM NOVA
+// ============================================================
+
+test('mensagem por ler: só o que chegou para mim e eu ainda não vi', async () => {
+  entrarComo(ANA);
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'da Ana' });
+
+  entrarComo(ELIAS);
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'minha' });
+
+  const porLer = bancoDados.obterMensagensPorLer();
+
+  // A minha não conta: eu já sei o que escrevi
+  expect(porLer).toHaveLength(1);
+  expect(porLer[0].texto).toBe('da Ana');
+});
+
+test('depois de abrir a conversa, nada fica por ler', async () => {
+  entrarComo(ANA);
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'oi' });
+
+  entrarComo(ELIAS);
+  expect(bancoDados.obterMensagensPorLer()).toHaveLength(1);
+
+  bancoDados.marcarConversaComoLida('grupo-teste');
+  expect(bancoDados.obterMensagensPorLer()).toHaveLength(0);
+});
+
+test('mensagem de conversa que não é minha não me avisa', async () => {
+  // Conversa entre outras duas pessoas, com o Elias fora dela
+  armazenamento.setItem(
+    CHAVE_CONVERSAS,
+    JSON.stringify([
+      CONVERSA_EQUIPE,
+      {
+        id: 'conv-alheia', tipo: 'individual', nome: 'Outra',
+        participantesIds: ['colab-ana', 'colab-terceiro'],
+        naoLidas: 0, atualizadoEm: '2026-01-01T00:00:00.000Z',
+      },
+    ])
+  );
+  armazenamento.setItem(
+    CHAVE_MENSAGENS,
+    JSON.stringify([
+      {
+        id: 'msg-alheia', conversaId: 'conv-alheia', remetenteId: 'colab-ana',
+        tipo: 'texto', texto: 'assunto dos outros',
+        criadoEm: '2026-09-15T09:00:00.000Z', horaFormatada: '09:00', lida: false, lidaPor: [],
+      },
+    ])
+  );
+
+  entrarComo(ELIAS);
+  expect(bancoDados.obterMensagensPorLer()).toHaveLength(0);
+});
+
+test('as mensagens por ler vêm da mais antiga para a mais nova', async () => {
+  entrarComo(ANA);
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'primeira' });
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'segunda' });
+
+  entrarComo(ELIAS);
+  const porLer = bancoDados.obterMensagensPorLer();
+
+  // O aviso mostra a última: se a ordem virasse, avisaria a mensagem errada
+  expect(porLer.map((m) => m.texto)).toEqual(['primeira', 'segunda']);
+});
+
+// ============================================================
 // LIMPEZA DO HISTÓRICO DE CONVERSAS
 // ============================================================
 

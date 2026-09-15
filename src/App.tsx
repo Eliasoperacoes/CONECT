@@ -4,7 +4,7 @@
  * hierarquia Setor x Loja x Nível e responsividade rigorosa (360px até 1920px).
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquare,
   Users,
@@ -38,6 +38,13 @@ import { PainelConversas } from './componentes/PainelConversas';
 import { servicoPonto } from './servicos/ponto';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
+import { montarPreviaDaMensagem } from './servicos/nuvemComunicacao';
+import {
+  atualizarTituloDaAba,
+  janelaEstaVisivel,
+  mostrarAvisoDeMensagem,
+  tocarAvisoDeMensagem,
+} from './servicos/notificacoes';
 
 /** Uma aba da barra inferior. `alvo` troca de aba; `acao` abre um painel. */
 interface ItemNavegacao {
@@ -94,6 +101,53 @@ export default function App() {
     const cancelar = bancoDados.assinarAlteracoes(recarregarDados);
     return () => cancelar();
   }, []);
+
+  /**
+   * Avisa quando chega mensagem nova.
+   *
+   * Guarda quais mensagens já foram vistas nesta sessão, em vez de comparar
+   * contagens: sem os identificadores, abrir o sistema com vinte mensagens
+   * pendentes dispararia vinte avisos de coisas antigas. Na primeira leitura
+   * tudo entra como "já visto" — o aviso vale para o que chega DEPOIS.
+   */
+  const jaAvisadas = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    const porLer = bancoDados.obterMensagensPorLer();
+    atualizarTituloDaAba(porLer.length);
+
+    // Primeira passagem: registra o que já existia, sem avisar
+    if (jaAvisadas.current === null) {
+      jaAvisadas.current = new Set(porLer.map((m) => m.id));
+      return;
+    }
+
+    const novas = porLer.filter((m) => !jaAvisadas.current!.has(m.id));
+    novas.forEach((m) => jaAvisadas.current!.add(m.id));
+    if (novas.length === 0) return;
+
+    // Quem está com a conversa aberta na frente já está vendo chegar
+    const ultima = novas[novas.length - 1];
+    const olhandoEsta =
+      janelaEstaVisivel() &&
+      (conversaAtivaId === ultima.conversaId || conversaFlutuanteId === ultima.conversaId);
+    if (olhandoEsta) return;
+
+    tocarAvisoDeMensagem();
+
+    const conversa = bancoDados.obterConversaPorId(ultima.conversaId);
+    const remetente = bancoDados.obterColaboradorPorId(ultima.remetenteId);
+    const ehGrupo = conversa?.tipo === 'grupo';
+
+    mostrarAvisoDeMensagem({
+      titulo: ehGrupo ? `${conversa?.nome}` : remetente?.nome || 'Nova mensagem',
+      corpo: ehGrupo
+        ? `${remetente?.nome || 'Alguém'}: ${montarPreviaDaMensagem(ultima)}`
+        : montarPreviaDaMensagem(ultima),
+      conversaId: ultima.conversaId,
+      aoClicar: () => setConversaFlutuanteId(ultima.conversaId),
+    });
+  }, [conversasIndividuais, grupos, conversaAtivaId, conversaFlutuanteId]);
 
   // Recupera a sessão do banco antes de decidir o que mostrar
   useEffect(() => {
