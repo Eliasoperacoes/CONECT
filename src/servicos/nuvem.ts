@@ -145,7 +145,15 @@ class PonteNuvem {
 
       if (ativacao.error) {
         const msg = ativacao.error.message.toLowerCase();
-        if (msg.includes('não cadastrado') || msg.includes('nao cadastrado')) {
+
+        // O Supabase mascara a mensagem do gatilho como 'Database error
+        // saving new user'. Nesta tela a causa é sempre a mesma: o gatilho
+        // recusou porque o login não está cadastrado na rede.
+        if (
+          msg.includes('não cadastrado') ||
+          msg.includes('nao cadastrado') ||
+          msg.includes('database error')
+        ) {
           return { sucesso: false, erro: 'Login não cadastrado na rede. Procure o RH.' };
         }
         if (msg.includes('already registered') || msg.includes('already been registered')) {
