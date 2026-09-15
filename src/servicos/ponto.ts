@@ -8,6 +8,13 @@
  *
  * Nenhuma marcação é apagada: correções do RH entram como novo valor no mesmo
  * registro, sempre com justificativa e autoria.
+ *
+ * O BANCO DE HORAS É DA PESSOA, NÃO DO APARELHO. No modo rede as marcações
+ * vivem no banco: quem bate a entrada no celular e a saída no computador tem
+ * um único dia de trabalho, não dois. O armazenamento do navegador segue
+ * servindo de cache para a leitura ser instantânea, mas quem decide é o banco
+ * — inclusive recusando a batida repetida do mesmo passo, pela restrição
+ * `unique (colaborador_id, data, tipo)`.
  */
 
 import {
@@ -24,6 +31,8 @@ import {
   CARGA_HORARIA_PADRAO_MINUTOS,
 } from '../tipos';
 import { bancoDados } from './bancoDados';
+import { nuvem } from './nuvem';
+import { usandoNuvem } from './supabase';
 
 const CHAVE_REGISTROS_PONTO = 'conecta_v4_registros_ponto';
 const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
@@ -126,6 +135,14 @@ const gerarCodigoAleatorio = (): string => {
 class ServicoPonto {
   private ouvintes: Array<() => void> = [];
 
+  constructor() {
+    // Quando o banco traz mudança de outro aparelho, as telas de ponto
+    // precisam saber junto com o resto do sistema.
+    if (usandoNuvem()) {
+      nuvem.assinarAtualizacoes(() => this.notificar());
+    }
+  }
+
   /** Assina mudanças no ponto (marcações e códigos de loja). */
   assinarAlteracoes(ouvinte: () => void): () => void {
     this.ouvintes.push(ouvinte);
@@ -154,11 +171,16 @@ class ServicoPonto {
     localStorage.setItem(CHAVE_CODIGOS_PONTO, JSON.stringify(codigos));
   }
 
-  /** Código da loja, criado na primeira vez que alguém precisa dele. */
-  obterCodigoDaLoja(loja: Loja): CodigoPontoLoja {
+  /**
+   * Código da loja. No modo rede ele vive no banco e é o mesmo em todos os
+   * aparelhos — devolve `null` enquanto o RH não tiver publicado o da loja.
+   * No modo local, nasce na primeira vez que alguém precisa dele.
+   */
+  obterCodigoDaLoja(loja: Loja): CodigoPontoLoja | null {
     const codigos = this.lerCodigos();
     const existente = codigos.find((c) => c.loja === loja);
     if (existente) return existente;
+    if (usandoNuvem()) return null;
 
     const novo: CodigoPontoLoja = {
       loja,
@@ -170,16 +192,47 @@ class ServicoPonto {
     return novo;
   }
 
-  /** Todos os códigos, garantindo que as cinco lojas tenham o seu. */
+  /** Códigos das lojas. No modo rede, apenas os que o banco já publicou. */
   obterTodosCodigos(): CodigoPontoLoja[] {
-    return LOJAS_COM_PONTO.map((loja) => this.obterCodigoDaLoja(loja));
+    return LOJAS_COM_PONTO.map((loja) => this.obterCodigoDaLoja(loja)).filter(
+      (c): c is CodigoPontoLoja => !!c
+    );
+  }
+
+  /**
+   * Publica no banco o código das lojas que ainda não têm um. Só RH e
+   * Administrador conseguem — para os demais a RLS recusa, e é justamente
+   * isso que impede o código do cartaz de ser inventado no aparelho de quem
+   * bate o ponto.
+   */
+  async garantirCodigosDasLojas(): Promise<void> {
+    if (!usandoNuvem()) {
+      this.obterTodosCodigos();
+      return;
+    }
+
+    const publicados = this.lerCodigos();
+    const faltando: CodigoPontoLoja[] = LOJAS_COM_PONTO.filter(
+      (loja) => !publicados.some((c) => c.loja === loja)
+    ).map((loja) => ({
+      loja,
+      codigo: gerarCodigoAleatorio(),
+      atualizadoEm: new Date().toISOString(),
+    }));
+
+    if (faltando.length === 0) return;
+    if (await nuvem.provisionarCodigosPonto(faltando)) {
+      await nuvem.sincronizarPonto();
+    }
   }
 
   /**
    * Gera um código novo para a loja, invalidando o QR anterior. Usado quando o
    * cartaz é fotografado ou alguém passa a bater ponto de fora da loja.
    */
-  regenerarCodigoDaLoja(loja: Loja): { sucesso: boolean; codigo?: CodigoPontoLoja; erro?: string } {
+  async regenerarCodigoDaLoja(
+    loja: Loja
+  ): Promise<{ sucesso: boolean; codigo?: CodigoPontoLoja; erro?: string }> {
     const atual = bancoDados.obterColaboradorAtual();
     if (!this.podeAcessarPainelRH(atual)) {
       return { sucesso: false, erro: 'Apenas RH e Administrador podem gerar um novo código.' };
@@ -192,6 +245,14 @@ class ServicoPonto {
       atualizadoEm: new Date().toISOString(),
       atualizadoPorNome: atual.nome,
     };
+    // O banco primeiro: um código que não subiu não pode valer no cartaz
+    if (usandoNuvem()) {
+      const res = await nuvem.salvarCodigoPonto(novo);
+      if (!res.sucesso) {
+        return { sucesso: false, erro: res.erro || 'Falha ao publicar o código no banco.' };
+      }
+    }
+
     codigos.push(novo);
     this.gravarCodigos(codigos);
 
@@ -204,9 +265,10 @@ class ServicoPonto {
     return { sucesso: true, codigo: novo };
   }
 
-  /** Conteúdo gravado no QR impresso da loja. */
-  montarConteudoQr(loja: Loja): string {
+  /** Conteúdo gravado no QR impresso da loja; null se ainda não há código. */
+  montarConteudoQr(loja: Loja): string | null {
     const codigo = this.obterCodigoDaLoja(loja);
+    if (!codigo) return null;
     return `${PREFIXO_QR}:${loja}:${codigo.codigo}`;
   }
 
@@ -280,15 +342,21 @@ class ServicoPonto {
    * digitado). O tipo não é escolhido pelo funcionário: é sempre o próximo
    * passo pendente da jornada do dia.
    */
-  registrarMarcacaoPorCodigo(
+  async registrarMarcacaoPorCodigo(
     conteudoLido: string
-  ): { sucesso: boolean; registro?: RegistroPonto; erro?: string } {
+  ): Promise<{ sucesso: boolean; registro?: RegistroPonto; erro?: string }> {
     const atual = bancoDados.obterColaboradorAtual();
     if (!bancoDados.estaAutenticado()) {
       return { sucesso: false, erro: 'Sessão expirada. Entre novamente para bater o ponto.' };
     }
     if (!atual.ativo) {
       return { sucesso: false, erro: 'Esta conta está desativada. Procure o RH.' };
+    }
+
+    // A jornada do dia pode ter avançado em outro aparelho. Antes de decidir
+    // qual é a próxima marcação, busca o que o banco já tem.
+    if (usandoNuvem()) {
+      await nuvem.sincronizarPonto();
     }
 
     const resolvido = this.resolverLojaDoCodigo(conteudoLido);
@@ -320,6 +388,26 @@ class ServicoPonto {
       loja: resolvido.loja,
       criadoEm: agora.toISOString(),
     };
+
+    // No modo rede quem confirma a batida é o banco. A restrição de um
+    // registro por passo do dia vale para a pessoa, não para o aparelho:
+    // é ela que impede a batida repetida vinda do celular e do computador.
+    if (usandoNuvem()) {
+      const res = await nuvem.salvarRegistroPonto(registro);
+      if (res.duplicado) {
+        await nuvem.sincronizarPonto();
+        return {
+          sucesso: false,
+          erro: `${ROTULO_MARCACAO[proxima]} já foi registrada hoje, em outro aparelho.`,
+        };
+      }
+      if (!res.sucesso) {
+        return {
+          sucesso: false,
+          erro: 'Não foi possível gravar a marcação. Verifique a conexão e tente de novo.',
+        };
+      }
+    }
 
     const registros = this.lerRegistros();
     registros.push(registro);
@@ -491,13 +579,13 @@ class ServicoPonto {
    * como ajuste, com o nome de quem alterou — nunca se confunde com uma
    * marcação feita pelo próprio funcionário no QR.
    */
-  ajustarMarcacao(dados: {
+  async ajustarMarcacao(dados: {
     colaboradorId: string;
     data: string;
     tipo: TipoMarcacao;
     hora: string; // "HH:MM"
     justificativa: string;
-  }): { sucesso: boolean; registro?: RegistroPonto; erro?: string } {
+  }): Promise<{ sucesso: boolean; registro?: RegistroPonto; erro?: string }> {
     const atual = bancoDados.obterColaboradorAtual();
     if (!this.podeAcessarPainelRH(atual)) {
       return { sucesso: false, erro: 'Apenas RH e Administrador podem ajustar marcações.' };
@@ -509,6 +597,13 @@ class ServicoPonto {
     }
     if (!dados.justificativa.trim()) {
       return { sucesso: false, erro: 'Informe a justificativa do ajuste.' };
+    }
+
+    // Corrigir exige saber o que está gravado agora: se a pessoa bateu o ponto
+    // enquanto o RH tinha a tela aberta, o cache antigo criaria uma segunda
+    // marcação em vez de corrigir a que existe.
+    if (usandoNuvem()) {
+      await nuvem.sincronizarPonto();
     }
 
     const partes = dados.hora.split(':');
@@ -541,6 +636,16 @@ class ServicoPonto {
       justificativa: dados.justificativa.trim(),
     };
 
+    if (usandoNuvem()) {
+      const res = await nuvem.salvarAjustePonto(registroAjustado);
+      if (!res.sucesso) {
+        return {
+          sucesso: false,
+          erro: 'Não foi possível gravar o ajuste no banco. Verifique a conexão.',
+        };
+      }
+    }
+
     if (indice !== -1) {
       registros[indice] = registroAjustado;
     } else {
@@ -558,10 +663,10 @@ class ServicoPonto {
   }
 
   /** Remove uma marcação lançada por engano. Só RH/Administrador. */
-  removerMarcacao(
+  async removerMarcacao(
     registroId: string,
     justificativa: string
-  ): { sucesso: boolean; erro?: string } {
+  ): Promise<{ sucesso: boolean; erro?: string }> {
     const atual = bancoDados.obterColaboradorAtual();
     if (!this.podeAcessarPainelRH(atual)) {
       return { sucesso: false, erro: 'Apenas RH e Administrador podem remover marcações.' };
@@ -575,6 +680,17 @@ class ServicoPonto {
     if (!alvo) return { sucesso: false, erro: 'Marcação não encontrada.' };
 
     const colaborador = bancoDados.obterColaboradorPorId(alvo.colaboradorId);
+
+    if (usandoNuvem()) {
+      const res = await nuvem.removerRegistroPonto(registroId);
+      if (!res.sucesso) {
+        return {
+          sucesso: false,
+          erro: 'Não foi possível remover a marcação no banco. Verifique a conexão.',
+        };
+      }
+    }
+
     this.gravarRegistros(registros.filter((r) => r.id !== registroId));
 
     bancoDados.registrarAuditoria(
@@ -586,7 +702,11 @@ class ServicoPonto {
     return { sucesso: true };
   }
 
-  /** Apaga os registros de um colaborador removido do sistema. */
+  /**
+   * Apaga os registros de um colaborador removido do sistema. No modo rede o
+   * banco já elimina as marcações junto com a ficha (`on delete cascade`);
+   * aqui só resta limpar o cache deste aparelho.
+   */
   removerRegistrosDoColaborador(colaboradorId: string): void {
     const registros = this.lerRegistros();
     const restantes = registros.filter((r) => r.colaboradorId !== colaboradorId);

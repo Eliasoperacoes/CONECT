@@ -11,11 +11,22 @@
  * oscilação de wi-fi da loja, sem reescrever as vinte telas.
  */
 
-import { Colaborador, Loja, NivelHierarquico, Setor } from '../tipos';
+import {
+  Colaborador,
+  CodigoPontoLoja,
+  Loja,
+  MetodoMarcacao,
+  NivelHierarquico,
+  RegistroPonto,
+  Setor,
+  TipoMarcacao,
+} from '../tipos';
 import { supabase, usandoNuvem, loginParaEmailInterno } from './supabase';
 
 const CHAVE_COLABORADORES = 'conecta_v4_colaboradores';
 const CHAVE_COLABORADOR_ATUAL = 'conecta_v4_colaborador_atual';
+const CHAVE_REGISTROS_PONTO = 'conecta_v4_registros_ponto';
+const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
 
 /** Linha da tabela `colaboradores`, como ela vem do banco. */
 interface LinhaColaborador {
@@ -85,6 +96,66 @@ const paraLinha = (c: Colaborador) => ({
   observacoes: c.observacoes ?? null,
   carga_horaria_diaria_minutos: c.cargaHorariaDiariaMinutos ?? 480,
   ativo: c.ativo,
+});
+
+/** Linha da tabela `registros_ponto`, como ela vem do banco. */
+interface LinhaRegistroPonto {
+  id: string;
+  colaborador_id: string;
+  data: string;
+  tipo: string;
+  horario: string;
+  hora_formatada: string;
+  metodo: string;
+  loja: string;
+  ajustado_por_id: string | null;
+  ajustado_por_nome: string | null;
+  justificativa: string | null;
+  criado_em: string;
+}
+
+const paraRegistroPonto = (linha: LinhaRegistroPonto): RegistroPonto => ({
+  id: linha.id,
+  colaboradorId: linha.colaborador_id,
+  data: linha.data,
+  tipo: linha.tipo as TipoMarcacao,
+  horario: linha.horario,
+  horaFormatada: linha.hora_formatada,
+  metodo: linha.metodo as MetodoMarcacao,
+  loja: linha.loja as Loja,
+  criadoEm: linha.criado_em,
+  ajustadoPorId: linha.ajustado_por_id || undefined,
+  ajustadoPorNome: linha.ajustado_por_nome || undefined,
+  justificativa: linha.justificativa || undefined,
+});
+
+const paraLinhaPonto = (r: RegistroPonto) => ({
+  id: r.id,
+  colaborador_id: r.colaboradorId,
+  data: r.data,
+  tipo: r.tipo,
+  horario: r.horario,
+  hora_formatada: r.horaFormatada,
+  metodo: r.metodo,
+  loja: r.loja,
+  ajustado_por_id: r.ajustadoPorId ?? null,
+  ajustado_por_nome: r.ajustadoPorNome ?? null,
+  justificativa: r.justificativa ?? null,
+});
+
+/** Linha da tabela `codigos_ponto_loja`. */
+interface LinhaCodigoPonto {
+  loja: string;
+  codigo: string;
+  atualizado_por_nome: string | null;
+  atualizado_em: string;
+}
+
+const paraCodigoPonto = (linha: LinhaCodigoPonto): CodigoPontoLoja => ({
+  loja: linha.loja as Loja,
+  codigo: linha.codigo,
+  atualizadoEm: linha.atualizado_em,
+  atualizadoPorNome: linha.atualizado_por_nome || undefined,
 });
 
 type Ouvinte = () => void;
@@ -212,6 +283,7 @@ class PonteNuvem {
 
     localStorage.setItem(CHAVE_COLABORADOR_ATUAL, colaborador.id);
     await this.sincronizarColaboradores();
+    await this.sincronizarPonto();
 
     return {
       sucesso: true,
@@ -260,6 +332,8 @@ class PonteNuvem {
     if (!supabase) return;
     await supabase.auth.signOut();
     localStorage.removeItem(CHAVE_COLABORADOR_ATUAL);
+    // O ponto é pessoal: o cache não pode sobrar para quem usar o aparelho depois
+    localStorage.removeItem(CHAVE_REGISTROS_PONTO);
   }
 
   /** Há uma sessão válida guardada neste aparelho? */
@@ -409,6 +483,136 @@ class PonteNuvem {
     return { sucesso: true };
   }
 
+  // --- PONTO ---
+
+  /**
+   * Traz o ponto do banco para o cache. O que cada um enxerga já vem
+   * filtrado pela RLS: o colaborador recebe só as próprias marcações, o RH e
+   * o Administrador recebem a rede inteira.
+   */
+  async sincronizarPonto(): Promise<boolean> {
+    if (!supabase) return false;
+
+    const [registros, codigos] = await Promise.all([
+      supabase.from('registros_ponto').select('*').order('horario'),
+      supabase.from('codigos_ponto_loja').select('*'),
+    ]);
+
+    if (registros.error || !registros.data) {
+      console.error('Falha ao sincronizar o ponto:', registros.error?.message);
+      return false;
+    }
+
+    localStorage.setItem(
+      CHAVE_REGISTROS_PONTO,
+      JSON.stringify((registros.data as LinhaRegistroPonto[]).map(paraRegistroPonto))
+    );
+
+    if (!codigos.error && codigos.data) {
+      localStorage.setItem(
+        CHAVE_CODIGOS_PONTO,
+        JSON.stringify((codigos.data as LinhaCodigoPonto[]).map(paraCodigoPonto))
+      );
+    }
+
+    this.avisar();
+    return true;
+  }
+
+  /**
+   * Grava a marcação no banco. O banco é quem decide se ela vale: a restrição
+   * `unique (colaborador_id, data, tipo)` recusa a segunda batida do mesmo
+   * passo, mesmo que tenha vindo de outro aparelho com o cache atrasado.
+   */
+  async salvarRegistroPonto(
+    registro: RegistroPonto
+  ): Promise<{ sucesso: boolean; erro?: string; duplicado?: boolean }> {
+    if (!supabase) return { sucesso: true };
+
+    const { error } = await supabase.from('registros_ponto').insert(paraLinhaPonto(registro));
+
+    if (error) {
+      if (error.code === '23505') return { sucesso: false, duplicado: true };
+      console.error('Falha ao gravar a marcação no banco:', error.message);
+      return { sucesso: false, erro: error.message };
+    }
+    return { sucesso: true };
+  }
+
+  /** Lança ou corrige a marcação do RH — aqui sobrescrever é o objetivo. */
+  async salvarAjustePonto(
+    registro: RegistroPonto
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+
+    const { error } = await supabase
+      .from('registros_ponto')
+      .upsert(paraLinhaPonto(registro), { onConflict: 'colaborador_id,data,tipo' });
+
+    if (error) {
+      console.error('Falha ao ajustar a marcação no banco:', error.message);
+      return { sucesso: false, erro: error.message };
+    }
+    return { sucesso: true };
+  }
+
+  async removerRegistroPonto(id: string): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+
+    const { error } = await supabase.from('registros_ponto').delete().eq('id', id);
+    if (error) {
+      console.error('Falha ao remover a marcação no banco:', error.message);
+      return { sucesso: false, erro: error.message };
+    }
+    return { sucesso: true };
+  }
+
+  /** Publica o código da loja. Só RH e Administrador passam pela RLS. */
+  async salvarCodigoPonto(
+    codigo: CodigoPontoLoja
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+
+    const { error } = await supabase.from('codigos_ponto_loja').upsert(
+      {
+        loja: codigo.loja,
+        codigo: codigo.codigo,
+        atualizado_por_nome: codigo.atualizadoPorNome ?? null,
+        atualizado_em: codigo.atualizadoEm,
+      },
+      { onConflict: 'loja' }
+    );
+
+    if (error) {
+      console.error('Falha ao gravar o código de ponto no banco:', error.message);
+      return { sucesso: false, erro: error.message };
+    }
+    return { sucesso: true };
+  }
+
+  /**
+   * Cria no banco o código das lojas que ainda não têm um, sem tocar nos que
+   * já existem. Chamado na entrada de quem pode escrever; para os demais a
+   * RLS recusa em silêncio e eles seguem com o que veio do banco.
+   */
+  async provisionarCodigosPonto(
+    codigos: CodigoPontoLoja[]
+  ): Promise<boolean> {
+    if (!supabase || codigos.length === 0) return false;
+
+    const { error } = await supabase.from('codigos_ponto_loja').upsert(
+      codigos.map((c) => ({
+        loja: c.loja,
+        codigo: c.codigo,
+        atualizado_por_nome: c.atualizadoPorNome ?? null,
+        atualizado_em: c.atualizadoEm,
+      })),
+      { onConflict: 'loja', ignoreDuplicates: true }
+    );
+
+    return !error;
+  }
+
   // --- TEMPO REAL ---
 
   /** Ouve o que os outros aparelhos alteram e atualiza o cache. */
@@ -423,6 +627,26 @@ class PonteNuvem {
         { event: '*', schema: 'public', table: 'colaboradores' },
         () => {
           this.sincronizarColaboradores();
+        }
+      )
+      .subscribe();
+
+    // O ponto é o dado que mais depende de chegar igual em todo aparelho:
+    // a batida feita no celular tem que aparecer no computador na hora.
+    supabase
+      .channel('conecta-ponto')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'registros_ponto' },
+        () => {
+          this.sincronizarPonto();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'codigos_ponto_loja' },
+        () => {
+          this.sincronizarPonto();
         }
       )
       .subscribe();
@@ -444,6 +668,7 @@ export const iniciarNuvem = async (): Promise<void> => {
       const eu = await nuvem.obterMeuColaborador();
       if (eu) localStorage.setItem(CHAVE_COLABORADOR_ATUAL, eu.id);
       await nuvem.sincronizarColaboradores();
+      await nuvem.sincronizarPonto();
     }
     nuvem.iniciarTempoReal();
   } catch (erro) {

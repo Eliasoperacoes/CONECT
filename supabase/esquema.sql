@@ -425,6 +425,7 @@ begin
     'colaboradores',
     'avisos_rede',
     'registros_ponto',
+    'codigos_ponto_loja',
     'leituras_mensagem'
   ]
   loop

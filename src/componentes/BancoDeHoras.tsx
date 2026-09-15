@@ -109,20 +109,28 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
 
     let cancelado = false;
     const gerar = async () => {
+      // O código do cartaz é publicado pelo RH e vale para a rede inteira.
+      // Quem bate ponto não cria código nenhum no próprio aparelho.
+      await servicoPonto.garantirCodigosDasLojas();
+
       const gerados = await Promise.all(
         LOJAS_COM_PONTO.map(async (loja) => {
           const conteudo = servicoPonto.montarConteudoQr(loja);
-          const codigo = servicoPonto.obterCodigoDaLoja(loja).codigo;
+          const registroCodigo = servicoPonto.obterCodigoDaLoja(loja);
+          if (!conteudo || !registroCodigo) return null;
+
           const imagem = await QRCode.toDataURL(conteudo, {
             width: 420,
             margin: 1,
             errorCorrectionLevel: 'M',
             color: { dark: '#0E1216', light: '#FFFFFF' },
           });
-          return { loja, codigo, imagem };
+          return { loja, codigo: registroCodigo.codigo, imagem };
         })
       );
-      if (!cancelado) setQrcodes(gerados);
+      if (!cancelado) {
+        setQrcodes(gerados.filter((q): q is NonNullable<typeof q> => !!q));
+      }
     };
 
     gerar().catch(() => exibirToast('Falha ao gerar os QR Codes.', true));
@@ -282,8 +290,8 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
     setTimeout(() => janela.print(), 250);
   };
 
-  const regenerarCodigo = (loja: Loja) => {
-    const res = servicoPonto.regenerarCodigoDaLoja(loja);
+  const regenerarCodigo = async (loja: Loja) => {
+    const res = await servicoPonto.regenerarCodigoDaLoja(loja);
     if (res.sucesso) {
       exibirToast(`Novo código gerado para ${loja}. Reimprima o cartaz.`);
     } else {
@@ -291,11 +299,11 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
     }
   };
 
-  const salvarAjuste = (e: React.FormEvent) => {
+  const salvarAjuste = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ajuste) return;
 
-    const res = servicoPonto.ajustarMarcacao({
+    const res = await servicoPonto.ajustarMarcacao({
       colaboradorId: ajuste.colaboradorId,
       data: ajuste.data,
       tipo: ajuste.tipo,
@@ -311,10 +319,10 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
     }
   };
 
-  const removerMarcacao = (registroId: string) => {
+  const removerMarcacao = async (registroId: string) => {
     const motivo = window.prompt('Justifique a remoção desta marcação:');
     if (motivo === null) return;
-    const res = servicoPonto.removerMarcacao(registroId, motivo);
+    const res = await servicoPonto.removerMarcacao(registroId, motivo);
     if (res.sucesso) {
       exibirToast('Marcação removida.');
     } else {

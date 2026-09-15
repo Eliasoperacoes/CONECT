@@ -69,13 +69,13 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
 
   // Efetiva o registro, tanto pela leitura do QR quanto pelo código digitado
   const confirmarCodigo = useCallback(
-    (conteudo: string) => {
+    async (conteudo: string) => {
       if (refProcessando.current) return;
       refProcessando.current = true;
       setEstado('registrando');
       setErro(null);
 
-      const resultado = servicoPonto.registrarMarcacaoPorCodigo(conteudo);
+      const resultado = await servicoPonto.registrarMarcacaoPorCodigo(conteudo);
 
       if (resultado.sucesso && resultado.registro) {
         encerrarCamera();
