@@ -156,3 +156,13 @@ As regras não confiam na interface: mesmo que alguém chame a API diretamente,
 - nível hierárquico e credenciais continuam exclusivos do Administrador;
 - a auditoria aceita novos registros, mas não permite alterar nem apagar os
   existentes.
+
+### Desligue a confirmação por e-mail
+
+No painel do Supabase, em **Authentication → Sign In / Providers → Email**,
+desligue **Confirm email**.
+
+Os logins do CONECTA usam um domínio interno e fictício (`@conecta.malachias.local`),
+que existe apenas para atender à exigência de e-mail da autenticação. Nenhuma
+mensagem chegaria a esse endereço. Com a confirmação ligada, a ativação do
+acesso trava e o Supabase ainda bate no limite de envio de e-mails.

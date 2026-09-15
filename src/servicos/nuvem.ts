@@ -146,6 +146,17 @@ class PonteNuvem {
       if (ativacao.error) {
         const msg = ativacao.error.message.toLowerCase();
 
+        // A confirmação por e-mail precisa estar desligada no projeto: o
+        // domínio dos logins é interno e nunca receberia a mensagem.
+        if (msg.includes('rate limit') || msg.includes('email')) {
+          return {
+            sucesso: false,
+            erro:
+              'A confirmação por e-mail está ligada no Supabase e precisa ser desativada ' +
+              '(Authentication › Sign In / Providers › Email › Confirm email).',
+          };
+        }
+
         // O Supabase mascara a mensagem do gatilho como 'Database error
         // saving new user'. Nesta tela a causa é sempre a mesma: o gatilho
         // recusou porque o login não está cadastrado na rede.
@@ -175,6 +186,14 @@ class PonteNuvem {
     }
 
     if (error || !data.user) {
+      if (error?.message.toLowerCase().includes('not confirmed')) {
+        return {
+          sucesso: false,
+          erro:
+            'A confirmação por e-mail está ligada no Supabase e precisa ser desativada ' +
+            '(Authentication › Sign In / Providers › Email › Confirm email).',
+        };
+      }
       return { sucesso: false, erro: 'Login ou senha incorretos.' };
     }
 
