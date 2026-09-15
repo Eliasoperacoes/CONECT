@@ -16,6 +16,7 @@ import {
   SETORES,
   INFORMACOES_LOJAS,
   CARGA_HORARIA_PADRAO_MINUTOS,
+  CARGOS_SUGERIDOS,
 } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 
@@ -178,8 +179,17 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                 value={form.cargo}
                 onChange={(e) => setForm({ ...form, cargo: e.target.value })}
                 placeholder="Ex: Balconista"
+                list="cargos-sugeridos"
                 className={campo}
               />
+              {/* Sugestão, não restrição: cargo novo continua podendo ser
+                  digitado. A lista existe para a mesma função não virar três
+                  grafias diferentes nos filtros. */}
+              <datalist id="cargos-sugeridos">
+                {CARGOS_SUGERIDOS.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
             </div>
             <div>
               <label htmlFor="cad-matricula" className={rotuloCampo}>

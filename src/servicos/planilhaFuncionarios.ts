@@ -121,6 +121,63 @@ function comChavesNormalizadas<T>(mapa: Record<string, T>): Record<string, T> {
   return saida;
 }
 
+/**
+ * Níveis aceitos na planilha, por correspondência EXATA.
+ *
+ * Antes a busca era por trecho contido, e isso escondia uma armadilha séria:
+ * "Administrativo" contém "admin" e contém "ti" — quem escrevesse o cargo na
+ * coluna de nível viraria TI, o nível mais alto, sem nenhum aviso. Um erro de
+ * preenchimento não pode virar acesso total em silêncio.
+ *
+ * O preço é que grafia fora desta lista entra como Colaborador e a linha traz
+ * um aviso na conferência. É o lado certo para errar.
+ */
+const NIVEIS_PADRAO: Record<string, NivelHierarquico> = {
+  '1': 1,
+  colaborador: 1,
+  operador: 1,
+  '2': 2,
+  lider: 2,
+  'lider de setor': 2,
+  'liderdesetor': 2,
+  supervisor: 2,
+  '3': 3,
+  gerente: 3,
+  gestor: 3,
+  '4': 4,
+  diretoria: 4,
+  diretor: 4,
+  '5': 5,
+  ti: 5,
+  administrador: 5,
+  'administrador geral': 5,
+};
+
+const NIVEIS_RECONHECIDOS = comChavesNormalizadas(NIVEIS_PADRAO);
+
+/**
+ * Lê o nível escrito na planilha. Devolve o aviso junto porque quem confere a
+ * carga precisa ver o que o sistema NÃO entendeu — grafia fora da lista entra
+ * como Colaborador, e entrar calado esconderia a linha de quem vai revisar.
+ */
+export function resolverNivelDaPlanilha(valor: string): {
+  nivel: NivelHierarquico;
+  aviso?: string;
+} {
+  const chave = normalizarChave(String(valor ?? ''));
+  const reconhecido = NIVEIS_RECONHECIDOS[chave];
+
+  if (reconhecido !== undefined) return { nivel: reconhecido };
+  if (!chave) return { nivel: NIVEL_COLABORADOR };
+
+  return {
+    nivel: NIVEL_COLABORADOR,
+    aviso:
+      `Nível "${String(valor).trim()}" não é um dos cinco da rede — entra como Colaborador (1). ` +
+      'Use o número ou o nome: Colaborador, Líder de Setor, Gerente, Diretoria, TI.',
+  };
+}
+
 const LOJAS_RECONHECIDAS = comChavesNormalizadas(LOJAS_PADRAO);
 const SETORES_RECONHECIDOS = comChavesNormalizadas(SETORES_PADRAO);
 
@@ -257,7 +314,7 @@ export function baixarPlanilhaModeloExcel(): void {
     ['Nome Completo', 'Obrigatório. Nome e sobrenome do funcionário.'],
     ['Login de Acesso', 'Obrigatório e único na rede. Use apenas letras sem acento, números, ponto, hífen ou sublinhado. Sem espaços, sem cedilha e sem acento — ex: "joao.silva". Se ficar em branco, o sistema gera a partir do nome.'],
     ['Senha', `NÃO vai na planilha. Todo colaborador entra pela primeira vez com a senha padrão "${SENHA_PADRAO_PRIMEIRO_ACESSO}" e o sistema obriga a criar a senha dele em seguida.`],
-    ['Cargo / Função', 'Obrigatório. Cargo da função (ex: Balconista, Gerente, Estoquista, Caixa).'],
+    ['Cargo / Função', 'Obrigatório. A função da pessoa — NÃO define o nível de acesso, que vai na coluna própria. Cargos usados na rede: Administrativo, Balconista, Caixa, Comprador(a), Conferente, Estagiário(a), Estoquista, Motoboy, Operador(a) de Caixa, Telefonista, Vendedor(a). Outro cargo pode ser escrito à vontade.'],
     ['Loja / Filial', 'Obrigatório. Escolha uma das 5 unidades: Pirassununga, Porto Ferreira, Palmeiras, Descalvado, Santa Rita ou Rede.'],
     ['Setor', 'Obrigatório: Balcão, Estoque, Caixas, Compras, Garantia, Callcenter, Tesouraria, RH, Diretoria ou TI.'],
     ['Nível de Acesso', '1 = Colaborador/Operador (acesso básico às suas conversas e funções diárias)\n2 = Supervisor\n3 = Gestor da Unidade\n4 = Administrador Geral (Total acesso ao painel de controle).'],
@@ -520,25 +577,9 @@ export async function processarArquivoPlanilha(
      * mais baixo: "líder de setor" contém "setor", e "diretoria" contém
      * "diretor" — testar do menor para o maior classificaria errado.
      */
-    let nivelResolvido: NivelHierarquico = NIVEL_COLABORADOR;
-    const nivelNorm = String(nivelBruto).toLowerCase().trim();
-
-    if (nivelNorm === '5' || nivelNorm.includes('ti') || nivelNorm.includes('admin')) {
-      nivelResolvido = NIVEL_TI;
-    } else if (nivelNorm === '4' || nivelNorm.includes('diretor')) {
-      nivelResolvido = NIVEL_DIRETORIA;
-    } else if (nivelNorm === '3' || nivelNorm.includes('gerente') || nivelNorm.includes('gestor')) {
-      nivelResolvido = NIVEL_GERENTE;
-    } else if (
-      nivelNorm === '2' ||
-      nivelNorm.includes('lider') ||
-      nivelNorm.includes('líder') ||
-      nivelNorm.includes('supervisor')
-    ) {
-      nivelResolvido = NIVEL_LIDER_SETOR;
-    } else {
-      nivelResolvido = NIVEL_COLABORADOR;
-    }
+    const nivelLido = resolverNivelDaPlanilha(String(nivelBruto));
+    const nivelResolvido = nivelLido.nivel;
+    if (nivelLido.aviso) avisos.push(nivelLido.aviso);
 
     /**
      * CNPJ é opcional — planilhas antigas não têm a coluna e continuam

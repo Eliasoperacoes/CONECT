@@ -72,6 +72,30 @@ export const DESCRICAO_NIVEL: Record<NivelHierarquico, string> = {
 export const NIVEIS_EM_ORDEM: NivelHierarquico[] = [1, 2, 3, 4, 5];
 
 /**
+ * Cargos usados na rede, para sugerir no cadastro e manter a grafia igual.
+ *
+ * O campo continua aceitando qualquer texto: a lista existe para evitar que a
+ * mesma função apareça como "Balconista", "balconista" e "Balconista(a)" nos
+ * filtros e relatórios, não para proibir um cargo novo.
+ *
+ * CARGO NÃO DEFINE NÍVEL. Todos abaixo são de gente de nível 1; quem responde
+ * por equipe recebe o nível à parte, no campo próprio.
+ */
+export const CARGOS_SUGERIDOS: string[] = [
+  'Administrativo',
+  'Balconista',
+  'Caixa',
+  'Comprador(a)',
+  'Conferente',
+  'Estagiário(a)',
+  'Estoquista',
+  'Motoboy',
+  'Operador(a) de Caixa',
+  'Telefonista',
+  'Vendedor(a)',
+];
+
+/**
  * Quem cuida de pessoas: RH, Diretoria e TI. É a permissão que abre o
  * cadastro de colaborador e o ajuste de ponto dos outros.
  */
