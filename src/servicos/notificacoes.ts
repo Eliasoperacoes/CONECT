@@ -69,9 +69,53 @@ export const definirSom = (ligado: boolean): void => {
   }
 };
 
+// --- Trabalhador de segundo plano ---
+
+let registro: ServiceWorkerRegistration | null = null;
+
+/**
+ * Registra o trabalhador que mostra o aviso.
+ *
+ * No Android o navegador RECUSA `new Notification(...)` — lá o aviso só sai
+ * por um trabalhador. É por isso que o celular ficava mudo mesmo com tudo o
+ * mais certo. No computador ele também é usado, porque o aviso sobrevive à
+ * aba ser trocada.
+ */
+export const prepararAvisos = async (): Promise<void> => {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+
+  try {
+    registro = await navigator.serviceWorker.register('/sw-avisos.js');
+    await navigator.serviceWorker.ready;
+  } catch (erro) {
+    console.error('Falha ao preparar os avisos:', erro);
+  }
+};
+
 // --- Som ---
 
 let contexto: AudioContext | null = null;
+
+/**
+ * Cria o som na primeira vez que a pessoa toca na tela.
+ *
+ * O navegador só libera áudio depois de um gesto, e o aviso de mensagem
+ * nunca é um gesto — chega sozinho. Sem preparar antes, o primeiro aviso
+ * (e às vezes todos) sai mudo.
+ */
+export const prepararSom = (): void => {
+  if (typeof window === 'undefined' || contexto) return;
+
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    contexto = new Ctx();
+    if (contexto.state === 'suspended') contexto.resume();
+  } catch {
+    contexto = null;
+  }
+};
 
 /**
  * Dois toques curtos, agudos e baixos. Precisa ser reconhecível no meio do
@@ -127,31 +171,80 @@ export const atualizarTituloDaAba = (naoLidas: number): void => {
  * anterior da mesma conversa em vez de empilhar: dez mensagens seguidas de
  * uma pessoa viram um aviso atualizado, não dez pilhas na tela.
  */
-export const mostrarAvisoDeMensagem = (dados: {
+export const mostrarAvisoDeMensagem = async (dados: {
   titulo: string;
   corpo: string;
   conversaId: string;
   aoClicar?: () => void;
-}): void => {
+}): Promise<void> => {
   if (permissaoDeAviso() !== 'concedida') return;
 
-  try {
-    const aviso = new Notification(dados.titulo, {
-      body: dados.corpo,
-      tag: `conecta-${dados.conversaId}`,
-      icon: '/logo-malachias.svg',
-      badge: '/logo-malachias.svg',
-    });
+  const opcoes: NotificationOptions = {
+    body: dados.corpo,
+    tag: `conecta-${dados.conversaId}`,
+    icon: '/logo-malachias.svg',
+    badge: '/logo-malachias.svg',
+  };
 
+  // Caminho do trabalhador primeiro: é o único que o Android aceita, e no
+  // computador funciona igual.
+  try {
+    const pronto = registro || (await navigator.serviceWorker?.getRegistration());
+    if (pronto) {
+      await pronto.showNotification(dados.titulo, opcoes);
+      return;
+    }
+  } catch (erro) {
+    console.error('Aviso pelo trabalhador falhou:', erro);
+  }
+
+  try {
+    const aviso = new Notification(dados.titulo, opcoes);
     aviso.onclick = () => {
       window.focus();
       dados.aoClicar?.();
       aviso.close();
     };
-  } catch {
-    // Alguns navegadores recusam avisos fora de um trabalhador de segundo
-    // plano; o título e o som continuam avisando
+  } catch (erro) {
+    console.error('Aviso direto falhou:', erro);
   }
+};
+
+/**
+ * Dispara os três avisos de uma vez, para a pessoa conferir se estão
+ * funcionando sem precisar pedir para alguém mandar mensagem — e para
+ * descobrir QUAL deles está travado, em vez de "não apareceu nada".
+ */
+export const testarAvisos = async (): Promise<{
+  som: boolean;
+  aviso: boolean;
+  motivo?: string;
+}> => {
+  prepararSom();
+  tocarAvisoDeMensagem();
+  const som = somLigado() && !!contexto;
+
+  const permissao = permissaoDeAviso();
+  if (permissao !== 'concedida') {
+    return {
+      som,
+      aviso: false,
+      motivo:
+        permissao === 'negada'
+          ? 'Os avisos estão bloqueados no navegador. Libere no cadeado ao lado do endereço.'
+          : permissao === 'indisponivel'
+          ? 'Este navegador não mostra avisos do sistema.'
+          : 'Toque em "Ligar" para autorizar os avisos.',
+    };
+  }
+
+  await mostrarAvisoDeMensagem({
+    titulo: 'CONECTA — teste',
+    corpo: 'Se você está lendo isto, os avisos estão funcionando.',
+    conversaId: 'teste',
+  });
+
+  return { som, aviso: true };
 };
 
 /** A janela está à vista? Quem está olhando a conversa não precisa de aviso. */

@@ -43,6 +43,8 @@ import {
   atualizarTituloDaAba,
   janelaEstaVisivel,
   mostrarAvisoDeMensagem,
+  prepararAvisos,
+  prepararSom,
   tocarAvisoDeMensagem,
 } from './servicos/notificacoes';
 
@@ -100,6 +102,27 @@ export default function App() {
     recarregarDados();
     const cancelar = bancoDados.assinarAlteracoes(recarregarDados);
     return () => cancelar();
+  }, []);
+
+  /**
+   * Prepara os avisos: o trabalhador de segundo plano na abertura, e o som no
+   * primeiro toque na tela.
+   *
+   * O som precisa do gesto porque o navegador só libera áudio depois de um —
+   * e a mensagem que chega não é gesto nenhum. Sem isto, o primeiro aviso sai
+   * mudo, que foi o que aconteceu.
+   */
+  useEffect(() => {
+    prepararAvisos();
+
+    const aoPrimeiroToque = () => prepararSom();
+    window.addEventListener('pointerdown', aoPrimeiroToque, { once: true });
+    window.addEventListener('keydown', aoPrimeiroToque, { once: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', aoPrimeiroToque);
+      window.removeEventListener('keydown', aoPrimeiroToque);
+    };
   }, []);
 
   /**

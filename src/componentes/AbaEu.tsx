@@ -20,7 +20,9 @@ import {
   definirSom,
   pedirPermissaoDeAviso,
   permissaoDeAviso,
+  prepararSom,
   somLigado,
+  testarAvisos,
   tocarAvisoDeMensagem,
 } from '../servicos/notificacoes';
 import { FotoPresenca } from './FotoPresenca';
@@ -43,6 +45,7 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
   const [temaEscolhido, setTemaEscolhido] = useState<PreferenciaTema>(obterTemaSalvo);
   const [permissao, setPermissao] = useState<PermissaoAviso>(permissaoDeAviso);
   const [comSom, setComSom] = useState<boolean>(somLigado);
+  const [resultadoTeste, setResultadoTeste] = useState<string | null>(null);
   const [modalTrocaAberto, setModalTrocaAberto] = useState(false);
   const [modalFotoAberto, setModalFotoAberto] = useState(false);
 
@@ -313,11 +316,41 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
               onChange={(e) => {
                 setComSom(e.target.checked);
                 definirSom(e.target.checked);
-                if (e.target.checked) tocarAvisoDeMensagem();
+                if (e.target.checked) {
+                  prepararSom();
+                  tocarAvisoDeMensagem();
+                }
               }}
               className="w-5 h-5 rounded flex-shrink-0 cursor-pointer accent-[var(--c-acento)]"
             />
           </div>
+
+          {/* Testar não é enfeite: "não apareceu nada" não diz se travou na
+              permissão, no som ou na chegada da mensagem. Aqui dá para
+              descobrir sem depender de alguém mandar mensagem. */}
+          <button
+            type="button"
+            id="botao-testar-avisos"
+            onClick={async () => {
+              setResultadoTeste('Testando…');
+              const r = await testarAvisos();
+              setPermissao(permissaoDeAviso());
+              setResultadoTeste(
+                r.motivo
+                  ? `${r.som ? 'Som tocou. ' : 'Som não tocou. '}${r.motivo}`
+                  : `${r.som ? 'Som tocou' : 'Som desligado'} e o aviso foi enviado. Se ele não apareceu na tela, o bloqueio é do sistema operacional.`
+              );
+            }}
+            className="w-full py-2 rounded-lg border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)] transition-colors cursor-pointer"
+          >
+            Testar avisos agora
+          </button>
+
+          {resultadoTeste && (
+            <p className="text-[11px] text-[var(--c-texto-3)] leading-snug px-1">
+              {resultadoTeste}
+            </p>
+          )}
         </div>
       </div>
 
