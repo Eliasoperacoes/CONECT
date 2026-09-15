@@ -73,6 +73,18 @@ mock.module('./nuvemComunicacao', () => ({
     sincronizarConversas: async () => true,
     salvarConversa: async (c: any) => {
       if (recusarEscrita) return recusa;
+
+      // participantes.colaborador_id aponta para colaboradores(id): id que
+      // não existe derruba a gravação inteira, como no banco de verdade
+      const conhecidos = ['colab-elias', 'colab-ana'];
+      const fantasma = (c.participantesIds as string[]).find((id) => !conhecidos.includes(id));
+      if (fantasma) {
+        return {
+          sucesso: false,
+          erro: `insert or update on table "participantes" violates foreign key constraint (${fantasma})`,
+        };
+      }
+
       bancoConversas = bancoConversas.filter((x) => x.id !== c.id);
       bancoConversas.push({ ...c });
       return { sucesso: true };
@@ -178,12 +190,41 @@ test('a conversa sobe antes da mensagem, senão a mensagem aponta para o nada', 
   expect(bancoConversas.some((c) => c.id === 'grupo-teste')).toBe(true);
 });
 
+test('PARTICIPANTE FANTASMA: id que o banco não conhece não derruba a conversa', async () => {
+  // O administrador fixo do modo de demonstração não existe no banco, mas o
+  // preparo dos canais o inscrevia em todos eles
+  armazenamento.setItem(
+    CHAVE_CONVERSAS,
+    JSON.stringify([
+      {
+        ...CONVERSA_EQUIPE,
+        participantesIds: ['colab-elias', 'colab-ana', 'colab-admin-elias'],
+      },
+    ])
+  );
+
+  const res = await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'oi' });
+
+  expect(res.sucesso).toBe(true);
+  expect(bancoConversas[0].participantesIds).toEqual(['colab-elias', 'colab-ana']);
+  expect(bancoMensagens).toHaveLength(1);
+});
+
+test('quando o banco recusa, a tela mostra o motivo que ele deu', async () => {
+  recusarEscrita = true;
+  const res = await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'oi' });
+
+  expect(res.sucesso).toBe(false);
+  // Antes dizia "verifique a conexão", mandando olhar para o lugar errado
+  expect(res.erro).toContain('sem conexao');
+});
+
 test('BANCO RECUSOU: não diz que enviou nem deixa a mensagem no aparelho', async () => {
   recusarEscrita = true;
   const res = await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'some' });
 
   expect(res.sucesso).toBe(false);
-  expect(res.erro).toContain('conexão');
+  expect(res.erro?.toLowerCase()).toContain('não foi possível');
   expect(bancoMensagens).toHaveLength(0);
   // O ponto central: nada de mensagem fantasma só neste aparelho
   expect(lerCacheMensagens()).toHaveLength(0);

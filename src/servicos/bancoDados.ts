@@ -408,9 +408,34 @@ class BancoDadosConecta {
 
     Promise.all(
       lista.map((conversa) =>
-        nuvemComunicacao.salvarConversa(conversa).catch(() => ({ sucesso: false }))
+        nuvemComunicacao
+          .salvarConversa(this.comParticipantesQueExistem(conversa))
+          .catch(() => ({ sucesso: false }))
       )
-    ).then(() => this.recarregarConversasEmBreve());
+    ).then((resultados) => {
+      // Recarregar troca o cache pela visão do banco. Fazer isso depois de
+      // uma gravação que falhou apagaria da tela a conversa que acabou de ser
+      // aberta — ela sumiria no meio do uso, sem explicação.
+      if (resultados.every((r) => r.sucesso)) {
+        this.recarregarConversasEmBreve();
+      }
+    });
+  }
+
+  /**
+   * Tira da conversa quem não está na lista de colaboradores.
+   *
+   * `participantes.colaborador_id` aponta para `colaboradores(id)`: um id que
+   * não existe derruba a gravação inteira, não só aquela linha — e o sintoma
+   * que aparece na tela é "falha ao abrir a conversa", que não diz nada sobre
+   * a causa. Melhor inscrever quem existe do que perder a conversa toda.
+   */
+  private comParticipantesQueExistem(conversa: Conversa): Conversa {
+    const conhecidos = new Set(this.obterColaboradores().map((c) => c.id));
+    const participantesIds = conversa.participantesIds.filter((id) => conhecidos.has(id));
+
+    if (participantesIds.length === conversa.participantesIds.length) return conversa;
+    return { ...conversa, participantesIds };
   }
 
   /**
@@ -569,7 +594,7 @@ class BancoDadosConecta {
       const membrosLoja = colaboradores
         .filter((c) => c.loja === def.loja || c.nivel >= 3 || c.id === adminId)
         .map((c) => c.id);
-      if (!membrosLoja.includes(adminId)) membrosLoja.push(adminId);
+      if (adminId && !membrosLoja.includes(adminId)) membrosLoja.push(adminId);
 
       conversasIniciais.push({
         id: def.id,
@@ -605,7 +630,7 @@ class BancoDadosConecta {
     const membrosTI = colaboradores
       .filter((c) => c.setor === 'TI' || c.nivel >= 3 || c.id === adminId)
       .map((c) => c.id);
-    if (!membrosTI.includes(adminId)) membrosTI.push(adminId);
+    if (adminId && !membrosTI.includes(adminId)) membrosTI.push(adminId);
 
     conversasIniciais.push({
       id: 'grupo-setor-ti-rede',
@@ -1564,13 +1589,27 @@ class BancoDadosConecta {
   garantirCanaisTodasLojas(): void {
     const conversas = this.obterTodasConversas();
     const todosColabs = this.obterColaboradores();
-    const adminId = COLABORADOR_ADMIN_ELIAS.id;
+
+    /**
+     * O administrador dos canais precisa ser uma pessoa que EXISTE na lista.
+     *
+     * O `COLABORADOR_ADMIN_ELIAS` é uma ficha fixa do modo de demonstração.
+     * No banco, o id de cada colaborador nasce do gatilho de cadastro
+     * ('colab-' + o id da autenticação), então aquela ficha fixa não existe
+     * lá. Inscrevê-la num canal quebrava a chave estrangeira de
+     * `participantes` e derrubava a gravação da conversa inteira.
+     */
+    const adminId =
+      todosColabs.find((c) => c.id === COLABORADOR_ADMIN_ELIAS.id)?.id ||
+      todosColabs.find((c) => c.nivel === 4)?.id ||
+      todosColabs[0]?.id;
+
     let houveAlteracao = false;
 
     // 1. Avisos da Rede
     let grupoAvisos = conversas.find((c) => c.id === 'grupo-avisos-da-rede');
     const todosIds = todosColabs.map((c) => c.id);
-    if (!todosIds.includes(adminId)) todosIds.push(adminId);
+    if (adminId && !todosIds.includes(adminId)) todosIds.push(adminId);
 
     if (!grupoAvisos) {
       grupoAvisos = {
@@ -1606,7 +1645,7 @@ class BancoDadosConecta {
       const membrosLoja = todosColabs
         .filter((c) => c.loja === def.loja || c.nivel >= 3 || c.id === adminId)
         .map((c) => c.id);
-      if (!membrosLoja.includes(adminId)) membrosLoja.push(adminId);
+      if (adminId && !membrosLoja.includes(adminId)) membrosLoja.push(adminId);
 
       if (!grupoLoja) {
         grupoLoja = {
@@ -1651,7 +1690,7 @@ class BancoDadosConecta {
     const membrosTI = todosColabs
       .filter((c) => c.setor === 'TI' || c.nivel >= 3 || c.id === adminId)
       .map((c) => c.id);
-    if (!membrosTI.includes(adminId)) membrosTI.push(adminId);
+    if (adminId && !membrosTI.includes(adminId)) membrosTI.push(adminId);
 
     if (!grupoTI) {
       grupoTI = {
@@ -1830,9 +1869,19 @@ class BancoDadosConecta {
     // enviada. A conversa sobe antes porque a mensagem aponta para ela.
     if (usandoNuvem()) {
       if (indice !== -1) {
-        const resConversa = await nuvemComunicacao.salvarConversa(conversas[indice]);
+        const resConversa = await nuvemComunicacao.salvarConversa(
+          this.comParticipantesQueExistem(conversas[indice])
+        );
         if (!resConversa.sucesso) {
-          return { sucesso: false, erro: 'Falha ao abrir a conversa no banco. Verifique a conexão.' };
+          // O motivo que o banco deu vai junto: "verifique a conexão" mandava
+          // olhar para o lugar errado quando o problema era permissão ou
+          // referência quebrada.
+          return {
+            sucesso: false,
+            erro: `Não foi possível abrir a conversa no banco: ${
+              resConversa.erro || 'motivo não informado'
+            }`,
+          };
         }
       }
 
