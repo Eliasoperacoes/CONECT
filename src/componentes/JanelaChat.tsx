@@ -59,9 +59,13 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
   }
 
   return (
+    // Cada lado é declarado sozinho de propósito. O atalho `inset-0` define os
+    // quatro de uma vez e, no computador, vencia o canto: a janela voltava a
+    // ocupar a tela inteira e tampava o RH — exatamente o que ela existe para
+    // evitar.
     <div
       id="janela-chat-flutuante"
-      className="fixed z-40 inset-0 md:inset-auto md:bottom-0 md:right-6 md:w-[400px] md:h-[600px] md:max-h-[calc(100dvh-80px)] flex flex-col bg-[var(--c-canvas)] md:rounded-t-2xl md:border md:border-b-0 md:border-[var(--c-borda)] md:shadow-[var(--s-3)] overflow-hidden"
+      className="fixed z-40 top-0 left-0 right-0 bottom-0 w-full h-full md:top-auto md:left-auto md:right-6 md:bottom-0 md:w-[420px] md:h-[580px] md:max-h-[calc(100dvh-96px)] flex flex-col bg-[var(--c-canvas)] md:rounded-t-2xl md:border md:border-b-0 md:border-[var(--c-borda)] md:shadow-[var(--s-3)] overflow-hidden"
     >
       {/* Barra da janela: só no computador, onde ela é de fato uma janela */}
       <div className="hidden md:flex items-center justify-between gap-2 px-3 py-1.5 bg-[var(--c-superficie-2)] border-b border-[var(--c-borda)] flex-shrink-0">
