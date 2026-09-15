@@ -30,6 +30,7 @@ import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
 import { IndicadorNuvem } from './componentes/IndicadorNuvem';
 import { TelaLogin } from './componentes/TelaLogin';
+import { TelaDefinirSenha } from './componentes/TelaDefinirSenha';
 import { PainelAdministrativo } from './componentes/PainelAdministrativo';
 import { AbaPonto } from './componentes/AbaPonto';
 import { servicoPonto } from './servicos/ponto';
@@ -49,7 +50,13 @@ interface ItemNavegacao {
 }
 
 export default function App() {
-  const [autenticado, setAutenticado] = useState<boolean>(bancoDados.estaAutenticado());
+  // No modo rede quem decide se há sessão é o banco, não o navegador: sem
+  // isto a aplicação abria já dentro da conta guardada localmente.
+  const [autenticado, setAutenticado] = useState<boolean>(
+    usandoNuvem() ? false : bancoDados.estaAutenticado()
+  );
+  const [verificandoSessao, setVerificandoSessao] = useState<boolean>(usandoNuvem());
+  const [precisaTrocarSenha, setPrecisaTrocarSenha] = useState(false);
   const [painelAdminAberto, setPainelAdminAberto] = useState<boolean>(false);
   const [abaAtivaEscolhida, setAbaAtiva] = useState<AbaPrincipal>('conversas');
   const [colaboradorAtual, setColaboradorAtual] = useState<Colaborador>(
@@ -68,7 +75,8 @@ export default function App() {
   const recarregarDados = () => {
     const atual = bancoDados.obterColaboradorAtual();
     setColaboradorAtual(atual);
-    setAutenticado(bancoDados.estaAutenticado());
+    // No modo rede a sessão do banco é a fonte da verdade
+    if (!usandoNuvem()) setAutenticado(bancoDados.estaAutenticado());
     setConversasIndividuais(bancoDados.obterConversasIndividuais());
     setGrupos(bancoDados.obterGrupos());
     setAvisoNaoLido(bancoDados.obterAvisoDirecaoNaoLido());
@@ -80,14 +88,57 @@ export default function App() {
     return () => cancelar();
   }, []);
 
-  // Se não estiver autenticado, exibe Tela de Login (Elias / 123)
+  // Recupera a sessão do banco antes de decidir o que mostrar
+  useEffect(() => {
+    if (!usandoNuvem()) return;
+
+    let cancelado = false;
+    (async () => {
+      const eu = await nuvem.obterMeuColaborador();
+      if (cancelado) return;
+
+      if (eu) {
+        setColaboradorAtual(eu);
+        setPrecisaTrocarSenha(await nuvem.precisaTrocarSenha());
+        setAutenticado(true);
+      }
+      setVerificandoSessao(false);
+    })();
+
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  // Enquanto a sessão do banco não é conferida, não dá para saber se mostra
+  // o login ou o sistema. Piscar uma tela e trocar pela outra é pior.
+  if (verificandoSessao) {
+    return (
+      <div className="min-h-[100dvh] w-full flex flex-col items-center justify-center gap-3 bg-[var(--c-canvas)] text-[var(--c-texto-3)]">
+        <div className="w-8 h-8 border-2 border-[var(--c-acento)] border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs font-medium">Conectando à rede Malachias…</span>
+      </div>
+    );
+  }
+
   if (!autenticado) {
     return (
       <TelaLogin
-        aoAutenticar={(colab) => {
+        aoAutenticar={(colab, trocarSenha) => {
           setColaboradorAtual(colab);
+          setPrecisaTrocarSenha(!!trocarSenha);
           setAutenticado(true);
         }}
+      />
+    );
+  }
+
+  // Quem entrou com a senha padrão não passa daqui sem definir a própria
+  if (precisaTrocarSenha) {
+    return (
+      <TelaDefinirSenha
+        colaborador={colaboradorAtual}
+        aoConcluir={() => setPrecisaTrocarSenha(false)}
       />
     );
   }
@@ -140,6 +191,7 @@ export default function App() {
     bancoDados.deslogar();
     // No modo rede a sessão vive no banco e também precisa ser encerrada
     if (usandoNuvem()) nuvem.sair();
+    setPrecisaTrocarSenha(false);
     setAutenticado(false);
     setConversaAtivaId(null);
   };

@@ -4,6 +4,7 @@
  * gestão de pessoas e auditoria.
  */
 
+import { usandoNuvem } from './supabase';
 import {
   Colaborador,
   Conversa,
@@ -371,6 +372,11 @@ class BancoDadosConecta {
   // Inicializa dados no localStorage removendo todos os usuários antigos e mantendo apenas Elias
   private inicializarSeVazio(): void {
     if (typeof window === 'undefined') return;
+
+    // No modo rede quem manda é o banco. Semear um Elias local aqui criaria
+    // um usuário fantasma e faria a aplicação abrir já "logada" nele, sem
+    // nunca passar pela tela de acesso.
+    if (usandoNuvem()) return;
 
     // Remove versões antigas de dados para limpar usuários mock antigos
     ['conecta_colaboradores_v2', 'conecta_conversas_v2', 'conecta_mensagens_v2', 'conecta_colaborador_atual_id_v2'].forEach(

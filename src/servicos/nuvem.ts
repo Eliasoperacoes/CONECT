@@ -111,65 +111,60 @@ class PonteNuvem {
 
   // --- AUTENTICAÇÃO ---
 
-  /** Existe alguém cadastrado? Define se a tela pede o primeiro acesso. */
-  async redeVazia(): Promise<boolean> {
-    if (!supabase) return false;
-    const { count, error } = await supabase
-      .from('colaboradores')
-      .select('id', { count: 'exact', head: true });
-    if (error) return false;
-    return (count ?? 0) === 0;
-  }
-
   /**
-   * Cria a conta do primeiro Administrador. O nível 4 é decidido pelo banco,
-   * não por aqui: quem chega primeiro no banco vazio vira administrador.
+   * Entra no sistema. Se a conta ainda não foi ativada neste banco, a
+   * primeira entrada com a senha padrão ativa o acesso — desde que o login
+   * já esteja cadastrado. O gatilho no banco recusa login desconhecido, que
+   * é o que impede alguém de criar conta por fora do sistema.
    */
-  async criarPrimeiroAdministrador(dados: {
-    nome: string;
-    login: string;
-    senha: string;
-  }): Promise<{ sucesso: boolean; erro?: string }> {
-    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
-
-    const { error } = await supabase.auth.signUp({
-      email: loginParaEmailInterno(dados.login),
-      password: dados.senha,
-      options: {
-        data: {
-          login: dados.login.trim(),
-          nome: dados.nome.trim(),
-          cargo: 'Administrador Geral',
-          setor: 'TI',
-          loja: 'Pirassununga',
-        },
-      },
-    });
-
-    if (error) {
-      if (error.message.toLowerCase().includes('already registered')) {
-        return { sucesso: false, erro: 'Já existe uma conta com este login.' };
-      }
-      if (error.message.toLowerCase().includes('password')) {
-        return { sucesso: false, erro: 'A senha precisa ter ao menos 6 caracteres.' };
-      }
-      return { sucesso: false, erro: error.message };
-    }
-
-    return { sucesso: true };
-  }
-
-  /** Entra no sistema com login e senha, como sempre foi na tela. */
   async entrar(
     login: string,
     senha: string
-  ): Promise<{ sucesso: boolean; colaborador?: Colaborador; erro?: string }> {
+  ): Promise<{
+    sucesso: boolean;
+    colaborador?: Colaborador;
+    precisaTrocarSenha?: boolean;
+    erro?: string;
+  }> {
     if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: loginParaEmailInterno(login),
+    const email = loginParaEmailInterno(login);
+
+    let { data, error } = await supabase.auth.signInWithPassword({
+      email,
       password: senha,
     });
+
+    // Credencial inexistente: pode ser o primeiro acesso deste colaborador
+    if (error) {
+      const ativacao = await supabase.auth.signUp({
+        email,
+        password: senha,
+        options: { data: { login: login.trim() } },
+      });
+
+      if (ativacao.error) {
+        const msg = ativacao.error.message.toLowerCase();
+        if (msg.includes('não cadastrado') || msg.includes('nao cadastrado')) {
+          return { sucesso: false, erro: 'Login não cadastrado na rede. Procure o RH.' };
+        }
+        if (msg.includes('already registered') || msg.includes('already been registered')) {
+          return { sucesso: false, erro: 'Login ou senha incorretos.' };
+        }
+        if (msg.includes('password')) {
+          return {
+            sucesso: false,
+            erro: 'A senha precisa ter ao menos 6 caracteres.',
+          };
+        }
+        return { sucesso: false, erro: 'Login ou senha incorretos.' };
+      }
+
+      // Conta ativada: entra com ela
+      const entrada = await supabase.auth.signInWithPassword({ email, password: senha });
+      data = entrada.data;
+      error = entrada.error;
+    }
 
     if (error || !data.user) {
       return { sucesso: false, erro: 'Login ou senha incorretos.' };
@@ -190,7 +185,48 @@ class PonteNuvem {
 
     localStorage.setItem(CHAVE_COLABORADOR_ATUAL, colaborador.id);
     await this.sincronizarColaboradores();
-    return { sucesso: true, colaborador };
+
+    return {
+      sucesso: true,
+      colaborador,
+      precisaTrocarSenha: await this.precisaTrocarSenha(),
+    };
+  }
+
+  /** Ainda está com a senha padrão? */
+  async precisaTrocarSenha(): Promise<boolean> {
+    if (!supabase) return false;
+    const { data: sessao } = await supabase.auth.getUser();
+    if (!sessao.user) return false;
+
+    const { data } = await supabase
+      .from('colaboradores')
+      .select('precisa_trocar_senha')
+      .eq('auth_user_id', sessao.user.id)
+      .maybeSingle();
+
+    return !!data?.precisa_trocar_senha;
+  }
+
+  /** Define a senha própria e encerra a obrigação de trocá-la. */
+  async definirNovaSenha(novaSenha: string): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
+
+    const { error } = await supabase.auth.updateUser({ password: novaSenha });
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes('password') && msg.includes('6')) {
+        return { sucesso: false, erro: 'A senha precisa ter ao menos 6 caracteres.' };
+      }
+      if (msg.includes('should be different')) {
+        return { sucesso: false, erro: 'A nova senha precisa ser diferente da atual.' };
+      }
+      return { sucesso: false, erro: error.message };
+    }
+
+    await supabase.rpc('concluir_troca_de_senha');
+    await this.sincronizarColaboradores();
+    return { sucesso: true };
   }
 
   async sair(): Promise<void> {
