@@ -25,6 +25,7 @@ import {
   TipoMensagem,
 } from '../tipos';
 import { supabase } from './supabase';
+import { resolverCaminhos } from './anexos';
 
 const CHAVE_CONVERSAS = 'conecta_v4_conversas';
 const CHAVE_MENSAGENS = 'conecta_v4_mensagens';
@@ -92,6 +93,7 @@ interface LinhaMensagem {
   eh_aviso_direcao: boolean;
   reacoes: Record<string, string[]> | null;
   editada_em: string | null;
+  anexo_caminho: string | null;
   criado_em: string;
 }
 
@@ -114,19 +116,34 @@ const paraLinhaMensagem = (m: Mensagem) => ({
   remetente_id: m.remetenteId,
   tipo: m.tipo,
   texto: m.texto ?? null,
-  audio_url: m.audioUrl ?? null,
+  // Com anexo no armazenamento, as colunas de conteúdo ficam vazias: o que
+  // está nelas em memória é um endereço assinado, que expira — guardar isso
+  // no banco seria gravar um link morto. Quem manda é `anexo_caminho`.
+  audio_url: m.anexoCaminho ? null : m.audioUrl ?? null,
   audio_duracao: m.audioDuracao ?? null,
   arquivo_nome: m.arquivoNome ?? null,
   arquivo_tamanho: m.arquivoTamanho ?? null,
-  arquivo_url: m.arquivoUrl ?? null,
-  imagem_url: m.imagemUrl ?? null,
+  arquivo_url: m.anexoCaminho ? null : m.arquivoUrl ?? null,
+  imagem_url: m.anexoCaminho ? null : m.imagemUrl ?? null,
   legenda: m.legenda ?? null,
   eh_encaminhada: !!m.ehEncaminhada,
   eh_aviso_direcao: !!m.ehAvisoDirecao,
   reacoes: m.reacoes ?? {},
   editada_em: m.editadaEm ?? null,
+  anexo_caminho: m.anexoCaminho ?? null,
   criado_em: m.criadoEm,
 });
+
+/**
+ * Onde o anexo aparece depende do tipo da mensagem. Ao trazer do banco, o
+ * caminho vira endereço assinado e é colocado no campo que a tela já lê —
+ * assim nenhuma parte da interface precisa saber que existe armazenamento.
+ */
+const aplicarEnderecoDoAnexo = (mensagem: Mensagem, endereco: string): Mensagem => {
+  if (mensagem.tipo === 'imagem') return { ...mensagem, imagemUrl: endereco };
+  if (mensagem.tipo === 'recado_voz') return { ...mensagem, audioUrl: endereco };
+  return { ...mensagem, arquivoUrl: endereco };
+};
 
 const paraLinhaConversa = (c: Conversa) => ({
   id: c.id,
@@ -249,8 +266,23 @@ class PonteComunicacao {
         ehEncaminhada: linha.eh_encaminhada || undefined,
         ehAvisoDirecao: linha.eh_aviso_direcao || undefined,
         editadaEm: linha.editada_em || undefined,
+        anexoCaminho: linha.anexo_caminho || undefined,
         reacoes: linha.reacoes || undefined,
       };
+    });
+
+    // Um pedido só para todos os anexos da conversa, em vez de um por
+    // mensagem: abrir uma conversa com trinta fotos não pode virar trinta
+    // idas ao servidor.
+    const enderecos = await resolverCaminhos(
+      listaMensagens
+        .map((m) => m.anexoCaminho)
+        .filter((c): c is string => !!c)
+    );
+
+    const comAnexos = listaMensagens.map((m) => {
+      const endereco = m.anexoCaminho ? enderecos.get(m.anexoCaminho) : undefined;
+      return endereco ? aplicarEnderecoDoAnexo(m, endereco) : m;
     });
 
     // Participantes de cada conversa
@@ -265,7 +297,7 @@ class PonteComunicacao {
 
     // Última mensagem de cada conversa — a lista já veio ordenada por data
     const ultimaPorConversa = new Map<string, Mensagem>();
-    listaMensagens.forEach((m) => ultimaPorConversa.set(m.conversaId, m));
+    comAnexos.forEach((m) => ultimaPorConversa.set(m.conversaId, m));
 
     const listaConversas: Conversa[] = ((conversas.data || []) as LinhaConversa[]).map((linha) => {
       const ultima = ultimaPorConversa.get(linha.id);
@@ -294,7 +326,7 @@ class PonteComunicacao {
     });
 
     localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(listaConversas));
-    localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(listaMensagens));
+    localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(comAnexos));
     this.avisar();
     return true;
   }
@@ -435,6 +467,36 @@ class PonteComunicacao {
     );
 
     return !error;
+  }
+
+  /**
+   * Chama o expurgo no banco. A remoção acontece lá, numa função só, para o
+   * apagamento não depender de o navegador aguentar a lista inteira — e para
+   * a regra de quem pode apagar valer no banco, não só na tela.
+   */
+  async expurgarMensagensAte(dataCorte: string): Promise<{
+    sucesso: boolean;
+    removidas?: number;
+    caminhos?: string[];
+    erro?: string;
+  }> {
+    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
+
+    const { data, error } = await supabase
+      .rpc('expurgar_mensagens_ate', { data_corte: dataCorte })
+      .maybeSingle();
+
+    if (error) {
+      console.error('Falha ao expurgar o histórico:', error.message);
+      return { sucesso: false, erro: await explicarRecusa(error) };
+    }
+
+    const linha = data as { removidas: number; caminhos: string[] } | null;
+    return {
+      sucesso: true,
+      removidas: linha?.removidas ?? 0,
+      caminhos: linha?.caminhos ?? [],
+    };
   }
 
   // --- AVISOS DA REDE ---

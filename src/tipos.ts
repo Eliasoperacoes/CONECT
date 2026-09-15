@@ -95,6 +95,9 @@ export interface Mensagem {
   visualizadaEm?: string; // Data/hora da confirmação de visualização
   ehEncaminhada?: boolean; // Indicador de mensagem encaminhada
   editadaEm?: string; // Quando foi alterada pelo autor, se foi
+  // Caminho do anexo no armazenamento. As URLs acima trazem o conteudo
+  // pronto para exibir; este campo e o endereco permanente dele no banco.
+  anexoCaminho?: string;
   ehAvisoDirecao?: boolean;
   reacoes?: Record<string, string[]>; // ex: { '👍': ['colab-1', 'colab-2'], '✅': ['colab-3'] }
 }

@@ -17,6 +17,7 @@ import {
   montarPreviaDaMensagem,
   carimboDeAuditoria,
 } from './nuvemComunicacao';
+import { enviarAnexo, apagarAnexos } from './anexos';
 import {
   Colaborador,
   Conversa,
@@ -1900,6 +1901,36 @@ class BancoDadosConecta {
       };
     }
 
+    // O anexo vai para o armazenamento antes da mensagem. A linha guarda só o
+    // caminho: foto embutida na tabela incha o banco e faz cada abertura de
+    // conversa baixar tudo de novo.
+    if (usandoNuvem()) {
+      const conteudoAnexo =
+        conteudo.imagemUrl || conteudo.arquivoUrl || conteudo.audioUrl;
+
+      if (conteudoAnexo?.startsWith('data:')) {
+        const enviado = await enviarAnexo(
+          conteudoAnexo,
+          conversaId,
+          novaMensagem.id,
+          conteudo.arquivoNome
+        );
+
+        if (!enviado) {
+          return {
+            sucesso: false,
+            erro: 'Não foi possível enviar o anexo. Verifique a conexão e tente de novo.',
+          };
+        }
+
+        novaMensagem.anexoCaminho = enviado.caminho;
+        // A tela usa o endereço assinado na hora; o banco recebe o caminho
+        if (conteudo.tipo === 'imagem') novaMensagem.imagemUrl = enviado.url;
+        else if (conteudo.tipo === 'recado_voz') novaMensagem.audioUrl = enviado.url;
+        else novaMensagem.arquivoUrl = enviado.url;
+      }
+    }
+
     // No modo rede a mensagem só vale depois de entrar no banco: mandar para
     // a rede é o objetivo, e uma mensagem que ficou no aparelho não foi
     // enviada. A conversa sobe antes porque a mensagem aponta para ela.
@@ -2597,6 +2628,57 @@ class BancoDadosConecta {
     } catch {
       // Ignora erro
     }
+  }
+
+  /**
+   * Apaga do histórico as mensagens anteriores à data de corte, e os arquivos
+   * delas junto.
+   *
+   * O histórico é a base de controle da rede: nada aqui roda sozinho nem por
+   * prazo automático. É uma ação da administração, com data escolhida por
+   * quem manda, registrada na auditoria — que não é apagada por esta função,
+   * justamente para restar o registro de que o expurgo aconteceu.
+   *
+   * O banco devolve os caminhos dos anexos que ficaram órfãos, porque apagar
+   * a linha não alcança o armazenamento: sem isso, o espaço continuaria
+   * ocupado por arquivos que nenhuma mensagem mais aponta.
+   */
+  async expurgarHistoricoAte(
+    dataCorte: string
+  ): Promise<{ sucesso: boolean; mensagens?: number; arquivos?: number; erro?: string }> {
+    const atual = this.obterColaboradorAtual();
+    if (atual.nivel < 4) {
+      return { sucesso: false, erro: 'Apenas o Administrador pode expurgar o histórico.' };
+    }
+    if (!usandoNuvem()) {
+      return { sucesso: false, erro: 'Disponível apenas com o banco da rede ligado.' };
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataCorte)) {
+      return { sucesso: false, erro: 'Informe a data de corte no formato AAAA-MM-DD.' };
+    }
+    const hoje = new Date();
+    const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(
+      hoje.getDate()
+    ).padStart(2, '0')}`;
+    if (dataCorte >= hojeIso) {
+      return { sucesso: false, erro: 'A data de corte precisa ser anterior a hoje.' };
+    }
+
+    const resultado = await nuvemComunicacao.expurgarMensagensAte(dataCorte);
+    if (!resultado.sucesso) {
+      return { sucesso: false, erro: resultado.erro || 'Falha ao expurgar o histórico.' };
+    }
+
+    const arquivos = await apagarAnexos(resultado.caminhos || []);
+
+    this.registrarAuditoria(
+      'Expurgo de Histórico',
+      'seguranca',
+      `${atual.nome} apagou ${resultado.removidas} mensagem(ns) anteriores a ${dataCorte}, e ${arquivos} arquivo(s).`
+    );
+
+    await nuvemComunicacao.sincronizarConversas();
+    return { sucesso: true, mensagens: resultado.removidas, arquivos };
   }
 
   exportarBackup(): string {

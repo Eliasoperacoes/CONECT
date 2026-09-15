@@ -592,6 +592,92 @@ values
 on conflict (loja) do nothing;
 
 -- ============================================================
+-- ARQUIVOS DAS MENSAGENS
+--
+-- Foto, documento e recado de voz iam embutidos como texto na própria linha
+-- da mensagem. Funcionava, mas uma foto de 200 KB vira quase 270 KB de texto
+-- dentro da tabela: o banco cresce depressa, cada consulta de conversa
+-- carrega tudo junto, e apagar histórico depois exige mexer nas linhas.
+--
+-- Aqui os arquivos passam a viver no armazenamento do Supabase, e a mensagem
+-- guarda só o caminho. A tabela fica leve e o expurgo do histórico apaga os
+-- arquivos junto.
+-- ============================================================
+
+alter table public.mensagens add column if not exists anexo_caminho text;
+
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('anexos', 'anexos', false, 5242880)
+on conflict (id) do update set file_size_limit = excluded.file_size_limit;
+
+-- O balde é privado: nada é servido por link aberto. Quem está autenticado na
+-- rede lê, e o caminho de cada arquivo leva o id da mensagem, que é aleatório
+-- — não dá para percorrer os arquivos dos outros por tentativa.
+do $$
+declare
+  regra record;
+begin
+  for regra in
+    select policyname from pg_policies
+    where schemaname = 'storage' and tablename = 'objects'
+      and policyname like 'anexos_%'
+  loop
+    execute format('drop policy %I on storage.objects', regra.policyname);
+  end loop;
+end $$;
+
+create policy anexos_leitura on storage.objects
+  for select to authenticated using (bucket_id = 'anexos');
+
+create policy anexos_envio on storage.objects
+  for insert to authenticated with check (bucket_id = 'anexos');
+
+-- Apagar é parte do expurgo de histórico, e isso é decisão da administração
+create policy anexos_remocao on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'anexos' and public.sou_admin());
+
+-- ============================================================
+-- EXPURGO DO HISTÓRICO
+--
+-- O histórico é a base de controle e não se apaga sozinho: nenhuma rotina
+-- automática remove mensagem aqui. Quando a administração decidir liberar
+-- espaço, chama esta função com a data de corte.
+--
+-- Devolve quantas mensagens saíram e quais arquivos ficaram órfãos, para o
+-- sistema apagá-los do armazenamento em seguida — o banco não alcança o
+-- armazenamento sozinho.
+-- ============================================================
+
+create or replace function public.expurgar_mensagens_ate(data_corte date)
+returns table (removidas integer, caminhos text[])
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  arquivos text[];
+  total    integer;
+begin
+  if not public.sou_admin() then
+    raise exception 'Apenas o Administrador pode expurgar o historico';
+  end if;
+
+  select coalesce(array_agg(anexo_caminho), '{}')
+    into arquivos
+    from public.mensagens
+   where criado_em < data_corte and anexo_caminho is not null;
+
+  with apagadas as (
+    delete from public.mensagens where criado_em < data_corte returning 1
+  )
+  select count(*) into total from apagadas;
+
+  return query select total, arquivos;
+end;
+$$;
+
+-- ============================================================
 -- CONFERÊNCIA
 --
 -- "Success" no editor não diz o que ficou valendo: um arquivo antigo também

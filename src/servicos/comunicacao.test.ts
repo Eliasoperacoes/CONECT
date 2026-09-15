@@ -55,6 +55,24 @@ mock.module('./supabase', () => ({
   supabase: null,
 }));
 
+let anexosEnviados: { conteudo: string; caminho: string }[] = [];
+let anexosApagados: string[] = [];
+let armazenamentoFalha = false;
+
+mock.module('./anexos', () => ({
+  enviarAnexo: async (conteudo: string, conversaId: string, mensagemId: string) => {
+    if (armazenamentoFalha) return null;
+    const caminho = `${conversaId}/${mensagemId}.bin`;
+    anexosEnviados.push({ conteudo, caminho });
+    return { caminho, url: `https://assinado.exemplo/${caminho}?token=abc` };
+  },
+  apagarAnexos: async (caminhos: string[]) => {
+    anexosApagados.push(...caminhos);
+    return caminhos.length;
+  },
+  resolverCaminhos: async () => new Map(),
+}));
+
 mock.module('./nuvem', () => ({
   nuvem: {
     assinarAtualizacoes: () => () => {},
@@ -139,6 +157,16 @@ mock.module('./nuvemComunicacao', () => ({
     registrarAuditoria: async (r: any) => {
       bancoAuditoria.push({ ...r });
     },
+    expurgarMensagensAte: async (dataCorte: string) => {
+      if (recusarEscrita) return recusa;
+      const antigas = bancoMensagens.filter((m) => m.criadoEm < dataCorte);
+      bancoMensagens = bancoMensagens.filter((m) => m.criadoEm >= dataCorte);
+      return {
+        sucesso: true,
+        removidas: antigas.length,
+        caminhos: antigas.map((m) => m.anexoCaminho).filter(Boolean),
+      };
+    },
     limparCache: () => {},
     iniciarTempoReal: () => {},
   },
@@ -168,6 +196,9 @@ beforeEach(() => {
   recusarEscrita = false;
   modoNuvem = true;
   sessaoViva = true;
+  anexosEnviados = [];
+  anexosApagados = [];
+  armazenamentoFalha = false;
 
   armazenamento.setItem(CHAVE_COLABORADORES, JSON.stringify([ELIAS, ANA]));
   armazenamento.setItem(CHAVE_CONVERSAS, JSON.stringify([CONVERSA_EQUIPE]));
@@ -259,18 +290,58 @@ test('quem envia já consta como leitor da própria mensagem', async () => {
   });
 });
 
-test('foto e arquivo também sobem, com o conteúdo junto', async () => {
-  await bancoDados.enviarMensagem('grupo-teste', {
+test('ANEXO VAI PARA O ARMAZENAMENTO: a linha guarda o caminho, não a foto', async () => {
+  const res = await bancoDados.enviarMensagem('grupo-teste', {
     tipo: 'imagem', imagemUrl: 'data:image/png;base64,AAAA', legenda: 'Peça trocada',
   });
+
+  expect(res.sucesso).toBe(true);
+  expect(anexosEnviados).toHaveLength(1);
+  expect(anexosEnviados[0].conteudo).toBe('data:image/png;base64,AAAA');
+
+  // O que a mensagem leva é o caminho — foto embutida na tabela era o que
+  // inchava o banco
+  expect(bancoMensagens[0].anexoCaminho).toBe(anexosEnviados[0].caminho);
+  // E a tela recebe um endereço já utilizável, sem esperar sincronização
+  expect(res.mensagem!.imagemUrl).toContain('assinado.exemplo');
+});
+
+test('documento e recado de voz seguem o mesmo caminho', async () => {
   await bancoDados.enviarMensagem('grupo-teste', {
     tipo: 'arquivo', arquivoNome: 'nota.pdf', arquivoTamanho: '120 KB',
     arquivoUrl: 'data:application/pdf;base64,BBBB',
   });
+  await bancoDados.enviarMensagem('grupo-teste', {
+    tipo: 'recado_voz', audioUrl: 'data:audio/webm;base64,CCCC', audioDuracao: 8,
+  });
 
-  expect(bancoMensagens).toHaveLength(2);
-  expect(bancoMensagens[0].imagemUrl).toBe('data:image/png;base64,AAAA');
-  expect(bancoMensagens[1].arquivoUrl).toBe('data:application/pdf;base64,BBBB');
+  expect(anexosEnviados).toHaveLength(2);
+  expect(bancoMensagens[0].anexoCaminho).toBeTruthy();
+  expect(bancoMensagens[1].anexoCaminho).toBeTruthy();
+  // O nome e a duração continuam na mensagem: são dela, não do arquivo
+  expect(bancoMensagens[0].arquivoNome).toBe('nota.pdf');
+  expect(bancoMensagens[1].audioDuracao).toBe(8);
+});
+
+test('anexo que não subiu não vira mensagem', async () => {
+  armazenamentoFalha = true;
+
+  const res = await bancoDados.enviarMensagem('grupo-teste', {
+    tipo: 'imagem', imagemUrl: 'data:image/png;base64,AAAA',
+  });
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('anexo');
+  // Mensagem de foto sem a foto seria um balão vazio na conversa
+  expect(bancoMensagens).toHaveLength(0);
+  expect(lerCacheMensagens()).toHaveLength(0);
+});
+
+test('mensagem de texto não passa pelo armazenamento', async () => {
+  await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'sem anexo' });
+
+  expect(anexosEnviados).toHaveLength(0);
+  expect(bancoMensagens[0].anexoCaminho).toBeUndefined();
 });
 
 test('edição sobe e marca "Editada"', async () => {
@@ -470,6 +541,73 @@ test('resets de demonstração são recusados com o banco ligado', () => {
 
   // E o mais importante: não mexeram na base
   expect(JSON.parse(armazenamento.getItem(CHAVE_COLABORADORES)!)).toHaveLength(2);
+});
+
+// ============================================================
+// EXPURGO DO HISTÓRICO
+// ============================================================
+
+/** Põe no banco uma mensagem antiga com anexo, como se fosse de meses atrás. */
+const mensagemAntiga = (id: string, data: string) => {
+  bancoMensagens.push({
+    id, conversaId: 'grupo-teste', remetenteId: 'colab-elias', tipo: 'imagem',
+    criadoEm: data, anexoCaminho: `grupo-teste/${id}.bin`,
+  });
+};
+
+test('expurgo apaga as mensagens antigas e os arquivos delas', async () => {
+  mensagemAntiga('msg-velha-1', '2026-01-10T09:00:00.000Z');
+  mensagemAntiga('msg-velha-2', '2026-02-20T09:00:00.000Z');
+  mensagemAntiga('msg-recente', '2026-09-10T09:00:00.000Z');
+
+  const res = await bancoDados.expurgarHistoricoAte('2026-06-01');
+
+  expect(res.sucesso).toBe(true);
+  expect(res.mensagens).toBe(2);
+  // Apagar a linha não alcança o armazenamento: o arquivo tem que sair junto,
+  // senão o espaço continua ocupado por anexo que ninguém mais aponta
+  expect(res.arquivos).toBe(2);
+  expect(anexosApagados.sort()).toEqual([
+    'grupo-teste/msg-velha-1.bin',
+    'grupo-teste/msg-velha-2.bin',
+  ]);
+  expect(bancoMensagens.map((m) => m.id)).toEqual(['msg-recente']);
+});
+
+test('o expurgo fica registrado na auditoria, que não é apagada junto', async () => {
+  mensagemAntiga('msg-velha', '2026-01-10T09:00:00.000Z');
+  await bancoDados.expurgarHistoricoAte('2026-06-01');
+
+  const registro = bancoAuditoria.find((a) => a.acao === 'Expurgo de Histórico');
+  expect(registro).toBeTruthy();
+  expect(registro.detalhes).toContain('2026-06-01');
+  expect(registro.usuarioNome).toBe('Elias');
+});
+
+test('só o Administrador expurga o histórico', async () => {
+  mensagemAntiga('msg-velha', '2026-01-10T09:00:00.000Z');
+  entrarComo(ANA);
+
+  const res = await bancoDados.expurgarHistoricoAte('2026-06-01');
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('Apenas o Administrador');
+  expect(bancoMensagens).toHaveLength(1);
+});
+
+test('data de corte precisa ser passada e anterior a hoje', async () => {
+  const semData = await bancoDados.expurgarHistoricoAte('');
+  expect(semData.sucesso).toBe(false);
+  expect(semData.erro).toContain('AAAA-MM-DD');
+
+  // Cortar "até hoje" apagaria a conversa do próprio dia sem querer
+  const hoje = new Date();
+  const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(
+    hoje.getDate()
+  ).padStart(2, '0')}`;
+  const ateHoje = await bancoDados.expurgarHistoricoAte(hojeIso);
+  expect(ateHoje.sucesso).toBe(false);
+  expect(ateHoje.erro).toContain('anterior a hoje');
 });
 
 test('ACESSO DE UM CLIQUE: no modo rede não entra pela verificação local', () => {
