@@ -18,6 +18,9 @@ class ArmazenamentoFalso {
 
 const armazenamento = new ArmazenamentoFalso();
 (globalThis as any).localStorage = armazenamento;
+// Partes do bancoDados desistem quando não há `window` — sem isto o teste
+// exercitaria um caminho que nunca acontece no navegador
+(globalThis as any).window = globalThis;
 
 const CHAVE_COLABORADORES = 'conecta_v4_colaboradores';
 const CHAVE_COLABORADOR_ATUAL = 'conecta_v4_colaborador_atual';
@@ -449,6 +452,26 @@ test('resets de demonstração são recusados com o banco ligado', () => {
 
   // E o mais importante: não mexeram na base
   expect(JSON.parse(armazenamento.getItem(CHAVE_COLABORADORES)!)).toHaveLength(2);
+});
+
+test('ACESSO DE UM CLIQUE: no modo rede não entra pela verificação local', () => {
+  // Entrar por aqui deixava a pessoa dentro do app sem sessão no Supabase:
+  // a tela abria, mas toda leitura voltava vazia e toda gravação era
+  // recusada pela RLS ("violates row-level security policy")
+  armazenamento.setItem(
+    'conecta_v4_ultimo_acesso_dispositivo',
+    JSON.stringify({ id: 'colab-elias', senha: '123456' })
+  );
+
+  const res = bancoDados.autenticarContaSugerida();
+
+  expect(res.sucesso).toBe(false);
+  expect(res.colaborador).toBeUndefined();
+});
+
+test('a senha do aparelho fica disponível para o login pelo banco', () => {
+  bancoDados.registrarAcessoDoDispositivo('colab-ana', 'segredo123');
+  expect(bancoDados.obterSenhaSugeridaDoDispositivo()).toBe('segredo123');
 });
 
 test('no modo local os resets continuam funcionando', () => {

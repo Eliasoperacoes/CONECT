@@ -723,6 +723,21 @@ class BancoDadosConecta {
   }
 
   /**
+   * Registra a conta do último acesso a partir do login pelo banco. No modo
+   * rede quem autentica é o Supabase, então a gravação precisa vir de fora —
+   * sem isto a sugestão do aparelho nunca seria atualizada.
+   */
+  registrarAcessoDoDispositivo(id: string, senha: string): void {
+    this.salvarUltimoAcessoDoDispositivo(id, senha);
+  }
+
+  /** Senha guardada neste aparelho para o acesso de um clique, se houver. */
+  obterSenhaSugeridaDoDispositivo(): string | null {
+    const salvo = this.lerUltimoAcessoDoDispositivo();
+    return salvo?.senha || null;
+  }
+
+  /**
    * Retorna o colaborador que fez o último login neste dispositivo, para que a
    * tela de acesso possa sugerir a conta. Retorna null se nunca houve login
    * aqui, se a conta foi removida ou se ela foi desativada pela administração.
@@ -758,6 +773,14 @@ class BancoDadosConecta {
    * descartada e o usuário volta a informar os dados manualmente.
    */
   autenticarContaSugerida(): { sucesso: boolean; colaborador?: Colaborador; erro?: string } {
+    // No modo rede quem valida a senha é o Supabase. Entrar por aqui deixaria
+    // a pessoa dentro do app SEM sessão no banco: a tela abriria normalmente,
+    // mas toda leitura voltaria vazia e toda gravação seria recusada pela
+    // RLS. Quem cuida do acesso de um clique na rede é a tela de login.
+    if (usandoNuvem()) {
+      return { sucesso: false, erro: 'Entre pelo banco da rede.' };
+    }
+
     const salvo = this.lerUltimoAcessoDoDispositivo();
     const colaborador = salvo ? this.obterColaboradorPorId(salvo.id) : undefined;
 

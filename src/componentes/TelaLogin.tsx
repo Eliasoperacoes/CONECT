@@ -50,6 +50,9 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
       const entrada = await nuvem.entrar(login, senha);
       setCarregando(false);
       if (entrada.sucesso && entrada.colaborador) {
+        // Guarda a conta deste aparelho para o próximo acesso ser de um
+        // clique. Quem autenticou foi o banco, então a gravação é aqui.
+        bancoDados.registrarAcessoDoDispositivo(entrada.colaborador.id, senha);
         aoAutenticar(entrada.colaborador, entrada.precisaTrocarSenha);
       } else {
         setErro(entrada.erro || 'Falha ao autenticar.');
@@ -69,11 +72,35 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
   };
 
   // Entra direto na conta sugerida, sem digitar a senha (acesso de um clique).
-  const usarContaSugerida = () => {
+  const usarContaSugerida = async () => {
     if (!contaSugerida || carregando) return;
     setErro(null);
     setLogin(contaSugerida.login);
     setCarregando(true);
+
+    // No modo rede o clique tem que abrir sessão no banco, igual ao login
+    // digitado. Entrar só pela verificação local deixaria a pessoa dentro do
+    // app sem sessão: nada carregaria e nada seria gravado.
+    if (usandoNuvem()) {
+      const senhaGuardada = bancoDados.obterSenhaSugeridaDoDispositivo();
+      const entrada = senhaGuardada
+        ? await nuvem.entrar(contaSugerida.login, senhaGuardada)
+        : { sucesso: false, erro: 'Informe a senha para entrar.' as string | undefined };
+
+      setCarregando(false);
+      if (entrada.sucesso && 'colaborador' in entrada && entrada.colaborador) {
+        aoAutenticar(entrada.colaborador, entrada.precisaTrocarSenha);
+        return;
+      }
+
+      // Senha trocada ou conta desativada: volta ao preenchimento manual
+      bancoDados.esquecerUltimoAcessoDoDispositivo();
+      setContaSugerida(null);
+      setSenha('');
+      setErro(entrada.erro || 'Não foi possível entrar automaticamente.');
+      campoSenhaRef.current?.focus();
+      return;
+    }
 
     setTimeout(() => {
       const resultado = bancoDados.autenticarContaSugerida();
