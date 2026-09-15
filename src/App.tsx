@@ -34,6 +34,7 @@ import { TelaDefinirSenha } from './componentes/TelaDefinirSenha';
 import { PainelAdministrativo } from './componentes/PainelAdministrativo';
 import { AbaPonto } from './componentes/AbaPonto';
 import { JanelaChat } from './componentes/JanelaChat';
+import { PainelConversas } from './componentes/PainelConversas';
 import { servicoPonto } from './servicos/ponto';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
@@ -69,6 +70,8 @@ export default function App() {
   // Conversa aberta POR CIMA do que estiver na tela, sem trocar de aba.
   // Usada quando a pessoa pede o chat de dentro do RH ou do ponto.
   const [conversaFlutuanteId, setConversaFlutuanteId] = useState<string | null>(null);
+  // Qual seção da lista flutuante está aberta no computador (nenhuma = fechada)
+  const [secaoListaAberta, setSecaoListaAberta] = useState<'individuais' | 'grupos' | null>(null);
   const [avisoNaoLido, setAvisoNaoLido] = useState<Mensagem | null>(null);
 
   // Modais acionados pelo botão '+'
@@ -159,7 +162,7 @@ export default function App() {
         colaboradorAtual={colaboradorAtual}
         aoFechar={() => setPainelAdminAberto(false)}
         aoAbrirConversa={(id) => {
-          setConversaAtivaId(id);
+          setConversaFlutuanteId(id);
           setPainelAdminAberto(false);
         }}
       />
@@ -175,62 +178,24 @@ export default function App() {
     ? bancoDados.obterConversaPorId(conversaFlutuanteId)
     : null;
 
-  /**
-   * Lista de conversas da coluna lateral nas abas que NÃO são de conversa —
-   * RH, Ponto e Eu. Sem ela não havia como chamar ninguém sem sair da tela
-   * em que se estava, que era justamente o problema: quem consultava a ficha
-   * de um colaborador no RH tinha que abandonar a consulta para escrever
-   * para ele. Clicar aqui abre a conversa por cima.
-   */
-  const listaLateralDeConversas = (
-    <div className="hidden md:block border-t border-[var(--c-borda)] mt-1">
-      <div className="px-4 py-2.5">
-        <span className="text-xs font-bold text-[var(--c-texto-3)] uppercase tracking-wider">
-          Conversas
-        </span>
-      </div>
-      {conversasIndividuais.length === 0 ? (
-        <div className="px-4 pb-4 space-y-2">
-          <p className="text-xs text-[var(--c-texto-3)]">Nenhuma conversa iniciada.</p>
-          <button
-            type="button"
-            onClick={() => setModalNovaConversaAberto(true)}
-            className="py-1.5 px-3 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-xs cursor-pointer"
-          >
-            + Chamar um colega
-          </button>
-        </div>
-      ) : (
-        <div className="divide-y divide-[var(--c-borda)]">
-          {conversasIndividuais.map((c) => (
-            <ItemConversa
-              key={c.id}
-              conversa={c}
-              selecionada={conversaFlutuanteId === c.id}
-              aoClicar={() => setConversaFlutuanteId(c.id)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
   // Colegas para conversas (exceto o próprio colaborador)
   const outrosColegas = bancoDados
     .obterColaboradores()
     .filter((c) => c.id !== colaboradorAtual.id);
 
   // Ação ao selecionar um colega na lista de nova conversa
+  // Toda conversa aberta a partir de um atalho (nova conversa, radio, RH)
+  // sobe como janela: quem pediu estava no meio de outra coisa.
   const lidarSelecionarColega = (colegaId: string) => {
     const conversa = bancoDados.obterOuCriarConversaIndividual(colegaId);
-    setConversaAtivaId(conversa.id);
+    setConversaFlutuanteId(conversa.id);
   };
 
   // Ação de criação de grupo (apenas nível 2+)
   const lidarCriarGrupo = (nome: string, participantesIds: string[]) => {
     const resultado = bancoDados.criarGrupo(nome, participantesIds);
     if (resultado.sucesso && resultado.grupo) {
-      setConversaAtivaId(resultado.grupo.id);
+      setConversaFlutuanteId(resultado.grupo.id);
     }
   };
 
@@ -299,6 +264,22 @@ export default function App() {
 
   const abasNavegacao = todasAsAbas.filter((aba) => aba.visivel);
 
+  const totalNaoLidas = conversasIndividuais.reduce((soma, c) => soma + (c.naoLidas || 0), 0);
+
+  /**
+   * Aba mostrada na área principal do computador.
+   *
+   * Lá, Conversas e Grupos não são tela — são lista que abre por cima. Então
+   * quando a escolha é uma delas, a área principal mostra o painel da rede,
+   * que é informação útil, em vez do aviso vazio de "escolha uma conversa".
+   */
+  const abaDesktop: AbaPrincipal =
+    abaAtiva === 'conversas' || abaAtiva === 'grupos'
+      ? podeVerRede
+        ? 'painel'
+        : 'ponto'
+      : abaAtiva;
+
   // Determina visibilidade do botão flutuante '+'
   // Conversas: liberado para todos iniciarem bate-papo privado com colega
   // Grupos: liberado estritamente para o Administrador
@@ -331,6 +312,56 @@ export default function App() {
             </span>
           </div>
         </div>
+
+        {/* Navegação do computador. No celular ela continua na barra de baixo,
+            que é onde o polegar alcança. */}
+        <nav className="hidden md:flex items-center gap-1 ml-4">
+          {abasNavegacao
+            .filter((aba) => aba.id !== 'admin')
+            .map((aba) => {
+              // Conversas e Grupos deixaram de ser tela: abrem a lista por
+              // cima, porque o chat também abre por cima. Só Ponto, RH e Eu
+              // ainda trocam o conteúdo da área principal.
+              const ehLista = aba.id === 'conversas' || aba.id === 'grupos';
+              const ativa = ehLista
+                ? secaoListaAberta === (aba.id === 'grupos' ? 'grupos' : 'individuais')
+                : abaAtiva === aba.alvo;
+
+              return (
+                <button
+                  key={aba.id}
+                  type="button"
+                  id={`aba-topo-${aba.id}`}
+                  onClick={() => {
+                    if (ehLista) {
+                      const alvo = aba.id === 'grupos' ? 'grupos' : 'individuais';
+                      setSecaoListaAberta(secaoListaAberta === alvo ? null : alvo);
+                      return;
+                    }
+                    setSecaoListaAberta(null);
+                    if (aba.alvo) setAbaAtiva(aba.alvo);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    ativa
+                      ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                      : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)]'
+                  }`}
+                >
+                  <aba.icone className="w-3.5 h-3.5" />
+                  {/* Entre 768 e 1024px o topo fica apertado com logo, abas e
+                      perfil: ali ficam só os ícones. */}
+                  <span className="hidden lg:inline">{aba.rotulo}</span>
+                  {aba.id === 'conversas' && totalNaoLidas > 0 && (
+                    <span className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                      {totalNaoLidas}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+        </nav>
+
+        <div className="flex-1" />
 
         {/* Ações Rápidas do Topo: Painel ADM e Perfil */}
         <div className="flex items-center gap-2">
@@ -398,10 +429,14 @@ export default function App() {
           - No PC (>= 768px): DUAS colunas (lista de 340px à esquerda + conversa à direita)
       */}
       <div className="flex-1 flex w-full h-full overflow-hidden">
-        {/* COLUNA 1: Navegação e Listas (no celular fica escondida se houver conversa aberta) */}
+        {/* COLUNA ÚNICA DO CELULAR: navegação e listas.
+            No computador ela não existe mais. Com a conversa abrindo por cima,
+            ela virava um terço da tela ocupado por uma lista consultada só na
+            hora de escolher com quem falar — a navegação subiu para o topo e a
+            lista virou painel flutuante. */}
         <div
-          className={`flex flex-col w-full md:w-[340px] md:flex-shrink-0 md:border-r md:border-[var(--c-borda)] bg-[var(--c-superficie)] h-full relative ${
-            conversaAtiva ? 'hidden md:flex' : 'flex'
+          className={`md:hidden flex-col w-full bg-[var(--c-superficie)] h-full relative ${
+            conversaAtiva ? 'hidden' : 'flex'
           }`}
         >
           {/* Faixa fixa no topo se houver aviso não lido da direção (apenas na aba Conversas) */}
@@ -525,7 +560,6 @@ export default function App() {
                   ))}
                 </div>
               </div>
-              {listaLateralDeConversas}
               </>
             )}
 
@@ -551,7 +585,6 @@ export default function App() {
 
             {/* Com o ponto e o "eu" ocupando a área principal no computador,
                 esta coluna serviria de nada. Ela passa a dar acesso ao chat. */}
-            {(abaAtiva === 'ponto' || abaAtiva === 'eu') && listaLateralDeConversas}
           </div>
 
           {/* Botão flutuante '+' no canto inferior direito */}
@@ -634,7 +667,7 @@ export default function App() {
                 aoVoltar={() => setConversaAtivaId(null)}
               />
             </div>
-          ) : abaAtiva === 'painel' ? (
+          ) : abaDesktop === 'painel' ? (
             <div className="w-full h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
               <PainelRede
                 colaboradorAtual={colaboradorAtual}
@@ -643,11 +676,11 @@ export default function App() {
                 aoAlternarParaGestor={() => setPainelAdminAberto(true)}
               />
             </div>
-          ) : abaAtiva === 'ponto' ? (
+          ) : abaDesktop === 'ponto' ? (
             <div className="w-full max-w-[900px] h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
               <AbaPonto colaboradorAtual={colaboradorAtual} />
             </div>
-          ) : abaAtiva === 'eu' ? (
+          ) : abaDesktop === 'eu' ? (
             <div className="w-full max-w-[900px] h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
               <AbaEu
                 colaboradorAtual={colaboradorAtual}
@@ -697,6 +730,21 @@ export default function App() {
         aoCriar={lidarCriarGrupo}
         aoFechar={() => setModalCriarGrupoAberto(false)}
       />
+
+      {/* Lista de conversas por cima, no lugar da antiga coluna fixa */}
+      {secaoListaAberta && (
+        <PainelConversas
+          secaoInicial={secaoListaAberta}
+          conversas={conversasIndividuais}
+          grupos={grupos}
+          conversaAbertaId={conversaFlutuanteId}
+          podeCriarGrupo={ehAdmin}
+          aoAbrir={(id) => setConversaFlutuanteId(id)}
+          aoNovaConversa={() => setModalNovaConversaAberto(true)}
+          aoNovoGrupo={() => setModalCriarGrupoAberto(true)}
+          aoFechar={() => setSecaoListaAberta(null)}
+        />
+      )}
 
       {/* Conversa por cima do que estiver aberto — quem pediu o chat de
           dentro do RH não perde a consulta que estava fazendo */}
