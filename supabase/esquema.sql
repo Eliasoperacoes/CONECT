@@ -638,19 +638,27 @@ create policy anexos_remocao on storage.objects
   using (bucket_id = 'anexos' and public.sou_admin());
 
 -- ============================================================
--- EXPURGO DO HISTÓRICO
+-- LIMPEZA DE IMAGENS ANTIGAS
 --
--- O histórico é a base de controle e não se apaga sozinho: nenhuma rotina
--- automática remove mensagem aqui. Quando a administração decidir liberar
--- espaço, chama esta função com a data de corte.
+-- O que ocupa espaço é o arquivo, não o registro. Por isso a limpeza apaga
+-- A IMAGEM e preserva a mensagem: quem enviou, quando, em qual conversa e a
+-- legenda continuam na conversa, com o balão marcado como imagem removida.
+-- O histórico segue servindo de controle; só o peso sai.
 --
--- Devolve quantas mensagens saíram e quais arquivos ficaram órfãos, para o
--- sistema apagá-los do armazenamento em seguida — o banco não alcança o
--- armazenamento sozinho.
+-- NADA MAIS É TOCADO. Ponto, banco de horas, colaboradores, avisos e
+-- auditoria não entram aqui em hipótese alguma — esta função não conhece
+-- essas tabelas.
+--
+-- Devolve os caminhos que ficaram órfãos, porque apagar a referência não
+-- alcança o armazenamento: o sistema apaga os arquivos em seguida.
 -- ============================================================
 
-create or replace function public.expurgar_mensagens_ate(data_corte date)
-returns table (removidas integer, caminhos text[])
+-- A limpeza apagou a imagem desta mensagem? É o que faz o balão dizer
+-- "imagem removida" em vez de mostrar uma foto quebrada.
+alter table public.mensagens add column if not exists anexo_limpo_em timestamptz;
+
+create or replace function public.limpar_imagens_ate(data_corte date)
+returns table (limpas integer, caminhos text[])
 language plpgsql
 security definer
 set search_path = public
@@ -660,22 +668,39 @@ declare
   total    integer;
 begin
   if not public.sou_admin() then
-    raise exception 'Apenas o Administrador pode expurgar o historico';
+    raise exception 'Apenas o Administrador pode limpar as imagens antigas';
   end if;
 
   select coalesce(array_agg(anexo_caminho), '{}')
     into arquivos
     from public.mensagens
-   where criado_em < data_corte and anexo_caminho is not null;
+   where tipo = 'imagem'
+     and criado_em < data_corte
+     and anexo_caminho is not null;
 
-  with apagadas as (
-    delete from public.mensagens where criado_em < data_corte returning 1
+  with limpas_agora as (
+    update public.mensagens
+       set anexo_caminho     = null,
+           imagem_url        = null,
+           anexo_limpo_em    = now()
+     where tipo = 'imagem'
+       and criado_em < data_corte
+       and anexo_caminho is not null
+    returning 1
   )
-  select count(*) into total from apagadas;
+  select count(*) into total from limpas_agora;
 
   return query select total, arquivos;
 end;
 $$;
+
+-- Meses de imagem que ficam guardados, e quando a limpeza rodou pela última
+-- vez. Ficam nas configurações da rede porque a regra é da empresa, não do
+-- aparelho de quem abriu o sistema.
+alter table public.configuracoes
+  add column if not exists meses_historico_imagens integer not null default 2;
+alter table public.configuracoes
+  add column if not exists ultima_limpeza_imagens timestamptz;
 
 -- ============================================================
 -- CONFERÊNCIA

@@ -101,6 +101,11 @@ export default function App() {
         setColaboradorAtual(eu);
         setPrecisaTrocarSenha(await nuvem.precisaTrocarSenha());
         setAutenticado(true);
+
+        // A regra de guarda das imagens roda aqui, em segundo plano: é a
+        // única sessão que tem direito de limpar, e esperar por ela seria
+        // segurar a abertura do sistema por uma tarefa de manutenção.
+        bancoDados.aplicarRegraDeLimpeza().catch(() => {});
       }
       setVerificandoSessao(false);
     })();

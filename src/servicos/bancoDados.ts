@@ -56,6 +56,14 @@ export const FOTO_PADRAO_LOGO_EMPRESA = '/logo-malachias.svg';
  * rede criaria gente que não existe para o banco e sumiria na sincronização
  * seguinte — parecendo que o sistema perdeu dados.
  */
+/** AAAA-MM-DD no fuso local — comparável como texto, sem tropeçar em UTC. */
+const emIso = (data: Date): string =>
+  `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(
+    data.getDate()
+  ).padStart(2, '0')}`;
+
+const hojeEmIso = (): string => emIso(new Date());
+
 const RECUSA_MODO_REDE =
   'Indisponível com o banco da rede ligado. Os dados agora vêm do Supabase, e esta ferramenta só altera este aparelho.';
 
@@ -90,6 +98,7 @@ const CONFIGURACAO_PADRAO: ConfiguracaoSistema = {
   nomeEmpresa: 'Malachias Autopeças',
   bipeRadioAtivo: true,
   tempoMaximoRadioSegundos: 45,
+  mesesHistoricoImagens: 2,
   modoManutencao: false,
   permitirCriacaoGruposPorOperadores: false,
 };
@@ -2631,24 +2640,26 @@ class BancoDadosConecta {
   }
 
   /**
-   * Apaga do histórico as mensagens anteriores à data de corte, e os arquivos
-   * delas junto.
+   * Remove as IMAGENS anteriores à data de corte, e só elas.
    *
-   * O histórico é a base de controle da rede: nada aqui roda sozinho nem por
-   * prazo automático. É uma ação da administração, com data escolhida por
-   * quem manda, registrada na auditoria — que não é apagada por esta função,
-   * justamente para restar o registro de que o expurgo aconteceu.
+   * A mensagem fica: quem enviou, quando, em qual conversa e a legenda
+   * continuam na conversa, com o balão marcado como imagem removida. O que
+   * ocupa espaço é o arquivo, não o registro — e o registro é o controle.
    *
-   * O banco devolve os caminhos dos anexos que ficaram órfãos, porque apagar
-   * a linha não alcança o armazenamento: sem isso, o espaço continuaria
+   * Ponto, banco de horas, colaboradores, avisos e auditoria NÃO são tocados
+   * aqui em hipótese alguma. Recado de voz e documento também ficam: a regra
+   * da casa fala de imagem.
+   *
+   * O banco devolve os caminhos que ficaram órfãos, porque limpar a
+   * referência não alcança o armazenamento: sem isso o espaço continuaria
    * ocupado por arquivos que nenhuma mensagem mais aponta.
    */
-  async expurgarHistoricoAte(
+  async limparImagensAntigas(
     dataCorte: string
-  ): Promise<{ sucesso: boolean; mensagens?: number; arquivos?: number; erro?: string }> {
+  ): Promise<{ sucesso: boolean; imagens?: number; arquivos?: number; erro?: string }> {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel < 4) {
-      return { sucesso: false, erro: 'Apenas o Administrador pode expurgar o histórico.' };
+      return { sucesso: false, erro: 'Apenas o Administrador pode limpar as imagens antigas.' };
     }
     if (!usandoNuvem()) {
       return { sucesso: false, erro: 'Disponível apenas com o banco da rede ligado.' };
@@ -2656,29 +2667,65 @@ class BancoDadosConecta {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dataCorte)) {
       return { sucesso: false, erro: 'Informe a data de corte no formato AAAA-MM-DD.' };
     }
-    const hoje = new Date();
-    const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(
-      hoje.getDate()
-    ).padStart(2, '0')}`;
-    if (dataCorte >= hojeIso) {
+    if (dataCorte >= hojeEmIso()) {
       return { sucesso: false, erro: 'A data de corte precisa ser anterior a hoje.' };
     }
 
-    const resultado = await nuvemComunicacao.expurgarMensagensAte(dataCorte);
+    const resultado = await nuvemComunicacao.limparImagensAte(dataCorte);
     if (!resultado.sucesso) {
-      return { sucesso: false, erro: resultado.erro || 'Falha ao expurgar o histórico.' };
+      return { sucesso: false, erro: resultado.erro || 'Falha ao limpar as imagens antigas.' };
     }
 
     const arquivos = await apagarAnexos(resultado.caminhos || []);
 
     this.registrarAuditoria(
-      'Expurgo de Histórico',
-      'seguranca',
-      `${atual.nome} apagou ${resultado.removidas} mensagem(ns) anteriores a ${dataCorte}, e ${arquivos} arquivo(s).`
+      'Limpeza de Imagens Antigas',
+      'sistema',
+      `${atual.nome} removeu ${resultado.limpas} imagem(ns) anteriores a ${dataCorte}, liberando ${arquivos} arquivo(s). As mensagens foram mantidas.`
     );
 
     await nuvemComunicacao.sincronizarConversas();
-    return { sucesso: true, mensagens: resultado.removidas, arquivos };
+    return { sucesso: true, imagens: resultado.limpas, arquivos };
+  }
+
+  /**
+   * Aplica a regra da casa: guardar os últimos N meses de imagem e limpar o
+   * que passou disso.
+   *
+   * Roda na sessão de um Administrador e no máximo uma vez por dia. A marca
+   * da última execução fica nas configurações da REDE, não no aparelho —
+   * senão cada computador rodaria a sua.
+   *
+   * Nada acontece sem regra escrita: com `mesesHistoricoImagens` em zero a
+   * limpeza automática fica desligada e só a ação manual funciona.
+   */
+  async aplicarRegraDeLimpeza(): Promise<{ executou: boolean; imagens?: number }> {
+    if (!usandoNuvem()) return { executou: false };
+
+    const atual = this.obterColaboradorAtual();
+    if (atual.nivel < 4) return { executou: false };
+
+    const config = this.obterConfiguracoes();
+    const meses = config.mesesHistoricoImagens ?? 0;
+    if (meses <= 0) return { executou: false };
+
+    // Uma vez por dia basta: a regra é mensal, não de minuto em minuto
+    if (config.ultimaLimpezaImagens?.slice(0, 10) === hojeEmIso()) {
+      return { executou: false };
+    }
+
+    const corte = new Date();
+    corte.setMonth(corte.getMonth() - meses);
+
+    const res = await this.limparImagensAntigas(emIso(corte));
+    if (!res.sucesso) return { executou: false };
+
+    await this.salvarConfiguracoes({
+      ...config,
+      ultimaLimpezaImagens: new Date().toISOString(),
+    });
+
+    return { executou: true, imagens: res.imagens };
   }
 
   exportarBackup(): string {

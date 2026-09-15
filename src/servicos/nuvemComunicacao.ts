@@ -94,6 +94,7 @@ interface LinhaMensagem {
   reacoes: Record<string, string[]> | null;
   editada_em: string | null;
   anexo_caminho: string | null;
+  anexo_limpo_em: string | null;
   criado_em: string;
 }
 
@@ -470,31 +471,31 @@ class PonteComunicacao {
   }
 
   /**
-   * Chama o expurgo no banco. A remoção acontece lá, numa função só, para o
-   * apagamento não depender de o navegador aguentar a lista inteira — e para
-   * a regra de quem pode apagar valer no banco, não só na tela.
+   * Limpa as imagens antigas no banco. A mensagem continua lá — some só o
+   * arquivo, que é o que ocupa espaço. Acontece numa função do banco para a
+   * regra de quem pode limpar valer no servidor, não só na tela.
    */
-  async expurgarMensagensAte(dataCorte: string): Promise<{
+  async limparImagensAte(dataCorte: string): Promise<{
     sucesso: boolean;
-    removidas?: number;
+    limpas?: number;
     caminhos?: string[];
     erro?: string;
   }> {
     if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
 
     const { data, error } = await supabase
-      .rpc('expurgar_mensagens_ate', { data_corte: dataCorte })
+      .rpc('limpar_imagens_ate', { data_corte: dataCorte })
       .maybeSingle();
 
     if (error) {
-      console.error('Falha ao expurgar o histórico:', error.message);
+      console.error('Falha ao limpar as imagens antigas:', error.message);
       return { sucesso: false, erro: await explicarRecusa(error) };
     }
 
-    const linha = data as { removidas: number; caminhos: string[] } | null;
+    const linha = data as { limpas: number; caminhos: string[] } | null;
     return {
       sucesso: true,
-      removidas: linha?.removidas ?? 0,
+      limpas: linha?.limpas ?? 0,
       caminhos: linha?.caminhos ?? [],
     };
   }
@@ -615,6 +616,8 @@ class PonteComunicacao {
       nomeEmpresa: data.nome_empresa,
       bipeRadioAtivo: data.bipe_radio_ativo,
       tempoMaximoRadioSegundos: data.tempo_maximo_radio_segundos,
+      mesesHistoricoImagens: data.meses_historico_imagens ?? 2,
+      ultimaLimpezaImagens: data.ultima_limpeza_imagens ?? undefined,
       modoManutencao: data.modo_manutencao,
       permitirCriacaoGruposPorOperadores: data.permitir_criacao_grupos_por_operadores,
     };
@@ -635,6 +638,8 @@ class PonteComunicacao {
         nome_empresa: config.nomeEmpresa,
         bipe_radio_ativo: config.bipeRadioAtivo,
         tempo_maximo_radio_segundos: config.tempoMaximoRadioSegundos,
+        meses_historico_imagens: config.mesesHistoricoImagens,
+        ultima_limpeza_imagens: config.ultimaLimpezaImagens ?? null,
         modo_manutencao: config.modoManutencao,
         permitir_criacao_grupos_por_operadores: config.permitirCriacaoGruposPorOperadores,
       },
