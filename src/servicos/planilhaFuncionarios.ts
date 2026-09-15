@@ -93,6 +93,25 @@ function normalizarChave(chave: string): string {
 }
 
 /**
+ * Passa as chaves do mapa pela mesma normaliza\u00e7\u00e3o usada na busca.
+ *
+ * Sem isto, qualquer nome composto falhava em sil\u00eancio: "Porto Ferreira"
+ * virava "portoferreira" na busca, enquanto a chave cadastrada era
+ * "porto ferreira" com espa\u00e7o. A loja n\u00e3o era encontrada e a pessoa ia
+ * parar em Pirassununga.
+ */
+function comChavesNormalizadas<T>(mapa: Record<string, T>): Record<string, T> {
+  const saida: Record<string, T> = {};
+  for (const [chave, valor] of Object.entries(mapa)) {
+    saida[normalizarChave(chave)] = valor;
+  }
+  return saida;
+}
+
+const LOJAS_RECONHECIDAS = comChavesNormalizadas(LOJAS_PADRAO);
+const SETORES_RECONHECIDOS = comChavesNormalizadas(SETORES_PADRAO);
+
+/**
  * Gera e realiza o download da planilha modelo oficial do Excel (.xlsx)
  * com as colunas necessárias e linhas de exemplo realistas da Malachias Autopeças.
  */
@@ -445,8 +464,8 @@ export async function processarArquivoPlanilha(
     // Validação de Loja
     let lojaResolvida: Loja = 'Pirassununga';
     const lojaChave = normalizarChave(lojaBruta);
-    if (LOJAS_PADRAO[lojaChave]) {
-      lojaResolvida = LOJAS_PADRAO[lojaChave];
+    if (LOJAS_RECONHECIDAS[lojaChave]) {
+      lojaResolvida = LOJAS_RECONHECIDAS[lojaChave];
     } else if (lojaBruta) {
       avisos.push(`Loja "${lojaBruta}" não reconhecida. Ajustada para Pirassununga (Matriz).`);
     } else {
@@ -456,8 +475,8 @@ export async function processarArquivoPlanilha(
     // Validação de Setor
     let setorResolvido: Setor = 'Balcão';
     const setorChave = normalizarChave(setorBruto);
-    if (SETORES_PADRAO[setorChave]) {
-      setorResolvido = SETORES_PADRAO[setorChave];
+    if (SETORES_RECONHECIDOS[setorChave]) {
+      setorResolvido = SETORES_RECONHECIDOS[setorChave];
     } else if (setorBruto) {
       avisos.push(`Setor "${setorBruto}" ajustado para "Balcão".`);
     }

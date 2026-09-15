@@ -516,19 +516,22 @@ export const ImportacaoPlanilhaFuncionarios: React.FC<PropsImportacaoPlanilhaFun
           </div>
 
           {/* Tabela de Conferência */}
+          {/* A tabela tem largura mínima própria: espremer dez colunas numa
+              tela estreita quebrava cargo e setor no meio da palavra. Aqui ela
+              rola na horizontal e cada coluna fica legível. */}
           <div className="overflow-x-auto rounded-xl border border-[var(--c-borda)] max-h-96 overflow-y-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[1080px] text-left text-xs">
               <thead className="bg-[var(--c-superficie-2)] border-b border-[var(--c-borda)] text-[var(--c-texto-3)] font-semibold uppercase tracking-wider sticky top-0 z-10">
                 <tr>
-                  <th className="py-2.5 px-3">Linha</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3">Nome do Colaborador</th>
-                  <th className="py-2.5 px-3">Login / Senha</th>
-                  <th className="py-2.5 px-3">Cargo</th>
-                  <th className="py-2.5 px-3">Loja</th>
-                  <th className="py-2.5 px-3">Setor</th>
-                  <th className="py-2.5 px-3">Nível</th>
-                  <th className="py-2.5 px-3">Contato / Ramal</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Linha</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Status</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Colaborador</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Login</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Cargo</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Loja</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Setor</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Nível</th>
+                  <th className="py-2.5 px-3 whitespace-nowrap">Contato</th>
                   <th className="py-2.5 px-3">Validação</th>
                 </tr>
               </thead>
@@ -572,30 +575,27 @@ export const ImportacaoPlanilhaFuncionarios: React.FC<PropsImportacaoPlanilhaFun
                           )}
                         </td>
 
-                        <td className="py-2.5 px-3 font-semibold">
+                        <td className="py-2.5 px-3 font-semibold whitespace-nowrap">
                           {item.dados.nome || <span className="text-red-500 italic">[Ausente]</span>}
                         </td>
 
-                        <td className="py-2.5 px-3 font-mono text-[11px]">
-                          <div>{item.dados.login}</div>
-                          <span className="text-[10px] text-[var(--c-texto-3)]">
-                            Senha: {item.dados.senha}
-                          </span>
+                        <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap">
+                          {item.dados.login}
                         </td>
 
-                        <td className="py-2.5 px-3">{item.dados.cargo}</td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">{item.dados.cargo}</td>
 
-                        <td className="py-2.5 px-3">
-                          <span className="px-2 py-0.5 rounded bg-[var(--c-superficie-2)] border border-[var(--c-borda)] font-medium text-[11px]">
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded bg-[var(--c-superficie-2)] border border-[var(--c-borda)] font-medium text-[11px] whitespace-nowrap">
                             {item.dados.loja}
                           </span>
                         </td>
 
-                        <td className="py-2.5 px-3 text-[var(--c-texto-2)]">{item.dados.setor}</td>
+                        <td className="py-2.5 px-3 text-[var(--c-texto-2)] whitespace-nowrap">{item.dados.setor}</td>
 
-                        <td className="py-2.5 px-3">
+                        <td className="py-2.5 px-3 whitespace-nowrap">
                           <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${
                               item.dados.nivel === 4
                                 ? 'bg-indigo-500/10 text-indigo-600 border border-indigo-500/20'
                                 : item.dados.nivel === 3
@@ -609,7 +609,7 @@ export const ImportacaoPlanilhaFuncionarios: React.FC<PropsImportacaoPlanilhaFun
                           </span>
                         </td>
 
-                        <td className="py-2.5 px-3 text-[11px] text-[var(--c-texto-3)]">
+                        <td className="py-2.5 px-3 text-[11px] text-[var(--c-texto-3)] whitespace-nowrap">
                           {item.dados.ramal && <span>Ramal: {item.dados.ramal} · </span>}
                           {item.dados.telefone && <span>{item.dados.telefone}</span>}
                           {!item.dados.ramal && !item.dados.telefone && <span>—</span>}
