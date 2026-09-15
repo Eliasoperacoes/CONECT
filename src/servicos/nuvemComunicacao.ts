@@ -307,31 +307,63 @@ class PonteComunicacao {
    * ser participante — o que criaria um impasse, porque é exatamente isso
    * que se está tentando conseguir ao entrar num canal.
    */
-  async salvarConversa(conversa: Conversa): Promise<{ sucesso: boolean; erro?: string }> {
+  async salvarConversa(
+    conversa: Conversa,
+    meuId?: string
+  ): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
 
-    const { error } = await supabase
-      .from('conversas')
-      .upsert(paraLinhaConversa(conversa), { onConflict: 'id', ignoreDuplicates: true });
+    // Nada de upsert aqui. O upsert vira `ON CONFLICT` no banco, e isso exige
+    // poder enxergar a linha em conflito — o que a regra de `conversas` só
+    // concede a quem já participa dela. Resultado: entrar num canal existente
+    // era recusado pela RLS. Insert comum, e "já existe" (23505) é sucesso:
+    // a conversa estar lá é exatamente o que se queria.
+    const { error } = await supabase.from('conversas').insert(paraLinhaConversa(conversa));
 
-    if (error) {
+    if (error && error.code !== '23505') {
       console.error('Falha ao criar conversa:', error.message);
       return { sucesso: false, erro: await explicarRecusa(error) };
     }
 
-    if (conversa.participantesIds.length > 0) {
-      const { error: erroParticipantes } = await supabase.from('participantes').upsert(
-        conversa.participantesIds.map((colaboradorId) => ({
-          conversa_id: conversa.id,
-          colaborador_id: colaboradorId,
-        })),
-        { onConflict: 'conversa_id,colaborador_id', ignoreDuplicates: true }
-      );
+    // A própria inscrição vem primeiro e sozinha: é ela que dá o direito de
+    // ler a conversa e, com ele, de inscrever os demais.
+    if (meuId && conversa.participantesIds.includes(meuId)) {
+      const { error: erroEu } = await supabase
+        .from('participantes')
+        .insert({ conversa_id: conversa.id, colaborador_id: meuId });
 
-      if (erroParticipantes) {
-        console.error('Falha ao salvar participantes:', erroParticipantes.message);
-        return { sucesso: false, erro: await explicarRecusa(erroParticipantes) };
+      if (erroEu && erroEu.code !== '23505') {
+        console.error('Falha ao entrar na conversa:', erroEu.message);
+        return { sucesso: false, erro: await explicarRecusa(erroEu) };
       }
+    }
+
+    const restantes = conversa.participantesIds.filter((id) => id !== meuId);
+    if (restantes.length === 0) return { sucesso: true };
+
+    // Inscrever só quem falta: um insert em lote falha inteiro se uma única
+    // linha já existir, e aí ninguém entraria.
+    const { data: jaDentro } = await supabase
+      .from('participantes')
+      .select('colaborador_id')
+      .eq('conversa_id', conversa.id);
+
+    const dentro = new Set(
+      ((jaDentro || []) as { colaborador_id: string }[]).map((p) => p.colaborador_id)
+    );
+    const faltando = restantes.filter((id) => !dentro.has(id));
+    if (faltando.length === 0) return { sucesso: true };
+
+    const { error: erroParticipantes } = await supabase.from('participantes').insert(
+      faltando.map((colaboradorId) => ({
+        conversa_id: conversa.id,
+        colaborador_id: colaboradorId,
+      }))
+    );
+
+    if (erroParticipantes && erroParticipantes.code !== '23505') {
+      console.error('Falha ao salvar participantes:', erroParticipantes.message);
+      return { sucesso: false, erro: await explicarRecusa(erroParticipantes) };
     }
 
     return { sucesso: true };

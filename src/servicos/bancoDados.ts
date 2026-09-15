@@ -415,7 +415,7 @@ class BancoDadosConecta {
     Promise.all(
       lista.map((conversa) =>
         nuvemComunicacao
-          .salvarConversa(this.comParticipantesQueExistem(conversa))
+          .salvarConversa(this.comParticipantesQueExistem(conversa), this.obterColaboradorAtual().id)
           .catch(() => ({ sucesso: false }))
       )
     ).then((resultados) => {
@@ -1906,7 +1906,8 @@ class BancoDadosConecta {
     if (usandoNuvem()) {
       if (indice !== -1) {
         const resConversa = await nuvemComunicacao.salvarConversa(
-          this.comParticipantesQueExistem(conversas[indice])
+          this.comParticipantesQueExistem(conversas[indice]),
+          atual.id
         );
         if (!resConversa.sucesso) {
           // O motivo que o banco deu vai junto: "verifique a conexão" mandava
