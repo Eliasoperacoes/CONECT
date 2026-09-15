@@ -9,6 +9,7 @@ import {
   TrendingUp,
   Activity,
   CheckCircle,
+  CheckCircle2,
   MapPin,
   PhoneCall,
   ShieldAlert,
@@ -20,6 +21,7 @@ import { servicoPonto } from '../servicos/ponto';
 import { QuadroFuncionarios } from './QuadroFuncionarios';
 import { CentralAvisos } from './CentralAvisos';
 import { BancoDeHoras } from './BancoDeHoras';
+import { AprovacaoJornada } from './AprovacaoJornada';
 
 interface PropsPainelRede {
   colaboradorAtual: Colaborador;
@@ -28,7 +30,7 @@ interface PropsPainelRede {
   aoAlternarParaGestor?: () => void;
 }
 
-type SubAbaPainel = 'visao_geral' | 'quadro' | 'ponto' | 'avisos';
+type SubAbaPainel = 'visao_geral' | 'quadro' | 'aprovacoes' | 'ponto' | 'avisos';
 
 export const PainelRede: React.FC<PropsPainelRede> = ({
   colaboradorAtual,
@@ -73,6 +75,9 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
 
   /** Banco de horas e QR do ponto: só RH e Administrador. */
   const podeVerBancoDeHoras = servicoPonto.podeAcessarPainelRH(colaboradorAtual);
+
+  /** Quantas jornadas esperam decisão minha. */
+  const pendenciasParaDecidir = servicoPonto.obterPendenciasParaDecidir().length;
 
   const lidarIniciarConversaColega = (colegaId: string) => {
     const conversa = bancoDados.obterOuCriarConversaIndividual(colegaId);
@@ -129,6 +134,28 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               <Users className="w-3.5 h-3.5" />
               <span>Quadro de Equipe</span>
             </button>
+
+            {/* Aprovações: todo mundo que responde por alguém tem fila. O
+                contador existe para a fila não passar despercebida — hora
+                parada aqui é hora que não entrou no banco de ninguém. */}
+            {pendenciasParaDecidir > 0 && (
+              <button
+                type="button"
+                id="subaba-aprovacoes"
+                onClick={() => setSubAbaAtiva('aprovacoes')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                  subAbaAtiva === 'aprovacoes'
+                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Aprovar Jornadas</span>
+                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {pendenciasParaDecidir}
+                </span>
+              </button>
+            )}
 
             {/* Banco de horas: só quem cuida de RH */}
             {podeVerBancoDeHoras && (
@@ -438,6 +465,10 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
         )}
 
         {/* SUB-ABA 3: BANCO DE HORAS E QR DO PONTO */}
+        {subAbaAtiva === 'aprovacoes' && (
+          <AprovacaoJornada colaboradorAtual={colaboradorAtual} />
+        )}
+
         {subAbaAtiva === 'ponto' && <BancoDeHoras colaboradorAtual={colaboradorAtual} />}
 
         {/* SUB-ABA 4: CENTRAL DE AVISOS DA DIREÇÃO */}

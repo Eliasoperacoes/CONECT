@@ -267,7 +267,8 @@ begin
       and tablename in (
         'colaboradores', 'conversas', 'participantes', 'mensagens',
         'leituras_mensagem', 'avisos_rede', 'avisos_leitura',
-        'codigos_ponto_loja', 'registros_ponto', 'configuracoes', 'auditoria'
+        'codigos_ponto_loja',
+    'ajustes_jornada', 'registros_ponto', 'configuracoes', 'auditoria'
       )
   loop
     execute format('drop policy %I on public.%I', regra.policyname, regra.tablename);
@@ -793,6 +794,125 @@ begin
     alter table public.configuracoes drop column ultima_limpeza_imagens;
   end if;
 end $$;
+
+-- ============================================================
+-- APURAÇÃO DO DIA E APROVAÇÃO
+--
+-- A jornada fechada que não bate com a carga contratada não vira saldo
+-- sozinha. O sistema levanta a diferença e o responsável decide: a hora
+-- extra foi autorizada? a saída mais cedo foi combinada?
+--
+-- O caminho é sempre o mesmo, sem atalho:
+--   colaborador bate o ponto -> líder ou gerente decide -> banco de horas
+--
+-- Um ajuste por pessoa por dia. Se o RH corrigir uma marcação depois, a
+-- apuração daquele dia é reescrita em vez de virar um segundo lançamento
+-- concorrendo com o primeiro.
+-- ============================================================
+
+create table if not exists public.ajustes_jornada (
+  id                   text primary key,
+  colaborador_id       text not null references public.colaboradores(id) on delete cascade,
+  data                 date not null,
+  tipo                 text not null check (tipo in ('hora_extra', 'debito')),
+  -- Sempre positivo: o sinal vem do tipo, para não haver dois jeitos de ler
+  minutos              integer not null check (minutos > 0),
+  minutos_trabalhados  integer not null,
+  minutos_previstos    integer not null,
+  estado               text not null default 'pendente'
+                         check (estado in ('pendente', 'aprovado', 'recusado')),
+  aprovador_id         text references public.colaboradores(id) on delete set null,
+  aprovador_nome       text,
+  decidido_em          timestamptz,
+  observacao           text,
+  criado_em            timestamptz not null default now(),
+  unique (colaborador_id, data)
+);
+
+create index if not exists ajustes_por_estado
+  on public.ajustes_jornada (estado, data);
+
+alter table public.ajustes_jornada enable row level security;
+
+/**
+ * Posso decidir sobre a jornada desta pessoa?
+ *
+ * A regra da casa: ninguém aprova a própria hora, e a decisão sobe um
+ * degrau. O líder responde pelo SETOR dele — inclusive em outras lojas,
+ * porque a liderança de Compras atua nas cinco. O gerente responde pela
+ * LOJA dele, de ponta a ponta, e é ele quem decide sobre os líderes.
+ * RH, Diretoria e TI decidem em qualquer caso, porque é deles o controle do
+ * banco de horas.
+ */
+create or replace function public.posso_decidir_jornada(alvo text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    -- Ninguém decide sobre a própria hora, em nível nenhum
+    alvo is distinct from public.meu_colaborador_id()
+    and (
+      public.cuido_de_pessoas()
+      or exists (
+        select 1
+          from public.colaboradores solicitante,
+               public.colaboradores eu
+         where solicitante.id = alvo
+           and eu.id = public.meu_colaborador_id()
+           -- A decisão sobe: quem está no mesmo degrau não aprova o colega
+           and eu.nivel > solicitante.nivel
+           and (
+             -- Gerente responde pela loja inteira
+             (eu.nivel >= 3 and eu.loja = solicitante.loja)
+             -- O alcance por setor é do líder, e só dele: se valesse acima,
+             -- um gerente de outra loja decidiria sobre quem não é dele só
+             -- por partilharem o setor
+             or (eu.nivel = 2 and eu.setor = solicitante.setor)
+           )
+      )
+    );
+$$;
+
+-- LEITURA: cada um vê a própria apuração; quem decide vê a de quem responde
+drop policy if exists ajustes_leitura on public.ajustes_jornada;
+create policy ajustes_leitura on public.ajustes_jornada
+  for select to authenticated
+  using (
+    colaborador_id = public.meu_colaborador_id()
+    or public.posso_decidir_jornada(colaborador_id)
+  );
+
+-- CRIAÇÃO: nasce do ponto da própria pessoa, sempre pendente. O RH também
+-- cria, porque corrigir uma marcação reescreve a apuração do dia.
+drop policy if exists ajustes_abertura on public.ajustes_jornada;
+create policy ajustes_abertura on public.ajustes_jornada
+  for insert to authenticated
+  with check (
+    (colaborador_id = public.meu_colaborador_id() and estado = 'pendente')
+    or public.cuido_de_pessoas()
+  );
+
+-- DECISÃO: só quem responde pela pessoa. É isto que impede pular etapas —
+-- a regra vale no banco, não só no botão da tela.
+drop policy if exists ajustes_decisao on public.ajustes_jornada;
+create policy ajustes_decisao on public.ajustes_jornada
+  for update to authenticated
+  using (
+    public.posso_decidir_jornada(colaborador_id)
+    -- O dono pode reescrever a própria apuração enquanto ninguém decidiu
+    or (colaborador_id = public.meu_colaborador_id() and estado = 'pendente')
+  )
+  with check (
+    public.posso_decidir_jornada(colaborador_id)
+    or (colaborador_id = public.meu_colaborador_id() and estado = 'pendente')
+  );
+
+drop policy if exists ajustes_remocao on public.ajustes_jornada;
+create policy ajustes_remocao on public.ajustes_jornada
+  for delete to authenticated using (public.cuido_de_pessoas());
 
 -- ============================================================
 -- CONFERÊNCIA

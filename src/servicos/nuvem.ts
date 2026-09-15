@@ -20,6 +20,9 @@ import {
   RegistroPonto,
   Setor,
   TipoMarcacao,
+  AjusteJornada,
+  TipoAjuste,
+  EstadoAjuste,
 } from '../tipos';
 import { supabase, usandoNuvem, loginParaEmailInterno } from './supabase';
 import { nuvemComunicacao } from './nuvemComunicacao';
@@ -42,6 +45,7 @@ const CHAVE_COLABORADORES = 'conecta_v4_colaboradores';
 const CHAVE_COLABORADOR_ATUAL = 'conecta_v4_colaborador_atual';
 const CHAVE_REGISTROS_PONTO = 'conecta_v4_registros_ponto';
 const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
+const CHAVE_AJUSTES = 'conecta_v4_ajustes_jornada';
 
 /** Linha da tabela `colaboradores`, como ela vem do banco. */
 interface LinhaColaborador {
@@ -176,6 +180,54 @@ const paraCodigoPonto = (linha: LinhaCodigoPonto): CodigoPontoLoja => ({
   atualizadoPorNome: linha.atualizado_por_nome || undefined,
 });
 
+/** Linha da tabela `ajustes_jornada`. */
+interface LinhaAjuste {
+  id: string;
+  colaborador_id: string;
+  data: string;
+  tipo: string;
+  minutos: number;
+  minutos_trabalhados: number;
+  minutos_previstos: number;
+  estado: string;
+  aprovador_id: string | null;
+  aprovador_nome: string | null;
+  decidido_em: string | null;
+  observacao: string | null;
+  criado_em: string;
+}
+
+const paraAjuste = (linha: LinhaAjuste): AjusteJornada => ({
+  id: linha.id,
+  colaboradorId: linha.colaborador_id,
+  data: linha.data,
+  tipo: linha.tipo as TipoAjuste,
+  minutos: linha.minutos,
+  minutosTrabalhados: linha.minutos_trabalhados,
+  minutosPrevistos: linha.minutos_previstos,
+  estado: linha.estado as EstadoAjuste,
+  aprovadorId: linha.aprovador_id || undefined,
+  aprovadorNome: linha.aprovador_nome || undefined,
+  decididoEm: linha.decidido_em || undefined,
+  observacao: linha.observacao || undefined,
+  criadoEm: linha.criado_em,
+});
+
+const paraLinhaAjuste = (a: AjusteJornada) => ({
+  id: a.id,
+  colaborador_id: a.colaboradorId,
+  data: a.data,
+  tipo: a.tipo,
+  minutos: a.minutos,
+  minutos_trabalhados: a.minutosTrabalhados,
+  minutos_previstos: a.minutosPrevistos,
+  estado: a.estado,
+  aprovador_id: a.aprovadorId ?? null,
+  aprovador_nome: a.aprovadorNome ?? null,
+  decidido_em: a.decididoEm ?? null,
+  observacao: a.observacao ?? null,
+});
+
 type Ouvinte = () => void;
 
 class PonteNuvem {
@@ -302,6 +354,7 @@ class PonteNuvem {
     localStorage.setItem(CHAVE_COLABORADOR_ATUAL, colaborador.id);
     await this.sincronizarColaboradores();
     await this.sincronizarPonto();
+    await this.sincronizarAjustes();
     await carregarComunicacao();
 
     return {
@@ -634,6 +687,106 @@ class PonteNuvem {
     return !error;
   }
 
+  // --- APURAÇÃO DO DIA E APROVAÇÃO ---
+
+  /**
+   * Traz as apurações que a pessoa pode ver. A RLS já filtra: a própria, e a
+   * de quem ela responde.
+   */
+  async sincronizarAjustes(): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { data, error } = await supabase
+      .from('ajustes_jornada')
+      .select('*')
+      .order('data', { ascending: false });
+
+    if (error || !data) {
+      console.error('Falha ao sincronizar as apurações:', error?.message);
+      return false;
+    }
+
+    localStorage.setItem(
+      CHAVE_AJUSTES,
+      JSON.stringify((data as LinhaAjuste[]).map(paraAjuste))
+    );
+    this.avisar();
+    return true;
+  }
+
+  /**
+   * Grava a apuração do dia.
+   *
+   * Nada de `upsert`: ele vira `ON CONFLICT` no banco, que exige enxergar a
+   * linha em conflito — e foi assim que a gravação de conversa quebrou antes.
+   * Aqui é insert comum e, se o dia já tiver apuração, uma atualização
+   * explícita por colaborador e data.
+   */
+  async salvarAjuste(ajuste: AjusteJornada): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+
+    const { error } = await supabase.from('ajustes_jornada').insert(paraLinhaAjuste(ajuste));
+    if (!error) return { sucesso: true };
+
+    if (error.code !== '23505') {
+      console.error('Falha ao gravar a apuração:', error.message);
+      return { sucesso: false, erro: error.message };
+    }
+
+    const { error: erroUpdate } = await supabase
+      .from('ajustes_jornada')
+      .update(paraLinhaAjuste(ajuste))
+      .eq('colaborador_id', ajuste.colaboradorId)
+      .eq('data', ajuste.data);
+
+    if (erroUpdate) {
+      console.error('Falha ao reescrever a apuração:', erroUpdate.message);
+      return { sucesso: false, erro: erroUpdate.message };
+    }
+    return { sucesso: true };
+  }
+
+  /**
+   * Registra a decisão. A regra de quem pode decidir vive na RLS: se esta
+   * chamada voltar sem alterar nada, foi o banco recusando — e é isso que
+   * impede pular etapas mesmo que a tela deixe.
+   */
+  async decidirAjuste(
+    id: string,
+    estado: 'aprovado' | 'recusado',
+    aprovador: { id: string; nome: string },
+    observacao?: string
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+
+    const { data, error } = await supabase
+      .from('ajustes_jornada')
+      .update({
+        estado,
+        aprovador_id: aprovador.id,
+        aprovador_nome: aprovador.nome,
+        decidido_em: new Date().toISOString(),
+        observacao: observacao ?? null,
+      })
+      .eq('id', id)
+      .select('id');
+
+    if (error) {
+      console.error('Falha ao registrar a decisão:', error.message);
+      return { sucesso: false, erro: error.message };
+    }
+
+    // Sem linha alterada: a RLS recusou por falta de alçada
+    if (!data || data.length === 0) {
+      return {
+        sucesso: false,
+        erro: 'Você não responde por esta pessoa. A decisão cabe ao líder do setor ou ao gerente da loja.',
+      };
+    }
+
+    return { sucesso: true };
+  }
+
   // --- TEMPO REAL ---
 
   /** Ouve o que os outros aparelhos alteram e atualiza o cache. */
@@ -670,6 +823,13 @@ class PonteNuvem {
           this.sincronizarPonto();
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ajustes_jornada' },
+        () => {
+          this.sincronizarAjustes();
+        }
+      )
       .subscribe();
   }
 }
@@ -690,6 +850,7 @@ export const iniciarNuvem = async (): Promise<void> => {
       if (eu) localStorage.setItem(CHAVE_COLABORADOR_ATUAL, eu.id);
       await nuvem.sincronizarColaboradores();
       await nuvem.sincronizarPonto();
+      await nuvem.sincronizarAjustes();
       await carregarComunicacao();
     }
     nuvem.iniciarTempoReal();

@@ -293,6 +293,57 @@ export interface JornadaDia {
   emAndamento: boolean; // começou e ainda não encerrou
 }
 
+// ============================================================
+// APURAÇÃO DO DIA E APROVAÇÃO
+//
+// A jornada fechada que não bate com as 8h contratadas não vira saldo
+// sozinha. O sistema levanta a diferença e manda para o responsável decidir
+// — hora extra foi autorizada? a saída mais cedo foi combinada? Só depois do
+// aval é que entra no banco de horas.
+//
+// O caminho é sempre o mesmo, sem atalho:
+//   colaborador bate o ponto → líder ou gerente decide → banco de horas
+// ============================================================
+
+/** Sobra ou falta em relação à jornada contratada do dia. */
+export type TipoAjuste = 'hora_extra' | 'debito';
+
+export type EstadoAjuste = 'pendente' | 'aprovado' | 'recusado';
+
+export const ROTULO_TIPO_AJUSTE: Record<TipoAjuste, string> = {
+  hora_extra: 'Hora extra',
+  debito: 'Saída antecipada / atraso',
+};
+
+export const ROTULO_ESTADO_AJUSTE: Record<EstadoAjuste, string> = {
+  pendente: 'Aguardando aprovação',
+  aprovado: 'Aprovado',
+  recusado: 'Recusado',
+};
+
+export interface AjusteJornada {
+  id: string;
+  colaboradorId: string;
+  data: string; // AAAA-MM-DD
+  tipo: TipoAjuste;
+  /** Sempre positivo. O sinal vem do tipo, para não haver dois jeitos de ler. */
+  minutos: number;
+  /** O que a batida apurou, guardado junto para a conferência não depender
+   *  de recalcular o dia meses depois. */
+  minutosTrabalhados: number;
+  minutosPrevistos: number;
+  estado: EstadoAjuste;
+  aprovadorId?: string;
+  aprovadorNome?: string;
+  decididoEm?: string;
+  observacao?: string;
+  criadoEm: string;
+}
+
+/** Quanto o ajuste soma ou subtrai do banco de horas. */
+export const minutosComSinal = (ajuste: AjusteJornada): number =>
+  ajuste.tipo === 'debito' ? -ajuste.minutos : ajuste.minutos;
+
 /** Código de ponto de uma loja, materializado no QR impresso. */
 export interface CodigoPontoLoja {
   loja: Loja;

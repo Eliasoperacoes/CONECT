@@ -33,6 +33,10 @@ import {
   NIVEL_GERENTE,
   NIVEL_LIDER_SETOR,
   cuidaDePessoas,
+  AjusteJornada,
+  EstadoAjuste,
+  ROTULO_TIPO_AJUSTE,
+  minutosComSinal,
 } from '../tipos';
 import { bancoDados } from './bancoDados';
 import { nuvem } from './nuvem';
@@ -40,6 +44,7 @@ import { usandoNuvem } from './supabase';
 
 const CHAVE_REGISTROS_PONTO = 'conecta_v4_registros_ponto';
 const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
+const CHAVE_AJUSTES = 'conecta_v4_ajustes_jornada';
 
 /** Lojas físicas que possuem QR de ponto ('Rede' é agrupador, não tem ponto). */
 export const LOJAS_COM_PONTO: Loja[] = [
@@ -417,6 +422,13 @@ class ServicoPonto {
     registros.push(registro);
     this.gravarRegistros(registros);
 
+    // Fechou a jornada: levanta a diferença e manda para o responsável.
+    // É aqui que o caminho começa — sem este passo, hora extra viraria saldo
+    // sozinha e ninguém teria decidido nada.
+    if (proxima === 'saida') {
+      await this.apurarDia(atual.id, data);
+    }
+
     bancoDados.registrarAuditoria(
       'Registro de Ponto',
       'sistema',
@@ -494,8 +506,232 @@ class ServicoPonto {
     );
   }
 
-  /** Saldo total acumulado do colaborador desde a primeira marcação. */
+  // --- APURAÇÃO DO DIA E APROVAÇÃO ---
+
+  private lerAjustes(): AjusteJornada[] {
+    try {
+      const bruto = localStorage.getItem(CHAVE_AJUSTES);
+      const lista = bruto ? JSON.parse(bruto) : [];
+      return Array.isArray(lista) ? lista : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private gravarAjustes(ajustes: AjusteJornada[]): void {
+    localStorage.setItem(CHAVE_AJUSTES, JSON.stringify(ajustes));
+  }
+
+  /** Apuração de um dia, se já existir. */
+  obterAjusteDoDia(colaboradorId: string, data: string): AjusteJornada | null {
+    return (
+      this.lerAjustes().find((a) => a.colaboradorId === colaboradorId && a.data === data) || null
+    );
+  }
+
+  /** Apurações do colaborador, da mais recente para a mais antiga. */
+  obterAjustesDoColaborador(colaboradorId: string): AjusteJornada[] {
+    return this.lerAjustes()
+      .filter((a) => a.colaboradorId === colaboradorId)
+      .sort((a, b) => b.data.localeCompare(a.data));
+  }
+
+  /**
+   * Levanta a diferença do dia e manda para aprovação.
+   *
+   * Chamado quando a jornada fecha. A batida diz o que aconteceu; o saldo só
+   * nasce depois que o responsável disser se a hora extra estava autorizada
+   * ou se a saída mais cedo estava combinada. É este passo que faz o caminho
+   * não ter atalho.
+   *
+   * Dia que bate certo com a carga contratada não gera nada — não há o que
+   * decidir, e encher a fila do gerente com dias normais faria ele parar de
+   * olhar a fila.
+   */
+  async apurarDia(
+    colaboradorId: string,
+    data: string
+  ): Promise<{ criou: boolean; ajuste?: AjusteJornada }> {
+    const jornada = this.obterJornadaDoDia(colaboradorId, data);
+    if (!jornada.completa) return { criou: false };
+
+    const diferenca = jornada.minutosTrabalhados - jornada.minutosPrevistos;
+    const existente = this.obterAjusteDoDia(colaboradorId, data);
+
+    // Dia certo: nada a decidir. Se havia apuração pendente de uma versão
+    // anterior do dia, ela perde sentido e sai da fila.
+    if (diferenca === 0) {
+      if (existente && existente.estado === 'pendente') {
+        await this.removerAjuste(existente.id);
+      }
+      return { criou: false };
+    }
+
+    // Já decidido: não reabre sozinho. Quem corrige marcação depois da
+    // decisão é o RH, e aí a decisão é dele.
+    if (existente && existente.estado !== 'pendente') return { criou: false };
+
+    const ajuste: AjusteJornada = {
+      id: existente?.id || `ajuste-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      colaboradorId,
+      data,
+      tipo: diferenca > 0 ? 'hora_extra' : 'debito',
+      minutos: Math.abs(diferenca),
+      minutosTrabalhados: jornada.minutosTrabalhados,
+      minutosPrevistos: jornada.minutosPrevistos,
+      estado: 'pendente',
+      criadoEm: existente?.criadoEm || new Date().toISOString(),
+    };
+
+    if (usandoNuvem()) {
+      const res = await nuvem.salvarAjuste(ajuste);
+      if (!res.sucesso) return { criou: false };
+    }
+
+    const lista = this.lerAjustes().filter((a) => a.id !== ajuste.id);
+    lista.push(ajuste);
+    this.gravarAjustes(lista);
+    this.notificar();
+
+    return { criou: true, ajuste };
+  }
+
+  private async removerAjuste(id: string): Promise<void> {
+    this.gravarAjustes(this.lerAjustes().filter((a) => a.id !== id));
+    this.notificar();
+  }
+
+  /**
+   * Eu respondo pela jornada desta pessoa?
+   *
+   * Espelha a regra que vale no banco. Aqui ela serve para a tela não
+   * oferecer um botão que o banco vai recusar — quem manda é a RLS.
+   */
+  podeDecidirSobre(solicitante: Colaborador): boolean {
+    const eu = bancoDados.obterColaboradorAtual();
+
+    // Ninguém decide sobre a própria hora, em nível nenhum
+    if (eu.id === solicitante.id) return false;
+
+    // RH, Diretoria e TI decidem em qualquer caso: o controle é deles
+    if (cuidaDePessoas(eu)) return true;
+
+    // A decisão sobe um degrau: quem está no mesmo nível não aprova o colega
+    if (eu.nivel <= solicitante.nivel) return false;
+
+    // Gerente responde pela LOJA dele, de ponta a ponta
+    if (eu.nivel >= NIVEL_GERENTE && eu.loja === solicitante.loja) return true;
+
+    /**
+     * O alcance por SETOR é do líder, e só dele.
+     *
+     * Se valesse para todo mundo acima do líder, um gerente de Descalvado
+     * decidiria sobre um balconista de Pirassununga só porque os dois são do
+     * Balcão — furando a responsabilidade do gerente de lá.
+     */
+    if (eu.nivel === NIVEL_LIDER_SETOR && eu.setor === solicitante.setor) return true;
+
+    return false;
+  }
+
+  /** Fila de quem aguarda decisão minha, da mais antiga para a mais nova. */
+  obterPendenciasParaDecidir(): { ajuste: AjusteJornada; colaborador: Colaborador }[] {
+    return this.lerAjustes()
+      .filter((a) => a.estado === 'pendente')
+      .map((ajuste) => ({
+        ajuste,
+        colaborador: bancoDados.obterColaboradorPorId(ajuste.colaboradorId),
+      }))
+      .filter(
+        (item): item is { ajuste: AjusteJornada; colaborador: Colaborador } =>
+          !!item.colaborador && this.podeDecidirSobre(item.colaborador)
+      )
+      .sort((a, b) => a.ajuste.data.localeCompare(b.ajuste.data));
+  }
+
+  /** Aprova ou recusa. Só entra no banco de horas o que for aprovado. */
+  async decidirAjuste(
+    ajusteId: string,
+    aprovado: boolean,
+    observacao?: string
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    const eu = bancoDados.obterColaboradorAtual();
+    const ajuste = this.lerAjustes().find((a) => a.id === ajusteId);
+    if (!ajuste) return { sucesso: false, erro: 'Apuração não encontrada.' };
+
+    const solicitante = bancoDados.obterColaboradorPorId(ajuste.colaboradorId);
+    if (!solicitante || !this.podeDecidirSobre(solicitante)) {
+      return {
+        sucesso: false,
+        erro: 'Você não responde por esta pessoa. A decisão cabe ao líder do setor ou ao gerente da loja.',
+      };
+    }
+
+    if (!aprovado && !observacao?.trim()) {
+      return { sucesso: false, erro: 'Informe o motivo da recusa.' };
+    }
+
+    const estado: EstadoAjuste = aprovado ? 'aprovado' : 'recusado';
+
+    if (usandoNuvem()) {
+      const res = await nuvem.decidirAjuste(
+        ajusteId,
+        estado,
+        { id: eu.id, nome: eu.nome },
+        observacao
+      );
+      if (!res.sucesso) return res;
+    }
+
+    const lista = this.lerAjustes().map((a) =>
+      a.id === ajusteId
+        ? {
+            ...a,
+            estado,
+            aprovadorId: eu.id,
+            aprovadorNome: eu.nome,
+            decididoEm: new Date().toISOString(),
+            observacao: observacao?.trim() || undefined,
+          }
+        : a
+    );
+    this.gravarAjustes(lista);
+
+    bancoDados.registrarAuditoria(
+      aprovado ? 'Aprovação de Jornada' : 'Recusa de Jornada',
+      'seguranca',
+      `${eu.nome} ${aprovado ? 'aprovou' : 'recusou'} ${formatarMinutos(ajuste.minutos)} de ${
+        ROTULO_TIPO_AJUSTE[ajuste.tipo].toLowerCase()
+      } de ${solicitante.nome} em ${formatarDataBR(ajuste.data)}.${
+        observacao ? ` Motivo: ${observacao.trim()}` : ''
+      }`
+    );
+    this.notificar();
+    return { sucesso: true };
+  }
+
+  /**
+   * Saldo total do colaborador no banco de horas.
+   *
+   * Conta SÓ O QUE FOI APROVADO. A jornada que fechou fora da carga fica
+   * pendente até alguém decidir — hora extra não autorizada não vira crédito,
+   * e saída mais cedo não combinada não vira desconto por conta própria.
+   */
   obterSaldoAcumulado(colaboradorId: string): number {
+    return this.lerAjustes()
+      .filter((a) => a.colaboradorId === colaboradorId && a.estado === 'aprovado')
+      .reduce((total, a) => total + minutosComSinal(a), 0);
+  }
+
+  /** O que está esperando decisão, em minutos com sinal. */
+  obterSaldoPendente(colaboradorId: string): number {
+    return this.lerAjustes()
+      .filter((a) => a.colaboradorId === colaboradorId && a.estado === 'pendente')
+      .reduce((total, a) => total + minutosComSinal(a), 0);
+  }
+
+  /** Saldo apurado pelas batidas, antes de qualquer decisão. */
+  obterSaldoApuradoPelasBatidas(colaboradorId: string): number {
     const datas = Array.from(
       new Set(
         this.lerRegistros()
@@ -671,6 +907,10 @@ class ServicoPonto {
       registros.push(registroAjustado);
     }
     this.gravarRegistros(registros);
+
+    // Corrigir marcação muda o dia: a apuração é refeita para a fila do
+    // responsável refletir o horário certo, e não o que estava errado.
+    await this.apurarDia(dados.colaboradorId, dados.data);
 
     bancoDados.registrarAuditoria(
       indice !== -1 ? 'Correção de Ponto' : 'Lançamento Manual de Ponto',
