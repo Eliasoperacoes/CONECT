@@ -83,7 +83,7 @@ test('LOGÍSTICA é um setor da rede', () => {
 test('SETOR DESCONHECIDO FALHA, não vira Balcão calado', () => {
   // Era isto que mandava 32 pessoas para o Balcão sem ninguém ver — e o
   // setor decide quem aprova a jornada delas
-  const r = resolverSetorDaPlanilha('Estagiário(a)');
+  const r = resolverSetorDaPlanilha('Marketing');
 
   expect(r.erro).toBeTruthy();
   expect(r.erro).toContain('não existe na rede');
@@ -110,4 +110,15 @@ test('grafias do dia a dia continuam valendo', () => {
   expect(resolverSetorDaPlanilha('Almoxarifado').setor).toBe('Estoque');
   expect(resolverSetorDaPlanilha('Financeiro').setor).toBe('Tesouraria');
   expect(resolverSetorDaPlanilha('Recursos Humanos').setor).toBe('RH');
+});
+
+test('ESTÁGIO entra, com as grafias que a planilha usa', () => {
+  // A planilha da rede escreve "Estagiário(a)"; a normalização come o
+  // parêntese e o acento, então as duas formas chegam no mesmo setor
+  expect(resolverSetorDaPlanilha('Estagiário(a)').setor).toBe('Estágio');
+  expect(resolverSetorDaPlanilha('Estagiario').setor).toBe('Estágio');
+  expect(resolverSetorDaPlanilha('Estágio').setor).toBe('Estágio');
+  expect(resolverSetorDaPlanilha('Aprendiz').setor).toBe('Estágio');
+
+  expect(resolverSetorDaPlanilha('Estagiário(a)').erro).toBeUndefined();
 });
