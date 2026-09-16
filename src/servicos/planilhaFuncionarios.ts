@@ -10,6 +10,7 @@ import {
   NIVEL_GERENTE,
   NIVEL_DIRETORIA,
   NIVEL_TI,
+  SETORES,
 } from '../tipos';
 import { loginEhValido, normalizarLogin, sugerirLoginValido } from './supabase';
 import { cnpjEhValido, formatarCnpj } from './documentos';
@@ -73,6 +74,12 @@ const SETORES_PADRAO: Record<string, Setor> = {
   estoque: 'Estoque',
   almoxarifado: 'Estoque',
   deposito: 'Estoque',
+  logistica: 'Logística',
+  'logística': 'Logística',
+  entrega: 'Logística',
+  entregas: 'Logística',
+  motoboy: 'Logística',
+  expedicao: 'Logística',
   caixas: 'Caixas',
   caixa: 'Caixas',
   financeiro: 'Tesouraria',
@@ -180,6 +187,34 @@ export function resolverNivelDaPlanilha(valor: string): {
 
 const LOJAS_RECONHECIDAS = comChavesNormalizadas(LOJAS_PADRAO);
 const SETORES_RECONHECIDOS = comChavesNormalizadas(SETORES_PADRAO);
+
+/**
+ * Lê o setor escrito na planilha.
+ *
+ * Setor desconhecido NÃO vira Balcão em silêncio, como era antes. O estrago
+ * passava do cadastro: é o setor que decide QUEM APROVA a jornada da pessoa.
+ * Um motoboy caído em Balcão passa a depender do líder de Balcão, que não
+ * responde por ele — e ninguém perceberia.
+ *
+ * Corrigir a planilha é uma substituição. Desfazer trinta cadastros no setor
+ * errado, não.
+ */
+export function resolverSetorDaPlanilha(valor: string): {
+  setor: Setor;
+  erro?: string;
+} {
+  const chave = normalizarChave(String(valor ?? ''));
+  const reconhecido = SETORES_RECONHECIDOS[chave];
+
+  if (reconhecido) return { setor: reconhecido };
+
+  return {
+    setor: 'Balcão',
+    erro: chave
+      ? `Setor "${String(valor).trim()}" não existe na rede. Use um destes: ${SETORES.join(', ')}.`
+      : `Setor não informado. Use um destes: ${SETORES.join(', ')}.`,
+  };
+}
 
 /**
  * Gera e realiza o download da planilha modelo oficial do Excel (.xlsx)
@@ -560,14 +595,20 @@ export async function processarArquivoPlanilha(
       avisos.push('Loja não informada. Definida como Pirassununga (Matriz).');
     }
 
-    // Validação de Setor
-    let setorResolvido: Setor = 'Balcão';
-    const setorChave = normalizarChave(setorBruto);
-    if (SETORES_RECONHECIDOS[setorChave]) {
-      setorResolvido = SETORES_RECONHECIDOS[setorChave];
-    } else if (setorBruto) {
-      avisos.push(`Setor "${setorBruto}" ajustado para "Balcão".`);
-    }
+    /**
+     * Setor.
+     *
+     * Setor desconhecido NÃO vira Balcão em silêncio. Isso mandava gente para
+     * o setor errado sem ninguém perceber — e o estrago passa do cadastro: é
+     * o setor que decide QUEM APROVA a jornada da pessoa. Um motoboy caído em
+     * Balcão passa a depender do líder de Balcão, que não responde por ele.
+     *
+     * Por isso a linha falha em vez de entrar torta. Corrigir a planilha é
+     * uma substituição; desfazer 30 cadastros no setor errado, não.
+     */
+    const setorLido = resolverSetorDaPlanilha(setorBruto);
+    const setorResolvido = setorLido.setor;
+    if (setorLido.erro) erros.push(setorLido.erro);
 
     /**
      * Nível hierárquico da planilha.

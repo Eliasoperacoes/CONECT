@@ -15,8 +15,9 @@ import {
   NIVEL_DIRETORIA,
   NIVEL_TI,
   CARGOS_SUGERIDOS,
+  SETORES,
 } from '../tipos';
-import { resolverNivelDaPlanilha } from './planilhaFuncionarios';
+import { resolverNivelDaPlanilha, resolverSetorDaPlanilha } from './planilhaFuncionarios';
 
 test('o número entra direto', () => {
   expect(resolverNivelDaPlanilha('1').nivel).toBe(NIVEL_COLABORADOR);
@@ -65,4 +66,48 @@ test('coluna em branco não gera aviso: é o caso comum', () => {
   expect(resolverNivelDaPlanilha('').nivel).toBe(NIVEL_COLABORADOR);
   expect(resolverNivelDaPlanilha('').aviso).toBeUndefined();
   expect(resolverNivelDaPlanilha('   ').aviso).toBeUndefined();
+});
+
+// ============================================================
+// SETOR: não pode virar Balcão em silêncio
+// ============================================================
+
+test('LOGÍSTICA é um setor da rede', () => {
+  expect(resolverSetorDaPlanilha('Logística').setor).toBe('Logística');
+  expect(resolverSetorDaPlanilha('logistica').setor).toBe('Logística');
+  expect(resolverSetorDaPlanilha('Entregas').setor).toBe('Logística');
+  expect(resolverSetorDaPlanilha('Motoboy').setor).toBe('Logística');
+  expect(resolverSetorDaPlanilha('Logística').erro).toBeUndefined();
+});
+
+test('SETOR DESCONHECIDO FALHA, não vira Balcão calado', () => {
+  // Era isto que mandava 32 pessoas para o Balcão sem ninguém ver — e o
+  // setor decide quem aprova a jornada delas
+  const r = resolverSetorDaPlanilha('Estagiário(a)');
+
+  expect(r.erro).toBeTruthy();
+  expect(r.erro).toContain('não existe na rede');
+  // A mensagem tem que dizer o que serve, senão a pessoa fica adivinhando
+  expect(r.erro).toContain('Logística');
+  expect(r.erro).toContain('Balcão');
+});
+
+test('setor em branco também falha', () => {
+  const r = resolverSetorDaPlanilha('');
+  expect(r.erro).toContain('não informado');
+});
+
+test('os setores da rede continuam entrando', () => {
+  for (const setor of SETORES) {
+    const r = resolverSetorDaPlanilha(setor);
+    expect(r.setor).toBe(setor);
+    expect(r.erro).toBeUndefined();
+  }
+});
+
+test('grafias do dia a dia continuam valendo', () => {
+  expect(resolverSetorDaPlanilha('Vendas').setor).toBe('Balcão');
+  expect(resolverSetorDaPlanilha('Almoxarifado').setor).toBe('Estoque');
+  expect(resolverSetorDaPlanilha('Financeiro').setor).toBe('Tesouraria');
+  expect(resolverSetorDaPlanilha('Recursos Humanos').setor).toBe('RH');
 });
