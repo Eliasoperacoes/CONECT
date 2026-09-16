@@ -4,7 +4,7 @@
  * hierarquia Setor x Loja x Nível e responsividade rigorosa (360px até 1920px).
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { NIVEL_TI, NIVEL_GERENTE, vePainelDeRede } from './tipos';
 import {
   MessageSquare,
@@ -80,7 +80,65 @@ export default function App() {
   const [conversaAtivaId, setConversaAtivaId] = useState<string | null>(null);
   // Conversa aberta POR CIMA do que estiver na tela, sem trocar de aba.
   // Usada quando a pessoa pede o chat de dentro do RH ou do ponto.
-  const [conversaFlutuanteId, setConversaFlutuanteId] = useState<string | null>(null);
+  /**
+   * As conversas abertas por cima, na ordem em que foram abertas.
+   *
+   * Lista, e não um id só: dá para acompanhar duas pessoas ao mesmo tempo
+   * sem fechar uma para abrir a outra — que era o que obrigava a voltar na
+   * lista a cada troca. A posição de cada janela sai daqui.
+   */
+  const [janelas, setJanelas] = useState<Array<{ id: string; encolhida: boolean }>>([]);
+
+  /** A janela do topo, para o que ainda pensa em "a conversa aberta". */
+  const conversaFlutuanteId = janelas.length > 0 ? janelas[janelas.length - 1].id : null;
+
+  /**
+   * Abre — ou traz para a frente, se já estiver aberta.
+   *
+   * Clicar de novo numa conversa já aberta não pode criar uma segunda
+   * janela dela: seriam duas caixas do mesmo diálogo, cada uma com a sua
+   * rolagem.
+   */
+  const abrirJanela = (id: string) =>
+    setJanelas((atuais) => {
+      const existente = atuais.find((j) => j.id === id);
+      if (existente) {
+        // Já aberta: desencolhe e vai para o fim (a ponta visível)
+        return [...atuais.filter((j) => j.id !== id), { id, encolhida: false }];
+      }
+      // Quatro janelas já enchem a largura de um monitor comum; a mais
+      // antiga sai para a nova caber sem cobrir as outras
+      const cabem = atuais.length >= 4 ? atuais.slice(1) : atuais;
+      return [...cabem, { id, encolhida: false }];
+    });
+
+  const fecharJanela = (id: string) =>
+    setJanelas((atuais) => atuais.filter((j) => j.id !== id));
+
+  const alternarEncolhida = (id: string) =>
+    setJanelas((atuais) =>
+      atuais.map((j) => (j.id === id ? { ...j, encolhida: !j.encolhida } : j))
+    );
+
+  /**
+   * Onde cada janela fica, da direita para a esquerda.
+   *
+   * Começa depois do painel de contatos (372px) e acumula a largura de cada
+   * uma — 420 aberta, 210 encolhida. Sem acumular, duas janelas cairiam no
+   * mesmo lugar e uma esconderia a outra.
+   */
+  const posicoesDasJanelas = useMemo(() => {
+    const LARGURA_ABERTA = 420;
+    const LARGURA_ENCOLHIDA = 210;
+    const ESPACO = 12;
+
+    let direita = 372;
+    return janelas.map((j) => {
+      const minha = direita;
+      direita += (j.encolhida ? LARGURA_ENCOLHIDA : LARGURA_ABERTA) + ESPACO;
+      return { ...j, direita: minha };
+    });
+  }, [janelas]);
   // Qual seção da lista flutuante está aberta no computador (nenhuma = fechada)
   const [secaoListaAberta, setSecaoListaAberta] = useState<'individuais' | 'grupos' | null>(null);
   const [avisoNaoLido, setAvisoNaoLido] = useState<Mensagem | null>(null);
@@ -170,7 +228,7 @@ export default function App() {
         ? `${remetente?.nome || 'Alguém'}: ${montarPreviaDaMensagem(ultima)}`
         : montarPreviaDaMensagem(ultima),
       conversaId: ultima.conversaId,
-      aoClicar: () => setConversaFlutuanteId(ultima.conversaId),
+      aoClicar: () => abrirJanela(ultima.conversaId),
     });
   }, [conversasIndividuais, grupos, conversaAtivaId, conversaFlutuanteId]);
 
@@ -241,7 +299,7 @@ export default function App() {
         colaboradorAtual={colaboradorAtual}
         aoFechar={() => setPainelAdminAberto(false)}
         aoAbrirConversa={(id) => {
-          setConversaFlutuanteId(id);
+          abrirJanela(id);
           setPainelAdminAberto(false);
         }}
       />
@@ -255,7 +313,8 @@ export default function App() {
 
   const conversaFlutuante = conversaFlutuanteId
     ? bancoDados.obterConversaPorId(conversaFlutuanteId)
-    : null;
+    : undefined;
+  void conversaFlutuante;
 
   // Colegas para conversas (exceto o próprio colaborador)
   const outrosColegas = bancoDados
@@ -267,14 +326,14 @@ export default function App() {
   // sobe como janela: quem pediu estava no meio de outra coisa.
   const lidarSelecionarColega = (colegaId: string) => {
     const conversa = bancoDados.obterOuCriarConversaIndividual(colegaId);
-    setConversaFlutuanteId(conversa.id);
+    abrirJanela(conversa.id);
   };
 
   // Ação de criação de grupo (apenas nível 2+)
   const lidarCriarGrupo = (nome: string, participantesIds: string[]) => {
     const resultado = bancoDados.criarGrupo(nome, participantesIds);
     if (resultado.sucesso && resultado.grupo) {
-      setConversaFlutuanteId(resultado.grupo.id);
+      abrirJanela(resultado.grupo.id);
     }
   };
 
@@ -621,7 +680,7 @@ export default function App() {
               <div className="block md:hidden h-full">
                 <PainelRede
                   colaboradorAtual={colaboradorAtual}
-                  aoAbrirConversa={(id) => setConversaFlutuanteId(id)}
+                  aoAbrirConversa={(id) => abrirJanela(id)}
                   aoChamarRadio={(colegaId) => lidarSelecionarColega(colegaId)}
                   aoAlternarParaGestor={() => setPainelAdminAberto(true)}
                 />
@@ -661,7 +720,7 @@ export default function App() {
                     <button
                       key={g.id}
                       type="button"
-                      onClick={() => setConversaFlutuanteId(g.id)}
+                      onClick={() => abrirJanela(g.id)}
                       className={`p-2.5 rounded-lg text-left text-xs font-semibold flex items-center justify-between border transition-all cursor-pointer ${
                         conversaFlutuanteId === g.id
                           ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] border-[var(--c-acento)]'
@@ -787,7 +846,7 @@ export default function App() {
             <div className="w-full h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
               <PainelRede
                 colaboradorAtual={colaboradorAtual}
-                aoAbrirConversa={(id) => setConversaFlutuanteId(id)}
+                aoAbrirConversa={(id) => abrirJanela(id)}
                 aoChamarRadio={(colegaId) => lidarSelecionarColega(colegaId)}
                 aoAlternarParaGestor={() => setPainelAdminAberto(true)}
               />
@@ -875,23 +934,36 @@ export default function App() {
           conversas={conversasIndividuais}
           grupos={grupos}
           conversaAbertaId={conversaFlutuanteId}
+          colaboradorId={colaboradorAtual.id}
           podeCriarGrupo={ehAdmin}
-          aoAbrir={(id) => setConversaFlutuanteId(id)}
+          aoAbrir={(id) => abrirJanela(id)}
           aoNovaConversa={() => setModalNovaConversaAberto(true)}
           aoNovoGrupo={() => setModalCriarGrupoAberto(true)}
           aoFechar={() => setSecaoListaAberta(null)}
         />
       )}
 
-      {/* Conversa por cima do que estiver aberto — quem pediu o chat de
-          dentro do RH não perde a consulta que estava fazendo */}
-      {conversaFlutuante && (
-        <JanelaChat
-          conversa={conversaFlutuante}
-          colaboradorAtual={colaboradorAtual}
-          aoFechar={() => setConversaFlutuanteId(null)}
-        />
-      )}
+      {/* As conversas por cima do que estiver aberto — quem pediu o chat de
+          dentro do RH não perde a consulta que estava fazendo. No computador
+          elas ficam lado a lado; no celular só a da frente aparece, porque
+          empilhar telas cheias esconderia umas às outras sem aviso. */}
+      {posicoesDasJanelas.map((janela, indice) => {
+        const conversa = bancoDados.obterConversaPorId(janela.id);
+        if (!conversa) return null;
+
+        return (
+          <JanelaChat
+            key={janela.id}
+            conversa={conversa}
+            colaboradorAtual={colaboradorAtual}
+            direita={janela.direita}
+            encolhida={janela.encolhida}
+            visivelNoCelular={indice === posicoesDasJanelas.length - 1}
+            aoAlternarEncolher={() => alternarEncolhida(janela.id)}
+            aoFechar={() => fecharJanela(janela.id)}
+          />
+        );
+      })}
     </div>
   );
 }

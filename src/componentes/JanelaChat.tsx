@@ -21,14 +21,41 @@ interface PropsJanelaChat {
   conversa: Conversa;
   colaboradorAtual: Colaborador;
   aoFechar: () => void;
+  /**
+   * Distância da borda direita, em pixels, no computador.
+   *
+   * Quem calcula é o App, porque só ele sabe quantas janelas estão abertas e
+   * quais estão encolhidas — e é isso que decide onde cada uma cabe sem
+   * cobrir a vizinha. Vai por variável de CSS e não por classe do Tailwind
+   * porque o valor é calculado em tempo de execução, e classe montada com
+   * string não existe na folha de estilo gerada.
+   */
+  direita?: number;
+  encolhida?: boolean;
+  aoAlternarEncolher?: () => void;
+  /**
+   * No celular só uma janela aparece: não há espaço para lado a lado, e
+   * empilhar janelas em tela cheia esconderia umas às outras sem aviso.
+   */
+  visivelNoCelular?: boolean;
 }
 
 export const JanelaChat: React.FC<PropsJanelaChat> = ({
   conversa,
   colaboradorAtual,
   aoFechar,
+  direita = 372,
+  encolhida: encolhidaProp,
+  aoAlternarEncolher,
+  visivelNoCelular = true,
 }) => {
-  const [encolhida, setEncolhida] = useState(false);
+  const [encolhidaLocal, setEncolhidaLocal] = useState(false);
+
+  // Com várias janelas, quem manda é o App: ele precisa saber o estado de
+  // todas para calcular a posição de cada uma. Sozinha, a janela se vira.
+  const encolhida = encolhidaProp ?? encolhidaLocal;
+  const alternarEncolher = aoAlternarEncolher ?? (() => setEncolhidaLocal((v) => !v));
+  const estilo = { '--direita': `${direita}px` } as React.CSSProperties;
 
   // Encolhida, vira só uma barra com o nome — o suficiente para lembrar que a
   // conversa está aberta e para voltar a ela com um clique. Fica na mesma
@@ -39,8 +66,9 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
       <button
         type="button"
         id="janela-chat-encolhida"
-        onClick={() => setEncolhida(false)}
-        className="hidden md:flex fixed bottom-0 right-[372px] z-40 items-center gap-2 px-4 py-2.5 rounded-t-xl bg-[var(--c-superficie)] border border-b-0 border-[var(--c-borda)] shadow-[var(--s-3)] hover:brightness-105 transition-all cursor-pointer"
+        onClick={alternarEncolher}
+        style={estilo}
+        className="hidden md:flex fixed bottom-0 right-[var(--direita)] z-40 items-center gap-2 px-4 py-2.5 rounded-t-xl bg-[var(--c-superficie)] border border-b-0 border-[var(--c-borda)] shadow-[var(--s-3)] hover:brightness-105 transition-all cursor-pointer"
       >
         <MessageSquare className="w-4 h-4 text-[var(--c-acento)]" />
         <span className="text-xs font-bold text-[var(--c-texto)] max-w-[160px] truncate">
@@ -67,7 +95,10 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
     // evitar.
     <div
       id="janela-chat-flutuante"
-      className="fixed z-40 top-0 left-0 right-0 bottom-0 w-full h-full md:top-auto md:left-auto md:right-[372px] md:bottom-0 md:w-[420px] md:h-[580px] md:max-h-[calc(100dvh-96px)] flex flex-col bg-[var(--c-canvas)] md:rounded-t-2xl md:border md:border-b-0 md:border-[var(--c-borda)] md:shadow-[var(--s-3)] overflow-hidden"
+      style={estilo}
+      className={`fixed z-40 top-0 left-0 right-0 bottom-0 w-full h-full md:top-auto md:left-auto md:right-[var(--direita)] md:bottom-0 md:w-[420px] md:h-[580px] md:max-h-[calc(100dvh-96px)] md:flex flex-col bg-[var(--c-canvas)] md:rounded-t-2xl md:border md:border-b-0 md:border-[var(--c-borda)] md:shadow-[var(--s-3)] overflow-hidden ${
+        visivelNoCelular ? 'flex' : 'hidden'
+      }`}
     >
       {/* Barra da janela: só no computador, onde ela é de fato uma janela */}
       <div className="hidden md:flex items-center justify-between gap-2 px-3 py-1.5 bg-[var(--c-superficie-2)] border-b border-[var(--c-borda)] flex-shrink-0">
@@ -77,7 +108,7 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
         <div className="flex items-center gap-0.5">
           <button
             type="button"
-            onClick={() => setEncolhida(true)}
+            onClick={alternarEncolher}
             className="p-1.5 rounded-lg hover:bg-[var(--c-superficie)] text-[var(--c-texto-3)] hover:text-[var(--c-texto)] transition-colors cursor-pointer"
             aria-label="Encolher conversa"
           >
