@@ -621,3 +621,67 @@ test('NEM O RH/TI aprova a própria hora', async () => {
   expect(res.sucesso).toBe(false);
   expect(servicoPonto.obterSaldoAcumulado(ELIAS.id)).toBe(0);
 });
+
+// ============================================================
+// O DOCUMENTO TEM QUE IDENTIFICAR A PESSOA E O EMPREGADOR
+// ============================================================
+
+/** Alguém com a ficha preenchida como a planilha da rede manda. */
+const COM_FICHA = {
+  ...ANA,
+  id: 'colab-accacio',
+  nome: 'Accacio Lopes Filho',
+  login: 'accacio',
+  setor: 'Balcão',
+  cargo: 'Balconista',
+  matricula: '1042',
+  cnpj: '12.345.678/0001-90',
+  dataAdmissao: '2019-03-04',
+  telefone: '(19) 99999-0000',
+};
+
+test('o espelho de ponto sai com nome completo, matrícula e CNPJ', async () => {
+  // O espelho é documento trabalhista. Sair só com nome e cargo não diz
+  // contra QUAL empregador a jornada correu — e o grupo tem mais de um CNPJ.
+  equipe = [ELIAS, COM_FICHA];
+  colaboradorLogado = ELIAS;
+  await fecharJornada(COM_FICHA, '2026-09-16', '08:00', '18:00');
+
+  const html = servicoPonto.gerarHtmlEspelho('2026-09-16', '2026-09-16', [COM_FICHA.id]);
+
+  expect(html).toContain('Accacio Lopes Filho');
+  expect(html).toContain('1042');
+  expect(html).toContain('12.345.678/0001-90');
+  expect(html).toContain('04/03/2019');
+  expect(html).toContain('Balconista');
+  expect(html).toContain('Pirassununga');
+});
+
+test('campo não preenchido aparece no espelho como traço, e não some', () => {
+  // Num documento, o vazio também é informação: mostra o que falta cadastrar
+  equipe = [ELIAS, ANA];
+  colaboradorLogado = ELIAS;
+
+  const html = servicoPonto.gerarHtmlEspelho('2026-09-16', '2026-09-16', [ANA.id]);
+
+  expect(html).toContain('CNPJ do empregador');
+  expect(html).toContain('Matrícula');
+});
+
+test('o CSV do período carrega a identificação em toda linha', async () => {
+  // Quem abre o CSV filtra e ordena. Identificação só no cabeçalho vira
+  // linha órfã assim que alguém mexe na planilha.
+  equipe = [ELIAS, COM_FICHA];
+  colaboradorLogado = ELIAS;
+  await fecharJornada(COM_FICHA, '2026-09-16', '08:00', '18:00');
+
+  const csv = servicoPonto.gerarCsvDoPeriodo('2026-09-16', '2026-09-16', [COM_FICHA.id]);
+  const linhas = csv.split('\n').filter((l) => l.includes('16/09/2026'));
+
+  expect(linhas.length).toBeGreaterThan(0);
+  for (const linha of linhas) {
+    expect(linha).toContain('Accacio Lopes Filho');
+    expect(linha).toContain('1042');
+    expect(linha).toContain('12.345.678/0001-90');
+  }
+});

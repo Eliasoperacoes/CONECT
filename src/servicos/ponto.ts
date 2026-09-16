@@ -39,6 +39,7 @@ import {
   minutosComSinal,
 } from '../tipos';
 import { bancoDados } from './bancoDados';
+import { linhasDeIdentificacao, contatoEmLinha } from './fichaColaborador';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
 
@@ -980,8 +981,17 @@ class ServicoPonto {
    * só quem está em tela (a loja aberta ou o resultado da busca).
    */
   gerarCsvDoPeriodo(dataInicio: string, dataFim: string, colaboradorIds?: string[]): string {
+    /**
+     * A identificação da pessoa vai em TODA linha, não só no nome.
+     *
+     * O arquivo costuma ser aberto na planilha e filtrado por unidade ou por
+     * empregador. Sem matrícula e CNPJ em cada linha, quem recebe tem que
+     * cruzar com outra fonte para saber de quem é cada jornada — e é
+     * justamente esse cruzamento manual que gera erro em documento
+     * trabalhista.
+     */
     const linhas: string[] = [
-      'Colaborador;Loja;Setor;Data;Entrada;Saida almoco;Retorno almoco;Saida;Trabalhado;Previsto;Saldo do dia',
+      'Colaborador;Matricula;CNPJ;Cargo;Loja;Setor;Data;Entrada;Saida almoco;Retorno almoco;Saida;Trabalhado;Previsto;Saldo do dia',
     ];
 
     const todos = this.obterResumoDoPeriodo(dataInicio, dataFim);
@@ -997,6 +1007,9 @@ class ServicoPonto {
         linhas.push(
           [
             resumo.colaborador.nome,
+            resumo.colaborador.matricula || '',
+            resumo.colaborador.cnpj || '',
+            resumo.colaborador.cargo,
             resumo.colaborador.loja,
             resumo.colaborador.setor,
             formatarDataBR(jornada.data),
@@ -1050,6 +1063,35 @@ class ServicoPonto {
         const jornadaContratada =
           c.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS;
 
+        // A identificação vem da ficha, não de uma lista escrita aqui. É o
+        // que garante que campo novo no cadastro (o CNPJ foi o último)
+        // apareça no documento sem ninguém lembrar de vir editar isto.
+        const camposDaIdentificacao = linhasDeIdentificacao(c).map((campo) =>
+          campo.chave === 'jornada'
+            ? // A jornada do documento é a que vale de fato: sem o contratado
+              // preenchido, corre a carga padrão da rede, e o espelho tem de
+              // dizer contra qual jornada o saldo foi apurado.
+              { ...campo, valor: `${formatarMinutos(jornadaContratada)} por dia útil` }
+            : campo
+        );
+        camposDaIdentificacao.push(
+          { chave: 'contato', rotulo: 'Contato', valor: contatoEmLinha(c) },
+          { chave: 'emissao', rotulo: 'Emitido em', valor: formatarDataBR(dataDeHoje()) }
+        );
+
+        const identificacaoEmLinhas = camposDaIdentificacao
+          .reduce<string[]>((linhas, campo, indice) => {
+            const celula = `<td><strong>${escapar(campo.rotulo)}:</strong> ${escapar(
+              campo.valor || '—'
+            )}</td>`;
+            if (indice % 2 === 0) linhas.push(`<tr>${celula}`);
+            else linhas[linhas.length - 1] += `${celula}</tr>`;
+            return linhas;
+          }, [])
+          // Número ímpar de campos deixaria a última linha aberta
+          .map((linha) => (linha.endsWith('</tr>') ? linha : `${linha}<td></td></tr>`))
+          .join('\n');
+
         // Só entram os dias com alguma marcação ou com jornada prevista
         const dias = resumo.jornadas.filter(
           (j) => Object.keys(j.marcacoes).length > 0 || j.minutosPrevistos > 0
@@ -1096,22 +1138,7 @@ class ServicoPonto {
           </header>
 
           <table class="ficha">
-            <tr>
-              <td><strong>Colaborador:</strong> ${escapar(c.nome)}</td>
-              <td><strong>Matrícula:</strong> ${escapar(c.matricula || '—')}</td>
-            </tr>
-            <tr>
-              <td><strong>Cargo:</strong> ${escapar(c.cargo)}</td>
-              <td><strong>Setor:</strong> ${escapar(c.setor)}</td>
-            </tr>
-            <tr>
-              <td><strong>Unidade:</strong> ${escapar(c.loja)}</td>
-              <td><strong>Jornada contratada:</strong> ${formatarMinutos(jornadaContratada)} por dia útil</td>
-            </tr>
-            <tr>
-              <td><strong>Admissão:</strong> ${escapar(c.dataAdmissao ? formatarDataBR(c.dataAdmissao) : '—')}</td>
-              <td><strong>Emitido em:</strong> ${formatarDataBR(dataDeHoje())}</td>
-            </tr>
+            ${identificacaoEmLinhas}
           </table>
 
           <table class="marcacoes">

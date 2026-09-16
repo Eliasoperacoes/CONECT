@@ -27,6 +27,7 @@ import {
   tocarAvisoDeMensagem,
 } from '../servicos/notificacoes';
 import { FotoPresenca } from './FotoPresenca';
+import { FichaColaborador } from './FichaColaborador';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 
 interface PropsAbaEu {
@@ -142,6 +143,16 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
             <span>Alterar Foto / Usar Logo Malachias</span>
           </button>
         </div>
+      </div>
+
+      {/* Os dados do próprio cadastro, como saem no espelho de ponto e em
+          qualquer documento. É aqui que a pessoa percebe o que falta e
+          pede para o RH corrigir — por isso os campos em branco aparecem. */}
+      <div className="mt-4 px-4">
+        <span className="text-xs font-bold text-[var(--c-texto-3)] block mb-2">
+          Meus dados cadastrais
+        </span>
+        <FichaColaborador colaborador={colaboradorAtual} mostrarVazios />
       </div>
 
       {/* Atalho ao Painel ADM exclusivo para Administrador (Elias) */}

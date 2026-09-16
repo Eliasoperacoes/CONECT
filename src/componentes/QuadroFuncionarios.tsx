@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react';
-import { NIVEL_GERENTE, ROTULO_NIVEL } from '../tipos';
 import {
   Search,
   Radio,
@@ -22,6 +21,7 @@ import { FotoPresenca } from './FotoPresenca';
 import { bancoDados } from '../servicos/bancoDados';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
+import { FichaColaborador } from './FichaColaborador';
 
 interface PropsQuadroFuncionarios {
   colaboradorAtual: Colaborador;
@@ -70,6 +70,10 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
 
   // RH e Administrador editam a ficha das pessoas sem sair do quadro
   const podeEditarCadastros = bancoDados.podeGerenciarPessoas(colaboradorAtual);
+
+  // Quem pode corrigir o cadastro vê também os campos em branco: é assim que
+  // se enxerga o que falta preencher. Para os demais, campo vazio some.
+  const podeVerFichaCompleta = podeEditarCadastros;
 
   const todosColaboradores = bancoDados.obterColaboradores();
 
@@ -585,29 +589,13 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
             </div>
 
             <div className="p-6 flex flex-col gap-4 text-sm">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 bg-[var(--c-canvas)] rounded-xl border border-[var(--c-borda)]">
-                  <span className="text-xs text-[var(--c-texto-3)] block font-medium">Unidade / Loja</span>
-                  <strong className="text-[var(--c-texto)]">{colaboradorModal.loja}</strong>
-                </div>
-                <div className="p-3 bg-[var(--c-canvas)] rounded-xl border border-[var(--c-borda)]">
-                  <span className="text-xs text-[var(--c-texto-3)] block font-medium">Setor de Atuação</span>
-                  <strong className="text-[var(--c-texto)]">{colaboradorModal.setor}</strong>
-                </div>
-                <div className="p-3 bg-[var(--c-canvas)] rounded-xl border border-[var(--c-borda)]">
-                  <span className="text-xs text-[var(--c-texto-3)] block font-medium">Ramal Interno</span>
-                  <strong className="text-blue-600 dark:text-blue-400 font-mono">
-                    {colaboradorModal.ramal || 'Sem ramal'}
-                  </strong>
-                </div>
-                <div className="p-3 bg-[var(--c-canvas)] rounded-xl border border-[var(--c-borda)]">
-                  <span className="text-xs text-[var(--c-texto-3)] block font-medium">Nível Hierárquico</span>
-                  <strong className="text-[var(--c-texto)]">
-                    N{colaboradorModal.nivel} ·{' '}
-                    {ROTULO_NIVEL[colaboradorModal.nivel] || 'Colaborador'}
-                  </strong>
-                </div>
-              </div>
+              {/* A ficha inteira, da mesma fonte que o espelho de ponto usa.
+                  Quem abre o colaborador aqui vê exatamente o que vai sair
+                  no documento — inclusive o que falta preencher. */}
+              <FichaColaborador
+                colaborador={colaboradorModal}
+                mostrarVazios={podeVerFichaCompleta}
+              />
 
               <div className="flex items-center gap-2 text-xs text-[var(--c-texto-3)]">
                 <Clock className="w-4 h-4" />

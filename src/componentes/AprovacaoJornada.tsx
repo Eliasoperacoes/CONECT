@@ -18,6 +18,7 @@ import { CheckCircle2, XCircle, Clock, AlertCircle, Inbox } from 'lucide-react';
 import { AjusteJornada, Colaborador, ROTULO_TIPO_AJUSTE } from '../tipos';
 import { servicoPonto, formatarMinutos, formatarDataBR, formatarDiaCurto } from '../servicos/ponto';
 import { FotoPresenca } from './FotoPresenca';
+import { resumoDaFicha } from '../servicos/fichaColaborador';
 
 interface PropsAprovacaoJornada {
   colaboradorAtual: Colaborador;
@@ -125,8 +126,10 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                     </span>
                   </div>
 
+                  {/* Matrícula junto do nome: quem decide precisa saber de
+                      qual pessoa se trata, e nome se repete na rede. */}
                   <span className="text-xs text-[var(--c-texto-3)] block">
-                    {colaborador.cargo} · {colaborador.loja}
+                    {resumoDaFicha(colaborador)}
                   </span>
 
                   {/* O que a batida apurou, para a decisão não ser no escuro */}
