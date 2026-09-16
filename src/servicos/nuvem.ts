@@ -76,6 +76,7 @@ interface LinhaColaborador {
   data_admissao: string | null;
   observacoes: string | null;
   carga_horaria_diaria_minutos: number;
+  turno: string | null;
   ativo: boolean;
   criado_em: string;
 }
@@ -101,6 +102,7 @@ const paraColaborador = (linha: LinhaColaborador): Colaborador => ({
   dataAdmissao: linha.data_admissao || undefined,
   observacoes: linha.observacoes || undefined,
   cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos,
+  turno: linha.turno || undefined,
   ativo: linha.ativo,
   criadoEm: linha.criado_em,
 });
@@ -126,7 +128,8 @@ const paraLinha = (c: Colaborador) => ({
   responsavel_id: c.responsavelId ?? null,
   data_admissao: c.dataAdmissao ?? null,
   observacoes: c.observacoes ?? null,
-  carga_horaria_diaria_minutos: c.cargaHorariaDiariaMinutos ?? 480,
+  carga_horaria_diaria_minutos: c.cargaHorariaDiariaMinutos ?? 490,
+  turno: c.turno ?? null,
   ativo: c.ativo,
 });
 

@@ -17,6 +17,8 @@ import {
   INFORMACOES_LOJAS,
   CARGA_HORARIA_PADRAO_MINUTOS,
   CARGOS_SUGERIDOS,
+  TURNOS,
+  TURNO_PADRAO,
 } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 
@@ -41,6 +43,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
     email: '',
     matricula: '',
     cnpj: '',
+    turno: TURNO_PADRAO,
     dataAdmissao: '',
     cargaHorariaDiariaMinutos: CARGA_HORARIA_PADRAO_MINUTOS,
     observacoes: '',
@@ -63,6 +66,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       email: colaborador.email || '',
       matricula: colaborador.matricula || '',
       cnpj: colaborador.cnpj || '',
+      turno: colaborador.turno || TURNO_PADRAO,
       dataAdmissao: colaborador.dataAdmissao || '',
       cargaHorariaDiariaMinutos:
         colaborador.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS,
@@ -93,6 +97,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       email: form.email.trim(),
       matricula: form.matricula.trim(),
       cnpj: form.cnpj.trim() ? formatarCnpj(form.cnpj) : undefined,
+      turno: form.turno,
       dataAdmissao: form.dataAdmissao.trim(),
       cargaHorariaDiariaMinutos: form.cargaHorariaDiariaMinutos,
       observacoes: form.observacoes.trim(),
@@ -203,6 +208,30 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                 className={campo}
               />
             </div>
+          </div>
+
+          <div>
+            <label htmlFor="cad-turno" className={rotuloCampo}>
+              Turno da escala
+            </label>
+            <select
+              id="cad-turno"
+              className={campo}
+              value={form.turno}
+              onChange={(e) => setForm({ ...form, turno: e.target.value })}
+            >
+              {TURNOS.map((t) => (
+                <option key={t.chave} value={t.chave}>
+                  {t.nome}
+                </option>
+              ))}
+            </select>
+            {/* O turno decide de que horário o atraso é contado e quanto o
+                dia prevê — não é enfeite de cadastro */}
+            <span className="text-[11px] text-[var(--c-texto-3)] block mt-1">
+              Define o horário cobrado na batida. No sábado vale 08:00 às 12:00
+              para os dois turnos.
+            </span>
           </div>
 
           <div>

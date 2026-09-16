@@ -1064,3 +1064,173 @@ test('o motivo do colaborador chega junto da pendência', async () => {
   expect(ajuste.motivoColaborador).toBe('Entrega atrasada do fornecedor');
   expect(ajuste.anexoCaminho).toBe('ponto/c/2026-09-16.jpg');
 });
+
+
+// ============================================================
+// A ESCALA DA REDE: SEGUNDA A SÁBADO, DOIS TURNOS
+//
+// 2026-09-19 é sábado; 2026-09-20 é domingo; 2026-09-16 é quarta.
+// ============================================================
+
+const DO_TURNO_A = {
+  ...ELIAS, id: 'ta', nome: 'Do turno A', login: 'ta', nivel: 1,
+  setor: 'Balcão', turno: 'A', cargaHorariaDiariaMinutos: undefined,
+};
+const DO_TURNO_B = { ...DO_TURNO_A, id: 'tb', nome: 'Do turno B', login: 'tb', turno: 'B' };
+const GESTOR = {
+  ...ELIAS, id: 'g', nome: 'Gestor', login: 'g', nivel: 3, setor: 'Gerência',
+};
+
+/** Fecha um SÁBADO: duas marcações, sem intervalo. */
+const fecharSabado = async (quem: any, data: string, entrada: string, saida: string) => {
+  const marcar = (tipo: string, hora: string) => ({
+    id: `r-${quem.id}-${tipo}-${data}`, colaboradorId: quem.id, data, tipo,
+    horario: new Date(`${data}T${hora}:00`).toISOString(), horaFormatada: hora,
+    metodo: 'qrcode', loja: quem.loja, criadoEm: new Date().toISOString(),
+  });
+  bancoRegistros.push(marcar('entrada', entrada), marcar('saida', saida));
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+  await servicoPonto.apurarDia(quem.id, data);
+};
+
+test('os dois turnos preveem a MESMA jornada: 8h10', () => {
+  equipe = [GESTOR, DO_TURNO_A, DO_TURNO_B];
+
+  const a = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-16');
+  const b = servicoPonto.obterJornadaDoDia(DO_TURNO_B.id, '2026-09-16');
+
+  expect(a.minutosPrevistos).toBe(490);
+  expect(b.minutosPrevistos).toBe(490);
+});
+
+test('SÁBADO PREVÊ 4 HORAS, não zero', () => {
+  /**
+   * Era o defeito: sábado contava como fim de semana e previa ZERO. As 4
+   * horas trabalhadas viravam 4 horas extras para a rede inteira, toda
+   * semana — 85 pessoas gerando pendência de 4h todo sábado.
+   */
+  equipe = [GESTOR, DO_TURNO_A];
+  const sabado = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-19');
+
+  expect(sabado.minutosPrevistos).toBe(240);
+});
+
+test('DOMINGO continua sem prever nada', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  expect(
+    servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-20').minutosPrevistos
+  ).toBe(0);
+});
+
+test('SÁBADO FECHA COM DUAS MARCAÇÕES', async () => {
+  /**
+   * Exigir as quatro deixaria todo sábado eternamente incompleto — e dia
+   * incompleto não apura, então o sábado nunca entraria no banco de
+   * ninguém.
+   */
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+
+  await fecharSabado(DO_TURNO_A, '2026-09-19', '08:00', '12:00');
+
+  const jornada = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-19');
+  expect(jornada.completa).toBe(true);
+  expect(jornada.minutosTrabalhados).toBe(240);
+  // Bateu exatamente o previsto: nada a decidir, e nada no banco de horas
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-19')).toBeFalsy();
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO_A.id)).toBe(0);
+});
+
+test('no sábado, depois da entrada vem a SAÍDA — não o almoço', async () => {
+  // Percorrendo as quatro fixas, o sistema pediria um almoço que não existe
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+
+  expect(servicoPonto.obterProximaMarcacao(DO_TURNO_A.id, '2026-09-19')).toBe('entrada');
+
+  bancoRegistros.push({
+    id: 'r1', colaboradorId: DO_TURNO_A.id, data: '2026-09-19', tipo: 'entrada',
+    horario: new Date('2026-09-19T08:00:00').toISOString(), horaFormatada: '08:00',
+    metodo: 'qrcode', loja: DO_TURNO_A.loja, criadoEm: new Date().toISOString(),
+  } as any);
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+
+  expect(servicoPonto.obterProximaMarcacao(DO_TURNO_A.id, '2026-09-19')).toBe('saida');
+});
+
+test('no dia útil a ordem das quatro continua igual', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  expect(servicoPonto.obterProximaMarcacao(DO_TURNO_A.id, '2026-09-16')).toBe('entrada');
+});
+
+// ============================================================
+// O ATRASO É MEDIDO CONTRA O TURNO DA PESSOA
+// ============================================================
+
+test('quem é do turno B não justifica atraso por entrar às 08:20', () => {
+  /**
+   * Com um horário único da rede, quem entra às 08:20 apareceria atrasado
+   * todo santo dia — e a pessoa aprenderia a escrever qualquer coisa no
+   * campo de motivo para conseguir bater o ponto.
+   */
+  equipe = [GESTOR, DO_TURNO_A, DO_TURNO_B];
+
+  const asOitoEVinte = new Date('2026-09-16T08:20:00');
+
+  // Turno B entra às 08:20: em cima da hora
+  expect(
+    servicoPonto.avaliarMarcacao(DO_TURNO_B.id, 'entrada', asOitoEVinte).precisaMotivo
+  ).toBe(false);
+
+  // Turno A entra às 07:30: 50 minutos atrasado
+  const doA = servicoPonto.avaliarMarcacao(DO_TURNO_A.id, 'entrada', asOitoEVinte);
+  expect(doA.precisaMotivo).toBe(true);
+  expect(doA.minutos).toBe(50);
+  expect(doA.descricao).toContain('07:30');
+});
+
+test('no sábado o horário cobrado é o do sábado', () => {
+  equipe = [GESTOR, DO_TURNO_B];
+
+  // 08:00 é a hora certa do sábado, mesmo para quem é do turno B
+  expect(
+    servicoPonto.avaliarMarcacao(
+      DO_TURNO_B.id, 'entrada', new Date('2026-09-19T08:00:00')
+    ).precisaMotivo
+  ).toBe(false);
+
+  const atrasado = servicoPonto.avaliarMarcacao(
+    DO_TURNO_B.id, 'entrada', new Date('2026-09-19T08:40:00')
+  );
+  expect(atrasado.precisaMotivo).toBe(true);
+  expect(atrasado.minutos).toBe(40);
+});
+
+test('domingo não cobra horário de entrada', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  expect(
+    servicoPonto.avaliarMarcacao(
+      DO_TURNO_A.id, 'entrada', new Date('2026-09-20T11:00:00')
+    ).precisaMotivo
+  ).toBe(false);
+});
+
+test('a tolerância vale também na entrada', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  // 8 minutos depois das 07:30, dentro dos 10
+  expect(
+    servicoPonto.avaliarMarcacao(
+      DO_TURNO_A.id, 'entrada', new Date('2026-09-16T07:38:00')
+    ).precisaMotivo
+  ).toBe(false);
+});
+
+test('carga individual cadastrada vence o turno', () => {
+  // Contrato individual manda mais que a escala da rede
+  const MEIO_PERIODO = { ...DO_TURNO_A, id: 'mp', login: 'mp', cargaHorariaDiariaMinutos: 240 };
+  equipe = [GESTOR, MEIO_PERIODO];
+
+  expect(
+    servicoPonto.obterJornadaDoDia(MEIO_PERIODO.id, '2026-09-16').minutosPrevistos
+  ).toBe(240);
+});

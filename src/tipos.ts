@@ -147,6 +147,12 @@ export interface Colaborador {
   /** CNPJ em que o colaborador esta registrado. O grupo tem mais de um, e
    *  nem sempre e o da loja onde a pessoa trabalha. */
   cnpj?: string;
+  /**
+   * Turno da escala ('A' ou 'B'). Decide o horario de entrada, quando o
+   * intervalo comeca e a partir de quando a batida esta atrasada.
+   * Vazio = turno A.
+   */
+  turno?: string;
   departamento?: string;
   /**
    * Responsável direto no organograma. É quem aprova a hora desta pessoa —
@@ -161,8 +167,76 @@ export interface Colaborador {
   cargaHorariaDiariaMinutos?: number;
 }
 
-/** Jornada padrão quando o colaborador não tem carga própria cadastrada. */
-export const CARGA_HORARIA_PADRAO_MINUTOS = 480; // 8h
+// ============================================================
+// ESCALA DE TRABALHO DA REDE
+//
+// Segunda a SÁBADO. Dois turnos de dia útil, ambos de 8h10, e um sábado
+// curto de 4h com DUAS marcações — não quatro, porque não há intervalo.
+//
+// A escala vive aqui, e não espalhada, porque ela decide três coisas ao
+// mesmo tempo: quanto o dia prevê, quantas batidas fecham o dia, e a partir
+// de que horário uma entrada está atrasada. Se essas três respostas
+// divergirem, o banco de horas fica errado sem ninguém ver.
+// ============================================================
+
+export interface Turno {
+  chave: string;
+  nome: string;
+  entrada: string;
+  saidaAlmoco: string;
+  retornoAlmoco: string;
+  saida: string;
+}
+
+export const TURNOS: Turno[] = [
+  {
+    chave: 'A',
+    nome: 'Turno A · 07:30 às 17:10',
+    entrada: '07:30',
+    saidaAlmoco: '12:30',
+    retornoAlmoco: '14:00',
+    saida: '17:10',
+  },
+  {
+    chave: 'B',
+    nome: 'Turno B · 08:20 às 18:00',
+    entrada: '08:20',
+    saidaAlmoco: '11:00',
+    retornoAlmoco: '12:30',
+    saida: '18:00',
+  },
+];
+
+/** Sábado: das 8 ao meio-dia, direto, sem intervalo. */
+export const TURNO_SABADO = { entrada: '08:00', saida: '12:00' };
+
+export const TURNO_PADRAO = 'A';
+
+const emMinutos = (hora: string): number => {
+  const [h, m] = hora.split(':').map(Number);
+  return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+};
+
+export const acharTurno = (chave?: string): Turno =>
+  TURNOS.find((t) => t.chave === chave) || TURNOS[0];
+
+/** Minutos contratados num dia útil deste turno. */
+export const minutosDoTurno = (turno: Turno): number =>
+  emMinutos(turno.saidaAlmoco) -
+  emMinutos(turno.entrada) +
+  (emMinutos(turno.saida) - emMinutos(turno.retornoAlmoco));
+
+/** Minutos contratados no sábado. */
+export const MINUTOS_SABADO =
+  emMinutos(TURNO_SABADO.saida) - emMinutos(TURNO_SABADO.entrada);
+
+/**
+ * Jornada padrão quando o colaborador não tem carga própria cadastrada.
+ *
+ * É a do turno A — que é igual à do B: os dois fecham 8h10. A rede não tem
+ * dia útil de 8h00.
+ */
+export const CARGA_HORARIA_PADRAO_MINUTOS = minutosDoTurno(TURNOS[0]);
 
 /**
  * Tolerancia diaria padrao, em minutos.

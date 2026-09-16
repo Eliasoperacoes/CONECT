@@ -19,6 +19,10 @@
 
 import {
   TOLERANCIA_PONTO_PADRAO_MINUTOS,
+  TURNO_SABADO,
+  MINUTOS_SABADO,
+  minutosDoTurno,
+  acharTurno,
   HORARIO_ENTRADA_PADRAO,
   INTERVALO_ALMOCO_PADRAO_MINUTOS,
   Colaborador,
@@ -98,11 +102,28 @@ export const formatarDiaCurto = (data: string): string => {
   return `${semana}, ${dia}/${mes}`;
 };
 
-/** Sábado e domingo não geram jornada prevista. */
-export const ehFimDeSemana = (data: string): boolean => {
-  const diaSemana = deDataLocal(data).getDay();
-  return diaSemana === 0 || diaSemana === 6;
-};
+/**
+ * A rede trabalha de segunda a SÁBADO. Só domingo não tem jornada.
+ *
+ * Existia `ehFimDeSemana` tratando sábado como folga — e isso zerava o
+ * previsto do sábado, fazendo as 4 horas trabalhadas virarem 4 horas extras
+ * para a rede inteira, toda semana.
+ */
+export const ehDiaDeFolga = (data: string): boolean =>
+  deDataLocal(data).getDay() === 0;
+
+export const ehSabado = (data: string): boolean =>
+  deDataLocal(data).getDay() === 6;
+
+/**
+ * As marcações que fecham o dia.
+ *
+ * Sábado tem DUAS: entra às 8 e sai ao meio-dia, sem intervalo. Exigir as
+ * quatro deixaria todo sábado eternamente incompleto — e dia incompleto não
+ * apura, então o sábado nunca entraria no banco de horas de ninguém.
+ */
+export const marcacoesEsperadas = (data: string): TipoMarcacao[] =>
+  ehSabado(data) ? ['entrada', 'saida'] : ORDEM_MARCACOES;
 
 /** 95 -> "1h35"; -95 -> "-1h35"; 0 -> "0h00" */
 export const formatarMinutos = (minutos: number): string => {
@@ -346,9 +367,17 @@ class ServicoPonto {
    * Qual marcação vem agora para esta pessoa hoje. Devolve null quando a
    * jornada do dia já está completa.
    */
+  /**
+   * O próximo passo da jornada DESTE dia.
+   *
+   * Sábado tem duas marcações: depois da entrada vem a saída, não a saída
+   * para o almoço. Percorrendo as quatro fixas, o sistema pediria ao
+   * colaborador que batesse um almoço que não existe — e o dia nunca
+   * fecharia.
+   */
   obterProximaMarcacao(colaboradorId: string, data: string = dataDeHoje()): TipoMarcacao | null {
     const registradas = this.obterMarcacoesDoDia(colaboradorId, data).map((r) => r.tipo);
-    return ORDEM_MARCACOES.find((tipo) => !registradas.includes(tipo)) || null;
+    return marcacoesEsperadas(data).find((tipo) => !registradas.includes(tipo)) || null;
   }
 
   /** Rótulo do próximo passo, pronto para o botão da tela. */
@@ -467,9 +496,21 @@ class ServicoPonto {
 
   // --- JORNADA E SALDO ---
 
+  /**
+   * Quanto o dia prevê para esta pessoa.
+   *
+   * Domingo não prevê nada; sábado prevê as 4 horas da escala; dia útil
+   * prevê o turno dela — a carga própria, quando cadastrada, vence o turno,
+   * porque contrato individual manda mais que a escala da rede.
+   */
   private cargaPrevistaEmMinutos(colaborador: Colaborador | undefined, data: string): number {
-    if (ehFimDeSemana(data)) return 0;
-    return colaborador?.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS;
+    if (ehDiaDeFolga(data)) return 0;
+    if (ehSabado(data)) return MINUTOS_SABADO;
+
+    return (
+      colaborador?.cargaHorariaDiariaMinutos ??
+      minutosDoTurno(acharTurno(colaborador?.turno))
+    );
   }
 
   /** Consolida um dia: horas trabalhadas, intervalo e saldo contra a jornada. */
@@ -506,7 +547,7 @@ class ServicoPonto {
     }
 
     const minutosPrevistos = this.cargaPrevistaEmMinutos(colaborador, data);
-    const completa = ORDEM_MARCACOES.every((tipo) => !!marcacoes[tipo]);
+    const completa = marcacoesEsperadas(data).every((tipo) => !!marcacoes[tipo]);
     const emAndamento = entrada !== null && saida === null;
 
     // Dia sem nenhuma marcação em fim de semana não é falta nem saldo negativo;
@@ -655,28 +696,34 @@ class ServicoPonto {
     const semMotivo = { precisaMotivo: false, minutos: 0, descricao: '' };
     const tolerancia = this.obterToleranciaMinutos();
     const data = paraDataLocal(agora);
-    const config = bancoDados.obterConfiguracoes();
+    const colaborador = bancoDados.obterColaboradorPorId(colaboradorId);
     const minutosAgora = agora.getHours() * 60 + agora.getMinutes();
 
     if (tipo === 'saida_almoco') return semMotivo;
 
+    /**
+     * O horário esperado sai do TURNO DA PESSOA, não de um valor único da
+     * rede: quem é do turno B entra às 08:20, e cobrar dele o horário do
+     * turno A o faria justificar um atraso que não existe.
+     */
+    const turno = acharTurno(colaborador?.turno);
+    const emMinutos = (hora: string): number => {
+      const [h, m] = hora.split(':').map(Number);
+      return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+    };
+
     if (tipo === 'entrada') {
-      // Fim de semana não tem horário de entrada a cumprir
-      if (ehFimDeSemana(data)) return semMotivo;
+      // Domingo não tem horário de entrada a cumprir
+      if (ehDiaDeFolga(data)) return semMotivo;
 
-      const [h, m] = (config.horarioEntradaPadrao || HORARIO_ENTRADA_PADRAO)
-        .split(':')
-        .map(Number);
-      if (!Number.isInteger(h) || !Number.isInteger(m)) return semMotivo;
+      const esperado = ehSabado(data) ? TURNO_SABADO.entrada : turno.entrada;
+      const atraso = minutosAgora - emMinutos(esperado);
 
-      const atraso = minutosAgora - (h * 60 + m);
       if (atraso <= tolerancia) return semMotivo;
       return {
         precisaMotivo: true,
         minutos: atraso,
-        descricao: `Entrada ${formatarMinutos(atraso)} depois do horário (${
-          config.horarioEntradaPadrao || HORARIO_ENTRADA_PADRAO
-        }).`,
+        descricao: `Entrada ${formatarMinutos(atraso)} depois do horário (${esperado}).`,
       };
     }
 
@@ -687,8 +734,8 @@ class ServicoPonto {
 
       const saiuEm = new Date(saida.horario);
       const intervalo = minutosAgora - (saiuEm.getHours() * 60 + saiuEm.getMinutes());
-      const contratado =
-        config.intervaloAlmocoPadraoMinutos ?? INTERVALO_ALMOCO_PADRAO_MINUTOS;
+      // O intervalo contratado é o do turno: a distância entre sair e voltar
+      const contratado = emMinutos(turno.retornoAlmoco) - emMinutos(turno.saidaAlmoco);
 
       const excedente = intervalo - contratado;
       if (excedente <= tolerancia) return semMotivo;
@@ -697,7 +744,7 @@ class ServicoPonto {
         minutos: excedente,
         descricao: `Intervalo de ${formatarMinutos(intervalo)} — ${formatarMinutos(
           excedente
-        )} além do contratado.`,
+        )} além dos ${formatarMinutos(contratado)} do seu turno.`,
       };
     }
 

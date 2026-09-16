@@ -1184,6 +1184,9 @@ class BancoDadosConecta {
         'dataAdmissao',
         'observacoes',
         'cargaHorariaDiariaMinutos',
+        // O turno decide o horário cobrado e o previsto do dia: é ficha
+        // funcional, do mesmo tipo que cargo e jornada
+        'turno',
         'ativo',
       ];
       // Fora do RH, cada pessoa só mexe nos próprios dados de contato e perfil.
