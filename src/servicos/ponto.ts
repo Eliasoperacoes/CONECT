@@ -18,6 +18,9 @@
  */
 
 import {
+  TOLERANCIA_PONTO_PADRAO_MINUTOS,
+  HORARIO_ENTRADA_PADRAO,
+  INTERVALO_ALMOCO_PADRAO_MINUTOS,
   Colaborador,
   CodigoPontoLoja,
   JornadaDia,
@@ -47,6 +50,8 @@ import { usandoNuvem } from './supabase';
 const CHAVE_REGISTROS_PONTO = 'conecta_v4_registros_ponto';
 const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
 const CHAVE_AJUSTES = 'conecta_v4_ajustes_jornada';
+/** Rascunho do motivo entre a batida do meio do dia e o fechamento. */
+const CHAVE_JUSTIFICATIVA_DO_DIA = 'conecta_v4_justificativa_do_dia';
 
 /** Lojas físicas que possuem QR de ponto ('Rede' é agrupador, não tem ponto). */
 export const LOJAS_COM_PONTO: Loja[] = [
@@ -358,7 +363,13 @@ class ServicoPonto {
    * passo pendente da jornada do dia.
    */
   async registrarMarcacaoPorCodigo(
-    conteudoLido: string
+    conteudoLido: string,
+    /**
+     * O que o colaborador escreveu e anexou no ato, quando a batida caiu
+     * fora da janela. Viaja junto até a apuração para o aprovador não ter
+     * de adivinhar o motivo depois.
+     */
+    justificativa?: { motivo?: string; anexoCaminho?: string }
   ): Promise<{ sucesso: boolean; registro?: RegistroPonto; erro?: string }> {
     const atual = bancoDados.obterColaboradorAtual();
     if (!bancoDados.estaAutenticado()) {
@@ -428,11 +439,21 @@ class ServicoPonto {
     registros.push(registro);
     this.gravarRegistros(registros);
 
+    /**
+     * Motivo dado numa batida do MEIO do dia (entrada atrasada, almoço
+     * esticado) precisa sobreviver até o fechamento — é só lá que a
+     * pendência nasce. Sem guardar, a pessoa escreveria a explicação na
+     * entrada e o aprovador receberia o dia mudo às 18h.
+     */
+    if (justificativa?.motivo?.trim() || justificativa?.anexoCaminho) {
+      this.guardarJustificativaDoDia(atual.id, data, justificativa);
+    }
+
     // Fechou a jornada: levanta a diferença e manda para o responsável.
     // É aqui que o caminho começa — sem este passo, hora extra viraria saldo
     // sozinha e ninguém teria decidido nada.
     if (proxima === 'saida') {
-      await this.apurarDia(atual.id, data);
+      await this.apurarDia(atual.id, data, justificativa);
     }
 
     bancoDados.registrarAuditoria(
@@ -554,9 +575,159 @@ class ServicoPonto {
    * decidir, e encher a fila do gerente com dias normais faria ele parar de
    * olhar a fila.
    */
-  async apurarDia(
+  /**
+   * A tolerância diária em vigor, em minutos.
+   *
+   * Vem da configuração da rede; o padrão sai do art. 58 §1º da CLT. Nunca
+   * negativa: uma tolerância negativa faria TODO dia virar pendência, que é
+   * exatamente o que ela existe para evitar.
+   */
+  /**
+   * Guarda o motivo dado numa batida do meio do dia até o fechamento.
+   *
+   * Fica no aparelho de propósito: é rascunho de algumas horas, some quando
+   * a apuração do dia o absorve, e não vale a pena ocupar linha no banco
+   * para isso. Se a pessoa trocar de aparelho no meio do dia, o motivo
+   * volta a ser pedido no fechamento — que é o comportamento certo.
+   */
+  private guardarJustificativaDoDia(
+    colaboradorId: string,
+    data: string,
+    dados: { motivo?: string; anexoCaminho?: string }
+  ): void {
+    try {
+      const bruto = localStorage.getItem(CHAVE_JUSTIFICATIVA_DO_DIA);
+      const mapa = bruto ? JSON.parse(bruto) : {};
+      const chave = `${colaboradorId}_${data}`;
+      mapa[chave] = {
+        motivo: dados.motivo?.trim() || mapa[chave]?.motivo,
+        anexoCaminho: dados.anexoCaminho || mapa[chave]?.anexoCaminho,
+      };
+      localStorage.setItem(CHAVE_JUSTIFICATIVA_DO_DIA, JSON.stringify(mapa));
+    } catch {
+      // Sem armazenamento: o motivo será pedido de novo no fechamento
+    }
+  }
+
+  private lerJustificativaDoDia(
     colaboradorId: string,
     data: string
+  ): { motivo?: string; anexoCaminho?: string } | undefined {
+    try {
+      const bruto = localStorage.getItem(CHAVE_JUSTIFICATIVA_DO_DIA);
+      if (!bruto) return undefined;
+      return JSON.parse(bruto)[`${colaboradorId}_${data}`];
+    } catch {
+      return undefined;
+    }
+  }
+
+  obterToleranciaMinutos(): number {
+    const valor = bancoDados.obterConfiguracoes().toleranciaPontoMinutos;
+    if (typeof valor !== 'number' || Number.isNaN(valor) || valor < 0) {
+      return TOLERANCIA_PONTO_PADRAO_MINUTOS;
+    }
+    return Math.floor(valor);
+  }
+
+  /**
+   * Esta batida, agora, exige motivo do colaborador?
+   *
+   * Chamada ANTES de confirmar. O dia só fecha na 4ª batida, então nem
+   * sempre dá para conhecer a diferença agregada — e esperar as 4 para pedir
+   * o motivo de um atraso óbvio de entrada seria pedir tarde demais, quando
+   * a pessoa já não lembra o porquê.
+   *
+   * Por isso cada marcação é medida contra o que se espera dela:
+   *
+   *   entrada         → atraso sobre o horário de entrada da rede
+   *   retorno almoço  → intervalo maior que o contratado
+   *   saída           → a diferença do dia, que aí já é conhecida por inteiro
+   *   saída p/ almoço → nunca: sair para almoçar cedo ou tarde não é jornada
+   *                     a mais nem a menos; quem decide isso é o fechamento
+   *                     do dia.
+   */
+  avaliarMarcacao(
+    colaboradorId: string,
+    tipo: TipoMarcacao,
+    agora: Date = new Date()
+  ): { precisaMotivo: boolean; minutos: number; descricao: string } {
+    const semMotivo = { precisaMotivo: false, minutos: 0, descricao: '' };
+    const tolerancia = this.obterToleranciaMinutos();
+    const data = paraDataLocal(agora);
+    const config = bancoDados.obterConfiguracoes();
+    const minutosAgora = agora.getHours() * 60 + agora.getMinutes();
+
+    if (tipo === 'saida_almoco') return semMotivo;
+
+    if (tipo === 'entrada') {
+      // Fim de semana não tem horário de entrada a cumprir
+      if (ehFimDeSemana(data)) return semMotivo;
+
+      const [h, m] = (config.horarioEntradaPadrao || HORARIO_ENTRADA_PADRAO)
+        .split(':')
+        .map(Number);
+      if (!Number.isInteger(h) || !Number.isInteger(m)) return semMotivo;
+
+      const atraso = minutosAgora - (h * 60 + m);
+      if (atraso <= tolerancia) return semMotivo;
+      return {
+        precisaMotivo: true,
+        minutos: atraso,
+        descricao: `Entrada ${formatarMinutos(atraso)} depois do horário (${
+          config.horarioEntradaPadrao || HORARIO_ENTRADA_PADRAO
+        }).`,
+      };
+    }
+
+    if (tipo === 'retorno_almoco') {
+      const jornada = this.obterJornadaDoDia(colaboradorId, data);
+      const saida = jornada.marcacoes.saida_almoco;
+      if (!saida) return semMotivo;
+
+      const saiuEm = new Date(saida.horario);
+      const intervalo = minutosAgora - (saiuEm.getHours() * 60 + saiuEm.getMinutes());
+      const contratado =
+        config.intervaloAlmocoPadraoMinutos ?? INTERVALO_ALMOCO_PADRAO_MINUTOS;
+
+      const excedente = intervalo - contratado;
+      if (excedente <= tolerancia) return semMotivo;
+      return {
+        precisaMotivo: true,
+        minutos: excedente,
+        descricao: `Intervalo de ${formatarMinutos(intervalo)} — ${formatarMinutos(
+          excedente
+        )} além do contratado.`,
+      };
+    }
+
+    // saída: o dia inteiro já é conhecido, então mede-se a diferença real
+    const jornada = this.obterJornadaDoDia(colaboradorId, data);
+    const entrada = jornada.marcacoes.entrada;
+    if (!entrada) return semMotivo;
+
+    const entrouEm = new Date(entrada.horario);
+    const trabalhado =
+      minutosAgora -
+      (entrouEm.getHours() * 60 + entrouEm.getMinutes()) -
+      jornada.minutosIntervalo;
+    const diferenca = trabalhado - jornada.minutosPrevistos;
+
+    if (Math.abs(diferenca) <= tolerancia) return semMotivo;
+    return {
+      precisaMotivo: true,
+      minutos: Math.abs(diferenca),
+      descricao:
+        diferenca > 0
+          ? `${formatarMinutos(diferenca)} além da jornada prevista.`
+          : `${formatarMinutos(Math.abs(diferenca))} a menos que a jornada prevista.`,
+    };
+  }
+
+  async apurarDia(
+    colaboradorId: string,
+    data: string,
+    dadosDoColaborador?: { motivo?: string; anexoCaminho?: string }
   ): Promise<{ criou: boolean; ajuste?: AjusteJornada }> {
     const jornada = this.obterJornadaDoDia(colaboradorId, data);
     if (!jornada.completa) return { criou: false };
@@ -577,6 +748,22 @@ class ServicoPonto {
     // decisão é o RH, e aí a decisão é dele.
     if (existente && existente.estado !== 'pendente') return { criou: false };
 
+    /**
+     * A TOLERÂNCIA.
+     *
+     * Dentro dela a diferença entra no banco sem passar por ninguém. Fora
+     * dela, o dia inteiro vira pendência com o valor CHEIO — não se desconta
+     * a tolerância do excedente. É tudo-ou-nada por dia, como manda o art.
+     * 58 §1º da CLT: ou a variação é desprezível, ou o dia é extraordinário.
+     *
+     * Sem isto, qualquer minuto virava fila: ~1.800 aprovações por mês numa
+     * rede de 85 pessoas que batem ponto. Fila desse tamanho vira carimbo, e
+     * aprovação que vira carimbo não controla nada.
+     */
+    const dentroDaTolerancia = Math.abs(diferenca) <= this.obterToleranciaMinutos();
+    const guardada = this.lerJustificativaDoDia(colaboradorId, data);
+    const agora = new Date().toISOString();
+
     const ajuste: AjusteJornada = {
       id: existente?.id || `ajuste-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       colaboradorId,
@@ -585,8 +772,21 @@ class ServicoPonto {
       minutos: Math.abs(diferenca),
       minutosTrabalhados: jornada.minutosTrabalhados,
       minutosPrevistos: jornada.minutosPrevistos,
-      estado: 'pendente',
-      criadoEm: existente?.criadoEm || new Date().toISOString(),
+      estado: dentroDaTolerancia ? 'aprovado' : 'pendente',
+      origem: dentroDaTolerancia ? 'tolerancia_automatica' : 'pendencia',
+      // Sem aprovadorId: ninguém carimbou. O nome existe para o espelho
+      // conseguir dizer que aquilo foi regra, e não decisão de gente.
+      aprovadorNome: dentroDaTolerancia ? 'Tolerância automática' : undefined,
+      decididoEm: dentroDaTolerancia ? agora : undefined,
+      motivoColaborador:
+        dadosDoColaborador?.motivo?.trim() ||
+        guardada?.motivo ||
+        existente?.motivoColaborador,
+      anexoCaminho:
+        dadosDoColaborador?.anexoCaminho ||
+        guardada?.anexoCaminho ||
+        existente?.anexoCaminho,
+      criadoEm: existente?.criadoEm || agora,
     };
 
     if (usandoNuvem()) {

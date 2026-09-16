@@ -169,7 +169,7 @@ test('os arquivos .sql não têm delimitador de corpo quebrado', async () => {
    * Já aconteceu três vezes nesta base, sempre pela ferramenta que escreveu
    * o arquivo comendo um cifrão. Custa uma linha conferir.
    */
-  for (const arquivo of ['esquema.sql', 'acessos.sql', 'organograma.sql', 'conserto-login.sql', 'resetar-acesso.sql', 'liberar-acesso.sql', 'permissoes.sql', 'qr-por-loja.sql', 'mensagem-fixada.sql', 'preferencias-conversa.sql']) {
+  for (const arquivo of ['esquema.sql', 'acessos.sql', 'organograma.sql', 'conserto-login.sql', 'resetar-acesso.sql', 'liberar-acesso.sql', 'permissoes.sql', 'qr-por-loja.sql', 'mensagem-fixada.sql', 'preferencias-conversa.sql', 'ponto-tolerancia-justificativas.sql']) {
     const sql = await lerSql(arquivo);
 
     // Cifrão solto: aparece fora de um par

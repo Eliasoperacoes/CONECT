@@ -52,8 +52,16 @@ mock.module('./bancoDados', () => ({
     estaAutenticado: () => true,
     registrarAuditoria: () => {},
     assinarAlteracoes: () => () => {},
+    /**
+     * A tolerância diária sai daqui. Cada teste pode trocá-la para provar
+     * os dois lados da faixa sem depender do padrão da rede.
+     */
+    obterConfiguracoes: () => ({ toleranciaPontoMinutos: toleranciaDoTeste }),
   },
 }));
+
+/** Tolerância em vigor durante o teste. Reposta no beforeEach. */
+let toleranciaDoTeste = 10;
 
 const CHAVE_REGISTROS = 'conecta_v4_registros_ponto';
 const CHAVE_CODIGOS = 'conecta_v4_codigos_ponto_loja';
@@ -137,6 +145,7 @@ beforeEach(() => {
   modoNuvem = true;
   colaboradorLogado = ELIAS;
   equipe = [ELIAS, ANA];
+  toleranciaDoTeste = 10;
 });
 
 // ============================================================
@@ -925,4 +934,133 @@ test('LÍDER DE SETOR não cuida do cartaz', async () => {
 
   expect(servicoPonto.podeCuidarDoQrDaLoja(LIDER as any, 'Pirassununga')).toBe(false);
   expect(servicoPonto.lojasComQrQuePosso(LIDER as any)).toHaveLength(0);
+});
+
+// ============================================================
+// TOLERÂNCIA DIÁRIA — art. 58 §1º da CLT
+//
+// Era o defeito central: qualquer minuto virava pendência, ~1.800 aprovações
+// por mês, e fila desse tamanho vira carimbo. Dentro da faixa entra no banco
+// sozinho; fora dela, o dia INTEIRO vira pendência com o valor cheio.
+// ============================================================
+
+const CARLOS = {
+  ...ELIAS, id: 'c', nome: 'Carlos', login: 'c', nivel: 1, setor: 'Balcão',
+};
+const CHEFE = {
+  ...ELIAS, id: 'ch', nome: 'Chefe', login: 'ch', nivel: 3, setor: 'Gerência',
+};
+
+test('DENTRO DA TOLERÂNCIA: entra no banco sem passar por ninguém', async () => {
+  equipe = [CHEFE, CARLOS];
+  colaboradorLogado = CARLOS;
+
+  // 8h07 trabalhadas: 7 minutos além, dentro dos 10
+  await fecharJornada(CARLOS, '2026-09-16', '08:00', '17:07');
+
+  const ajuste = servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!;
+  expect(ajuste.estado).toBe('aprovado');
+  expect(ajuste.origem).toBe('tolerancia_automatica');
+  // Ninguém carimbou: não há aprovador humano
+  expect(ajuste.aprovadorId).toBeUndefined();
+
+  // Entrou no saldo, e não aparece na fila de ninguém
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(7);
+  colaboradorLogado = CHEFE;
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(0);
+});
+
+test('FORA DA TOLERÂNCIA: pendência com o valor CHEIO, não o excedente', async () => {
+  // A tolerância é tudo-ou-nada por dia. Descontar os 10 minutos daria 20 e
+  // faria a pessoa receber menos do que trabalhou.
+  equipe = [CHEFE, CARLOS];
+  colaboradorLogado = CARLOS;
+
+  await fecharJornada(CARLOS, '2026-09-16', '08:00', '17:30'); // 8h30 = +30
+
+  const ajuste = servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!;
+  expect(ajuste.estado).toBe('pendente');
+  expect(ajuste.origem).toBe('pendencia');
+  expect(ajuste.minutos).toBe(30);
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(0);
+});
+
+test('a faixa vale para os DOIS lados', async () => {
+  equipe = [CHEFE, CARLOS];
+  colaboradorLogado = CARLOS;
+
+  // 8 minutos a menos
+  await fecharJornada(CARLOS, '2026-09-16', '08:00', '16:52');
+  const ajuste = servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!;
+
+  expect(ajuste.tipo).toBe('debito');
+  expect(ajuste.estado).toBe('aprovado');
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(-8);
+});
+
+test('O LIMITE É INCLUSIVO: exatamente 10 minutos ainda é tolerância', async () => {
+  // A borda importa: a lei diz "até 10", e um erro de <= para < mandaria
+  // para a fila um dia por pessoa a cada tanto, sem motivo nenhum.
+  equipe = [CHEFE, CARLOS];
+  colaboradorLogado = CARLOS;
+
+  await fecharJornada(CARLOS, '2026-09-16', '08:00', '17:10');
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!.estado).toBe('aprovado');
+
+  await fecharJornada(CARLOS, '2026-09-17', '08:00', '17:11');
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-17')!.estado).toBe('pendente');
+});
+
+test('a tolerância é CONFIGURÁVEL, sem deploy', async () => {
+  equipe = [CHEFE, CARLOS];
+  colaboradorLogado = CARLOS;
+
+  toleranciaDoTeste = 0;
+  await fecharJornada(CARLOS, '2026-09-16', '08:00', '17:05');
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!.estado).toBe('pendente');
+
+  toleranciaDoTeste = 30;
+  await fecharJornada(CARLOS, '2026-09-17', '08:00', '17:20');
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-17')!.estado).toBe('aprovado');
+});
+
+test('tolerância inválida cai no padrão da lei, não em zero', async () => {
+  // Configuração corrompida ou apagada não pode transformar cada minuto em
+  // pendência — seria voltar ao defeito que a tolerância veio corrigir.
+  toleranciaDoTeste = -5 as number;
+  expect(servicoPonto.obterToleranciaMinutos()).toBe(10);
+
+  toleranciaDoTeste = undefined as unknown as number;
+  expect(servicoPonto.obterToleranciaMinutos()).toBe(10);
+});
+
+test('a tolerância NÃO decide quem aprova o que passa dela', async () => {
+  // Fora da faixa, a cadeia de aprovação continua mandando igual
+  const ANA_SOB_CHEFE = { ...CARLOS, responsavelId: 'ch' };
+  const OUTRO_CHEFE = { ...CHEFE, id: 'ch2', login: 'ch2', loja: 'Descalvado' };
+  equipe = [CHEFE, OUTRO_CHEFE, ANA_SOB_CHEFE];
+
+  colaboradorLogado = ANA_SOB_CHEFE;
+  await fecharJornada(ANA_SOB_CHEFE, '2026-09-16', '08:00', '18:00');
+
+  colaboradorLogado = OUTRO_CHEFE;
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(0);
+  colaboradorLogado = CHEFE;
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(1);
+});
+
+test('o motivo do colaborador chega junto da pendência', async () => {
+  // Sem ele o aprovador vê "trabalhou 9h de 8h" e decide no escuro
+  equipe = [CHEFE, CARLOS];
+  colaboradorLogado = CARLOS;
+
+  await fecharJornada(CARLOS, '2026-09-16', '08:00', '18:00');
+  await servicoPonto.apurarDia(CARLOS.id, '2026-09-16', {
+    motivo: 'Entrega atrasada do fornecedor',
+    anexoCaminho: 'ponto/c/2026-09-16.jpg',
+  });
+
+  const ajuste = servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!;
+  expect(ajuste.motivoColaborador).toBe('Entrega atrasada do fornecedor');
+  expect(ajuste.anexoCaminho).toBe('ponto/c/2026-09-16.jpg');
 });

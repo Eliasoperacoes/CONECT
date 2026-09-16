@@ -164,6 +164,21 @@ export interface Colaborador {
 /** Jornada padrão quando o colaborador não tem carga própria cadastrada. */
 export const CARGA_HORARIA_PADRAO_MINUTOS = 480; // 8h
 
+/**
+ * Tolerancia diaria padrao, em minutos.
+ *
+ * Dez minutos e o limite do art. 58 par. 1 da CLT: variacoes de ate 5 minutos
+ * por marcacao, limitadas a 10 no dia, nao sao jornada extraordinaria. O
+ * numero fica configuravel, mas o padrao sai da lei e nao de gosto.
+ */
+export const TOLERANCIA_PONTO_PADRAO_MINUTOS = 10;
+
+/** Comeco da jornada, quando a rede nao configurou outro. */
+export const HORARIO_ENTRADA_PADRAO = '08:00';
+
+/** Intervalo de almoco contratado, quando nao configurado. */
+export const INTERVALO_ALMOCO_PADRAO_MINUTOS = 60;
+
 export type TipoMensagem = 'texto' | 'recado_voz' | 'arquivo' | 'imagem';
 
 export interface Mensagem {
@@ -247,6 +262,21 @@ export interface ConfiguracaoSistema {
    * "ninguem ve nada" nem "todo mundo ve tudo".
    */
   permissoesFerramentas?: Record<string, number[]>;
+  /**
+   * Tolerancia diaria, em minutos, sobre a diferenca AGREGADA do dia.
+   *
+   * Dentro dela a diferenca entra no banco sem passar por ninguem; fora
+   * dela, o dia inteiro vira pendencia com o valor CHEIO — a tolerancia e
+   * tudo-ou-nada por dia, nao um desconto.
+   *
+   * Configuravel de proposito: era um numero fixo espalhado pelo codigo, e
+   * mudar exigia deploy.
+   */
+  toleranciaPontoMinutos?: number;
+  /** Horario em que a jornada comeca, para saber se a entrada atrasou. */
+  horarioEntradaPadrao?: string;
+  /** Intervalo de almoco contratado, para saber se o retorno atrasou. */
+  intervaloAlmocoPadraoMinutos?: number;
   /** Meses de conversa guardados antes da limpeza automatica. */
   mesesHistoricoConversas: number;
   /** Quando a limpeza rodou pela ultima vez. */
@@ -373,6 +403,16 @@ export const ROTULO_ESTADO_AJUSTE: Record<EstadoAjuste, string> = {
   recusado: 'Recusado',
 };
 
+/**
+ * De onde veio a apuracao.
+ *
+ * 'tolerancia_automatica' nasce ja aprovada, sem aprovador humano: e a
+ * diferenca pequena que a CLT (art. 58 par. 1) manda desprezar. Guardamos a
+ * origem para o espelho conseguir dizer que ninguem carimbou aquilo — e para
+ * o RH separar o que foi decisao de gente do que foi regra.
+ */
+export type OrigemAjuste = 'pendencia' | 'tolerancia_automatica';
+
 export interface AjusteJornada {
   id: string;
   colaboradorId: string;
@@ -389,8 +429,89 @@ export interface AjusteJornada {
   aprovadorNome?: string;
   decididoEm?: string;
   observacao?: string;
+  /** Vazio nas antigas: elas nasceram antes de a tolerancia existir. */
+  origem?: OrigemAjuste;
+  /**
+   * O que o colaborador escreveu no ato da batida.
+   *
+   * Sem isto o aprovador decide no escuro: ve "trabalhou 9h10 de 8h00" e nao
+   * sabe se foi entrega atrasada, cliente no balcao ou esquecimento.
+   */
+  motivoColaborador?: string;
+  /** Comprovante que ele anexou junto, no armazenamento privado. */
+  anexoCaminho?: string;
   criadoEm: string;
 }
+
+// ============================================================
+// AUSENCIA JUSTIFICADA
+//
+// O que NAO passa por batida: atestado, falta, comparecimento. Segue a mesma
+// cadeia de aprovacao da jornada, e pela mesma razao — quem responde pela
+// pessoa e quem decide.
+// ============================================================
+
+export type TipoAusencia =
+  | 'atestado'
+  | 'falta_justificada'
+  | 'comparecimento'
+  | 'outro';
+
+export const ROTULO_TIPO_AUSENCIA: Record<TipoAusencia, string> = {
+  atestado: 'Atestado médico',
+  falta_justificada: 'Falta justificada',
+  comparecimento: 'Comparecimento (declaração)',
+  outro: 'Outro',
+};
+
+export type EstadoJustificativa = 'pendente' | 'aprovada' | 'recusada';
+
+export interface JustificativaAusencia {
+  id: string;
+  colaboradorId: string;
+  /** AAAA-MM-DD. Um atestado de 3 dias e UMA solicitacao, nao tres. */
+  dataInicio: string;
+  dataFim: string;
+  tipo: TipoAusencia;
+  observacao?: string;
+  anexoCaminho?: string;
+  anexoNome?: string;
+  estado: EstadoJustificativa;
+  aprovadorId?: string;
+  aprovadorNome?: string;
+  decididoEm?: string;
+  motivoRecusa?: string;
+  criadoEm: string;
+}
+
+/**
+ * Situacao de um dia que nao tem jornada batida.
+ *
+ * Existe para o dia deixar de ser so "sem batida" depois que a ausencia e
+ * aprovada — senao o espelho de ponto sai com um buraco e ninguem sabe se
+ * foi falta, atestado ou esquecimento.
+ */
+export type SituacaoDoDia =
+  | 'normal'
+  | 'abonado_atestado'
+  | 'falta_justificada'
+  | 'comparecimento'
+  | 'abonado_outro';
+
+export const SITUACAO_POR_TIPO: Record<TipoAusencia, SituacaoDoDia> = {
+  atestado: 'abonado_atestado',
+  falta_justificada: 'falta_justificada',
+  comparecimento: 'comparecimento',
+  outro: 'abonado_outro',
+};
+
+export const ROTULO_SITUACAO: Record<SituacaoDoDia, string> = {
+  normal: '',
+  abonado_atestado: 'Atestado',
+  falta_justificada: 'Falta justificada',
+  comparecimento: 'Comparecimento',
+  abonado_outro: 'Abonado',
+};
 
 /** Quanto o ajuste soma ou subtrai do banco de horas. */
 export const minutosComSinal = (ajuste: AjusteJornada): number =>

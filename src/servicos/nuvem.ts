@@ -21,11 +21,13 @@ import {
   Setor,
   TipoMarcacao,
   AjusteJornada,
+  JustificativaAusencia,
   TipoAjuste,
   EstadoAjuste,
 } from '../tipos';
 import { supabase, usandoNuvem, loginParaEmailInterno, normalizarLogin } from './supabase';
 import { nuvemComunicacao } from './nuvemComunicacao';
+import { aplicarJustificativasDaNuvem } from './justificativas';
 
 /**
  * Enche o cache de conversa, aviso, configuração e auditoria. Fica aqui e não
@@ -229,6 +231,48 @@ const paraLinhaAjuste = (a: AjusteJornada) => ({
   aprovador_nome: a.aprovadorNome ?? null,
   decidido_em: a.decididoEm ?? null,
   observacao: a.observacao ?? null,
+  origem: a.origem ?? 'pendencia',
+  motivo_colaborador: a.motivoColaborador ?? null,
+  anexo_caminho: a.anexoCaminho ?? null,
+});
+
+/**
+ * Linha da tabela `justificativas_ausencia`.
+ *
+ * Atestado, falta e comparecimento: o que não passa por batida nenhuma e o
+ * fluxo automático da jornada nunca enxerga.
+ */
+const paraLinhaJustificativa = (j: JustificativaAusencia) => ({
+  id: j.id,
+  colaborador_id: j.colaboradorId,
+  data_inicio: j.dataInicio,
+  data_fim: j.dataFim,
+  tipo: j.tipo,
+  observacao: j.observacao ?? null,
+  anexo_caminho: j.anexoCaminho ?? null,
+  anexo_nome: j.anexoNome ?? null,
+  estado: j.estado,
+  aprovador_id: j.aprovadorId ?? null,
+  aprovador_nome: j.aprovadorNome ?? null,
+  decidido_em: j.decididoEm ?? null,
+  motivo_recusa: j.motivoRecusa ?? null,
+});
+
+const paraJustificativa = (linha: Record<string, unknown>): JustificativaAusencia => ({
+  id: String(linha.id),
+  colaboradorId: String(linha.colaborador_id),
+  dataInicio: String(linha.data_inicio),
+  dataFim: String(linha.data_fim),
+  tipo: linha.tipo as JustificativaAusencia['tipo'],
+  observacao: (linha.observacao as string) || undefined,
+  anexoCaminho: (linha.anexo_caminho as string) || undefined,
+  anexoNome: (linha.anexo_nome as string) || undefined,
+  estado: linha.estado as JustificativaAusencia['estado'],
+  aprovadorId: (linha.aprovador_id as string) || undefined,
+  aprovadorNome: (linha.aprovador_nome as string) || undefined,
+  decididoEm: (linha.decidido_em as string) || undefined,
+  motivoRecusa: (linha.motivo_recusa as string) || undefined,
+  criadoEm: String(linha.criado_em),
 });
 
 type Ouvinte = () => void;
@@ -403,6 +447,7 @@ class PonteNuvem {
     await this.sincronizarColaboradores();
     await this.sincronizarPonto();
     await this.sincronizarAjustes();
+    await this.sincronizarJustificativas();
     await carregarComunicacao();
 
     return {
@@ -741,6 +786,71 @@ class PonteNuvem {
    * Traz as apurações que a pessoa pode ver. A RLS já filtra: a própria, e a
    * de quem ela responde.
    */
+  /**
+   * Grava a solicitação de ausência — abertura e decisão pelo mesmo caminho.
+   *
+   * Insert comum com atualização explícita no conflito, e não upsert: upsert
+   * vira `ON CONFLICT`, que exige enxergar a linha em conflito e esbarra na
+   * RLS. Mesma pedra de `salvarConversa` e de `salvarAjuste`.
+   *
+   * Se a decisão voltar recusada pelo banco, foi a RLS dizendo que quem
+   * chamou não responde por aquela pessoa — e é isso que impede pular
+   * etapas mesmo que a tela deixe.
+   */
+  async salvarJustificativa(
+    justificativa: JustificativaAusencia
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+
+    const linha = paraLinhaJustificativa(justificativa);
+    const { error } = await supabase.from('justificativas_ausencia').insert(linha);
+    if (!error) return { sucesso: true };
+
+    if (error.code !== '23505') {
+      console.error('Falha ao gravar a ausência:', error.message);
+      return { sucesso: false, erro: error.message };
+    }
+
+    const { data, error: erroUpdate } = await supabase
+      .from('justificativas_ausencia')
+      .update(linha)
+      .eq('id', justificativa.id)
+      .select('id');
+
+    if (erroUpdate) {
+      console.error('Falha ao reescrever a ausência:', erroUpdate.message);
+      return { sucesso: false, erro: erroUpdate.message };
+    }
+    // Update que não alterou nada é a RLS recusando em silêncio
+    if (!data || data.length === 0) {
+      return {
+        sucesso: false,
+        erro: 'Sem permissão no banco para decidir sobre esta solicitação.',
+      };
+    }
+    return { sucesso: true };
+  }
+
+  async sincronizarJustificativas(): Promise<boolean> {
+    if (!supabase) return false;
+
+    // A RLS já filtra: volta o que é meu e o de quem eu aprovo
+    const { data, error } = await supabase
+      .from('justificativas_ausencia')
+      .select('*')
+      .order('data_inicio', { ascending: false });
+
+    if (error || !data) {
+      console.error('Falha ao sincronizar as ausências:', error?.message);
+      return false;
+    }
+
+    aplicarJustificativasDaNuvem(
+      (data as Record<string, unknown>[]).map(paraJustificativa)
+    );
+    return true;
+  }
+
   async sincronizarAjustes(): Promise<boolean> {
     if (!supabase) return false;
 
