@@ -141,3 +141,43 @@ test('conversa sem preferência nenhuma aparece', () => {
   expect(deveAparecer(EU, conversa('nunca-tocada', AGORA))).toBe(true);
   expect(aplicarPreferencias(EU, [conversa('c9', AGORA)]).map((c) => c.id)).toEqual(['c9']);
 });
+
+// ============================================================
+// AS AÇÕES PRECISAM EXISTIR NAS DUAS LISTAS
+// ============================================================
+
+test('fixar e excluir moram no ITEM, não em quem lista', async () => {
+  /**
+   * O defeito relatado: eu pus o menu no painel flutuante do computador. A
+   * barra do celular usa outra lista, montada no App — e ficou sem fixar e
+   * sem excluir. A pessoa conseguia apagar MENSAGEM no telefone, mas não a
+   * conversa.
+   *
+   * A correção foi mover as ações para o item, que as duas listas usam. Este
+   * teste impede que elas voltem a morar num lado só.
+   */
+  const item = await Bun.file(
+    new URL('../componentes/ItemConversa.tsx', import.meta.url)
+  ).text();
+
+  expect(item).toContain('alternarFixada');
+  expect(item).toContain('ocultarConversa');
+  // Um toque abre — não pode depender de passar o mouse
+  expect(item).not.toContain('group-hover');
+
+  // E quem lista não pode ter a própria cópia do menu
+  const painel = await Bun.file(
+    new URL('../componentes/PainelConversas.tsx', import.meta.url)
+  ).text();
+  expect(painel).not.toContain('alternarFixada');
+  expect(painel).not.toContain('ocultarConversa');
+});
+
+test('as duas listas passam pelas preferências', async () => {
+  // Fixar no computador tem que refletir no celular: mesma preferência,
+  // mesma filtragem. Antes só o painel flutuante aplicava.
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+
+  expect(app).toContain('aplicarPreferencias(colaboradorAtual.id, conversasIndividuais)');
+  expect(app).toContain('aplicarPreferencias(colaboradorAtual.id, grupos)');
+});

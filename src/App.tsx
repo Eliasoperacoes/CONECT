@@ -37,6 +37,7 @@ import { AbaPonto } from './componentes/AbaPonto';
 import { JanelaChat } from './componentes/JanelaChat';
 import { PainelConversas } from './componentes/PainelConversas';
 import { podeUsar } from './servicos/permissoes';
+import { aplicarPreferencias } from './servicos/preferenciasConversa';
 import { servicoPonto } from './servicos/ponto';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
@@ -141,6 +142,13 @@ export default function App() {
   }, [janelas]);
   // Qual seção da lista flutuante está aberta no computador (nenhuma = fechada)
   const [secaoListaAberta, setSecaoListaAberta] = useState<'individuais' | 'grupos' | null>(null);
+
+  /**
+   * Muda quando alguém fixa ou oculta uma conversa. As preferências vivem
+   * fora do React (armazenamento do aparelho), então a lista precisa de um
+   * empurrão para se redesenhar.
+   */
+  const [versaoPreferencias, setVersaoPreferencias] = useState(0);
   const [avisoNaoLido, setAvisoNaoLido] = useState<Mensagem | null>(null);
 
   // Modais acionados pelo botão '+'
@@ -432,6 +440,21 @@ export default function App() {
 
   const abasNavegacao = todasAsAbas.filter((aba) => aba.visivel);
 
+  /**
+   * As listas do celular passando pelas mesmas preferências do computador:
+   * fixadas no topo, ocultas fora. Antes só o painel flutuante aplicava
+   * isso, então fixar no PC não refletia no aparelho.
+   */
+  const conversasVisiveis = useMemo(() => {
+    void versaoPreferencias;
+    return aplicarPreferencias(colaboradorAtual.id, conversasIndividuais);
+  }, [conversasIndividuais, colaboradorAtual.id, versaoPreferencias]);
+
+  const gruposVisiveis = useMemo(() => {
+    void versaoPreferencias;
+    return aplicarPreferencias(colaboradorAtual.id, grupos);
+  }, [grupos, colaboradorAtual.id, versaoPreferencias]);
+
   const totalNaoLidas = conversasIndividuais.reduce((soma, c) => soma + (c.naoLidas || 0), 0);
 
   /**
@@ -643,12 +666,14 @@ export default function App() {
                 </div>
               ) : (
                 <div className="divide-y divide-[var(--c-borda)]">
-                  {conversasIndividuais.map((c) => (
+                  {conversasVisiveis.map((c) => (
                     <ItemConversa
                       key={c.id}
                       conversa={c}
                       selecionada={conversaAtivaId === c.id}
                       aoClicar={() => setConversaAtivaId(c.id)}
+                      colaboradorId={colaboradorAtual.id}
+                      aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
                     />
                   ))}
                 </div>
@@ -663,12 +688,14 @@ export default function App() {
                 </div>
               ) : (
                 <div className="divide-y divide-[var(--c-borda)]">
-                  {grupos.map((g) => (
+                  {gruposVisiveis.map((g) => (
                     <ItemConversa
                       key={g.id}
                       conversa={g}
                       selecionada={conversaAtivaId === g.id}
                       aoClicar={() => setConversaAtivaId(g.id)}
+                      colaboradorId={colaboradorAtual.id}
+                      aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
                     />
                   ))}
                 </div>
