@@ -29,6 +29,30 @@ export type MapaDePermissoes = Record<string, NivelHierarquico[]>;
 
 const CHAVE_CACHE = 'conecta_v4_permissoes_ferramentas';
 
+/**
+ * Versão das regras padrão do catálogo.
+ *
+ * Existe porque uma configuração salva não sabe o que mudou depois dela. O
+ * caso concreto: o administrador salvou o painel quando "Meu ponto" ainda
+ * valia para todos os níveis; depois ficou decidido que gerente não bate
+ * ponto, e o teto entrou no catálogo. Só que o valor GRAVADO vence o
+ * padrão — então a aba continuava aparecendo para a gerência, e a única
+ * saída era ir lá desmarcar na mão.
+ *
+ * Com o carimbo, a mudança de regra se aplica uma vez a quem salvou antes
+ * dela. Depois disso a configuração volta a mandar: quem quiser religar o
+ * ponto para o gerente religa, salva, e não é desfeito.
+ */
+const VERSAO_REGRAS = 1;
+
+/**
+ * Onde o carimbo mora dentro do próprio mapa.
+ *
+ * Começa com "__" de propósito: nenhuma ferramenta do catálogo pode ter uma
+ * chave assim (há teste), então não há risco de colidir com uma tela real.
+ */
+const CHAVE_VERSAO = '__regras';
+
 let emMemoria: MapaDePermissoes | null = null;
 const ouvintes: Array<() => void> = [];
 
@@ -55,13 +79,34 @@ export const obterPermissoes = (): MapaDePermissoes => {
   if (!emMemoria) emMemoria = lerCache();
 
   const padrao = permissoesPadrao();
-  if (!emMemoria) return padrao;
+  if (!emMemoria) return { ...padrao, [CHAVE_VERSAO]: [VERSAO_REGRAS] as never };
 
   const completo: MapaDePermissoes = { ...padrao };
   for (const ferramenta of FERRAMENTAS) {
     const gravado = emMemoria[ferramenta.chave];
     if (Array.isArray(gravado)) completo[ferramenta.chave] = gravado;
   }
+
+  const versaoGravada = Number((emMemoria[CHAVE_VERSAO] as unknown as number[])?.[0] ?? 0);
+
+  /**
+   * Configuração salva antes de uma regra nova: o teto do catálogo é
+   * aplicado uma vez. Só TIRA nível acima do teto — nunca acrescenta
+   * ninguém, porque migração que amplia acesso sozinha é o tipo de coisa
+   * que ninguém percebe até ser tarde.
+   */
+  if (versaoGravada < VERSAO_REGRAS) {
+    for (const ferramenta of FERRAMENTAS) {
+      if (ferramenta.nivelMaximoPadrao === undefined) continue;
+      const atuais = completo[ferramenta.chave];
+      if (!Array.isArray(atuais)) continue;
+      completo[ferramenta.chave] = atuais.filter(
+        (n) => n <= ferramenta.nivelMaximoPadrao!
+      );
+    }
+  }
+
+  completo[CHAVE_VERSAO] = [VERSAO_REGRAS] as never;
   return completo;
 };
 

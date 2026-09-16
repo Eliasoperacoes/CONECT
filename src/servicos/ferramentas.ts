@@ -88,12 +88,15 @@ export const FERRAMENTAS: Ferramenta[] = [
   {
     chave: 'ponto',
     nome: 'Meu ponto',
-    descricao: 'Bater o ponto pelo QR e ver o próprio extrato.',
+    descricao:
+      'Bater o ponto pelo QR e ver o próprio extrato. Some a aba "Ponto" da barra.',
     area: 'principal',
     nivelPadrao: NIVEL_COLABORADOR,
     // Gerente para cima não bate ponto. A aba some por padrão, mas continua
     // podendo ser ligada aqui se algum dia precisar.
     nivelMaximoPadrao: NIVEL_LIDER_SETOR,
+    cuidado:
+      'Da gerência para cima não se bate ponto: vem desmarcado de propósito. Marcar devolve a aba para o nível escolhido.',
   },
   {
     chave: 'eu',

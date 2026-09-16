@@ -349,3 +349,54 @@ test('quem perde todas as telas ainda chega no próprio perfil', () => {
   expect(podeUsar('conversas', semNada)).toBe(false);
   expect(podeUsar('ponto', semNada)).toBe(false);
 });
+
+// ============================================================
+// CONFIGURAÇÃO SALVA ANTES DE UMA REGRA NOVA
+// ============================================================
+
+test('config antiga com ponto liberado para gerente é corrigida uma vez', () => {
+  /**
+   * O caso real: o administrador salvou o painel quando "Meu ponto" ainda
+   * valia para todos. Depois ficou decidido que gerente não bate ponto — e
+   * o valor GRAVADO vence o padrão, então a aba continuava lá. Mudar o
+   * catálogo não bastava.
+   */
+  aplicarPermissoes({ ponto: [1, 2, 3, 4, 5] } as any);
+
+  expect(podeUsar('ponto', pessoa(NIVEL_COLABORADOR))).toBe(true);
+  expect(podeUsar('ponto', pessoa(NIVEL_LIDER_SETOR))).toBe(true);
+  expect(podeUsar('ponto', pessoa(NIVEL_GERENTE))).toBe(false);
+  expect(podeUsar('ponto', pessoa(NIVEL_DIRETORIA))).toBe(false);
+  expect(podeUsar('ponto', pessoa(NIVEL_TI))).toBe(false);
+});
+
+test('depois de corrigida, a configuração volta a mandar', () => {
+  // Quem quiser religar o ponto para o gerente religa, salva, e a migração
+  // não desfaz — senão a regra nova viraria uma trava permanente
+  aplicarPermissoes({ ponto: [1, 2, 3, 4, 5] } as any);
+  expect(podeUsar('ponto', pessoa(NIVEL_GERENTE))).toBe(false);
+
+  // O mapa devolvido já vem carimbado; religar e salvar guarda o carimbo
+  const { mapa } = alternarNivel(obterPermissoes(), 'ponto', NIVEL_GERENTE);
+  aplicarPermissoes(mapa);
+
+  expect(podeUsar('ponto', pessoa(NIVEL_GERENTE))).toBe(true);
+});
+
+test('a migração só TIRA acesso, nunca acrescenta', () => {
+  // Migração que amplia acesso sozinha é o tipo de coisa que ninguém
+  // percebe até ser tarde
+  aplicarPermissoes({ ponto: [1], adm_backup: [] } as any);
+
+  expect(podeUsar('ponto', pessoa(NIVEL_LIDER_SETOR))).toBe(false);
+  expect(podeUsar('adm_backup', pessoa(NIVEL_DIRETORIA))).toBe(false);
+});
+
+test('nenhuma ferramenta usa chave reservada', () => {
+  // O carimbo de versão mora dentro do próprio mapa, com "__" na frente.
+  // Se uma ferramenta usasse uma chave assim, uma tela real viraria o
+  // carimbo — e sumiria.
+  for (const f of FERRAMENTAS) {
+    expect(f.chave.startsWith('__')).toBe(false);
+  }
+});

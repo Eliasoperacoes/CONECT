@@ -201,6 +201,12 @@ export const PainelPermissoes: React.FC<Props> = ({ colaboradorAtual, configurac
                       <span className="text-[11px] text-[var(--c-texto-3)] block">
                         {f.descricao}
                       </span>
+                      {f.nivelMaximoPadrao !== undefined && (
+                        <span className="text-[11px] text-[var(--c-texto-3)] block">
+                          Padrão: até {ROTULO_NIVEL[f.nivelMaximoPadrao]} (N
+                          {f.nivelMaximoPadrao}).
+                        </span>
+                      )}
                       {f.cuidado && (
                         <span className="text-[11px] text-amber-600 flex items-start gap-1 mt-0.5">
                           <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-0.5" />
