@@ -2,116 +2,40 @@
 -- CONECTA — Malachias Autopeças
 -- Regras de criação de acesso
 --
--- Rode este arquivo no SQL Editor DEPOIS do esquema.sql.
--- Pode ser executado mais de uma vez sem quebrar nada.
+-- ESTE ARQUIVO NÃO PRECISA MAIS SER RODADO.
 --
--- O que ele define:
---   1. Ninguém cria conta pela tela de login. Todo colaborador é cadastrado
---      dentro do sistema (pelo RH ou pela planilha) e só então consegue
---      ativar o acesso com a senha padrão.
---   2. A conta do Administrador já fica pronta.
---   3. Na primeira entrada, trocar a senha é obrigatório.
+-- O que ele fazia foi para dentro de supabase/esquema.sql, na seção
+-- "ATIVAÇÃO DE ACESSO". Rode só o esquema.
+--
+-- POR QUE ELE FICOU VAZIO, E NÃO FOI APAGADO
+--
+-- Este arquivo e o esquema definiam a MESMA função —
+-- `criar_colaborador_do_usuario()` — com comportamentos opostos:
+--
+--   aqui         → ligava a conta de acesso a uma ficha que já existe
+--   no esquema   → criava uma ficha nova a cada primeiro acesso
+--
+-- Em Postgres, `create or replace function` não reclama de conflito: vale a
+-- última versão executada. Como o esquema foi rodado várias vezes depois
+-- deste arquivo, era a versão errada que estava valendo no banco.
+--
+-- O efeito prático: o gerente de Pirassununga tentava entrar e, em vez de
+-- assumir a ficha dele — nível 3, loja, CNPJ, tudo vindo da planilha —
+-- nascia um segundo cadastro, nível 1, Balcão, em branco. A ficha boa ficava
+-- órfã, sem ninguém conseguindo acessá-la.
+--
+-- Se este arquivo fosse apagado, o texto antigo continuaria em qualquer aba
+-- ou anotação salva, e um dia alguém o rodaria de novo. Ele fica aqui, vazio
+-- e inofensivo, dizendo o que aconteceu.
 -- ============================================================
 
--- Marca quem ainda está com a senha padrão e precisa definir a própria
-alter table public.colaboradores
-  add column if not exists precisa_trocar_senha boolean not null default true;
-
--- ------------------------------------------------------------
--- ATIVAÇÃO DE ACESSO
---
--- O gatilho deixa de CRIAR colaborador e passa a LIGAR a conta de acesso a
--- uma ficha que já existe. Se o login não estiver cadastrado, o cadastro é
--- recusado — é isso que impede alguém de criar uma conta por fora.
--- ------------------------------------------------------------
-
-create or replace function public.criar_colaborador_do_usuario()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  login_informado text;
-  ficha_id        text;
-begin
-  login_informado := lower(trim(coalesce(
-    new.raw_user_meta_data ->> 'login',
-    split_part(new.email, '@', 1)
-  )));
-
-  -- Procura uma ficha cadastrada e ainda sem acesso ativado
-  select id into ficha_id
-  from public.colaboradores
-  where lower(login) = login_informado
-    and auth_user_id is null
-  limit 1;
-
-  if ficha_id is null then
-    -- Ou o login não existe, ou o acesso já foi ativado antes
-    raise exception 'Login não cadastrado na rede. Procure o RH.'
-      using errcode = 'P0001';
-  end if;
-
-  update public.colaboradores
-     set auth_user_id = new.id
-   where id = ficha_id;
-
-  return new;
-end;
-$$;
-
-drop trigger if exists ao_criar_usuario on auth.users;
-create trigger ao_criar_usuario
-  after insert on auth.users
-  for each row execute function public.criar_colaborador_do_usuario();
-
--- ------------------------------------------------------------
--- CONTA DO ADMINISTRADOR
---
--- A ficha nasce pronta e sem acesso ativado. O Elias entra com a senha padrão
--- e o sistema obriga a definir a dele na sequência.
--- ------------------------------------------------------------
-
-insert into public.colaboradores (
-  id, nome, login, cargo, setor, loja, nivel, foto, presenca,
-  ramal, email, ativo, precisa_trocar_senha
-)
-values (
-  'colab-admin-elias',
-  'Elias Malachias',
-  'Elias',
-  'Administrador Geral',
-  'TI',
-  'Pirassununga',
-  4,
-  '/logo-malachias.svg',
-  'disponivel',
-  '100',
-  'elias@malachiasautopecas.com.br',
-  true,
-  true
-)
-on conflict (id) do update
-  set nivel = 4,
-      ativo = true;
-
--- ------------------------------------------------------------
--- QUEM AINDA NÃO TROCOU A SENHA
---
--- Só a própria pessoa muda o próprio indicador, e só para desligá-lo: assim
--- ninguém consegue reativar a obrigação na conta de outro.
--- ------------------------------------------------------------
-
-create or replace function public.concluir_troca_de_senha()
-returns void
-language sql
-security definer
-set search_path = public
-as $$
-  update public.colaboradores
-     set precisa_trocar_senha = false
-   where auth_user_id = auth.uid();
-$$;
-
-grant execute on function public.concluir_troca_de_senha() to authenticated;
+-- Confere o que está valendo no banco agora. O esperado é uma função só,
+-- e que ela ADOTE a ficha existente em vez de criar outra.
+select
+  exists (
+    select 1 from pg_proc
+     where proname = 'criar_colaborador_do_usuario'
+       and prosrc ilike '%Login nao cadastrado na rede%'
+  ) as gatilho_adota_ficha_existente,
+  (select count(*) from public.colaboradores)                       as fichas_cadastradas,
+  (select count(*) from public.colaboradores where auth_user_id is not null) as acessos_ativados;

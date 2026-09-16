@@ -1,0 +1,188 @@
+/**
+ * Verificação do acesso — CONECTA
+ *
+ * O que motivou: o gerente de Pirassununga tentou entrar e, em vez de
+ * assumir a ficha dele (nível 3, loja, CNPJ, tudo vindo da planilha), nasceu
+ * um SEGUNDO cadastro, nível 1, Balcão, em branco. A ficha boa ficou órfã.
+ *
+ * A causa não estava no aplicativo: a mesma função de banco
+ * (`criar_colaborador_do_usuario`) existia em DOIS arquivos .sql com
+ * comportamentos opostos — um adotava a ficha existente, o outro criava uma
+ * nova. Em Postgres vale a última versão executada, e o arquivo errado foi
+ * rodado por último, várias vezes.
+ *
+ * Teste não roda SQL, mas lê os arquivos. É o bastante para prender o que
+ * de fato quebrou: duas definições da mesma função, e a versão que cria
+ * ficha em vez de adotar.
+ */
+import { test, expect } from 'bun:test';
+import { normalizarLogin, loginParaEmailInterno, loginEhValido } from './supabase';
+
+const lerSql = async (arquivo: string): Promise<string> =>
+  await Bun.file(new URL(`../../supabase/${arquivo}`, import.meta.url)).text();
+
+/**
+ * O SQL sem os comentários.
+ *
+ * Existe porque este teste se enganou sozinho na primeira versão: o arquivo
+ * de acessos EXPLICA, em comentário, que não pode mais ter "create or
+ * replace function" — e a busca achou a própria explicação. Um teste que lê
+ * texto precisa ler só a parte que o banco executa.
+ */
+const semComentarios = (sql: string): string =>
+  sql
+    .split('\n')
+    .filter((linha) => !linha.trimStart().startsWith('--'))
+    .join('\n');
+
+test('a função de ativação é definida UMA vez em todo o projeto', async () => {
+  // Esta é a regressão exata. Duas definições, e quem ganha é quem rodou
+  // por último — que ninguém controla.
+  const arquivos = ['esquema.sql', 'acessos.sql', 'organograma.sql'];
+
+  let definicoes = 0;
+  for (const arquivo of arquivos) {
+    const sql = semComentarios(await lerSql(arquivo));
+    definicoes += (
+      sql.match(/create or replace function public\.criar_colaborador_do_usuario/g) || []
+    ).length;
+  }
+
+  expect(definicoes).toBe(1);
+});
+
+test('o gatilho ADOTA a ficha existente e recusa login desconhecido', async () => {
+  const sql = await lerSql('esquema.sql');
+
+  // Casa pelo login, sem caixa nem espaço sobrando
+  expect(sql).toContain('lower(trim(login)) = login_informado');
+  // E LIGA a ficha achada, em vez de inserir outra
+  expect(sql).toContain('set auth_user_id        = new.id');
+  // Login que não existe na rede não vira cadastro novo
+  expect(sql).toContain('Login nao cadastrado na rede');
+});
+
+test('ficha já ativada não é adotada de novo', async () => {
+  // Senão o cadastro de alguém iria para quem chegasse depois
+  const sql = await lerSql('esquema.sql');
+  expect(sql).toContain('ja tem acesso ativado');
+});
+
+test('o primeiro acesso exige a senha de ativação', async () => {
+  // Antes QUALQUER senha ativava a conta: quem descobrisse a URL e chutasse
+  // um login viraria aquela pessoa, com o nível dela
+  const sql = await lerSql('esquema.sql');
+
+  expect(sql).toContain('senha_ativacao');
+  expect(sql).toContain('Senha de primeiro acesso incorreta');
+  // A senha digitada não pode ficar guardada em texto puro no usuário
+  expect(sql).toContain("raw_user_meta_data - 'ativacao'");
+});
+
+test('a adoção não mexe em nível, loja nem setor da ficha', async () => {
+  // A ficha veio da planilha configurada. Se a ativação sobrescrevesse
+  // qualquer um desses campos, o gerente voltaria a virar Colaborador.
+  const sql = await lerSql('esquema.sql');
+  const inicio = sql.indexOf('-- A ficha é ADOTADA');
+  const trecho = sql.slice(inicio, inicio + 400);
+
+  expect(trecho).toContain('auth_user_id');
+  expect(trecho).not.toContain('nivel =');
+  expect(trecho).not.toContain('loja =');
+  expect(trecho).not.toContain('setor =');
+  expect(trecho).not.toContain('cargo =');
+});
+
+test('o arquivo antigo de acessos não redefine mais nada', async () => {
+  // Ele continua existindo de propósito: o texto antigo está salvo em
+  // alguma aba por aí, e um dia seria colado de novo
+  const sql = semComentarios(await lerSql('acessos.sql'));
+
+  expect(sql).not.toContain('create or replace function');
+  expect(sql).not.toContain('create trigger');
+  // E não pode mais rebaixar o administrador para nível 4
+  expect(sql).not.toMatch(/set nivel = 4/);
+});
+
+test('há limpeza dos cadastros repetidos que o gatilho antigo criou', async () => {
+  const sql = await lerSql('esquema.sql');
+
+  // O fantasma é reconhecido pelo id que o gatilho antigo montava
+  expect(sql).toContain("'colab-' || replace(g.auth_user_id::text, '-', '')");
+  // E o acesso volta para a ficha da planilha
+  expect(sql).toContain('id_real');
+});
+
+// ============================================================
+// O LOGIN QUE O APLICATIVO MANDA PRECISA CASAR COM O DO BANCO
+// ============================================================
+
+test('o login é comparado sem caixa e sem espaço sobrando', () => {
+  expect(normalizarLogin('  Fabio.Tavares  ')).toBe('fabio.tavares');
+  expect(normalizarLogin('FABIO')).toBe('fabio');
+});
+
+test('o e-mail interno é o mesmo para qualquer grafia do login', () => {
+  // Se não fosse, a mesma pessoa teria duas contas de autenticação
+  const esperado = loginParaEmailInterno('fabio.tavares');
+  expect(loginParaEmailInterno('Fabio.Tavares')).toBe(esperado);
+  expect(loginParaEmailInterno('  FABIO.TAVARES ')).toBe(esperado);
+});
+
+test('login com espaço ou acento é recusado no cadastro', () => {
+  // O e-mail interno come esses caracteres. Dois logins diferentes viravam
+  // o mesmo endereço, e a segunda pessoa não conseguia entrar.
+  expect(loginEhValido('fabio.tavares')).toBe(true);
+  expect(loginEhValido('fabio tavares')).toBe(false);
+  expect(loginEhValido('fábio')).toBe(false);
+});
+
+test('cada gatilho de auth.users chama a SUA função', async () => {
+  // Os dois gatilhos nasceram apontando para a mesma função: a adoção
+  // rodaria duas vezes, e a segunda recusaria com "já tem acesso ativado" —
+  // derrubando TODO primeiro acesso do sistema.
+  const sql = semComentarios(await lerSql('esquema.sql'));
+
+  const gatilhos = [...sql.matchAll(/create trigger (\w+)[\s\S]{0,120}?execute function public\.(\w+)\(\)/g)]
+    .map((m) => ({ gatilho: m[1], funcao: m[2] }))
+    .filter((g) => g.gatilho.startsWith('ao_criar_usuario'));
+
+  expect(gatilhos).toHaveLength(2);
+  expect(gatilhos.find((g) => g.gatilho === 'ao_criar_usuario')?.funcao).toBe(
+    'criar_colaborador_do_usuario'
+  );
+  expect(
+    gatilhos.find((g) => g.gatilho === 'ao_criar_usuario_limpar_senha')?.funcao
+  ).toBe('limpar_senha_de_ativacao');
+
+  // Nenhuma função pode ser chamada por dois gatilhos de auth.users
+  const funcoes = gatilhos.map((g) => g.funcao);
+  expect(new Set(funcoes).size).toBe(funcoes.length);
+});
+
+test('os arquivos .sql não têm delimitador de corpo quebrado', async () => {
+  /**
+   * Em Postgres, o corpo de função e de bloco DO vai entre DOIS cifrões.
+   * Perder um deixa o arquivo inválido INTEIRO — não é a linha que falha, é
+   * o script todo, e o erro que o editor mostra aponta para outro lugar.
+   *
+   * Já aconteceu três vezes nesta base, sempre pela ferramenta que escreveu
+   * o arquivo comendo um cifrão. Custa uma linha conferir.
+   */
+  for (const arquivo of ['esquema.sql', 'acessos.sql', 'organograma.sql', 'conserto-login.sql']) {
+    const sql = await lerSql(arquivo);
+
+    // Cifrão solto: aparece fora de um par
+    const solto = sql
+      .split('\n')
+      .map((linha, i) => ({ linha, numero: i + 1 }))
+      .filter(({ linha }) => linha.includes('$') && !linha.includes('$$'));
+    expect(
+      solto.map((s) => `${arquivo}:${s.numero} ${s.linha}`)
+    ).toEqual([]);
+
+    // E os pares têm que fechar
+    const pares = (sql.match(/\$\$/g) || []).length;
+    expect(pares % 2).toBe(0);
+  }
+});

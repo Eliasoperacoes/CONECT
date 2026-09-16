@@ -24,7 +24,7 @@ import {
   TipoAjuste,
   EstadoAjuste,
 } from '../tipos';
-import { supabase, usandoNuvem, loginParaEmailInterno } from './supabase';
+import { supabase, usandoNuvem, loginParaEmailInterno, normalizarLogin } from './supabase';
 import { nuvemComunicacao } from './nuvemComunicacao';
 
 /**
@@ -281,10 +281,27 @@ class PonteNuvem {
 
     // Credencial inexistente: pode ser o primeiro acesso deste colaborador
     if (error) {
+      /**
+        * Primeiro acesso. O gatilho do banco não CRIA ficha — ele procura a
+        * que já existe pelo login e a adota, mantendo nível, loja, CNPJ e
+        * tudo o que veio da planilha.
+        *
+        * O login vai NORMALIZADO porque é assim que o gatilho compara. Ia
+        * cru antes, e quem digitasse "Fabio Engle" onde a planilha gravou
+        * "fabio.tavares" não casava com ficha nenhuma — nascia um cadastro
+        * novo, nível 1, em branco.
+        *
+        * A senha vai junto para o gatilho conferir se é mesmo a de primeiro
+        * acesso. Sem essa conferência, QUALQUER senha ativava a conta: quem
+        * descobrisse a URL e chutasse um login viraria aquela pessoa. O
+        * banco apaga esse campo assim que confere.
+        */
       const ativacao = await supabase.auth.signUp({
         email,
         password: senha,
-        options: { data: { login: login.trim() } },
+        options: {
+          data: { login: normalizarLogin(login), ativacao: senha },
+        },
       });
 
       if (ativacao.error) {
@@ -304,12 +321,26 @@ class PonteNuvem {
         // O Supabase mascara a mensagem do gatilho como 'Database error
         // saving new user'. Nesta tela a causa é sempre a mesma: o gatilho
         // recusou porque o login não está cadastrado na rede.
+        /**
+         * O Supabase mascara qualquer erro do gatilho como 'Database error
+         * saving new user', então daqui não dá para separar "login não
+         * existe" de "senha de primeiro acesso errada". A mensagem cobre os
+         * três motivos possíveis em vez de afirmar um que pode estar errado.
+         */
         if (
           msg.includes('não cadastrado') ||
           msg.includes('nao cadastrado') ||
+          msg.includes('ja tem acesso') ||
+          msg.includes('primeiro acesso') ||
           msg.includes('database error')
         ) {
-          return { sucesso: false, erro: 'Login não cadastrado na rede. Procure o RH.' };
+          return {
+            sucesso: false,
+            erro:
+              'Não foi possível entrar. Confira o login e use a senha de primeiro ' +
+              'acesso. Se o seu acesso já estiver ativado, use a sua senha. Em caso ' +
+              'de dúvida, procure o RH.',
+          };
         }
         if (msg.includes('already registered') || msg.includes('already been registered')) {
           return { sucesso: false, erro: 'Login ou senha incorretos.' };
