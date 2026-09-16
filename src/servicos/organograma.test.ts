@@ -16,7 +16,7 @@ import {
   podeSerResponsavelDe,
   montarArvoreDaLoja,
   subordinadosDiretos,
-  semResponsavel,
+  colaboradoresSemResponsavel,
   estaPosicionado,
 } from './organograma';
 
@@ -210,16 +210,54 @@ test('desligado não aparece no quadro', () => {
   expect(todosOsIds).not.toContain('saiu');
 });
 
-test('a lista de quem falta posicionar não cobra chefe de quem não precisa', () => {
-  const faltando = semResponsavel(REDE).map((c) => c.id);
+test('a lista de quem falta posicionar traz colaborador, não liderança', () => {
+  const faltando = colaboradoresSemResponsavel(REDE).map((c) => c.id);
 
   expect(faltando).toContain('pedro');
-  // Gerente ainda não tem chefe e precisa de um
-  expect(faltando).toContain('gerente');
-  // RH decide por fora da cadeia; cobrar um chefe para ele é ruído
-  expect(faltando).not.toContain('rh');
   // Quem já está posicionado sai da lista
   expect(faltando).not.toContain('ana');
+  // RH decide por fora da cadeia; cobrar um chefe para ele é ruído
+  expect(faltando).not.toContain('rh');
+
+  /**
+   * O gerente NÃO entra aqui, mesmo sem chefe.
+   *
+   * Ele é a estrutura: aparece no alto da árvore da loja. Quando entrava
+   * nesta lista, saía nos dois lados da tela ao mesmo tempo — encabeçando o
+   * quadro e, ao lado, cobrado como se estivesse faltando posicionar.
+   */
+  expect(faltando).not.toContain('gerente');
+  expect(faltando).not.toContain('lider');
+});
+
+test('a árvore da loja guarda a estrutura, não a fila de trabalho', () => {
+  // Com 89 pessoas, colaborador solto na raiz enchia o quadro de cartões
+  // avulsos e escondia justamente o que a tela existe para mostrar
+  const arvore = montarArvoreDaLoja('Pirassununga', REDE, {
+    semColaboradoresSoltos: true,
+  });
+  const raizes = arvore.map((n) => n.colaborador.id);
+
+  expect(raizes).toContain('gerente');
+  // Pedro é colaborador sem ninguém embaixo: é fila, não raiz
+  expect(raizes).not.toContain('pedro');
+
+  // Mas quem já tem gente pendurada continua aparecendo, seja qual for o
+  // nível — senão a equipe dele sumiria junto
+  const CHEFE_N1 = pessoa('chefe-n1', 1);
+  const SOB_ELE = pessoa('sob-ele', 1, { responsavelId: 'chefe-n1' });
+  const comEquipe = montarArvoreDaLoja('Pirassununga', [CHEFE_N1, SOB_ELE], {
+    semColaboradoresSoltos: true,
+  });
+  expect(comEquipe.map((n) => n.colaborador.id)).toContain('chefe-n1');
+});
+
+test('sem a opção, a árvore segue trazendo todo mundo', () => {
+  // A opção é da tela, não da regra: quem chamar sem ela continua vendo tudo
+  const raizes = montarArvoreDaLoja('Pirassununga', REDE).map(
+    (n) => n.colaborador.id
+  );
+  expect(raizes).toContain('pedro');
 });
 
 test('subordinados diretos ignoram os netos', () => {

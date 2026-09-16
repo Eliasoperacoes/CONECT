@@ -16,6 +16,7 @@ import {
   X,
   AlertCircle,
   ChevronRight,
+  ChevronDown,
   ShieldCheck,
   CornerDownRight,
   Building2,
@@ -25,7 +26,7 @@ import { Colaborador, Loja, INFORMACOES_LOJAS, ROTULO_NIVEL, cuidaDePessoas } fr
 import { bancoDados } from '../servicos/bancoDados';
 import {
   montarArvoreDaLoja,
-  semResponsavel,
+  colaboradoresSemResponsavel,
   podeSerResponsavelDe,
   NoOrganograma,
 } from '../servicos/organograma';
@@ -40,6 +41,12 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
   const [versao, setVersao] = useState(0);
   const [arrastando, setArrastando] = useState<Colaborador | null>(null);
   const [alvoDestaque, setAlvoDestaque] = useState<string | null>(null);
+  /**
+   * Quem está aberto. Começa vazio de propósito: com 89 pessoas, abrir tudo
+   * de saída devolve a parede de cartões que esta tela existe para evitar.
+   * Fechado, o lado esquerdo mostra a estrutura — líderes e gerentes.
+   */
+  const [abertos, setAbertos] = useState<Set<string>>(new Set());
   const [aviso, setAviso] = useState<{ texto: string; erro: boolean } | null>(null);
 
   const podeEditar = bancoDados.podeGerenciarPessoas(colaboradorAtual);
@@ -50,14 +57,37 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
   }, [versao]);
 
   const arvore = useMemo(
-    () => montarArvoreDaLoja(lojaAtiva, todos),
+    () => montarArvoreDaLoja(lojaAtiva, todos, { semColaboradoresSoltos: true }),
     [lojaAtiva, todos]
   );
 
   const aguardando = useMemo(
-    () => semResponsavel(todos, lojaAtiva),
+    () => colaboradoresSemResponsavel(todos, lojaAtiva),
     [todos, lojaAtiva]
   );
+
+  /** Ids da árvore que têm equipe — o que faz sentido abrir. */
+  const comEquipe = useMemo(() => {
+    const ids: string[] = [];
+    const varrer = (nos: NoOrganograma[]) => {
+      for (const no of nos) {
+        if (no.subordinados.length > 0) ids.push(no.colaborador.id);
+        varrer(no.subordinados);
+      }
+    };
+    varrer(arvore);
+    return ids;
+  }, [arvore]);
+
+  const tudoAberto = comEquipe.length > 0 && comEquipe.every((id) => abertos.has(id));
+
+  const alternar = (id: string) =>
+    setAbertos((atuais) => {
+      const proximos = new Set(atuais);
+      if (proximos.has(id)) proximos.delete(id);
+      else proximos.add(id);
+      return proximos;
+    });
 
   const mostrar = (texto: string, erro = false) => {
     setAviso({ texto, erro });
@@ -71,6 +101,12 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
     if (!res.sucesso) {
       mostrar(res.erro || 'Não foi possível mover.', true);
       return;
+    }
+
+    // Abre o destino: soltar alguém num cartão fechado e não ver nada
+    // acontecer parece que o arrasto falhou
+    if (novoResponsavelId) {
+      setAbertos((atuais) => new Set(atuais).add(novoResponsavelId));
     }
 
     const chefe = todos.find((c) => c.id === novoResponsavelId);
@@ -95,6 +131,8 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
     const c = no.colaborador;
     const destacado = alvoDestaque === c.id;
     const arrastandoEste = arrastando?.id === c.id;
+    const temEquipe = no.subordinados.length > 0;
+    const aberto = abertos.has(c.id);
 
     // Soltar aqui só vale se não fechar um ciclo; a tela avisa antes,
     // em vez de deixar arrastar e reclamar depois
@@ -118,6 +156,7 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
             setAlvoDestaque(c.id);
           }}
           onDragLeave={() => setAlvoDestaque((atual) => (atual === c.id ? null : atual))}
+          onClick={() => temEquipe && alternar(c.id)}
           onDrop={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -133,7 +172,11 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
             soltarSobre(c);
           }}
           className={`p-2.5 rounded-xl border flex items-center gap-2.5 transition-all ${
-            podeEditar ? 'cursor-grab active:cursor-grabbing' : ''
+            temEquipe
+              ? 'cursor-pointer'
+              : podeEditar
+              ? 'cursor-grab active:cursor-grabbing'
+              : ''
           } ${arrastandoEste ? 'opacity-40' : ''} ${
             destacado
               ? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/30'
@@ -142,6 +185,17 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
               : 'border-[var(--c-borda)] bg-[var(--c-superficie)] hover:border-[var(--c-borda-forte)]'
           }`}
         >
+          {/* A seta ocupa lugar mesmo sem equipe, senão os cartões de uma
+              mesma coluna ficam desalinhados entre si */}
+          <span className="w-4 flex-shrink-0 flex items-center justify-center">
+            {temEquipe &&
+              (aberto ? (
+                <ChevronDown className="w-4 h-4 text-[var(--c-texto-3)]" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-[var(--c-texto-3)]" />
+              ))}
+          </span>
+
           <FotoPresenca
             foto={c.foto}
             nome={c.nome}
@@ -176,6 +230,9 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
                     aprova {no.totalAbaixo}{' '}
                     {no.totalAbaixo === 1 ? 'pessoa' : 'pessoas'}
                   </strong>
+                  {!aberto && (
+                    <span className="text-[var(--c-texto-3)]"> · clique para ver</span>
+                  )}
                 </>
               )}
             </span>
@@ -184,7 +241,10 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
           {podeEditar && c.responsavelId && (
             <button
               type="button"
-              onClick={() => mover(c, null)}
+              onClick={(e) => {
+                e.stopPropagation();
+                mover(c, null);
+              }}
               title="Tirar da cadeia — volta para a regra de setor e loja"
               className="p-1.5 rounded-lg text-[var(--c-texto-3)] hover:text-red-600 hover:bg-red-500/10 transition-colors flex-shrink-0"
             >
@@ -193,7 +253,7 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
           )}
         </div>
 
-        {no.subordinados.length > 0 && (
+        {temEquipe && aberto && (
           <div className="ml-4 pl-3 mt-1.5 border-l-2 border-[var(--c-borda)] flex flex-col gap-1.5">
             {no.subordinados.map((filho) => (
               <Cartao key={filho.colaborador.id} no={filho} />
@@ -259,7 +319,7 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
           <Building2 className="w-3.5 h-3.5" /> Loja:
         </span>
         {lojasComPessoas.map((info) => {
-          const pendentes = semResponsavel(todos, info.nome).length;
+          const pendentes = colaboradoresSemResponsavel(todos, info.nome).length;
           return (
             <button
               key={info.nome}
@@ -292,16 +352,34 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 items-start">
         {/* A árvore da loja */}
         <div className="p-3 rounded-2xl bg-[var(--c-canvas)] border border-[var(--c-borda)] flex flex-col gap-1.5 min-h-[200px]">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="text-[11px] text-[var(--c-texto-3)]">
+              Liderança de {lojaAtiva} — clique num cartão para abrir ou fechar a
+              equipe dele.
+            </span>
+            {comEquipe.length > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setAbertos(tudoAberto ? new Set() : new Set(comEquipe))
+                }
+                className="text-[11px] font-semibold text-[var(--c-texto-2)] hover:text-[var(--c-texto)] whitespace-nowrap px-2 py-1 rounded-lg border border-[var(--c-borda)] hover:border-[var(--c-borda-forte)] transition-colors flex-shrink-0"
+              >
+                {tudoAberto ? 'Fechar todos' : 'Abrir todos'}
+              </button>
+            )}
+          </div>
           {arvore.length === 0 ? (
             <div className="p-8 text-center text-xs text-[var(--c-texto-3)]">
-              Nenhum colaborador ativo em {lojaAtiva}.
+              Nenhum líder ou gerente cadastrado em {lojaAtiva}. Ajuste o nível das
+              pessoas no Quadro de Equipe para montar a cadeia daqui.
             </div>
           ) : (
             arvore.map((no) => <Cartao key={no.colaborador.id} no={no} />)
           )}
         </div>
 
-        {/* Quem ainda não foi posicionado */}
+        {/* Os colaboradores que ainda esperam um responsável */}
         <div
           onDragOver={(e) => {
             if (!podeEditar || !arrastando) return;
@@ -324,18 +402,19 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
           <div className="flex items-center gap-1.5">
             <UserPlus className="w-3.5 h-3.5 text-amber-600" />
             <span className="text-xs font-bold text-[var(--c-texto)]">
-              Sem responsável ({aguardando.length})
+              Colaboradores sem responsável ({aguardando.length})
             </span>
           </div>
           <p className="text-[11px] text-[var(--c-texto-3)]">
-            Estas pessoas seguem na regra automática: líder do setor e gerente da loja
-            aprovam as horas delas.
-            {podeEditar && ' Arraste daqui para dentro do quadro — ou solte aqui para tirar alguém da cadeia.'}
+            Seguem na regra automática: líder do setor e gerente da loja aprovam as
+            horas deles.
+            {podeEditar &&
+              ' Arraste daqui para cima de um líder ou gerente — ou solte alguém aqui para tirá-lo da cadeia.'}
           </p>
 
           {aguardando.length === 0 ? (
             <div className="p-4 text-center text-[11px] text-[var(--c-texto-3)]">
-              Todo mundo de {lojaAtiva} está posicionado.
+              Todo colaborador de {lojaAtiva} já tem responsável.
             </div>
           ) : (
             <div className="flex flex-col gap-1.5 max-h-[420px] overflow-y-auto">

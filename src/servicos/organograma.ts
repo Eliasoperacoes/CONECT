@@ -17,7 +17,7 @@
  * O responsável do responsável também responde — a alçada sobe a cadeia
  * inteira. Se o gerente não decide, o chefe dele decide.
  */
-import { Colaborador, cuidaDePessoas } from '../tipos';
+import { Colaborador, cuidaDePessoas, NIVEL_COLABORADOR } from '../tipos';
 
 export interface NoOrganograma {
   colaborador: Colaborador;
@@ -144,7 +144,8 @@ export const podeSerResponsavelDe = (
  */
 export const montarArvoreDaLoja = (
   loja: string,
-  todos: Colaborador[]
+  todos: Colaborador[],
+  opcoes: { semColaboradoresSoltos?: boolean } = {}
 ): NoOrganograma[] => {
   const daLoja = todos.filter((c) => c.loja === loja && c.ativo !== false);
   const idsDaLoja = new Set(daLoja.map((c) => c.id));
@@ -184,10 +185,26 @@ export const montarArvoreDaLoja = (
     };
   };
 
-  // Nível mais alto primeiro: o gerente encabeça o quadro da loja
-  return raizes
-    .sort((a, b) => b.nivel - a.nivel || a.nome.localeCompare(b.nome))
-    .map((r) => construir(r, 0, new Set()));
+  return (
+    raizes
+      /**
+       * Colaborador solto não é raiz de nada — é fila de trabalho.
+       *
+       * Com 89 pessoas, deixá-los na raiz enchia o quadro de cartões
+       * avulsos e escondia a estrutura, que é o que a tela existe para
+       * mostrar. Eles ficam na lista de quem falta posicionar; a árvore
+       * guarda a liderança e quem já está pendurado nela.
+       */
+      .filter(
+        (c) =>
+          !opcoes.semColaboradoresSoltos ||
+          c.nivel > NIVEL_COLABORADOR ||
+          (filhosDe.get(c.id) || []).length > 0
+      )
+      // Nível mais alto primeiro: o gerente encabeça o quadro da loja
+      .sort((a, b) => b.nivel - a.nivel || a.nome.localeCompare(b.nome))
+      .map((r) => construir(r, 0, new Set()))
+  );
 };
 
 /** Subordinados diretos, em qualquer loja. */
@@ -199,8 +216,15 @@ export const subordinadosDiretos = (
     .filter((c) => c.responsavelId === pessoa.id && c.ativo !== false)
     .sort((a, b) => a.nome.localeCompare(b.nome));
 
-/** Quem ainda não foi posicionado — a lista de trabalho de quem monta. */
-export const semResponsavel = (
+/**
+ * Colaboradores que ainda não foram pendurados em ninguém — a lista de
+ * trabalho de quem monta o quadro.
+ *
+ * Só nível 1. Líder e gerente sem chefe não entram aqui: eles são a
+ * estrutura, e aparecem no alto da árvore da loja. Antes entravam, e o
+ * gerente saía nos dois lados da tela ao mesmo tempo.
+ */
+export const colaboradoresSemResponsavel = (
   todos: Colaborador[],
   loja?: string
 ): Colaborador[] =>
@@ -209,6 +233,7 @@ export const semResponsavel = (
       (c) =>
         c.ativo !== false &&
         !c.responsavelId &&
+        c.nivel === NIVEL_COLABORADOR &&
         (!loja || c.loja === loja) &&
         // Quem cuida de pessoas está fora da cadeia por desenho: RH,
         // Diretoria e TI decidem por todo mundo e não precisam de chefe
