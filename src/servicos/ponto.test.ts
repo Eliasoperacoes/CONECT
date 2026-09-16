@@ -382,9 +382,18 @@ test('novo código do RH sobe para o banco e invalida o anterior', async () => {
 test('colaborador comum não gera código novo', async () => {
   await publicarCodigos();
   colaboradorLogado = ANA;
+
+  // Nem de outra loja...
   const res = await servicoPonto.regenerarCodigoDaLoja('Palmeiras');
   expect(res.sucesso).toBe(false);
-  expect(res.erro).toContain('Apenas RH');
+  expect(res.erro).toBeTruthy();
+
+  // ...NEM DA PRÓPRIA. O cartaz nasce no banco pela mão de quem responde
+  // pela loja; se quem bate ponto pudesse trocá-lo, o código deixaria de
+  // provar que a pessoa estava lá.
+  const naPropria = await servicoPonto.regenerarCodigoDaLoja(ANA.loja as any);
+  expect(naPropria.sucesso).toBe(false);
+  expect(servicoPonto.lojasComQrQuePosso(ANA as any)).toHaveLength(0);
 });
 
 // ============================================================
@@ -862,4 +871,58 @@ test('o RH corrige, e a correção fica com autoria', async () => {
 
   expect(res.sucesso).toBe(true);
   expect(res.registro?.metodo).toBe('ajuste_rh');
+});
+
+// ============================================================
+// O CARTAZ DE QR É DA LOJA, E O GERENTE CUIDA DA DELE
+// ============================================================
+
+test('gerente cuida do QR da PRÓPRIA loja, e só dela', async () => {
+  const GER = {
+    ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3,
+    setor: 'Gerência', loja: 'Pirassununga',
+  };
+  equipe = [GER];
+  colaboradorLogado = GER;
+
+  expect(servicoPonto.podeCuidarDoQrDaLoja(GER as any, 'Pirassununga')).toBe(true);
+  // Trocar o cartaz de outra unidade derrubaria o ponto de gente por quem
+  // ele não responde
+  expect(servicoPonto.podeCuidarDoQrDaLoja(GER as any, 'Descalvado')).toBe(false);
+
+  expect(servicoPonto.lojasComQrQuePosso(GER as any)).toEqual(['Pirassununga']);
+});
+
+test('o banco recusa o gerente trocando o cartaz de outra loja', async () => {
+  const GER = {
+    ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3,
+    setor: 'Gerência', loja: 'Pirassununga',
+  };
+  equipe = [GER];
+  colaboradorLogado = GER;
+
+  const res = await servicoPonto.regenerarCodigoDaLoja('Descalvado');
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('sua loja');
+});
+
+test('RH e TI cuidam das cinco lojas', () => {
+  equipe = [ELIAS];
+  colaboradorLogado = ELIAS;
+
+  expect(servicoPonto.lojasComQrQuePosso(ELIAS as any)).toHaveLength(5);
+});
+
+test('LÍDER DE SETOR não cuida do cartaz', async () => {
+  // O cartaz é da LOJA, não do setor — e a liderança de Compras atua nas
+  // cinco. Dar o cartaz a ela seria dar o de todas.
+  const LIDER = {
+    ...ELIAS, id: 'l', nome: 'Lider', login: 'l', nivel: 2,
+    setor: 'Compras', loja: 'Pirassununga',
+  };
+  equipe = [LIDER];
+  colaboradorLogado = LIDER;
+
+  expect(servicoPonto.podeCuidarDoQrDaLoja(LIDER as any, 'Pirassununga')).toBe(false);
+  expect(servicoPonto.lojasComQrQuePosso(LIDER as any)).toHaveLength(0);
 });

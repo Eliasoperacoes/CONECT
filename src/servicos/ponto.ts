@@ -245,8 +245,12 @@ class ServicoPonto {
     loja: Loja
   ): Promise<{ sucesso: boolean; codigo?: CodigoPontoLoja; erro?: string }> {
     const atual = bancoDados.obterColaboradorAtual();
-    if (!this.podeAcessarPainelRH(atual)) {
-      return { sucesso: false, erro: 'Apenas RH e Administrador podem gerar um novo código.' };
+    if (!this.podeCuidarDoQrDaLoja(atual, loja)) {
+      return {
+        sucesso: false,
+        erro:
+          'Você só troca o cartaz da sua loja. Para outra unidade, procure o RH ou o gerente de lá.',
+      };
     }
 
     const codigos = this.lerCodigos().filter((c) => c.loja !== loja);
@@ -750,6 +754,26 @@ class ServicoPonto {
   /** RH e Administrador enxergam o painel completo de banco de horas. */
   podeAcessarPainelRH(colaborador: Colaborador): boolean {
     return cuidaDePessoas(colaborador);
+  }
+
+  /**
+   * Quem publica e troca o código do cartaz de ponto de uma loja.
+   *
+   * RH, Diretoria e TI cuidam das cinco. O gerente cuida da DELE, e só —
+   * trocar o código de outra unidade derrubaria o ponto de gente por quem
+   * ele não responde.
+   *
+   * O líder de setor fica de fora: o cartaz é da loja, não do setor, e a
+   * liderança de Compras atua em todas elas.
+   */
+  podeCuidarDoQrDaLoja(colaborador: Colaborador, loja: Loja): boolean {
+    if (cuidaDePessoas(colaborador)) return true;
+    return colaborador.nivel >= NIVEL_GERENTE && colaborador.loja === loja;
+  }
+
+  /** As lojas cujo cartaz esta pessoa pode ver e trocar. */
+  lojasComQrQuePosso(colaborador: Colaborador): Loja[] {
+    return LOJAS_COM_PONTO.filter((loja) => this.podeCuidarDoQrDaLoja(colaborador, loja));
   }
 
   /**

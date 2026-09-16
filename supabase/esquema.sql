@@ -501,9 +501,34 @@ drop policy if exists codigos_leitura on public.codigos_ponto_loja;
 create policy codigos_leitura on public.codigos_ponto_loja
   for select to authenticated using (true);
 
+/**
+ * O cartaz de ponto de uma loja é cuidado pelo GERENTE dela, além de RH,
+ * Diretoria e TI.
+ *
+ * Preso à loja de propósito: trocar o código de outra unidade derrubaria o
+ * ponto de gente por quem o gerente não responde — o QR antigo para de valer
+ * no instante em que o novo nasce.
+ *
+ * O líder de setor fica de fora: o cartaz é da loja, não do setor, e a
+ * liderança de Compras atua nas cinco.
+ */
+create or replace function public.cuido_do_qr_da_loja(alvo text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select
+    public.cuido_de_pessoas()
+    or exists (
+      select 1 from public.colaboradores
+       where id = public.meu_colaborador_id()
+         and nivel >= 3
+         and loja = alvo
+    );
+$$;
+
 drop policy if exists codigos_escrita on public.codigos_ponto_loja;
 create policy codigos_escrita on public.codigos_ponto_loja
-  for all to authenticated using (public.cuido_de_pessoas()) with check (public.cuido_de_pessoas());
+  for all to authenticated
+  using (public.cuido_do_qr_da_loja(loja))
+  with check (public.cuido_do_qr_da_loja(loja));
 
 -- PONTO: cada um vê e bate o próprio; RH, Administrador e gestores
 -- enxergam a equipe; só RH e Administrador corrigem.

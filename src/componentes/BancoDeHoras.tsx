@@ -113,12 +113,33 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
    * marcação e publicar código de ponto seguem barrados dentro do serviço,
    * que é onde a trava sobrevive a qualquer configuração.
    */
-  const temAcesso = podeUsar('banco_horas_rh', colaboradorAtual);
+  /**
+   * Duas ferramentas distintas moram nesta tela:
+   *
+   *   banco_horas_rh -> espelho de ponto, saldo, correção de marcação
+   *   qr_ponto       -> só o cartaz da loja
+   *
+   * Separadas porque o gerente precisa do cartaz e NÃO precisa do painel de
+   * RH. Enquanto era tudo uma coisa só, dar o cartaz a ele significava dar
+   * junto a folha de ponto.
+   */
+  const veBancoDeHoras = podeUsar('banco_horas_rh', colaboradorAtual);
+  const veQr = podeUsar('qr_ponto', colaboradorAtual);
+  const temAcesso = veBancoDeHoras || veQr;
   const podeCorrigirMarcacao = servicoPonto.podeAcessarPainelRH(colaboradorAtual);
+
+  /** As lojas cujo cartaz esta pessoa cuida. O gerente tem uma; o RH, cinco. */
+  const lojasDoQr = servicoPonto.lojasComQrQuePosso(colaboradorAtual);
+
+  /**
+   * Quem só tem o cartaz não pode cair na aba do banco de horas, que é a
+   * primeira do estado — abriria numa tela que ele não enxerga.
+   */
+  const abaEfetiva: AbaRH = veBancoDeHoras ? abaAtiva : 'qrcodes';
 
   // Gera as imagens dos QRs sempre que a aba é aberta ou um código muda
   useEffect(() => {
-    if (!temAcesso || abaAtiva !== 'qrcodes') return;
+    if (!temAcesso || abaEfetiva !== 'qrcodes') return;
 
     let cancelado = false;
     const gerar = async () => {
@@ -126,8 +147,9 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
       // Quem bate ponto não cria código nenhum no próprio aparelho.
       await servicoPonto.garantirCodigosDasLojas();
 
+      // Só as lojas dela: o gerente não imprime o cartaz de outra unidade
       const gerados = await Promise.all(
-        LOJAS_COM_PONTO.map(async (loja) => {
+        lojasDoQr.map(async (loja) => {
           const conteudo = servicoPonto.montarConteudoQr(loja);
           const registroCodigo = servicoPonto.obterCodigoDaLoja(loja);
           if (!conteudo || !registroCodigo) return null;
@@ -150,7 +172,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
     return () => {
       cancelado = true;
     };
-  }, [abaAtiva, versaoDados, temAcesso]);
+  }, [abaEfetiva, versaoDados, temAcesso]);
 
   const resumos: ResumoPontoColaborador[] = useMemo(() => {
     if (!temAcesso) return [];
@@ -348,8 +370,10 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
       {/* Alternância entre o banco de horas e os cartazes de QR das lojas */}
       <nav className="px-4 sm:px-6 pt-4 flex gap-1.5 overflow-x-auto">
         {([
-          { id: 'banco_horas' as const, rotulo: 'Banco de Horas', icone: Clock },
-          ...(podeCorrigirMarcacao
+          ...(veBancoDeHoras
+            ? [{ id: 'banco_horas' as const, rotulo: 'Banco de Horas', icone: Clock }]
+            : []),
+          ...(veQr
             ? [{ id: 'qrcodes' as const, rotulo: 'QR do Ponto', icone: QrCode }]
             : []),
         ]).map((aba) => (
@@ -362,7 +386,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
               setDetalheId(null);
             }}
             className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-colors border ${
-              abaAtiva === aba.id
+              abaEfetiva === aba.id
                 ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] border-[var(--c-acento)] shadow-xs'
                 : 'bg-[var(--c-superficie)] text-[var(--c-texto-3)] border-[var(--c-borda)] hover:text-[var(--c-texto-2)]'
             }`}
@@ -375,7 +399,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
 
       <div className="px-0 sm:px-2">
         {/* ---------- BANCO DE HORAS ---------- */}
-        {abaAtiva === 'banco_horas' && !detalhe && (
+        {abaEfetiva === 'banco_horas' && !detalhe && (
           <div className="p-4 flex flex-col gap-4">
             {/* Período e filtros */}
             <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-3.5 flex flex-col gap-3">
@@ -788,7 +812,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
         )}
 
         {/* ---------- ESPELHO INDIVIDUAL ---------- */}
-        {abaAtiva === 'banco_horas' && detalhe && (
+        {abaEfetiva === 'banco_horas' && detalhe && (
           <div className="p-4 flex flex-col gap-4">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <button
@@ -1029,7 +1053,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
         )}
 
         {/* ---------- QR CODES ---------- */}
-        {abaAtiva === 'qrcodes' && (
+        {abaEfetiva === 'qrcodes' && (
           <div className="p-4 flex flex-col gap-4">
             <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-3.5">
               <h2 className="text-sm font-bold text-[var(--c-texto)] mb-1">

@@ -156,6 +156,16 @@ export const FERRAMENTAS: Ferramenta[] = [
     cuidado: 'Corrigir marcação é registro trabalhista — segue restrito ao RH.',
   },
   {
+    chave: 'qr_ponto',
+    nome: 'QR do Ponto',
+    descricao:
+      'Gerar e imprimir o cartaz de ponto. O gerente vê apenas a própria loja; RH e TI, as cinco.',
+    area: 'gestao',
+    nivelPadrao: NIVEL_GERENTE,
+    cuidado:
+      'Gerar um código novo invalida o cartaz antigo na hora — quem estiver com a foto dele não bate mais.',
+  },
+  {
     chave: 'avisos_direcao',
     nome: 'Avisos & Direção',
     descricao: 'Central de comunicados oficiais da rede.',

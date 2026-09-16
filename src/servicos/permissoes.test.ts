@@ -400,3 +400,22 @@ test('nenhuma ferramenta usa chave reservada', () => {
     expect(f.chave.startsWith('__')).toBe(false);
   }
 });
+
+test('QR do Ponto é ferramenta separada do Banco de Horas', () => {
+  /**
+   * O gerente precisa do cartaz e NÃO precisa do painel de RH. Enquanto era
+   * tudo uma ferramenta só, dar o cartaz a ele significava dar junto o
+   * espelho de ponto e o saldo de todo mundo.
+   */
+  const gerente = pessoa(NIVEL_GERENTE);
+
+  expect(podeUsar('qr_ponto', gerente)).toBe(true);
+  expect(podeUsar('banco_horas_rh', gerente)).toBe(false);
+
+  // Líder não cuida de cartaz: ele é da loja, não do setor
+  expect(podeUsar('qr_ponto', pessoa(NIVEL_LIDER_SETOR))).toBe(false);
+
+  // RH e TI continuam com os dois
+  expect(podeUsar('qr_ponto', pessoa(NIVEL_TI))).toBe(true);
+  expect(podeUsar('banco_horas_rh', pessoa(NIVEL_TI))).toBe(true);
+});

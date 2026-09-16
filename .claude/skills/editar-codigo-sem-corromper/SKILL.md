@@ -50,7 +50,8 @@ for (const [de, para] of trocas) {
   // Falhar ANTES de escrever. Sem isto, uma âncora que não casa vira uma
   // edição que não aconteceu e ninguém percebe.
   if (!s.includes(de)) throw new Error('nao achei: ' + de.slice(0, 60));
-  s = s.replace(de, para);
+  // Forma de FUNÇÃO. Como string, `$$` no texto novo vira `$` — ver abaixo.
+  s = s.replace(de, () => para);
 }
 await Bun.write(p, s);   // grava só depois de todas casarem
 ```
@@ -72,10 +73,39 @@ Os caracteres que mais somem:
 
 | Caractere | Onde dói | Cuidado |
 |---|---|---|
-| `$$` | Corpo de função e bloco `DO` em SQL | `perl -0pi -e "s/.../$$/"` come um. Escreva por ferramenta de edição |
+| `$$` | Corpo de função e bloco `DO` em SQL | **Ver abaixo: a causa é `String.replace`** |
+
+### A causa do `$$` sumido: `String.replace`
+
+Levei três ocorrências para achar. Não é o shell, nem o heredoc, nem o
+`perl`: é o **segundo argumento de `String.prototype.replace`**, onde `$`
+tem significado especial.
+
+| No texto de substituição | Vira |
+|---|---|
+| `$$` | `$` |
+| `$&` | o trecho casado |
+| `$1` | o grupo 1 |
+
+Então um script de edição que injeta SQL come um cifrão de cada `$$`, e o
+arquivo fica inválido **inteiro** — sem erro na hora.
+
+```ts
+s = s.replace(de, para);        // ERRADO: $$ do SQL vira $
+s = s.replace(de, () => para);  // certo: função não interpreta nada
+```
+
+Vale para `replace` e `replaceAll`, com string ou regex. **Use sempre a
+forma de função** quando o texto novo vier de uma variável — você raramente
+sabe se ele contém um cifrão.
+
+### Os outros caracteres
+
+| Caractere | Onde dói | Cuidado |
+|---|---|---|
 | `` ` `` e `${` | Template literal de JS dentro de script | Heredoc **entre aspas** (`<<'FIM'`) não expande; sem aspas, expande |
 | `\n` | Regex de `sed` | `sed` não casa quebra de linha; para multilinha, `perl -0p` |
-| `&` | Lado direito do `sed` | Vira "o texto casado" |
+| `&` | Lado direito do `sed` | Vira "o texto casado" — mesma ideia do `$&` do JavaScript |
 
 ---
 

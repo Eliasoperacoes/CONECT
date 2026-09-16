@@ -16,6 +16,7 @@ import {
   Clock,
   Network,
   ClipboardList,
+  QrCode,
 } from 'lucide-react';
 import { Colaborador, Loja, Setor, INFORMACOES_LOJAS, cuidaDePessoas } from '../tipos';
 import { podeUsar } from '../servicos/permissoes';
@@ -111,7 +112,8 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
     if (podeUsar('painel_gestao', colaboradorAtual) && temEquipe) lista.push('gestao');
     if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
     if (podeUsar('aprovar_jornadas', colaboradorAtual)) lista.push('aprovacoes');
-    if (podeUsar('banco_horas_rh', colaboradorAtual)) lista.push('ponto');
+    if (podeUsar('banco_horas_rh', colaboradorAtual) || podeUsar('qr_ponto', colaboradorAtual))
+      lista.push('ponto');
     if (podeUsar('avisos_direcao', colaboradorAtual)) lista.push('avisos');
     return lista;
   }, [colaboradorAtual, temEquipe, podeVerBancoDeHoras]);
@@ -281,7 +283,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             )}
 
             {/* Banco de horas: só quem cuida de RH */}
-            {pode('banco_horas_rh') && (
+            {(pode('banco_horas_rh') || pode('qr_ponto')) && (
               <button
                 type="button"
                 id="subaba-banco-horas"
@@ -292,8 +294,20 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                     : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
                 }`}
               >
-                <Clock className="w-3.5 h-3.5" />
-                <span>Banco de Horas</span>
+                {/* O nome segue o que a pessoa tem de fato: chamar de
+                    "Banco de Horas" uma tela que só mostra o cartaz faria
+                    o gerente procurar um saldo que não está lá */}
+                {pode('banco_horas_rh') ? (
+                  <>
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Banco de Horas</span>
+                  </>
+                ) : (
+                  <>
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>QR do Ponto</span>
+                  </>
+                )}
               </button>
             )}
 
