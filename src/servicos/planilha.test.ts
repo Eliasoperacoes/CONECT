@@ -122,3 +122,15 @@ test('ESTÁGIO entra, com as grafias que a planilha usa', () => {
 
   expect(resolverSetorDaPlanilha('Estagiário(a)').erro).toBeUndefined();
 });
+
+test('ADMINISTRATIVO entra como setor, e não escala o nível', () => {
+  expect(resolverSetorDaPlanilha('Administrativo').setor).toBe('Administrativo');
+  expect(resolverSetorDaPlanilha('Administração').setor).toBe('Administrativo');
+  expect(resolverSetorDaPlanilha('ADM').setor).toBe('Administrativo');
+  expect(resolverSetorDaPlanilha('Administrativo').erro).toBeUndefined();
+
+  // A mesma palavra existe como cargo e agora como setor — mas na coluna de
+  // NÍVEL ela continua não valendo nada, que é o que evita virar TI
+  expect(resolverNivelDaPlanilha('Administrativo').nivel).toBe(NIVEL_COLABORADOR);
+  expect(resolverNivelDaPlanilha('Administrativo').aviso).toBeTruthy();
+});
