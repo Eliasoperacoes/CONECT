@@ -923,9 +923,44 @@ test('AS AÇÕES DA MENSAGEM SÃO ALCANÇÁVEIS NO CELULAR', async () => {
   expect(tela).toContain('setMenuMensagemId');
   expect(tela).toContain('md:hidden');
 
-  // E o bloco de ações deixou de ser hover-only: o hover agora é a partir
-  // de md, com o menu valendo abaixo disso
+  // O bloco de hover é só do computador, a partir de md
   expect(tela).toContain("hidden md:flex opacity-0 group-hover:opacity-100");
+});
+
+test('no celular as ações são um PAINEL, não botões na linha da mensagem', async () => {
+  /**
+   * A primeira correção falhou: acrescentei os mesmos botõezinhos à linha da
+   * mensagem, e no telefone eles caíam fora da tela. O balão já ocupa 85% da
+   * largura, sobra espaço para UM botão — não para cinco —, e o container só
+   * rola na vertical, então nem dava para alcançá-los.
+   *
+   * O teste exige o painel: posicionado, com largura própria, e com rótulo
+   * em texto em vez de só ícone.
+   */
+  const tela = await Bun.file(
+    new URL('../componentes/TelaConversa.tsx', import.meta.url)
+  ).text();
+
+  const inicio = tela.indexOf('{menuMensagemId === msg.id && (');
+  expect(inicio).toBeGreaterThan(-1);
+  // 6000: o menu tem cinco itens com rótulo e permissão; 4000 cortava antes
+  // do último e reprovava o código certo
+  const menu = tela.slice(inicio, inicio + 6000);
+
+  // Flutuante e com largura própria: não disputa espaço com o balão
+  expect(menu).toContain('absolute');
+  expect(menu).toContain('w-52');
+
+  // Rótulos em texto — ícone sozinho num menu de toque não diz o que faz
+  for (const rotulo of ['Encaminhar', 'Selecionar', 'Apagar']) {
+    expect(menu).toContain(rotulo);
+  }
+
+  // Fundo que fecha ao tocar fora, senão o menu fica preso aberto
+  expect(menu).toContain('fixed inset-0');
+
+  // Nas últimas mensagens abre para cima, senão sai da tela
+  expect(tela).toContain('abrirMenuParaCima');
 });
 
 test('quem fixa é quem pode publicar, não só o autor', async () => {
