@@ -166,3 +166,19 @@ Os logins do CONECTA usam um domínio interno e fictício (`@conecta.malachias.l
 que existe apenas para atender à exigência de e-mail da autenticação. Nenhuma
 mensagem chegaria a esse endereço. Com a confirmação ligada, a ativação do
 acesso trava e o Supabase ainda bate no limite de envio de e-mails.
+
+## Documentação
+
+Escrita a partir da construção do sistema, para quem for retomá-lo:
+
+| Documento | Para quê |
+|---|---|
+| [CLAUDE.md](CLAUDE.md) | Como rodar, as regras do projeto e o vocabulário |
+| [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | As regras que sustentam o sistema e o que quebra ao afrouxá-las |
+| [docs/OPERACAO.md](docs/OPERACAO.md) | O que rodar no Supabase, liberar acesso, resolver login travado |
+| [docs/APRENDIZADOS.md](docs/APRENDIZADOS.md) | Os erros que já custaram caro, com o sintoma de cada um |
+
+E três habilidades reaproveitáveis em outros projetos, em
+[.claude/skills/](.claude/skills/):
+armadilhas de RLS e PostgREST no Supabase, testes verificados por mutação, e
+edição de arquivos sem corrompê-los.
