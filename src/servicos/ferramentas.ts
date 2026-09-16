@@ -53,6 +53,14 @@ export interface Ferramenta {
   /** Quem enxerga por padrão, quando ninguém configurou nada */
   nivelPadrao: NivelHierarquico;
   /**
+   * Teto do padrão, quando a ferramenta não faz sentido para cima.
+   *
+   * O caso que obrigou a existir: gerente não bate ponto. Sem teto, o padrão
+   * é "deste nível para cima" e a aba de bater ponto apareceria para a
+   * gerência, a diretoria e o TI.
+   */
+  nivelMaximoPadrao?: NivelHierarquico;
+  /**
    * Ferramenta que não pode ser desligada de quem está no topo. É o que
    * impede o administrador de se trancar para fora do próprio painel.
    */
@@ -83,6 +91,9 @@ export const FERRAMENTAS: Ferramenta[] = [
     descricao: 'Bater o ponto pelo QR e ver o próprio extrato.',
     area: 'principal',
     nivelPadrao: NIVEL_COLABORADOR,
+    // Gerente para cima não bate ponto. A aba some por padrão, mas continua
+    // podendo ser ligada aqui se algum dia precisar.
+    nivelMaximoPadrao: NIVEL_LIDER_SETOR,
   },
   {
     chave: 'eu',
@@ -255,7 +266,11 @@ export const permissoesPadrao = (): Record<string, NivelHierarquico[]> => {
   ];
 
   for (const ferramenta of FERRAMENTAS) {
-    mapa[ferramenta.chave] = niveis.filter((n) => n >= ferramenta.nivelPadrao);
+    mapa[ferramenta.chave] = niveis.filter(
+      (n) =>
+        n >= ferramenta.nivelPadrao &&
+        (ferramenta.nivelMaximoPadrao === undefined || n <= ferramenta.nivelMaximoPadrao)
+    );
   }
   return mapa;
 };

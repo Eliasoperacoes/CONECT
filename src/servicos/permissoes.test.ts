@@ -259,3 +259,54 @@ test('desligar TUDO de um nível é possível, mas some do painel inteiro', () =
   // E o TI continua entrando no painel de administração para religar
   expect(podeUsar('adm_permissoes', pessoa(NIVEL_TI))).toBe(true);
 });
+
+// ============================================================
+// GERENTE NÃO BATE PONTO
+// ============================================================
+
+test('a aba de bater ponto some do gerente para cima, por padrão', () => {
+  // "Gerentes não precisaram bater ponto" — e a aba aparecia mesmo assim,
+  // porque o padrão era "deste nível para cima" e não tinha teto
+  expect(podeUsar('ponto', pessoa(NIVEL_COLABORADOR))).toBe(true);
+  expect(podeUsar('ponto', pessoa(NIVEL_LIDER_SETOR))).toBe(true);
+
+  expect(podeUsar('ponto', pessoa(NIVEL_GERENTE))).toBe(false);
+  expect(podeUsar('ponto', pessoa(NIVEL_DIRETORIA))).toBe(false);
+  expect(podeUsar('ponto', pessoa(NIVEL_TI))).toBe(false);
+});
+
+test('mas dá para religar o ponto para o gerente, se um dia precisar', () => {
+  // O teto é PADRÃO, não proibição: a configuração continua mandando
+  const { mapa } = alternarNivel(obterPermissoes(), 'ponto', NIVEL_GERENTE);
+  aplicarPermissoes(mapa);
+
+  expect(podeUsar('ponto', pessoa(NIVEL_GERENTE))).toBe(true);
+});
+
+test('o teto não afeta quem não tem teto', () => {
+  // Só 'ponto' tem teto hoje; conversas e perfil continuam para todo mundo
+  for (const nivel of [NIVEL_COLABORADOR, NIVEL_GERENTE, NIVEL_TI]) {
+    expect(podeUsar('conversas', pessoa(nivel))).toBe(true);
+    expect(podeUsar('eu', pessoa(nivel))).toBe(true);
+  }
+});
+
+test('BANCO DE HORAS: ligar no painel basta, sem segundo guardião', () => {
+  /**
+   * O defeito relatado: o administrador ligou "Banco de Horas" para o
+   * gerente e a aba continuou sumida. Havia DOIS guardiões — a permissão e
+   * um `podeAcessarPainelRH` escrito na tela — e o segundo recusava calado.
+   *
+   * Aqui se prova o lado da permissão: ligada, o gerente passa. O que
+   * continua restrito ao RH são as AÇÕES (corrigir marcação, publicar QR),
+   * travadas no serviço e testadas em ponto.test.ts.
+   */
+  expect(podeUsar('banco_horas_rh', pessoa(NIVEL_GERENTE))).toBe(false);
+
+  const { mapa } = alternarNivel(obterPermissoes(), 'banco_horas_rh', NIVEL_GERENTE);
+  aplicarPermissoes(mapa);
+
+  expect(podeUsar('banco_horas_rh', pessoa(NIVEL_GERENTE))).toBe(true);
+  // E não vazou para o líder
+  expect(podeUsar('banco_horas_rh', pessoa(NIVEL_LIDER_SETOR))).toBe(false);
+});

@@ -57,6 +57,7 @@ import {
   formatarSaldo,
   primeiroDiaDoMes,
 } from '../servicos/ponto';
+import { podeUsar } from '../servicos/permissoes';
 
 interface PropsBancoDeHoras {
   colaboradorAtual: Colaborador;
@@ -101,7 +102,19 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
     setTimeout(() => setToast(null), 3500);
   };
 
-  const temAcesso = servicoPonto.podeAcessarPainelRH(colaboradorAtual);
+  /**
+   * Quem VÊ esta tela é decidido no painel de Permissões, e só lá.
+   *
+   * Antes havia dois guardiões: a permissão e um `podeAcessarPainelRH`
+   * escrito aqui. Ligar a ferramenta para o gerente no painel não adiantava
+   * nada — o segundo guardião continuava recusando, sem dizer por quê.
+   *
+   * O que continua restrito ao RH não é a TELA, são as AÇÕES: corrigir
+   * marcação e publicar código de ponto seguem barrados dentro do serviço,
+   * que é onde a trava sobrevive a qualquer configuração.
+   */
+  const temAcesso = podeUsar('banco_horas_rh', colaboradorAtual);
+  const podeCorrigirMarcacao = servicoPonto.podeAcessarPainelRH(colaboradorAtual);
 
   // Gera as imagens dos QRs sempre que a aba é aberta ou um código muda
   useEffect(() => {
@@ -336,7 +349,9 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
       <nav className="px-4 sm:px-6 pt-4 flex gap-1.5 overflow-x-auto">
         {([
           { id: 'banco_horas' as const, rotulo: 'Banco de Horas', icone: Clock },
-          { id: 'qrcodes' as const, rotulo: 'QR do Ponto', icone: QrCode },
+          ...(podeCorrigirMarcacao
+            ? [{ id: 'qrcodes' as const, rotulo: 'QR do Ponto', icone: QrCode }]
+            : []),
         ]).map((aba) => (
           <button
             key={aba.id}
@@ -901,7 +916,9 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
                                 <td key={tipo} className="px-2 py-2 text-center">
                                   <button
                                     type="button"
+                                    disabled={!podeCorrigirMarcacao}
                                     onClick={() =>
+                                      podeCorrigirMarcacao &&
                                       setAjuste({
                                         colaboradorId: detalhe.colaborador.id,
                                         data: jornada.data,
@@ -913,7 +930,9 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
                                     title={
                                       reg?.metodo === 'ajuste_rh'
                                         ? `Ajustado por ${reg.ajustadoPorNome}: ${reg.justificativa}`
-                                        : 'Clique para lançar ou corrigir'
+                                        : podeCorrigirMarcacao
+                                        ? 'Clique para lançar ou corrigir'
+                                        : 'Corrigir marcação é do RH. Avise o RH pelo chat.'
                                     }
                                     className={`font-mono tabular-nums px-1.5 py-0.5 rounded hover:bg-[var(--c-acento-suave)] transition-colors ${
                                       reg

@@ -323,7 +323,7 @@ export default function App() {
       // Painel único de RH & Rede: visão das lojas, quadro de equipe, banco de
       // horas (para RH e Administrador) e comunicados da direção.
       id: 'painel',
-      rotulo: 'RH',
+      rotulo: 'Gerenciar',
       icone: ClipboardList,
       visivel: podeVerRede,
       alvo: 'painel',

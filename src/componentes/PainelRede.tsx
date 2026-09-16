@@ -111,8 +111,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
     if (podeUsar('painel_gestao', colaboradorAtual) && temEquipe) lista.push('gestao');
     if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
     if (podeUsar('aprovar_jornadas', colaboradorAtual)) lista.push('aprovacoes');
-    if (podeUsar('banco_horas_rh', colaboradorAtual) && podeVerBancoDeHoras)
-      lista.push('ponto');
+    if (podeUsar('banco_horas_rh', colaboradorAtual)) lista.push('ponto');
     if (podeUsar('avisos_direcao', colaboradorAtual)) lista.push('avisos');
     return lista;
   }, [colaboradorAtual, temEquipe, podeVerBancoDeHoras]);
@@ -282,7 +281,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             )}
 
             {/* Banco de horas: só quem cuida de RH */}
-            {pode('banco_horas_rh') && podeVerBancoDeHoras && (
+            {pode('banco_horas_rh') && (
               <button
                 type="button"
                 id="subaba-banco-horas"
