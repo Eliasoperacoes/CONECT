@@ -17,6 +17,8 @@ import {
   montarArvoreDaLoja,
   subordinadosDiretos,
   colaboradoresSemResponsavel,
+  minhaEquipe,
+  regraAutomaticaDeAlcada,
   estaPosicionado,
 } from './organograma';
 
@@ -264,4 +266,53 @@ test('subordinados diretos ignoram os netos', () => {
   expect(subordinadosDiretos(GERENTE, REDE).map((c) => c.id)).toEqual(['lider']);
   expect(subordinadosDiretos(LIDER, REDE).map((c) => c.id)).toEqual(['ana']);
   expect(subordinadosDiretos(ANA, REDE)).toHaveLength(0);
+});
+
+// ============================================================
+// QUEM APROVA ACOMPANHA; QUEM NÃO APROVA NÃO ACOMPANHA
+//
+// O painel de gestão mostra saldo de banco de horas. Se a lista de quem
+// aparece lá não for exatamente a lista de quem a pessoa aprova, ou o gestor
+// vê dado de jornada de quem não é dele, ou aprova às cegas.
+// ============================================================
+
+test('a equipe é exatamente quem a pessoa pode aprovar', () => {
+  const equipe = minhaEquipe(GERENTE, REDE).map((c) => c.id);
+
+  for (const c of REDE) {
+    const apareceNaEquipe = equipe.includes(c.id);
+    const podeAprovar = temAlcadaSobre(GERENTE, c, REDE, regraAutomaticaDeAlcada);
+    expect(apareceNaEquipe).toBe(podeAprovar);
+  }
+});
+
+test('o gestor não entra na própria equipe', () => {
+  // Senão o total da equipe somaria o saldo dele junto
+  expect(minhaEquipe(GERENTE, REDE).map((c) => c.id)).not.toContain('gerente');
+});
+
+test('posicionar alguém em outra cadeia TIRA ele do painel do líder', () => {
+  // O mesmo movimento que tira a alçada tira a visibilidade — é o ponto de
+  // ter uma regra só
+  const ANA_SOB_GERENTE = { ...ANA, responsavelId: 'gerente' };
+  const rede = [GERENTE, LIDER, ANA_SOB_GERENTE];
+
+  expect(minhaEquipe(LIDER, rede).map((c) => c.id)).not.toContain('ana');
+  expect(minhaEquipe(GERENTE, rede).map((c) => c.id)).toContain('ana');
+});
+
+test('RH vê a rede inteira; colaborador não vê ninguém', () => {
+  expect(minhaEquipe(RH, REDE).length).toBe(REDE.length - 1);
+  expect(minhaEquipe(ANA, REDE)).toHaveLength(0);
+});
+
+test('gerente de outra loja não aparece na equipe de ninguém por engano', () => {
+  expect(minhaEquipe(GERENTE, REDE).map((c) => c.id)).not.toContain('outra');
+  expect(minhaEquipe(OUTRA_LOJA, REDE).map((c) => c.id)).not.toContain('ana');
+  expect(minhaEquipe(OUTRA_LOJA, REDE).map((c) => c.id)).not.toContain('pedro');
+});
+
+test('desligado some da equipe', () => {
+  const SAIU = pessoa('saiu', 1, { ativo: false, responsavelId: 'gerente' });
+  expect(minhaEquipe(GERENTE, [...REDE, SAIU]).map((c) => c.id)).not.toContain('saiu');
 });

@@ -17,7 +17,13 @@
  * O responsável do responsável também responde — a alçada sobe a cadeia
  * inteira. Se o gerente não decide, o chefe dele decide.
  */
-import { Colaborador, cuidaDePessoas, NIVEL_COLABORADOR } from '../tipos';
+import {
+  Colaborador,
+  cuidaDePessoas,
+  NIVEL_COLABORADOR,
+  NIVEL_LIDER_SETOR,
+  NIVEL_GERENTE,
+} from '../tipos';
 
 export interface NoOrganograma {
   colaborador: Colaborador;
@@ -79,6 +85,55 @@ export const respondePor = (
   if (quem.id === alvo.id) return false;
   return cadeiaAcimaDe(alvo, todos).some((c) => c.id === quem.id);
 };
+
+/**
+ * A regra de antes do organograma, para quem ainda não foi posicionado.
+ *
+ * Vive aqui, e não dentro de quem a usa, porque QUEM APROVA e QUEM
+ * ACOMPANHA têm que ser a mesma resposta. Quando cada um tinha a sua cópia,
+ * o gerente aprovava pela cadeia mas enxergava a loja inteira — via saldo
+ * de gente sobre quem não decidia nada.
+ */
+export const regraAutomaticaDeAlcada = (
+  quem: Colaborador,
+  alvo: Colaborador
+): boolean => {
+  // A decisão sobe um degrau: quem está no mesmo nível não aprova o colega
+  if (quem.nivel <= alvo.nivel) return false;
+
+  // Gerente responde pela LOJA dele, de ponta a ponta
+  if (quem.nivel >= NIVEL_GERENTE && quem.loja === alvo.loja) return true;
+
+  /**
+   * O alcance por SETOR é do líder, e só dele.
+   *
+   * Se valesse para todo mundo acima do líder, um gerente de Descalvado
+   * decidiria sobre um balconista de Pirassununga só porque os dois são do
+   * Balcão — furando a responsabilidade do gerente de lá.
+   */
+  if (quem.nivel === NIVEL_LIDER_SETOR && quem.setor === alvo.setor) return true;
+
+  return false;
+};
+
+/**
+ * A equipe de alguém: as pessoas por quem ele responde.
+ *
+ * Mesma regra da aprovação — quem aprova a hora de alguém acompanha essa
+ * pessoa, e ninguém acompanha quem não aprova.
+ */
+export const minhaEquipe = (
+  quem: Colaborador,
+  todos: Colaborador[]
+): Colaborador[] =>
+  todos
+    .filter(
+      (c) =>
+        c.ativo !== false &&
+        c.id !== quem.id &&
+        temAlcadaSobre(quem, c, todos, regraAutomaticaDeAlcada)
+    )
+    .sort((a, b) => a.nome.localeCompare(b.nome));
 
 /**
  * A regra de alçada da rede, num lugar só.

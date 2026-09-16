@@ -779,3 +779,87 @@ test('gerente de OUTRA loja não entra na cadeia por acaso', async () => {
   colaboradorLogado = GER_B;
   expect(servicoPonto.podeDecidirSobre(ANA as any)).toBe(false);
 });
+
+// ============================================================
+// PAINEL DE GESTÃO: VER E CORRIGIR SÃO COISAS DIFERENTES
+// ============================================================
+
+test('o gerente acompanha a equipe dele, e não a rede', async () => {
+  const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência' };
+  const MEU = { ...ELIAS, id: 'meu', nome: 'Meu', login: 'meu', nivel: 1, setor: 'Balcão' };
+  const DE_OUTRA = {
+    ...ELIAS, id: 'outro', nome: 'Outro', login: 'outro', nivel: 1,
+    setor: 'Balcão', loja: 'Descalvado',
+  };
+  equipe = [GER, MEU, DE_OUTRA];
+  colaboradorLogado = GER;
+
+  const visiveis = servicoPonto.obterColaboradoresVisiveis().map((c) => c.id);
+  expect(visiveis).toContain('meu');
+  expect(visiveis).toContain('g'); // ele mesmo: é o extrato dele
+  expect(visiveis).not.toContain('outro');
+});
+
+test('VER segue a mesma regra de APROVAR — inclusive quando o organograma muda', async () => {
+  // Se as duas listas divergirem, o gestor vê saldo de gente sobre quem não
+  // decide nada, ou aprova sem conseguir ver o histórico
+  const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência' };
+  const LID = { ...ELIAS, id: 'l', nome: 'Lider', login: 'l', nivel: 2, setor: 'Balcão' };
+  // Ana é do Balcão, mas responde ao gerente — sai da alçada do líder
+  const ANA = {
+    ...ELIAS, id: 'a', nome: 'Ana', login: 'a', nivel: 1,
+    setor: 'Balcão', responsavelId: 'g',
+  };
+  equipe = [GER, LID, ANA];
+
+  colaboradorLogado = LID;
+  expect(servicoPonto.podeDecidirSobre(ANA as any)).toBe(false);
+  expect(servicoPonto.obterColaboradoresVisiveis().map((c) => c.id)).not.toContain('a');
+
+  colaboradorLogado = GER;
+  expect(servicoPonto.podeDecidirSobre(ANA as any)).toBe(true);
+  expect(servicoPonto.obterColaboradoresVisiveis().map((c) => c.id)).toContain('a');
+});
+
+test('GERENTE NÃO CORRIGE MARCAÇÃO — isso continua sendo do RH', async () => {
+  // Marcação é registro trabalhista. O gerente vê e aprova; alterar o que
+  // ficou gravado é do RH, com justificativa e autoria.
+  const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência' };
+  const PEDRO_EQ = { ...ELIAS, id: 'p', nome: 'Pedro', login: 'p', nivel: 1, setor: 'Balcão' };
+  equipe = [GER, PEDRO_EQ];
+  colaboradorLogado = GER;
+
+  // Ele responde pela pessoa...
+  expect(servicoPonto.podeDecidirSobre(PEDRO_EQ as any)).toBe(true);
+
+  // ...e mesmo assim não altera a marcação dela
+  const res = await servicoPonto.ajustarMarcacao({
+    colaboradorId: PEDRO_EQ.id,
+    data: '2026-09-16',
+    tipo: 'saida',
+    hora: '18:00',
+    justificativa: 'esqueceu de bater',
+  });
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('RH');
+  expect(bancoRegistros).toHaveLength(0);
+});
+
+test('o RH corrige, e a correção fica com autoria', async () => {
+  // O outro lado do mesmo teste: a trava não pode ter travado o RH junto
+  const PEDRO_EQ = { ...ELIAS, id: 'p', nome: 'Pedro', login: 'p', nivel: 1, setor: 'Balcão' };
+  equipe = [ELIAS, PEDRO_EQ];
+  colaboradorLogado = ELIAS;
+
+  const res = await servicoPonto.ajustarMarcacao({
+    colaboradorId: PEDRO_EQ.id,
+    data: '2026-09-16',
+    tipo: 'saida',
+    hora: '18:00',
+    justificativa: 'esqueceu de bater',
+  });
+
+  expect(res.sucesso).toBe(true);
+  expect(res.registro?.metodo).toBe('ajuste_rh');
+});

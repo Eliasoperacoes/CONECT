@@ -15,8 +15,9 @@ import {
   ShieldAlert,
   Clock,
   Network,
+  ClipboardList,
 } from 'lucide-react';
-import { Colaborador, Loja, Setor, INFORMACOES_LOJAS } from '../tipos';
+import { Colaborador, Loja, Setor, INFORMACOES_LOJAS, NIVEL_LIDER_SETOR } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
 import { QuadroFuncionarios } from './QuadroFuncionarios';
@@ -24,6 +25,7 @@ import { CentralAvisos } from './CentralAvisos';
 import { BancoDeHoras } from './BancoDeHoras';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { Organograma } from './Organograma';
+import { PainelGestao } from './PainelGestao';
 
 interface PropsPainelRede {
   colaboradorAtual: Colaborador;
@@ -35,6 +37,7 @@ interface PropsPainelRede {
 type SubAbaPainel =
   | 'visao_geral'
   | 'quadro'
+  | 'gestao'
   | 'organograma'
   | 'aprovacoes'
   | 'ponto'
@@ -86,6 +89,14 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
 
   /** Quantas jornadas esperam decisão minha. */
   const pendenciasParaDecidir = servicoPonto.obterPendenciasParaDecidir().length;
+
+  /**
+   * Painel de gestão: quem responde por alguém. Líder de setor e gerente
+   * acompanham a própria equipe; RH, Diretoria e TI veem a rede — para eles
+   * é o mesmo alcance do painel de RH, só que organizado por pessoa.
+   */
+  const temEquipe = servicoPonto.obterColaboradoresVisiveis().length > 1;
+  const podeVerGestao = colaboradorAtual.nivel >= NIVEL_LIDER_SETOR && temEquipe;
 
   const lidarIniciarConversaColega = (colegaId: string) => {
     const conversa = bancoDados.obterOuCriarConversaIndividual(colegaId);
@@ -142,6 +153,28 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               <Users className="w-3.5 h-3.5" />
               <span>Quadro de Equipe</span>
             </button>
+
+            {/* Minha equipe: o dia a dia de quem responde por alguém */}
+            {podeVerGestao && (
+              <button
+                type="button"
+                id="subaba-gestao"
+                onClick={() => setSubAbaAtiva('gestao')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                  subAbaAtiva === 'gestao'
+                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+                }`}
+              >
+                <ClipboardList className="w-3.5 h-3.5" />
+                <span>Minha Equipe</span>
+                {pendenciasParaDecidir > 0 && (
+                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    {pendenciasParaDecidir}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Organograma: quem responde por quem. Fica ao lado do quadro
                 porque é a mesma equipe vista pela cadeia de responsabilidade
@@ -492,6 +525,14 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
         {/* SUB-ABA 3: BANCO DE HORAS E QR DO PONTO */}
         {subAbaAtiva === 'aprovacoes' && (
           <AprovacaoJornada colaboradorAtual={colaboradorAtual} />
+        )}
+
+        {/* SUB-ABA: A EQUIPE DE QUEM RESPONDE POR ALGUÉM */}
+        {subAbaAtiva === 'gestao' && (
+          <PainelGestao
+            colaboradorAtual={colaboradorAtual}
+            aoAbrirConversa={lidarIniciarConversaColega}
+          />
         )}
 
         {/* SUB-ABA: CADEIA DE RESPONSABILIDADE (decide quem aprova hora) */}

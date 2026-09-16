@@ -40,7 +40,7 @@ import {
 } from '../tipos';
 import { bancoDados } from './bancoDados';
 import { linhasDeIdentificacao, contatoEmLinha } from './fichaColaborador';
-import { temAlcadaSobre } from './organograma';
+import { temAlcadaSobre, regraAutomaticaDeAlcada } from './organograma';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
 
@@ -612,39 +612,14 @@ class ServicoPonto {
   podeDecidirSobre(solicitante: Colaborador): boolean {
     const eu = bancoDados.obterColaboradorAtual();
 
-    /**
-     * A regra automática — a que valia antes do organograma existir.
-     *
-     * Continua valendo para quem AINDA NÃO foi posicionado na cadeia. Com
-     * 89 pessoas, o quadro é montado loja por loja; sem esta rede de
-     * segurança, quem ainda não entrou no desenho ficaria com as horas
-     * paradas na fila esperando alguém arrastar um cartão.
-     */
-    const regraAutomatica = (quem: Colaborador, alvo: Colaborador): boolean => {
-      // A decisão sobe um degrau: quem está no mesmo nível não aprova o colega
-      if (quem.nivel <= alvo.nivel) return false;
-
-      // Gerente responde pela LOJA dele, de ponta a ponta
-      if (quem.nivel >= NIVEL_GERENTE && quem.loja === alvo.loja) return true;
-
-      /**
-       * O alcance por SETOR é do líder, e só dele.
-       *
-       * Se valesse para todo mundo acima do líder, um gerente de Descalvado
-       * decidiria sobre um balconista de Pirassununga só porque os dois são
-       * do Balcão — furando a responsabilidade do gerente de lá.
-       */
-      if (quem.nivel === NIVEL_LIDER_SETOR && quem.setor === alvo.setor) return true;
-
-      return false;
-    };
-
-    // Quem decide é o organograma; a regra acima só entra onde ele cala
+    // Quem decide é o organograma; a regra automática (líder do setor,
+    // gerente da loja) só entra onde ele cala — para quem ainda não foi
+    // posicionado na cadeia.
     return temAlcadaSobre(
       eu,
       solicitante,
       bancoDados.obterColaboradores(),
-      regraAutomatica
+      regraAutomaticaDeAlcada
     );
   }
 
@@ -778,8 +753,15 @@ class ServicoPonto {
   }
 
   /**
-   * Colaboradores que o usuário logado pode acompanhar. Administrador e RH
-   * veem a rede inteira; gestor (N3) vê apenas a própria loja.
+   * Colaboradores que o usuário logado pode acompanhar.
+   *
+   * É EXATAMENTE quem ele pode aprovar, mais ele mesmo. Antes esta lista
+   * tinha a própria regra — o gerente aprovava pela cadeia mas enxergava a
+   * loja inteira, e via saldo de gente sobre quem não decidia nada. Quem
+   * aprova acompanha; quem não aprova não acompanha.
+   *
+   * Isso faz o organograma valer aqui também: pessoa posicionada só aparece
+   * para a cadeia dela (e para RH, Diretoria e TI).
    */
   obterColaboradoresVisiveis(): Colaborador[] {
     const atual = bancoDados.obterColaboradorAtual();
@@ -788,21 +770,12 @@ class ServicoPonto {
     // RH, Diretoria e TI: a rede inteira
     if (cuidaDePessoas(atual)) return todos;
 
-    // Gerente responde pela loja dele, de ponta a ponta
-    if (atual.nivel >= NIVEL_GERENTE) return todos.filter((c) => c.loja === atual.loja);
-
-    /**
-     * Líder de setor acompanha o PRÓPRIO SETOR, e não a própria loja.
-     *
-     * A diferença importa: a liderança de Compras atua nas cinco lojas, e
-     * limitar pela loja esconderia dela justamente a equipe que ela lidera.
-     * Na matriz, onde o setor é todo local, dá no mesmo.
-     */
-    if (atual.nivel >= NIVEL_LIDER_SETOR) {
-      return todos.filter((c) => c.setor === atual.setor);
-    }
-
-    return todos.filter((c) => c.id === atual.id);
+    // A própria pessoa sempre se vê: é o extrato dela
+    return todos.filter(
+      (c) =>
+        c.id === atual.id ||
+        temAlcadaSobre(atual, c, todos, regraAutomaticaDeAlcada)
+    );
   }
 
   /** Linhas consolidadas do painel de RH para o período escolhido. */
