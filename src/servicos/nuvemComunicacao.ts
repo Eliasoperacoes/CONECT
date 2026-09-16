@@ -26,6 +26,7 @@ import {
 } from '../tipos';
 import { supabase } from './supabase';
 import { resolverCaminhos } from './anexos';
+import { aplicarPreferenciasDaNuvem } from './preferenciasConversa';
 import { aplicarPermissoes, MapaDePermissoes } from './permissoes';
 
 const CHAVE_CONVERSAS = 'conecta_v4_conversas';
@@ -237,7 +238,9 @@ class PonteComunicacao {
 
     const [conversas, participantes, mensagens, leituras] = await Promise.all([
       supabase.from('conversas').select('*'),
-      supabase.from('participantes').select('conversa_id, colaborador_id'),
+      supabase
+        .from('participantes')
+        .select('conversa_id, colaborador_id, fixada, oculta_desde'),
       supabase.from('mensagens').select('*').order('criado_em'),
       supabase.from('leituras_mensagem').select('mensagem_id, colaborador_id'),
     ]);
@@ -304,13 +307,38 @@ class PonteComunicacao {
 
     // Participantes de cada conversa
     const idsPorConversa = new Map<string, string[]>();
-    ((participantes.data || []) as { conversa_id: string; colaborador_id: string }[]).forEach(
-      (p) => {
-        const atual = idsPorConversa.get(p.conversa_id) || [];
-        atual.push(p.colaborador_id);
-        idsPorConversa.set(p.conversa_id, atual);
+
+    /**
+     * As preferências de fixar e ocultar vêm na mesma consulta.
+     *
+     * Só as DESTA pessoa: a linha de participação de outro colaborador diz o
+     * que ELE fixou, e isso não é da conta de ninguém — nem faria sentido
+     * aplicar à lista de quem está lendo.
+     */
+    const meuId = localStorage.getItem('conecta_v4_colaborador_atual');
+    const preferencias: Record<string, { fixada?: boolean; ocultaDesde?: string }> = {};
+
+    (
+      (participantes.data || []) as {
+        conversa_id: string;
+        colaborador_id: string;
+        fixada?: boolean;
+        oculta_desde?: string | null;
+      }[]
+    ).forEach((p) => {
+      const atual = idsPorConversa.get(p.conversa_id) || [];
+      atual.push(p.colaborador_id);
+      idsPorConversa.set(p.conversa_id, atual);
+
+      if (meuId && p.colaborador_id === meuId) {
+        preferencias[p.conversa_id] = {
+          fixada: !!p.fixada,
+          ocultaDesde: p.oculta_desde || undefined,
+        };
       }
-    );
+    });
+
+    aplicarPreferenciasDaNuvem(meuId || '', preferencias);
 
     // Última mensagem de cada conversa — a lista já veio ordenada por data
     const ultimaPorConversa = new Map<string, Mensagem>();
@@ -733,6 +761,45 @@ class PonteComunicacao {
       };
     }
 
+    return { sucesso: true };
+  }
+
+  /**
+   * Grava, no banco, a preferência desta pessoa sobre esta conversa.
+   *
+   * Vive em `participantes` porque é exatamente a linha "esta pessoa nesta
+   * conversa". Antes vivia no navegador, e o resultado era fixar no
+   * computador e não ver nada no celular — duas listas com preferências
+   * diferentes para a mesma pessoa.
+   *
+   * UPDATE, não upsert: a linha de participação já existe (quem não
+   * participa não vê a conversa), e upsert viraria `on conflict`, que
+   * esbarra na RLS. É a mesma pedra de `salvarConversa` e das configurações.
+   */
+  async salvarPreferenciaDeConversa(
+    conversaId: string,
+    colaboradorId: string,
+    preferencia: { fixada?: boolean; ocultaDesde?: string | null }
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+
+    const campos: Record<string, unknown> = {};
+    if (preferencia.fixada !== undefined) campos.fixada = preferencia.fixada;
+    if (preferencia.ocultaDesde !== undefined) {
+      campos.oculta_desde = preferencia.ocultaDesde;
+    }
+    if (Object.keys(campos).length === 0) return { sucesso: true };
+
+    const { error } = await supabase
+      .from('participantes')
+      .update(campos)
+      .eq('conversa_id', conversaId)
+      .eq('colaborador_id', colaboradorId);
+
+    if (error) {
+      console.error('Falha ao salvar preferência da conversa:', error.message);
+      return { sucesso: false, erro: error.message };
+    }
     return { sucesso: true };
   }
 

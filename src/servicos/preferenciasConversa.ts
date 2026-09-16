@@ -35,6 +35,26 @@ export interface PreferenciaDeConversa {
 export type MapaDePreferencias = Record<string, PreferenciaDeConversa>;
 
 const ouvintes: Array<() => void> = [];
+
+/**
+ * Substitui o cache local pelo que veio do banco.
+ *
+ * Chamado pela sincronização. O banco é a verdade; o armazenamento do
+ * aparelho serve para a lista abrir na hora, sem esperar a rede — mesmo
+ * desenho do resto do sistema.
+ */
+export const aplicarPreferenciasDaNuvem = (
+  colaboradorId: string,
+  vindas: MapaDePreferencias
+): void => {
+  if (!colaboradorId) return;
+  try {
+    localStorage.setItem(chaveDe(colaboradorId), JSON.stringify(vindas));
+  } catch {
+    // Sem armazenamento: vale só nesta sessão
+  }
+  notificar();
+};
 const notificar = (): void => ouvintes.forEach((o) => o());
 
 export const assinarPreferencias = (ouvinte: () => void): (() => void) => {
@@ -78,20 +98,26 @@ export const alternarFixada = (colaboradorId: string, conversaId: string): boole
 
   mapa[conversaId] = { ...atual, fixada: nova };
   gravar(colaboradorId, mapa);
+
+  // O banco recebe depois: a lista responde na hora, e a preferência
+  // alcança os outros aparelhos na sequência
+  void subirParaONuvem(conversaId, colaboradorId, { fixada: nova });
   return nova;
 };
 
 /** Tira da lista de quem pediu. As mensagens ficam onde estão. */
 export const ocultarConversa = (colaboradorId: string, conversaId: string): void => {
   const mapa = obterPreferencias(colaboradorId);
+  const agora = new Date().toISOString();
   mapa[conversaId] = {
     ...(mapa[conversaId] || {}),
-    ocultaDesde: new Date().toISOString(),
+    ocultaDesde: agora,
     // Ocultar uma conversa fixada e deixá-la fixada faria ela voltar
     // grudada no topo assim que chegasse mensagem
     fixada: false,
   };
   gravar(colaboradorId, mapa);
+  void subirParaONuvem(conversaId, colaboradorId, { ocultaDesde: agora, fixada: false });
 };
 
 export const reexibirConversa = (colaboradorId: string, conversaId: string): void => {
@@ -99,6 +125,7 @@ export const reexibirConversa = (colaboradorId: string, conversaId: string): voi
   if (!mapa[conversaId]) return;
   delete mapa[conversaId].ocultaDesde;
   gravar(colaboradorId, mapa);
+  void subirParaONuvem(conversaId, colaboradorId, { ocultaDesde: null });
 };
 
 /**
@@ -143,3 +170,28 @@ export const contarOcultas = <T extends { id: string; atualizadoEm: string }>(
   colaboradorId: string,
   conversas: T[]
 ): number => conversas.filter((c) => !deveAparecer(colaboradorId, c)).length;
+
+/**
+ * Manda a preferência para o banco.
+ *
+ * Importado sob demanda de propósito: `nuvemComunicacao` já lê este
+ * arquivo, e uma importação no topo fecharia um ciclo entre os dois.
+ *
+ * Falha de rede não desfaz o que a pessoa acabou de fazer na tela — a
+ * próxima sincronização reconcilia. Ocultar uma conversa e ver ela voltar
+ * por causa de um erro de rede seria pior do que a preferência demorar.
+ */
+const subirParaONuvem = async (
+  conversaId: string,
+  colaboradorId: string,
+  preferencia: { fixada?: boolean; ocultaDesde?: string | null }
+): Promise<void> => {
+  try {
+    const { usandoNuvem } = await import('./supabase');
+    if (!usandoNuvem()) return;
+    const { nuvemComunicacao } = await import('./nuvemComunicacao');
+    await nuvemComunicacao.salvarPreferenciaDeConversa(conversaId, colaboradorId, preferencia);
+  } catch {
+    // Sem rede: fica valendo o que está no aparelho
+  }
+};

@@ -726,17 +726,9 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
               {menuAberto && (
                 <div className="absolute right-0 top-10 w-52 bg-[var(--c-superficie)] border border-[var(--c-borda)] rounded-xl shadow-[var(--s-3)] py-1 z-30 divide-y divide-[var(--c-borda)] animate-in fade-in duration-100">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuAberto(false);
-                      setModoSelecao(true);
-                    }}
-                    className="w-full px-4 py-2.5 text-left text-sm text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)] flex items-center gap-2"
-                  >
-                    <CheckSquare className="w-4 h-4 text-[var(--c-texto-3)]" />
-                    Selecionar mensagens
-                  </button>
+                  {/* "Selecionar mensagens" saiu daqui: a própria mensagem já
+                      oferece Selecionar, e ter o mesmo comando em dois lugares
+                      faz a pessoa procurar qual dos dois é o certo. */}
                   <button
                     type="button"
                     onClick={() => {

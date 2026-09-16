@@ -181,3 +181,82 @@ test('as duas listas passam pelas preferências', async () => {
   expect(app).toContain('aplicarPreferencias(colaboradorAtual.id, conversasIndividuais)');
   expect(app).toContain('aplicarPreferencias(colaboradorAtual.id, grupos)');
 });
+
+// ============================================================
+// AS DUAS VERSÕES CONVERSAM ENTRE SI
+// ============================================================
+
+test('a preferência vai para o BANCO, não fica presa no aparelho', async () => {
+  /**
+   * O pedido: "ambas conversam entre si, MOBILE -> PC". Enquanto fixar e
+   * ocultar viviam só no navegador, a mesma pessoa tinha duas listas
+   * diferentes — fixava no computador e o celular não sabia.
+   *
+   * Vive em `participantes`, que já é a linha "esta pessoa nesta conversa".
+   */
+  const servico = await Bun.file(
+    new URL('./preferenciasConversa.ts', import.meta.url)
+  ).text();
+
+  // Os três caminhos sobem: fixar, ocultar e reexibir
+  expect((servico.match(/void subirParaONuvem\(/g) || []).length).toBe(3);
+
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  expect(ponte).toContain('salvarPreferenciaDeConversa');
+  // E a sincronização traz de volta
+  expect(ponte).toContain('fixada, oculta_desde');
+  expect(ponte).toContain('aplicarPreferenciasDaNuvem');
+});
+
+test('UPDATE, nunca upsert, na tabela de participantes', async () => {
+  // Terceira vez que essa pedra aparece: upsert vira `on conflict` e esbarra
+  // na RLS. A linha de participação já existe — quem não participa não vê a
+  // conversa —, então update é o certo.
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  const inicio = ponte.indexOf('async salvarPreferenciaDeConversa');
+  const corpo = ponte.slice(inicio, inicio + 1400);
+
+  expect(corpo).toContain(".update(campos)");
+  expect(corpo).not.toContain('.upsert(');
+});
+
+test('a preferência lida do banco é só a DESTA pessoa', async () => {
+  // A linha de participação de outro colaborador diz o que ELE fixou. Não é
+  // da conta de ninguém, e aplicá-la à lista de quem lê seria errado.
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  expect(ponte).toContain('p.colaborador_id === meuId');
+});
+
+test('o comando "Selecionar" existe num lugar só', async () => {
+  // Estava no menu do topo do chat E na própria mensagem. Dois caminhos
+  // para a mesma coisa fazem a pessoa procurar qual é o certo.
+  const tela = await Bun.file(
+    new URL('../componentes/TelaConversa.tsx', import.meta.url)
+  ).text();
+
+  /**
+   * A busca ignora comentários: a primeira versão deste teste achou a
+   * própria explicação, escrita em comentário, e reprovou o código certo.
+   * Segunda vez que caio nisso nesta base.
+   */
+  const semComentarios = tela
+    .split('\n')
+    .filter((linha) => {
+      const limpa = linha.trimStart();
+      return !limpa.startsWith('//') && !limpa.startsWith('*') && !limpa.startsWith('{/*');
+    })
+    .join('\n');
+
+  expect(semComentarios).not.toContain('Selecionar mensagens');
+  // E continua existindo na mensagem
+  expect(semComentarios).toContain('Selecionar');
+});

@@ -37,7 +37,7 @@ import { AbaPonto } from './componentes/AbaPonto';
 import { JanelaChat } from './componentes/JanelaChat';
 import { PainelConversas } from './componentes/PainelConversas';
 import { podeUsar } from './servicos/permissoes';
-import { aplicarPreferencias } from './servicos/preferenciasConversa';
+import { aplicarPreferencias, assinarPreferencias } from './servicos/preferenciasConversa';
 import { servicoPonto } from './servicos/ponto';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
@@ -169,6 +169,16 @@ export default function App() {
   useEffect(() => {
     recarregarDados();
     const cancelar = bancoDados.assinarAlteracoes(recarregarDados);
+    return () => cancelar();
+  }, []);
+
+  /**
+   * As preferências de conversa mudam fora do React — pela tela, e também
+   * quando a sincronização traz as do banco. Sem escutar, fixar no celular
+   * só apareceria no computador depois de recarregar a página.
+   */
+  useEffect(() => {
+    const cancelar = assinarPreferencias(() => setVersaoPreferencias((v) => v + 1));
     return () => cancelar();
   }, []);
 
