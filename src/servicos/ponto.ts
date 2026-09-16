@@ -771,6 +771,142 @@ class ServicoPonto {
     };
   }
 
+  /**
+   * Levanta os dias que começaram e não fecharam, e os manda para a fila.
+   *
+   * Antes esses dias sumiam em silêncio: sem as marcações esperadas o dia
+   * não apura, então não virava pendência, não virava débito, e
+   * simplesmente não contava. Era o caminho mais fácil para sumir com um
+   * dia inteiro.
+   *
+   * Só entra o dia PASSADO: durante o expediente o dia está legitimamente
+   * incompleto, e cobrar de manhã a saída que só acontece às 17h seria
+   * ruído puro.
+   *
+   * Dia sem NENHUMA marcação não entra: isso é falta ou ausência
+   * justificada, que têm caminho próprio. Aqui é só o que começou e ficou
+   * pela metade.
+   */
+  async levantarDiasIncompletos(diasParaTras = 30): Promise<number> {
+    const eu = bancoDados.obterColaboradorAtual();
+    const hoje = dataDeHoje();
+    let criados = 0;
+
+    // Só quem eu aprovo: levantar o da rede inteira encheria a fila de
+    // gente que não é minha
+    const equipe = this.obterColaboradoresVisiveis().filter((c) => c.id !== eu.id);
+
+    for (const pessoa of equipe) {
+      for (let i = 1; i <= diasParaTras; i++) {
+        const referencia = new Date();
+        referencia.setDate(referencia.getDate() - i);
+        const data = paraDataLocal(referencia);
+        if (data >= hoje) continue;
+
+        const esperadas = marcacoesEsperadas(data);
+        const jornada = this.obterJornadaDoDia(pessoa.id, data);
+        const batidas = Object.keys(jornada.marcacoes).length;
+        // Conta as ESPERADAS, nao quaisquer: no sabado, uma entrada mais
+        // uma saida de almoco sao duas batidas e nenhuma delas fecha o dia
+        const feitas = esperadas.filter((t) => !!jornada.marcacoes[t]).length;
+
+        // Domingo não tem jornada; dia fechado não é problema; dia sem
+        // nenhuma batida é falta, e falta tem caminho próprio
+        if (ehDiaDeFolga(data)) continue;
+        if (batidas === 0 || feitas >= esperadas.length) continue;
+
+        // Já levantado, decidido ou coberto por ausência aprovada: não repete
+        if (this.obterAjusteDoDia(pessoa.id, data)) continue;
+
+        const ajuste: AjusteJornada = {
+          id: `inc-${pessoa.id}-${data}`,
+          colaboradorId: pessoa.id,
+          data,
+          tipo: 'dia_incompleto',
+          // Guarda a jornada prevista: é o débito que o dia vira se o
+          // responsável decidir que ele não foi trabalhado
+          minutos: jornada.minutosPrevistos,
+          minutosTrabalhados: jornada.minutosTrabalhados,
+          minutosPrevistos: jornada.minutosPrevistos,
+          estado: 'pendente',
+          origem: 'pendencia',
+          criadoEm: new Date().toISOString(),
+        };
+
+        if (usandoNuvem()) {
+          const res = await nuvem.salvarAjuste(ajuste);
+          if (!res.sucesso) continue;
+        }
+
+        const lista = this.lerAjustes().filter((a) => a.id !== ajuste.id);
+        lista.push(ajuste);
+        this.gravarAjustes(lista);
+        criados++;
+      }
+    }
+
+    if (criados > 0) this.notificar();
+    return criados;
+  }
+
+  /**
+   * A decisão sobre um dia sem fechar.
+   *
+   * `abonar` = o dia conta como jornada normal, saldo zero. Caso do
+   * esquecimento honesto.
+   *
+   * Sem abonar = o dia vira DÉBITO da jornada prevista inteira. Não dá para
+   * calcular quanto a pessoa trabalhou de verdade — falta marcação —, e
+   * inventar um número seria pior do que assumir o dia como não trabalhado.
+   *
+   * Em nenhum dos dois o responsável altera a marcação: isso segue do RH,
+   * com justificativa e autoria.
+   */
+  async decidirDiaIncompleto(
+    ajusteId: string,
+    abonar: boolean,
+    observacao?: string
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    const ajuste = this.lerAjustes().find((a) => a.id === ajusteId);
+    if (!ajuste) return { sucesso: false, erro: 'Dia não encontrado.' };
+
+    const dono = bancoDados.obterColaboradorPorId(ajuste.colaboradorId);
+    if (!dono || !this.podeDecidirSobre(dono)) {
+      return { sucesso: false, erro: 'Você não responde por esta pessoa.' };
+    }
+
+    const eu = bancoDados.obterColaboradorAtual();
+    const decidido: AjusteJornada = {
+      ...ajuste,
+      tipo: abonar ? 'hora_extra' : 'debito',
+      minutos: abonar ? 0 : ajuste.minutosPrevistos,
+      estado: 'aprovado',
+      aprovadorId: eu.id,
+      aprovadorNome: eu.nome,
+      decididoEm: new Date().toISOString(),
+      observacao: observacao?.trim() || (abonar ? 'Dia abonado pelo responsável' : undefined),
+    };
+
+    if (usandoNuvem()) {
+      const res = await nuvem.salvarAjuste(decidido);
+      if (!res.sucesso) return { sucesso: false, erro: res.erro };
+    }
+
+    const lista = this.lerAjustes().map((a) => (a.id === ajusteId ? decidido : a));
+    this.gravarAjustes(lista);
+    this.notificar();
+
+    bancoDados.registrarAuditoria(
+      'Dia sem fechar',
+      'usuario',
+      `${eu.nome} ${abonar ? 'abonou' : 'marcou débito de'} ${
+        abonar ? '' : formatarMinutos(ajuste.minutosPrevistos)
+      } no dia ${formatarDataBR(ajuste.data)} de ${dono.nome}.`
+    );
+
+    return { sucesso: true };
+  }
+
   async apurarDia(
     colaboradorId: string,
     data: string,

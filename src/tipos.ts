@@ -462,13 +462,14 @@ export interface JornadaDia {
 // ============================================================
 
 /** Sobra ou falta em relação à jornada contratada do dia. */
-export type TipoAjuste = 'hora_extra' | 'debito';
+export type TipoAjuste = 'hora_extra' | 'debito' | 'dia_incompleto';
 
 export type EstadoAjuste = 'pendente' | 'aprovado' | 'recusado';
 
 export const ROTULO_TIPO_AJUSTE: Record<TipoAjuste, string> = {
   hora_extra: 'Hora extra',
-  debito: 'Saída antecipada / atraso',
+  debito: 'Saída antecipada',
+  dia_incompleto: 'Dia sem fechar',
 };
 
 export const ROTULO_ESTADO_AJUSTE: Record<EstadoAjuste, string> = {
@@ -486,6 +487,19 @@ export const ROTULO_ESTADO_AJUSTE: Record<EstadoAjuste, string> = {
  * o RH separar o que foi decisao de gente do que foi regra.
  */
 export type OrigemAjuste = 'pendencia' | 'tolerancia_automatica';
+
+/**
+ * Dia que comecou e nao fechou — faltou marcacao.
+ *
+ * Antes sumia em silencio: sem as marcacoes esperadas o dia nao apurava,
+ * nao virava pendencia, nao virava debito, e simplesmente nao contava. Era
+ * o caminho mais facil para sumir com um dia.
+ *
+ * Agora vai para a fila de quem responde pela pessoa, que decide: ABONAR
+ * (o dia conta como jornada normal) ou MARCAR DEBITO (o dia nao foi
+ * trabalhado). Corrigir a marcacao em si continua sendo do RH.
+ */
+export const TIPO_DIA_INCOMPLETO = 'dia_incompleto';
 
 export interface AjusteJornada {
   id: string;
@@ -588,8 +602,18 @@ export const ROTULO_SITUACAO: Record<SituacaoDoDia, string> = {
 };
 
 /** Quanto o ajuste soma ou subtrai do banco de horas. */
-export const minutosComSinal = (ajuste: AjusteJornada): number =>
-  ajuste.tipo === 'debito' ? -ajuste.minutos : ajuste.minutos;
+/**
+ * Os minutos com o sinal que eles valem no saldo.
+ *
+ * Dia sem fechar vale ZERO enquanto não for decidido: o valor guardado ali
+ * é a jornada prevista, e ainda não se sabe se ela vira débito ou se o dia
+ * é abonado. Contá-lo como crédito faria o saldo pendente mostrar horas a
+ * mais para quem simplesmente esqueceu de bater a saída.
+ */
+export const minutosComSinal = (ajuste: AjusteJornada): number => {
+  if (ajuste.tipo === 'dia_incompleto') return 0;
+  return ajuste.tipo === 'debito' ? -ajuste.minutos : ajuste.minutos;
+};
 
 /** Código de ponto de uma loja, materializado no QR impresso. */
 export interface CodigoPontoLoja {

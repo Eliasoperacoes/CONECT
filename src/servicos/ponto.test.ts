@@ -1234,3 +1234,154 @@ test('carga individual cadastrada vence o turno', () => {
     servicoPonto.obterJornadaDoDia(MEIO_PERIODO.id, '2026-09-16').minutosPrevistos
   ).toBe(240);
 });
+
+
+// ============================================================
+// DIA QUE COMEÇOU E NÃO FECHOU
+//
+// Antes sumia em silêncio: sem as marcações esperadas o dia não apura, não
+// vira pendência, não vira débito, e simplesmente não conta. Era o caminho
+// mais fácil para sumir com um dia inteiro.
+// ============================================================
+
+/** Bate só parte do dia e deixa em aberto. */
+const baterParcial = (quem: any, data: string, tipos: Record<string, string>) => {
+  Object.entries(tipos).forEach(([tipo, hora]) => {
+    bancoRegistros.push({
+      id: `p-${quem.id}-${tipo}-${data}`, colaboradorId: quem.id, data, tipo,
+      horario: new Date(`${data}T${hora}:00`).toISOString(), horaFormatada: hora,
+      metodo: 'qrcode', loja: quem.loja, criadoEm: new Date().toISOString(),
+    } as any);
+  });
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+};
+
+/** Uma data no passado que não caia em domingo. */
+const diasAtras = (n: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  // Sem domingo (nao tem jornada) e sem sabado (preve 4h, nao 8h10):
+  // o teste quer um dia util comum
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate()
+  ).padStart(2, '0')}`;
+};
+
+test('DIA SEM FECHAR VAI PARA A FILA DO RESPONSÁVEL', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+
+  // Entrou e foi almoçar; nunca voltou a bater
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30', saida_almoco: '12:30' });
+
+  const criados = await servicoPonto.levantarDiasIncompletos();
+  expect(criados).toBe(1);
+
+  const fila = servicoPonto.obterPendenciasParaDecidir();
+  expect(fila).toHaveLength(1);
+  expect(fila[0].ajuste.tipo).toBe('dia_incompleto');
+});
+
+test('dia sem fechar NÃO mexe no saldo enquanto ninguém decide', async () => {
+  // O valor guardado é a jornada prevista; contá-lo como crédito mostraria
+  // horas a mais para quem só esqueceu de bater a saída
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
+  await servicoPonto.levantarDiasIncompletos();
+
+  expect(servicoPonto.obterSaldoPendente(DO_TURNO_A.id)).toBe(0);
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO_A.id)).toBe(0);
+});
+
+test('ABONAR: o dia conta como jornada normal, saldo zero', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
+  await servicoPonto.levantarDiasIncompletos();
+
+  const alvo = servicoPonto.obterPendenciasParaDecidir()[0].ajuste;
+  const res = await servicoPonto.decidirDiaIncompleto(alvo.id, true);
+
+  expect(res.sucesso).toBe(true);
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO_A.id)).toBe(0);
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(0);
+});
+
+test('MARCAR DÉBITO: o dia vira a jornada prevista, negativa', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
+  await servicoPonto.levantarDiasIncompletos();
+
+  const alvo = servicoPonto.obterPendenciasParaDecidir()[0].ajuste;
+  await servicoPonto.decidirDiaIncompleto(alvo.id, false);
+
+  // 8h10 = 490 minutos, negativos
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO_A.id)).toBe(-490);
+});
+
+test('O DIA DE HOJE NÃO ENTRA NA FILA', async () => {
+  // Durante o expediente o dia está legitimamente incompleto; cobrar de
+  // manhã a saída que só acontece às 17h seria ruído puro
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, dataDeHoje(), { entrada: '07:30' });
+
+  expect(await servicoPonto.levantarDiasIncompletos()).toBe(0);
+});
+
+test('dia SEM NENHUMA batida não entra: isso é falta, não dia pela metade', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+
+  // Nenhuma marcação em dia nenhum
+  expect(await servicoPonto.levantarDiasIncompletos()).toBe(0);
+});
+
+test('dia completo não entra', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  await fecharJornada(DO_TURNO_A, diasAtras(3), '07:30', '17:10');
+
+  expect(await servicoPonto.levantarDiasIncompletos()).toBe(0);
+});
+
+test('o levantamento não repete o mesmo dia', async () => {
+  // Abrir a fila duas vezes não pode criar duas pendências do mesmo dia
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
+
+  expect(await servicoPonto.levantarDiasIncompletos()).toBe(1);
+  expect(await servicoPonto.levantarDiasIncompletos()).toBe(0);
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(1);
+});
+
+test('só levanta de quem eu aprovo', async () => {
+  const DE_OUTRA_LOJA = {
+    ...DO_TURNO_A, id: 'ol', login: 'ol', nome: 'De outra', loja: 'Descalvado',
+  };
+  equipe = [GESTOR, DO_TURNO_A, DE_OUTRA_LOJA];
+  colaboradorLogado = GESTOR;
+
+  baterParcial(DE_OUTRA_LOJA, diasAtras(3), { entrada: '07:30' });
+
+  // Gestor é de Pirassununga: o dia de Descalvado não é dele
+  expect(await servicoPonto.levantarDiasIncompletos()).toBe(0);
+});
+
+test('quem não responde por ninguém não decide o dia de outro', async () => {
+  equipe = [GESTOR, DO_TURNO_A, DO_TURNO_B];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
+  await servicoPonto.levantarDiasIncompletos();
+  const alvo = servicoPonto.obterPendenciasParaDecidir()[0].ajuste;
+
+  colaboradorLogado = DO_TURNO_B;
+  const res = await servicoPonto.decidirDiaIncompleto(alvo.id, true);
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('não responde');
+});

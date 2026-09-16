@@ -35,9 +35,16 @@ const OUTRO = 'colab-ana';
 
 const conversa = (id: string, atualizadoEm: string) => ({ id, atualizadoEm });
 
-const ONTEM = '2026-09-15T10:00:00.000Z';
-const AGORA = '2026-09-16T10:00:00.000Z';
-const DEPOIS = '2026-09-16T23:00:00.000Z';
+/**
+ * Datas RELATIVAS ao agora, nunca fixas.
+ *
+ * A primeira versao usava '2026-09-16T23:00' como "depois". `ocultarConversa`
+ * grava o instante real, entao o teste passava de manha e quebrava depois
+ * das 23h UTC — falha que aparece pela HORA do dia, e nao pelo codigo.
+ */
+const ONTEM = new Date(Date.now() - 48 * 3600e3).toISOString();
+const AGORA = new Date(Date.now() - 3600e3).toISOString();
+const DEPOIS = new Date(Date.now() + 24 * 3600e3).toISOString();
 
 beforeEach(() => armazenamento.clear());
 

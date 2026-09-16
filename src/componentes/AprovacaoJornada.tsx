@@ -47,6 +47,17 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
   );
   const [motivoAusencia, setMotivoAusencia] = useState('');
 
+  /**
+   * Levanta os dias sem fechar ao abrir a fila.
+   *
+   * Aqui, e nao na batida: quem esquece de bater a saida nao volta ao
+   * aplicativo para avisar disso. O levantamento tem de partir de quem
+   * cobra, e o momento em que ele cobra e quando abre a fila.
+   */
+  useEffect(() => {
+    void servicoPonto.levantarDiasIncompletos();
+  }, []);
+
   useEffect(() => {
     const cancelar = servicoPonto.assinarAlteracoes(() => setVersao((v) => v + 1));
     const cancelarAusencias = assinarJustificativas(() => setVersao((v) => v + 1));
@@ -118,6 +129,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
         <div className="flex flex-col gap-2">
           {pendencias.map(({ ajuste, colaborador }) => {
             const ehExtra = ajuste.tipo === 'hora_extra';
+            const ehDiaSemFechar = ajuste.tipo === 'dia_incompleto';
             return (
               <div
                 key={ajuste.id}
@@ -137,13 +149,22 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                     </span>
                     <span
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                        ehExtra
+                        ehDiaSemFechar
+                          ? 'bg-sky-500/10 text-sky-700 border-sky-500/20'
+                          : ehExtra
                           ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20'
                           : 'bg-amber-500/10 text-amber-700 border-amber-500/20'
                       }`}
                     >
-                      {ehExtra ? '+' : '−'}
-                      {formatarMinutos(ajuste.minutos)} · {ROTULO_TIPO_AJUSTE[ajuste.tipo]}
+                      {ehDiaSemFechar ? (
+                        ROTULO_TIPO_AJUSTE[ajuste.tipo]
+                      ) : (
+                        <>
+                          {ehExtra ? '+' : '−'}
+                          {formatarMinutos(ajuste.minutos)} ·{' '}
+                          {ROTULO_TIPO_AJUSTE[ajuste.tipo]}
+                        </>
+                      )}
                     </span>
                   </div>
 
@@ -196,6 +217,54 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                   </span>
                 </div>
 
+                {/*
+                  Dia sem fechar não é "aprovar ou recusar": é decidir o que
+                  o dia vale. Abonar conta como jornada normal; débito assume
+                  que o dia não foi trabalhado. Recusar não significaria nada
+                  aqui — o dia continuaria em aberto.
+                */}
+                {ehDiaSemFechar && (
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      type="button"
+                      disabled={emAndamento === ajuste.id}
+                      onClick={async () => {
+                        setEmAndamento(ajuste.id);
+                        const res = await servicoPonto.decidirDiaIncompleto(ajuste.id, false);
+                        setEmAndamento(null);
+                        mostrar(
+                          res.sucesso
+                            ? 'Marcado como débito. O dia não foi trabalhado.'
+                            : res.erro || 'Não foi possível registrar.',
+                          !res.sucesso
+                        );
+                      }}
+                      className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-amber-600 hover:border-amber-500/30 disabled:opacity-50 transition-colors cursor-pointer"
+                    >
+                      Marcar débito
+                    </button>
+                    <button
+                      type="button"
+                      disabled={emAndamento === ajuste.id}
+                      onClick={async () => {
+                        setEmAndamento(ajuste.id);
+                        const res = await servicoPonto.decidirDiaIncompleto(ajuste.id, true);
+                        setEmAndamento(null);
+                        mostrar(
+                          res.sucesso
+                            ? 'Abonado. O dia conta como jornada normal.'
+                            : res.erro || 'Não foi possível registrar.',
+                          !res.sucesso
+                        );
+                      }}
+                      className="py-2 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Abonar dia
+                    </button>
+                  </div>
+                )}
+
+                {!ehDiaSemFechar && (
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <button
                     type="button"
@@ -216,6 +285,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                     {emAndamento === ajuste.id ? 'Registrando…' : 'Aprovar'}
                   </button>
                 </div>
+                )}
               </div>
             );
           })}
