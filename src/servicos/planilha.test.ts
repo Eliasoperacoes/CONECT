@@ -160,3 +160,41 @@ test('o setor não concede autorização — quem concede é o nível', () => {
   expect(cuidaDePessoas({ nivel: NIVEL_COLABORADOR, setor: 'RH' })).toBe(true);
   expect(ehAdministrador({ nivel: NIVEL_GERENTE })).toBe(false);
 });
+
+// ============================================================
+// AS TELAS TÊM QUE OFERECER TODOS OS SETORES DA REDE
+// ============================================================
+
+test('nenhuma tela pode ter uma cópia da lista de setores', async () => {
+  // O defeito real: quadro de equipe e painel adm tinham cada um a sua lista
+  // escrita à mão. Quando Logística, Estágio, Administrativo e Gerência
+  // entraram na rede, as pessoas foram cadastradas nesses setores e o filtro
+  // simplesmente não as achava — com o cadastro certo no banco.
+  const telas = [
+    '../componentes/QuadroFuncionarios.tsx',
+    '../componentes/PainelAdministrativo.tsx',
+    '../componentes/ModalCadastroColaborador.tsx',
+  ];
+
+  for (const caminho of telas) {
+    const codigo = await Bun.file(new URL(caminho, import.meta.url)).text();
+
+    // Um setor escrito como texto solto na declaração de uma lista é o sinal
+    // da cópia. A tela tem que importar SETORES e derivar dele.
+    expect(codigo).toContain('SETORES');
+
+    // Dois setores literais em sequência só acontece em lista escrita à mão
+    expect(codigo).not.toMatch(/'Tesouraria',\s*\n\s*'RH',/);
+    expect(codigo).not.toMatch(/'Balcão',\s*\n\s*'Estoque',/);
+  }
+});
+
+test('a lista oficial cobre os setores que a rede usa hoje', () => {
+  // Se alguém cadastrar gente num setor, ele tem que estar aqui — é esta
+  // lista que alimenta filtro, cadastro e importação de planilha
+  for (const setor of ['Logística', 'Estágio', 'Administrativo', 'Gerência']) {
+    expect(SETORES).toContain(setor as never);
+  }
+  // Sem repetido: o filtro mostraria o mesmo botão duas vezes
+  expect(new Set(SETORES).size).toBe(SETORES.length);
+});

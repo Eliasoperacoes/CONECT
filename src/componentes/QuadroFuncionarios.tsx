@@ -16,7 +16,7 @@ import {
   Camera,
   UserCog,
 } from 'lucide-react';
-import { Colaborador, Loja, Setor, EstadoPresenca, INFORMACOES_LOJAS } from '../tipos';
+import { Colaborador, Loja, Setor, EstadoPresenca, INFORMACOES_LOJAS, SETORES } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
 import { bancoDados } from '../servicos/bancoDados';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
@@ -29,29 +29,15 @@ interface PropsQuadroFuncionarios {
   aoChamarRadio: (colegaId: string) => void;
 }
 
+// Os filtros saem das listas oficiais de tipos.ts, nunca de uma cópia escrita
+// aqui. A cópia foi o que deixou Logística, Estágio, Administrativo e Gerência
+// de fora: as pessoas entraram nesses setores e o filtro não as achava.
 const LOJAS_LISTA: (Loja | 'Todas')[] = [
   'Todas',
-  'Pirassununga',
-  'Porto Ferreira',
-  'Palmeiras',
-  'Descalvado',
-  'Santa Rita',
-  'Rede',
+  ...INFORMACOES_LOJAS.map((info) => info.nome),
 ];
 
-const SETORES_LISTA: (Setor | 'Todos')[] = [
-  'Todos',
-  'Balcão',
-  'Estoque',
-  'Caixas',
-  'Compras',
-  'Callcenter',
-  'TI',
-  'Garantia',
-  'Tesouraria',
-  'RH',
-  'Diretoria',
-];
+const SETORES_LISTA: (Setor | 'Todos')[] = ['Todos', ...SETORES];
 
 export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
   colaboradorAtual,

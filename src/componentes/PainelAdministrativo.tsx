@@ -55,6 +55,8 @@ import {
   PrioridadeAviso,
   CARGA_HORARIA_PADRAO_MINUTOS,
   SENHA_PADRAO_PRIMEIRO_ACESSO,
+  SETORES,
+  INFORMACOES_LOJAS,
 } from '../tipos';
 import { nuvemComunicacao, UsoDoBanco } from '../servicos/nuvemComunicacao';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA, obterFotoColaborador } from '../servicos/bancoDados';
@@ -82,27 +84,12 @@ type AbaAdmin =
   | 'banco'
   | 'backup';
 
-const LOJAS_TODAS: Loja[] = [
-  'Pirassununga',
-  'Porto Ferreira',
-  'Palmeiras',
-  'Descalvado',
-  'Santa Rita',
-  'Rede',
-];
+// Mesma regra do quadro de equipe: as listas vêm de tipos.ts. Setor novo
+// cadastrado lá aparece aqui sozinho — a cópia escrita à mão era o que fazia
+// o cadastro não oferecer Logística, Estágio, Administrativo e Gerência.
+const LOJAS_TODAS: Loja[] = INFORMACOES_LOJAS.map((info) => info.nome);
 
-const SETORES_TODOS: Setor[] = [
-  'TI',
-  'Diretoria',
-  'Balcão',
-  'Estoque',
-  'Caixas',
-  'Compras',
-  'Garantia',
-  'Callcenter',
-  'Tesouraria',
-  'RH',
-];
+const SETORES_TODOS: Setor[] = SETORES;
 
 export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   colaboradorAtual,
