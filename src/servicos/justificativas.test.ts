@@ -225,3 +225,85 @@ test('cada tipo vira a sua própria situação no dia', async () => {
   // Falta justificada não é abono de atestado: o espelho precisa distinguir
   expect(situacaoDoDia(ANA.id, '2026-09-20')).toBe('falta_justificada');
 });
+
+
+// ============================================================
+// FOLGA DE SÁBADO: DIREITO MENSAL, NÃO COMPENSAÇÃO
+//
+// 2026-09-19 e 2026-09-26 são sábados; 2026-10-03 é sábado de outubro;
+// 2026-09-16 é quarta.
+// ============================================================
+
+const pedirFolga = async (sabado: string) =>
+  solicitarAusencia({ dataInicio: sabado, dataFim: sabado, tipo: 'folga_sabado' });
+
+test('a folga só cai em SÁBADO', async () => {
+  const naQuarta = await pedirFolga('2026-09-16');
+
+  expect(naQuarta.sucesso).toBe(false);
+  expect(naQuarta.erro).toContain('sábado');
+
+  expect((await pedirFolga('2026-09-19')).sucesso).toBe(true);
+});
+
+test('a folga é de UM sábado, não de um período', async () => {
+  const res = await solicitarAusencia({
+    dataInicio: '2026-09-19',
+    dataFim: '2026-09-26',
+    tipo: 'folga_sabado',
+  });
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('um sábado só');
+});
+
+test('UMA POR MÊS: o segundo pedido do mesmo mês é recusado', async () => {
+  // Sem o limite, quem pedisse primeiro levaria todos os sábados do mês
+  expect((await pedirFolga('2026-09-19')).sucesso).toBe(true);
+
+  const segunda = await pedirFolga('2026-09-26');
+  expect(segunda.sucesso).toBe(false);
+  expect(segunda.erro).toContain('19/09');
+});
+
+test('mês novo, direito novo', async () => {
+  expect((await pedirFolga('2026-09-19')).sucesso).toBe(true);
+  expect((await pedirFolga('2026-10-03')).sucesso).toBe(true);
+});
+
+test('folga RECUSADA não queima o direito do mês', async () => {
+  // Senão uma recusa do gestor tiraria da pessoa o direito daquele mês
+  await pedirFolga('2026-09-19');
+  logado = CHEFE;
+  await decidirAusencia(
+    pendenciasParaDecidir()[0].justificativa.id,
+    false,
+    'Sábado de balanço'
+  );
+
+  logado = ANA;
+  expect((await pedirFolga('2026-09-26')).sucesso).toBe(true);
+});
+
+test('a folga precisa da autorização do gestor', async () => {
+  // Não é auto-serviço: o direito é mensal, mas a data passa por quem
+  // responde pela escala da loja
+  await pedirFolga('2026-09-19');
+
+  expect(situacaoDoDia(ANA.id, '2026-09-19')).toBe('normal');
+
+  logado = CHEFE;
+  expect(pendenciasParaDecidir()).toHaveLength(1);
+  await decidirAusencia(pendenciasParaDecidir()[0].justificativa.id, true);
+
+  expect(situacaoDoDia(ANA.id, '2026-09-19')).toBe('folga');
+});
+
+test('NINGUÉM APROVA A PRÓPRIA FOLGA', async () => {
+  logado = CHEFE;
+  await pedirFolga('2026-09-19');
+
+  expect(pendenciasParaDecidir()).toHaveLength(0);
+  const minha = minhasJustificativas()[0];
+  expect((await decidirAusencia(minha.id, true)).sucesso).toBe(false);
+});

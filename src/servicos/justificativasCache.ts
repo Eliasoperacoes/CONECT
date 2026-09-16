@@ -20,7 +20,11 @@
  * não existe. **Não acrescente import neste arquivo** — qualquer um deles
  * pode refechar o ciclo, e a falha só aparece no navegador.
  */
-import { JustificativaAusencia } from '../tipos';
+import {
+  JustificativaAusencia,
+  SituacaoDoDia,
+  SITUACAO_POR_TIPO,
+} from '../tipos';
 
 export const CHAVE_JUSTIFICATIVAS = 'conecta_v4_justificativas_ausencia';
 
@@ -58,3 +62,25 @@ export const gravarJustificativas = (lista: JustificativaAusencia[]): void => {
 /** Troca o cache pelo que veio do banco. Chamado pela sincronização. */
 export const aplicarJustificativasDaNuvem = (lista: JustificativaAusencia[]): void =>
   gravarJustificativas(lista);
+
+/**
+ * A situação de um dia, vinda de ausência APROVADA.
+ *
+ * Mora aqui, e não no serviço, porque `ponto` precisa dela para saber que
+ * um sábado de folga prevê zero — e `ponto` importando o serviço refecharia
+ * o ciclo que já derrubou o aplicativo uma vez.
+ *
+ * Só aprovada conta: solicitação pendente não muda o espelho de ponto antes
+ * de alguém decidir, do mesmo jeito que hora extra não entra no saldo sem
+ * aprovação.
+ */
+export const situacaoDoDia = (colaboradorId: string, data: string): SituacaoDoDia => {
+  const achada = lerJustificativas().find(
+    (j) =>
+      j.colaboradorId === colaboradorId &&
+      j.estado === 'aprovada' &&
+      data >= j.dataInicio &&
+      data <= j.dataFim
+  );
+  return achada ? SITUACAO_POR_TIPO[achada.tipo] : 'normal';
+};

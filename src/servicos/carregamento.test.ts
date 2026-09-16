@@ -52,7 +52,13 @@ test('o cache das ausências não importa NADA além de tipos', async () => {
     new URL('./justificativasCache.ts', import.meta.url)
   ).text();
 
-  const imports = [...fonte.matchAll(/^import .*from '([^']+)';$/gm)].map((m) => m[1]);
+  /**
+   * Pega o alvo de TODO import, inclusive os que ocupam várias linhas — a
+   * primeira versão deste teste exigia import de uma linha só e reprovou o
+   * arquivo certo quando ele ganhou um segundo símbolo e foi quebrado.
+   * A regra é de onde se importa, não de como se formata.
+   */
+  const imports = [...fonte.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
   expect(imports).toEqual(['../tipos']);
 });
 

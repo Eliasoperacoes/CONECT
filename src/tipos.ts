@@ -543,12 +543,14 @@ export type TipoAusencia =
   | 'atestado'
   | 'falta_justificada'
   | 'comparecimento'
+  | 'folga_sabado'
   | 'outro';
 
 export const ROTULO_TIPO_AUSENCIA: Record<TipoAusencia, string> = {
   atestado: 'Atestado médico',
   falta_justificada: 'Falta justificada',
   comparecimento: 'Comparecimento (declaração)',
+  folga_sabado: 'Folga de sábado',
   outro: 'Outro',
 };
 
@@ -584,20 +586,34 @@ export type SituacaoDoDia =
   | 'abonado_atestado'
   | 'falta_justificada'
   | 'comparecimento'
+  | 'folga'
   | 'abonado_outro';
 
 export const SITUACAO_POR_TIPO: Record<TipoAusencia, SituacaoDoDia> = {
   atestado: 'abonado_atestado',
   falta_justificada: 'falta_justificada',
   comparecimento: 'comparecimento',
+  folga_sabado: 'folga',
   outro: 'abonado_outro',
 };
+
+/**
+ * FOLGA DE SABADO: um direito mensal, nao uma compensacao.
+ *
+ * Cada colaborador tem uma por mes. O sabado aprovado passa a prever ZERO —
+ * o dia nao gera debito nem credito, e o banco de horas nao e tocado.
+ *
+ * Nao consome saldo de proposito. Se consumisse, quem esta com o banco
+ * zerado perderia um direito que a rede da a todos.
+ */
+export const FOLGAS_DE_SABADO_POR_MES = 1;
 
 export const ROTULO_SITUACAO: Record<SituacaoDoDia, string> = {
   normal: '',
   abonado_atestado: 'Atestado',
   falta_justificada: 'Falta justificada',
   comparecimento: 'Comparecimento',
+  folga: 'Folga',
   abonado_outro: 'Abonado',
 };
 

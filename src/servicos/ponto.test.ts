@@ -1385,3 +1385,65 @@ test('quem não responde por ninguém não decide o dia de outro', async () => {
   expect(res.sucesso).toBe(false);
   expect(res.erro).toContain('não responde');
 });
+
+
+// ============================================================
+// SÁBADO DE FOLGA PREVÊ ZERO
+// ============================================================
+
+test('ausência aprovada zera o previsto do dia', async () => {
+  /**
+   * Sem isto, o sábado de folga previa 4 horas e a pessoa fechava o mês com
+   * 4 horas de débito por exercer um direito da rede.
+   */
+  equipe = [GESTOR, DO_TURNO_A];
+
+  // Sem folga: sábado prevê as 4 horas
+  expect(
+    servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-19').minutosPrevistos
+  ).toBe(240);
+
+  // Com a folga aprovada gravada, prevê zero
+  armazenamento.setItem(
+    'conecta_v4_justificativas_ausencia',
+    JSON.stringify([
+      {
+        id: 'f1', colaboradorId: DO_TURNO_A.id, dataInicio: '2026-09-19',
+        dataFim: '2026-09-19', tipo: 'folga_sabado', estado: 'aprovada',
+        criadoEm: new Date().toISOString(),
+      },
+    ])
+  );
+
+  expect(
+    servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-19').minutosPrevistos
+  ).toBe(0);
+  // E não sobra débito nenhum
+  expect(
+    servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-19').saldoMinutos
+  ).toBe(0);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('ausência PENDENTE não zera nada', async () => {
+  // Mudar o previsto antes de alguém decidir seria o mesmo que a hora extra
+  // entrar no saldo sem aprovação
+  equipe = [GESTOR, DO_TURNO_A];
+  armazenamento.setItem(
+    'conecta_v4_justificativas_ausencia',
+    JSON.stringify([
+      {
+        id: 'f2', colaboradorId: DO_TURNO_A.id, dataInicio: '2026-09-19',
+        dataFim: '2026-09-19', tipo: 'folga_sabado', estado: 'pendente',
+        criadoEm: new Date().toISOString(),
+      },
+    ])
+  );
+
+  expect(
+    servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-19').minutosPrevistos
+  ).toBe(240);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});

@@ -24,6 +24,7 @@ import {
   lerJustificativas,
   gravarJustificativas,
   assinarJustificativas,
+  situacaoDoDia,
 } from './justificativasCache';
 import { bancoDados } from './bancoDados';
 import { servicoPonto } from './ponto';
@@ -91,6 +92,32 @@ export const solicitarAusencia = async (dados: {
     return { sucesso: false, erro: 'Anexe o atestado.' };
   }
 
+  /**
+   * FOLGA DE SÁBADO: um direito mensal, não uma compensação.
+   *
+   * Duas regras próprias, e as duas existem para o direito ser igual para
+   * todos: só cai em sábado, e é uma por mês. Sem o limite, quem pedisse
+   * primeiro levaria todos os sábados do mês.
+   */
+  if (dados.tipo === 'folga_sabado') {
+    if (dados.dataInicio !== dados.dataFim) {
+      return { sucesso: false, erro: 'A folga é de um sábado só.' };
+    }
+    if (!ehSabado(dados.dataInicio)) {
+      return { sucesso: false, erro: 'A folga é sempre num sábado.' };
+    }
+
+    const jaTem = folgaDoMes(eu.id, dados.dataInicio);
+    if (jaTem) {
+      return {
+        sucesso: false,
+        erro: `Você já tem folga ${
+          jaTem.estado === 'pendente' ? 'solicitada' : 'aprovada'
+        } para ${jaTem.dataInicio.split('-').reverse().join('/')} neste mês.`,
+      };
+    }
+  }
+
   const justificativa: JustificativaAusencia = {
     id: `just-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     colaboradorId: eu.id,
@@ -121,6 +148,32 @@ export const solicitarAusencia = async (dados: {
   );
 
   return { sucesso: true, justificativa };
+};
+
+/** O dia da semana, sem depender de fuso: a data já vem como AAAA-MM-DD. */
+const ehSabado = (data: string): boolean => {
+  const [ano, mes, dia] = data.split('-').map(Number);
+  return new Date(ano, (mes || 1) - 1, dia || 1, 12).getDay() === 6;
+};
+
+/**
+ * A folga já pedida no mês desta data, se houver.
+ *
+ * Recusada não conta: a pessoa pode pedir outro sábado depois de o gestor
+ * negar o primeiro — senão uma recusa queimaria o direito do mês.
+ */
+export const folgaDoMes = (
+  colaboradorId: string,
+  data: string
+): JustificativaAusencia | undefined => {
+  const mes = data.slice(0, 7);
+  return ler().find(
+    (j) =>
+      j.colaboradorId === colaboradorId &&
+      j.tipo === 'folga_sabado' &&
+      j.estado !== 'recusada' &&
+      j.dataInicio.slice(0, 7) === mes
+  );
 };
 
 /** As minhas, da mais recente para a mais antiga. */
@@ -206,23 +259,9 @@ export const decidirAusencia = async (
   return { sucesso: true };
 };
 
-/**
- * A situação de um dia, vinda de ausência APROVADA.
- *
- * Só aprovada conta: solicitação pendente não pode mudar o espelho de ponto
- * antes de alguém decidir — seria o mesmo que a hora extra entrar no saldo
- * sem aprovação.
- */
-export const situacaoDoDia = (colaboradorId: string, data: string): SituacaoDoDia => {
-  const achada = ler().find(
-    (j) =>
-      j.colaboradorId === colaboradorId &&
-      j.estado === 'aprovada' &&
-      data >= j.dataInicio &&
-      data <= j.dataFim
-  );
-  return achada ? SITUACAO_POR_TIPO[achada.tipo] : 'normal';
-};
+// Vem da folha: `ponto` também precisa dela, e importar este arquivo de lá
+// refecharia o ciclo que já derrubou o aplicativo uma vez
+export { situacaoDoDia };
 
 /** Os dias cobertos por uma solicitação, para a tela mostrar o alcance. */
 export const diasCobertos = (justificativa: JustificativaAusencia): string[] =>

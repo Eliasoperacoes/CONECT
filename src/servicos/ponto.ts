@@ -48,6 +48,9 @@ import {
 import { bancoDados } from './bancoDados';
 import { linhasDeIdentificacao, contatoEmLinha } from './fichaColaborador';
 import { temAlcadaSobre, regraAutomaticaDeAlcada } from './organograma';
+// A FOLHA, nunca o serviço: importar `justificativas` daqui refecharia o
+// ciclo que já derrubou o aplicativo uma vez
+import { situacaoDoDia } from './justificativasCache';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
 
@@ -505,6 +508,17 @@ class ServicoPonto {
    */
   private cargaPrevistaEmMinutos(colaborador: Colaborador | undefined, data: string): number {
     if (ehDiaDeFolga(data)) return 0;
+
+    /**
+     * Ausência aprovada zera o previsto do dia.
+     *
+     * Sem isto, o sábado de folga previa 4 horas e a pessoa fechava o mês
+     * com 4 horas de débito por exercer um direito. O mesmo vale para
+     * atestado e falta justificada: o dia foi abonado, e dia abonado não
+     * cobra jornada.
+     */
+    if (colaborador && situacaoDoDia(colaborador.id, data) !== 'normal') return 0;
+
     if (ehSabado(data)) return MINUTOS_SABADO;
 
     return (
@@ -813,6 +827,8 @@ class ServicoPonto {
         // Domingo não tem jornada; dia fechado não é problema; dia sem
         // nenhuma batida é falta, e falta tem caminho próprio
         if (ehDiaDeFolga(data)) continue;
+        // Dia abonado não é dia pela metade: já foi decidido por outra via
+        if (situacaoDoDia(pessoa.id, data) !== 'normal') continue;
         if (batidas === 0 || feitas >= esperadas.length) continue;
 
         // Já levantado, decidido ou coberto por ausência aprovada: não repete

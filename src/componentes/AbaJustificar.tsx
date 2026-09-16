@@ -40,11 +40,26 @@ interface Props {
 const TAMANHO_MAXIMO = 4 * 1024 * 1024;
 
 const TIPOS: TipoAusencia[] = [
+  'folga_sabado',
   'atestado',
   'falta_justificada',
   'comparecimento',
   'outro',
 ];
+
+/** O sábado de uma data, para o campo já nascer numa data válida. */
+const proximoSabado = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate()
+  ).padStart(2, '0')}`;
+};
+
+const ehSabado = (data: string): boolean => {
+  const [ano, mes, dia] = data.split('-').map(Number);
+  return new Date(ano, (mes || 1) - 1, dia || 1, 12).getDay() === 6;
+};
 
 const SeloEstado: React.FC<{ j: JustificativaAusencia }> = ({ j }) => {
   if (j.estado === 'aprovada') {
@@ -186,7 +201,16 @@ export const AbaJustificar: React.FC<Props> = ({ colaboradorAtual }) => {
               <button
                 key={t}
                 type="button"
-                onClick={() => setTipo(t)}
+                onClick={() => {
+                  setTipo(t);
+                  // A folga é de UM sábado: o campo já nasce num sábado
+                  // válido, em vez de deixar a pessoa descobrir no erro
+                  if (t === 'folga_sabado') {
+                    const sabado = ehSabado(dataInicio) ? dataInicio : proximoSabado();
+                    setDataInicio(sabado);
+                    setDataFim(sabado);
+                  }
+                }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                   tipo === t
                     ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
@@ -199,6 +223,14 @@ export const AbaJustificar: React.FC<Props> = ({ colaboradorAtual }) => {
           </div>
         </div>
 
+        {tipo === 'folga_sabado' && (
+          <div className="p-2.5 rounded-xl bg-[var(--c-acento)]/8 border border-[var(--c-acento)]/25 text-[11px] text-[var(--c-texto-2)]">
+            <strong>Uma folga por mês, sempre num sábado.</strong> É um direito
+            seu: o dia não gera débito e o seu banco de horas não é tocado. A
+            data passa pelo seu responsável, que confere a escala da loja.
+          </div>
+        )}
+
         {/* Um atestado de 3 dias é UMA solicitação, não três */}
         <div className="flex items-center gap-2 text-xs flex-wrap">
           <label className="text-[var(--c-texto-3)]" htmlFor="ausencia-de">
@@ -210,22 +242,31 @@ export const AbaJustificar: React.FC<Props> = ({ colaboradorAtual }) => {
             value={dataInicio}
             onChange={(e) => {
               setDataInicio(e.target.value);
-              // Fim antes do início é período negativo; acompanha o início
-              if (e.target.value > dataFim) setDataFim(e.target.value);
+              // Folga é de um dia só: o fim acompanha sempre.
+              // Nos demais, o fim só acompanha para não ficar negativo.
+              if (tipo === 'folga_sabado' || e.target.value > dataFim) {
+                setDataFim(e.target.value);
+              }
             }}
             className="px-2 py-1.5 rounded-lg bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)]"
           />
-          <label className="text-[var(--c-texto-3)]" htmlFor="ausencia-ate">
-            até
-          </label>
-          <input
-            id="ausencia-ate"
-            type="date"
-            value={dataFim}
-            min={dataInicio}
-            onChange={(e) => setDataFim(e.target.value)}
-            className="px-2 py-1.5 rounded-lg bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)]"
-          />
+          {/* Folga é de um dia só: um campo "até" ali seria um convite a
+              pedir o mês inteiro e receber um erro */}
+          {tipo !== 'folga_sabado' && (
+            <>
+              <label className="text-[var(--c-texto-3)]" htmlFor="ausencia-ate">
+                até
+              </label>
+              <input
+                id="ausencia-ate"
+                type="date"
+                value={dataFim}
+                min={dataInicio}
+                onChange={(e) => setDataFim(e.target.value)}
+                className="px-2 py-1.5 rounded-lg bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)]"
+              />
+            </>
+          )}
         </div>
 
         <div>
@@ -245,7 +286,7 @@ export const AbaJustificar: React.FC<Props> = ({ colaboradorAtual }) => {
           />
         </div>
 
-        <div>
+        <div className={tipo === 'folga_sabado' ? 'hidden' : ''}>
           <span className="text-xs font-semibold text-[var(--c-texto-2)] block mb-1">
             Documento
             {tipo === 'atestado' && <span className="text-red-500"> *</span>}
