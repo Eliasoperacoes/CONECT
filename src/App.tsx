@@ -36,6 +36,7 @@ import { PainelAdministrativo } from './componentes/PainelAdministrativo';
 import { AbaPonto } from './componentes/AbaPonto';
 import { JanelaChat } from './componentes/JanelaChat';
 import { PainelConversas } from './componentes/PainelConversas';
+import { podeUsar } from './servicos/permissoes';
 import { servicoPonto } from './servicos/ponto';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
@@ -311,14 +312,39 @@ export default function App() {
 
   // Se o colaborador estiver na aba RH e perder o acesso (por troca de conta
   // ou mudança de cargo pela gestão), a navegação volta sozinha para Conversas.
-  const abaAtiva: AbaPrincipal =
-    abaAtivaEscolhida === 'painel' && !podeVerRede ? 'conversas' : abaAtivaEscolhida;
+  /**
+   * A aba que vale. Nunca uma que a pessoa não enxergue — nem por escolha
+   * antiga guardada, nem por permissão retirada com a tela aberta.
+   */
+  const abaAtiva: AbaPrincipal = (() => {
+    if (abaAtivaEscolhida === 'painel' && !podeVerRede) return 'eu';
+    if (abaAtivaEscolhida !== 'painel' && !podeUsar(abaAtivaEscolhida, colaboradorAtual)) {
+      if (podeVerRede) return 'painel';
+      return podeUsar('conversas', colaboradorAtual) ? 'conversas' : 'eu';
+    }
+    return abaAtivaEscolhida;
+  })();
 
   // Abas da barra inferior, montadas conforme a permissão de cada colaborador
   const todasAsAbas: ItemNavegacao[] = [
-    { id: 'conversas', rotulo: 'Conversas', icone: MessageSquare, visivel: true, alvo: 'conversas' },
-    { id: 'grupos', rotulo: 'Grupos', icone: Users, visivel: true, alvo: 'grupos' },
-    { id: 'ponto', rotulo: 'Ponto', icone: Clock, visivel: true, alvo: 'ponto' },
+    /**
+     * A visibilidade vem do painel de Permissões, não de `true` escrito
+     * aqui. Era o que faltava para "gerente não bate ponto" valer de fato:
+     * o catálogo já dizia isso, mas esta lista não perguntava a ninguém e a
+     * aba continuava aparecendo.
+     */
+    {
+      id: 'conversas', rotulo: 'Conversas', icone: MessageSquare,
+      visivel: podeUsar('conversas', colaboradorAtual), alvo: 'conversas',
+    },
+    {
+      id: 'grupos', rotulo: 'Grupos', icone: Users,
+      visivel: podeUsar('grupos', colaboradorAtual), alvo: 'grupos',
+    },
+    {
+      id: 'ponto', rotulo: 'Ponto', icone: Clock,
+      visivel: podeUsar('ponto', colaboradorAtual), alvo: 'ponto',
+    },
     {
       // Painel único de RH & Rede: visão das lojas, quadro de equipe, banco de
       // horas (para RH e Administrador) e comunicados da direção.
@@ -337,7 +363,12 @@ export default function App() {
       acao: () => setPainelAdminAberto(true),
       classeFixa: 'text-indigo-600 hover:text-indigo-700 font-bold',
     },
-    { id: 'eu', rotulo: 'Eu', icone: User, visivel: true, alvo: 'eu' },
+    {
+      id: 'eu', rotulo: 'Eu', icone: User,
+      // "Eu" é a saída de emergência da navegação: se tudo o mais for
+      // desligado, ainda há uma tela com o próprio perfil e o botão de sair.
+      visivel: true, alvo: 'eu',
+    },
   ];
 
   const abasNavegacao = todasAsAbas.filter((aba) => aba.visivel);
@@ -395,11 +426,18 @@ export default function App() {
             que é onde o polegar alcança. */}
         <nav className="hidden md:flex items-center gap-1 ml-4">
           {abasNavegacao
+            /**
+             * No computador, Conversas e Grupos não são tela nem item de
+             * menu: vivem no botão do canto inferior direito, junto do chat,
+             * que é de onde eles já abriam por cima. Ter os dois no topo era
+             * um caminho a mais para a mesma janela.
+             *
+             * No celular nada muda — lá eles continuam na barra de baixo,
+             * que é onde o polegar alcança.
+             */
             .filter((aba) => aba.id !== 'admin')
+            .filter((aba) => aba.id !== 'conversas' && aba.id !== 'grupos')
             .map((aba) => {
-              // Conversas e Grupos deixaram de ser tela: abrem a lista por
-              // cima, porque o chat também abre por cima. Só Ponto, RH e Eu
-              // ainda trocam o conteúdo da área principal.
               const ehLista = aba.id === 'conversas' || aba.id === 'grupos';
               const ativa = ehLista
                 ? secaoListaAberta === (aba.id === 'grupos' ? 'grupos' : 'individuais')
@@ -808,6 +846,27 @@ export default function App() {
         aoCriar={lidarCriarGrupo}
         aoFechar={() => setModalCriarGrupoAberto(false)}
       />
+
+      {/* O acesso às conversas no computador: um botão só, no canto de
+          baixo à direita, onde a janela do chat já abre. Some quando a
+          lista está aberta, para não ficar um botão em cima do painel. */}
+      {!secaoListaAberta && (
+        <button
+          type="button"
+          id="botao-abrir-conversas"
+          onClick={() => setSecaoListaAberta('individuais')}
+          title="Conversas e grupos"
+          className="hidden md:flex fixed bottom-6 right-6 z-40 items-center gap-2 px-4 py-3 rounded-2xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-sm shadow-lg hover:brightness-110 active:scale-95 transition-all"
+        >
+          <MessageSquare className="w-4 h-4" />
+          <span>Conversas</span>
+          {totalNaoLidas > 0 && (
+            <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center">
+              {totalNaoLidas > 99 ? '99+' : totalNaoLidas}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* Lista de conversas por cima, no lugar da antiga coluna fixa */}
       {secaoListaAberta && (

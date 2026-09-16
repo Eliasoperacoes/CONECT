@@ -310,3 +310,42 @@ test('BANCO DE HORAS: ligar no painel basta, sem segundo guardião', () => {
   // E não vazou para o líder
   expect(podeUsar('banco_horas_rh', pessoa(NIVEL_LIDER_SETOR))).toBe(false);
 });
+
+// ============================================================
+// A BARRA PRINCIPAL TAMBÉM OBEDECE
+// ============================================================
+
+test('as abas principais perguntam ao painel, não decidem sozinhas', async () => {
+  /**
+   * O defeito: o catálogo já dizia que gerente não bate ponto, mas
+   * `App.tsx` montava a barra com `visivel: true` escrito na mão. A aba
+   * "Ponto" continuava aparecendo para o gerente, e eu cheguei a afirmar
+   * que tinha sumido.
+   *
+   * Este teste lê o App e reprova a volta do `visivel: true` nas abas que
+   * têm ferramenta no catálogo.
+   */
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+
+  for (const aba of ['conversas', 'grupos', 'ponto']) {
+    // A aba tem que consultar a permissão
+    expect(app).toContain(`podeUsar('${aba}', colaboradorAtual)`);
+    // E não pode ter voltado a decidir sozinha
+    expect(app).not.toMatch(
+      new RegExp(`id: '${aba}',[^}]*visivel: true`)
+    );
+  }
+});
+
+test('quem perde todas as telas ainda chega no próprio perfil', () => {
+  // "Eu" é a saída de emergência: tem o botão de sair. Sem ela, desligar as
+  // ferramentas de alguém deixaria a pessoa presa numa tela vazia.
+  aplicarPermissoes({ conversas: [], grupos: [], ponto: [], eu: [] });
+
+  // A aba "Eu" não depende de permissão de propósito — está fixa no App.
+  // O que se prende aqui é a intenção: ela não entrou no catálogo como
+  // desligável por engano.
+  const semNada = pessoa(NIVEL_COLABORADOR);
+  expect(podeUsar('conversas', semNada)).toBe(false);
+  expect(podeUsar('ponto', semNada)).toBe(false);
+});
