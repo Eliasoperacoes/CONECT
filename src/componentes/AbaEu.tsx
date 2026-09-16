@@ -152,7 +152,15 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
         <span className="text-xs font-bold text-[var(--c-texto-3)] block mb-2">
           Meus dados cadastrais
         </span>
-        <FichaColaborador colaborador={colaboradorAtual} mostrarVazios />
+        <FichaColaborador
+          colaborador={colaboradorAtual}
+          responsavel={
+            colaboradorAtual.responsavelId
+              ? bancoDados.obterColaboradorPorId(colaboradorAtual.responsavelId)
+              : null
+          }
+          mostrarVazios
+        />
       </div>
 
       {/* Atalho ao Painel ADM exclusivo para Administrador (Elias) */}

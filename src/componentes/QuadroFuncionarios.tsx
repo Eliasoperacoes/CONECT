@@ -580,6 +580,11 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                   no documento — inclusive o que falta preencher. */}
               <FichaColaborador
                 colaborador={colaboradorModal}
+                responsavel={
+                  colaboradorModal.responsavelId
+                    ? bancoDados.obterColaboradorPorId(colaboradorModal.responsavelId)
+                    : null
+                }
                 mostrarVazios={podeVerFichaCompleta}
               />
 

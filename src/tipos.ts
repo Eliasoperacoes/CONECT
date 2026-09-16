@@ -148,6 +148,12 @@ export interface Colaborador {
    *  nem sempre e o da loja onde a pessoa trabalha. */
   cnpj?: string;
   departamento?: string;
+  /**
+   * Responsável direto no organograma. É quem aprova a hora desta pessoa —
+   * quando preenchido, substitui o alcance automático por setor/loja.
+   * Vazio = ainda não posicionado, vale a regra automática.
+   */
+  responsavelId?: string;
   dataAdmissao?: string;
   permissoes?: string[];
   observacoes?: string;

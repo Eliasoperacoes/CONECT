@@ -40,6 +40,7 @@ import {
 } from '../tipos';
 import { bancoDados } from './bancoDados';
 import { linhasDeIdentificacao, contatoEmLinha } from './fichaColaborador';
+import { temAlcadaSobre } from './organograma';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
 
@@ -611,28 +612,40 @@ class ServicoPonto {
   podeDecidirSobre(solicitante: Colaborador): boolean {
     const eu = bancoDados.obterColaboradorAtual();
 
-    // Ninguém decide sobre a própria hora, em nível nenhum
-    if (eu.id === solicitante.id) return false;
-
-    // RH, Diretoria e TI decidem em qualquer caso: o controle é deles
-    if (cuidaDePessoas(eu)) return true;
-
-    // A decisão sobe um degrau: quem está no mesmo nível não aprova o colega
-    if (eu.nivel <= solicitante.nivel) return false;
-
-    // Gerente responde pela LOJA dele, de ponta a ponta
-    if (eu.nivel >= NIVEL_GERENTE && eu.loja === solicitante.loja) return true;
-
     /**
-     * O alcance por SETOR é do líder, e só dele.
+     * A regra automática — a que valia antes do organograma existir.
      *
-     * Se valesse para todo mundo acima do líder, um gerente de Descalvado
-     * decidiria sobre um balconista de Pirassununga só porque os dois são do
-     * Balcão — furando a responsabilidade do gerente de lá.
+     * Continua valendo para quem AINDA NÃO foi posicionado na cadeia. Com
+     * 89 pessoas, o quadro é montado loja por loja; sem esta rede de
+     * segurança, quem ainda não entrou no desenho ficaria com as horas
+     * paradas na fila esperando alguém arrastar um cartão.
      */
-    if (eu.nivel === NIVEL_LIDER_SETOR && eu.setor === solicitante.setor) return true;
+    const regraAutomatica = (quem: Colaborador, alvo: Colaborador): boolean => {
+      // A decisão sobe um degrau: quem está no mesmo nível não aprova o colega
+      if (quem.nivel <= alvo.nivel) return false;
 
-    return false;
+      // Gerente responde pela LOJA dele, de ponta a ponta
+      if (quem.nivel >= NIVEL_GERENTE && quem.loja === alvo.loja) return true;
+
+      /**
+       * O alcance por SETOR é do líder, e só dele.
+       *
+       * Se valesse para todo mundo acima do líder, um gerente de Descalvado
+       * decidiria sobre um balconista de Pirassununga só porque os dois são
+       * do Balcão — furando a responsabilidade do gerente de lá.
+       */
+      if (quem.nivel === NIVEL_LIDER_SETOR && quem.setor === alvo.setor) return true;
+
+      return false;
+    };
+
+    // Quem decide é o organograma; a regra acima só entra onde ele cala
+    return temAlcadaSobre(
+      eu,
+      solicitante,
+      bancoDados.obterColaboradores(),
+      regraAutomatica
+    );
   }
 
   /** Fila de quem aguarda decisão minha, da mais antiga para a mais nova. */
@@ -1066,7 +1079,10 @@ class ServicoPonto {
         // A identificação vem da ficha, não de uma lista escrita aqui. É o
         // que garante que campo novo no cadastro (o CNPJ foi o último)
         // apareça no documento sem ninguém lembrar de vir editar isto.
-        const camposDaIdentificacao = linhasDeIdentificacao(c).map((campo) =>
+        const responsavel = c.responsavelId
+          ? bancoDados.obterColaboradorPorId(c.responsavelId) || null
+          : null;
+        const camposDaIdentificacao = linhasDeIdentificacao(c, responsavel).map((campo) =>
           campo.chave === 'jornada'
             ? // A jornada do documento é a que vale de fato: sem o contratado
               // preenchido, corre a carga padrão da rede, e o espelho tem de

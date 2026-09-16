@@ -14,6 +14,7 @@ import {
   PhoneCall,
   ShieldAlert,
   Clock,
+  Network,
 } from 'lucide-react';
 import { Colaborador, Loja, Setor, INFORMACOES_LOJAS } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
@@ -22,6 +23,7 @@ import { QuadroFuncionarios } from './QuadroFuncionarios';
 import { CentralAvisos } from './CentralAvisos';
 import { BancoDeHoras } from './BancoDeHoras';
 import { AprovacaoJornada } from './AprovacaoJornada';
+import { Organograma } from './Organograma';
 
 interface PropsPainelRede {
   colaboradorAtual: Colaborador;
@@ -30,7 +32,13 @@ interface PropsPainelRede {
   aoAlternarParaGestor?: () => void;
 }
 
-type SubAbaPainel = 'visao_geral' | 'quadro' | 'aprovacoes' | 'ponto' | 'avisos';
+type SubAbaPainel =
+  | 'visao_geral'
+  | 'quadro'
+  | 'organograma'
+  | 'aprovacoes'
+  | 'ponto'
+  | 'avisos';
 
 export const PainelRede: React.FC<PropsPainelRede> = ({
   colaboradorAtual,
@@ -133,6 +141,23 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             >
               <Users className="w-3.5 h-3.5" />
               <span>Quadro de Equipe</span>
+            </button>
+
+            {/* Organograma: quem responde por quem. Fica ao lado do quadro
+                porque é a mesma equipe vista pela cadeia de responsabilidade
+                — e é essa cadeia que decide a fila de aprovação de horas. */}
+            <button
+              type="button"
+              id="subaba-organograma"
+              onClick={() => setSubAbaAtiva('organograma')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                subAbaAtiva === 'organograma'
+                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                  : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+              }`}
+            >
+              <Network className="w-3.5 h-3.5" />
+              <span>Organograma</span>
             </button>
 
             {/* Aprovações: todo mundo que responde por alguém tem fila. O
@@ -467,6 +492,11 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
         {/* SUB-ABA 3: BANCO DE HORAS E QR DO PONTO */}
         {subAbaAtiva === 'aprovacoes' && (
           <AprovacaoJornada colaboradorAtual={colaboradorAtual} />
+        )}
+
+        {/* SUB-ABA: CADEIA DE RESPONSABILIDADE (decide quem aprova hora) */}
+        {subAbaAtiva === 'organograma' && (
+          <Organograma colaboradorAtual={colaboradorAtual} />
         )}
 
         {subAbaAtiva === 'ponto' && <BancoDeHoras colaboradorAtual={colaboradorAtual} />}

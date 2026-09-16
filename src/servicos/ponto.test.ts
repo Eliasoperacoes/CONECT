@@ -685,3 +685,97 @@ test('o CSV do período carrega a identificação em toda linha', async () => {
     expect(linha).toContain('12.345.678/0001-90');
   }
 });
+
+// ============================================================
+// O ORGANOGRAMA MANDA NA FILA DE APROVAÇÃO — DE VERDADE
+//
+// organograma.test.ts prova a regra isolada. Estes provam que o SERVIÇO DE
+// PONTO obedece a ela: é a diferença entre um organograma que decide e um
+// que é só desenho bonito na tela do RH.
+// ============================================================
+
+test('pendurar alguém no organograma TIRA a alçada de quem a regra dava', async () => {
+  const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência' };
+  const LID = { ...ELIAS, id: 'l', nome: 'Lider', login: 'l', nivel: 2, setor: 'Balcão' };
+  // A Ana é do Balcão, mas responde direto ao gerente
+  const ANA_SOB_GER = {
+    ...ELIAS, id: 'a', nome: 'Ana', login: 'a', nivel: 1,
+    setor: 'Balcão', responsavelId: 'g',
+  };
+  equipe = [GER, LID, ANA_SOB_GER];
+
+  // O líder do Balcão perde a alçada: quem manda é a cadeia
+  colaboradorLogado = LID;
+  expect(servicoPonto.podeDecidirSobre(ANA_SOB_GER as any)).toBe(false);
+
+  colaboradorLogado = GER;
+  expect(servicoPonto.podeDecidirSobre(ANA_SOB_GER as any)).toBe(true);
+
+  // E a fila reflete isso: a hora da Ana não aparece para o líder
+  colaboradorLogado = ANA_SOB_GER;
+  await fecharJornada(ANA_SOB_GER, '2026-09-16', '08:00', '18:00');
+
+  colaboradorLogado = LID;
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(0);
+
+  colaboradorLogado = GER;
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(1);
+});
+
+test('quem NÃO está no organograma continua na regra de setor e loja', async () => {
+  // A rede de segurança: com 89 pessoas, o quadro é montado loja por loja e
+  // ninguém pode ficar com a hora parada esperando ser arrastado
+  const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência' };
+  const LID = { ...ELIAS, id: 'l', nome: 'Lider', login: 'l', nivel: 2, setor: 'Balcão' };
+  const SOLTO = { ...ELIAS, id: 's', nome: 'Solto', login: 's', nivel: 1, setor: 'Balcão' };
+  equipe = [GER, LID, SOLTO];
+
+  colaboradorLogado = LID;
+  expect(servicoPonto.podeDecidirSobre(SOLTO as any)).toBe(true);
+  colaboradorLogado = GER;
+  expect(servicoPonto.podeDecidirSobre(SOLTO as any)).toBe(true);
+});
+
+test('a alçada sobe a cadeia inteira, não para no chefe direto', async () => {
+  const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência' };
+  const LID = { ...ELIAS, id: 'l', nome: 'Lider', login: 'l', nivel: 2, setor: 'Balcão', responsavelId: 'g' };
+  const ANA = { ...ELIAS, id: 'a', nome: 'Ana', login: 'a', nivel: 1, setor: 'Balcão', responsavelId: 'l' };
+  equipe = [GER, LID, ANA];
+
+  // Se o líder não decidir, o chefe dele decide
+  colaboradorLogado = GER;
+  expect(servicoPonto.podeDecidirSobre(ANA as any)).toBe(true);
+
+  // Mas nunca ao contrário
+  colaboradorLogado = ANA;
+  expect(servicoPonto.podeDecidirSobre(LID as any)).toBe(false);
+  expect(servicoPonto.podeDecidirSobre(GER as any)).toBe(false);
+});
+
+test('o organograma NÃO deixa ninguém aprovar a própria hora', async () => {
+  // Quem está no topo não tem ninguém acima. Isso não pode virar
+  // auto-aprovação — a trava vem antes da cadeia.
+  const TOPO = { ...ELIAS, id: 't', nome: 'Topo', login: 't', nivel: 3, setor: 'Gerência' };
+  const SUB = { ...ELIAS, id: 'sub', nome: 'Sub', login: 'sub', nivel: 1, setor: 'Balcão', responsavelId: 't' };
+  equipe = [TOPO, SUB];
+
+  colaboradorLogado = TOPO;
+  expect(servicoPonto.podeDecidirSobre(TOPO as any)).toBe(false);
+
+  await fecharJornada(TOPO, '2026-09-16', '08:00', '18:00');
+  const ajuste = servicoPonto.obterAjusteDoDia(TOPO.id, '2026-09-16')!;
+  const res = await servicoPonto.decidirAjuste(ajuste.id, true);
+
+  expect(res.sucesso).toBe(false);
+  expect(servicoPonto.obterSaldoAcumulado(TOPO.id)).toBe(0);
+});
+
+test('gerente de OUTRA loja não entra na cadeia por acaso', async () => {
+  const GER_A = { ...ELIAS, id: 'ga', nome: 'Ger A', login: 'ga', nivel: 3, setor: 'Gerência', loja: 'Pirassununga' };
+  const GER_B = { ...ELIAS, id: 'gb', nome: 'Ger B', login: 'gb', nivel: 3, setor: 'Gerência', loja: 'Descalvado' };
+  const ANA = { ...ELIAS, id: 'a', nome: 'Ana', login: 'a', nivel: 1, setor: 'Balcão', loja: 'Pirassununga', responsavelId: 'ga' };
+  equipe = [GER_A, GER_B, ANA];
+
+  colaboradorLogado = GER_B;
+  expect(servicoPonto.podeDecidirSobre(ANA as any)).toBe(false);
+});

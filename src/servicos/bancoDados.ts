@@ -13,6 +13,7 @@
 import { usandoNuvem, temSessaoViva } from './supabase';
 import { NIVEL_TI, NIVEL_DIRETORIA, NIVEL_GERENTE } from '../tipos';
 import { nuvem } from './nuvem';
+import { podeSerResponsavelDe } from './organograma';
 import {
   nuvemComunicacao,
   montarPreviaDaMensagem,
@@ -1172,7 +1173,14 @@ class BancoDadosConecta {
         'email',
         'foto',
         'matricula',
+        // O CNPJ é ficha funcional: é o empregador da pessoa, e é o RH que
+        // corrige quando a planilha sobe com ele em branco
+        'cnpj',
         'departamento',
+        // O organograma é decisão de quem cuida de pessoas. Fica aqui e NÃO
+        // em CAMPOS_PROPRIOS: se a pessoa pudesse escolher o próprio
+        // responsável, escolheria quem aprova a hora dela.
+        'responsavelId',
         'dataAdmissao',
         'observacoes',
         'cargaHorariaDiariaMinutos',
@@ -1229,6 +1237,70 @@ class BancoDadosConecta {
       `${atual.nome} atualizou os dados de ${colaboradores[indice].nome}.`
     );
     this.notificar();
+    return { sucesso: true };
+  }
+
+  /**
+   * Move alguém no organograma — ou o solta dele.
+   *
+   * Passa por `atualizarColaborador`, então herda a permissão de lá (só quem
+   * cuida de pessoas mexe em `responsavelId`). O que esta camada acrescenta
+   * é a checagem de ciclo, que a lista de campos liberados não faz: pendurar
+   * o chefe debaixo do próprio subordinado deixaria os dois sem ninguém
+   * acima — e, pela regra nova, sem aprovador.
+   */
+  definirResponsavel(
+    colaboradorId: string,
+    responsavelId: string | null
+  ): { sucesso: boolean; erro?: string } {
+    if (!this.podeGerenciarPessoas()) {
+      return {
+        sucesso: false,
+        erro: 'Apenas RH, Diretoria e TI organizam a cadeia de responsabilidade.',
+      };
+    }
+
+    const todos = this.obterColaboradores();
+    const alvo = todos.find((c) => c.id === colaboradorId);
+    if (!alvo) return { sucesso: false, erro: 'Colaborador não encontrado.' };
+
+    if (responsavelId) {
+      const candidato = todos.find((c) => c.id === responsavelId);
+      if (!candidato) return { sucesso: false, erro: 'Responsável não encontrado.' };
+
+      const veredito = podeSerResponsavelDe(candidato, alvo, todos);
+      if (!veredito.pode) return { sucesso: false, erro: veredito.motivo };
+    }
+
+    // `undefined` sai do objeto ao serializar e a pessoa continuaria
+    // pendurada; a soltura tem que gravar o campo vazio de propósito
+    const resultado = this.atualizarColaborador(colaboradorId, {
+      responsavelId: responsavelId || undefined,
+    });
+    if (!resultado.sucesso) return resultado;
+
+    if (!responsavelId) {
+      const colaboradores = this.obterColaboradores();
+      const indice = colaboradores.findIndex((c) => c.id === colaboradorId);
+      if (indice !== -1) {
+        delete colaboradores[indice].responsavelId;
+        localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));
+        if (usandoNuvem()) nuvem.salvarColaborador(colaboradores[indice]);
+        this.notificar();
+      }
+    }
+
+    const nomeDoChefe = responsavelId
+      ? todos.find((c) => c.id === responsavelId)?.nome
+      : null;
+    this.registrarAuditoria(
+      'Organograma',
+      'usuario',
+      nomeDoChefe
+        ? `${alvo.nome} passou a responder a ${nomeDoChefe}.`
+        : `${alvo.nome} foi retirado da cadeia de responsabilidade.`
+    );
+
     return { sucesso: true };
   }
 

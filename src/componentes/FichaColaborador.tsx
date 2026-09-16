@@ -10,6 +10,8 @@ import { montarFicha } from '../servicos/fichaColaborador';
 
 interface Props {
   colaborador: Colaborador;
+  /** Responsável direto, para a ficha dizer quem aprova a hora da pessoa. */
+  responsavel?: Colaborador | null;
   /** Esconde telefone e e-mail. Usado onde o contato não vem ao caso. */
   ocultarContato?: boolean;
   /** Mostra os campos em branco como "—", para conferência de cadastro. */
@@ -20,12 +22,16 @@ interface Props {
 
 export const FichaColaborador: React.FC<Props> = ({
   colaborador,
+  responsavel,
   ocultarContato = false,
   mostrarVazios = false,
   colunas = 2,
   className = '',
 }) => {
-  const campos = montarFicha(colaborador, { incluirVazios: mostrarVazios }).filter(
+  const campos = montarFicha(colaborador, {
+    incluirVazios: mostrarVazios,
+    responsavel,
+  }).filter(
     (campo) => !(ocultarContato && campo.sensivel)
   );
 

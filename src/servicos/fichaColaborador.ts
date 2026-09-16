@@ -51,7 +51,7 @@ export const formatarJornada = (minutos?: number): string => {
  */
 export const montarFicha = (
   c: Colaborador,
-  opcoes: { incluirVazios?: boolean } = {}
+  opcoes: { incluirVazios?: boolean; responsavel?: Colaborador | null } = {}
 ): CampoDaFicha[] => {
   const campos: CampoDaFicha[] = [
     { chave: 'nome', rotulo: 'Nome completo', valor: c.nome },
@@ -64,6 +64,13 @@ export const montarFicha = (
       chave: 'nivel',
       rotulo: 'Nível de acesso',
       valor: `N${c.nivel} · ${ROTULO_NIVEL[c.nivel] || 'Colaborador'}`,
+    },
+    // Quem responde pela pessoa. Não é enfeite da ficha: é quem aprova a
+    // hora dela, e quem lê um espelho precisa saber de quem partiu o aval.
+    {
+      chave: 'responsavel',
+      rotulo: 'Responde a',
+      valor: opcoes.responsavel ? opcoes.responsavel.nome : '',
     },
     { chave: 'admissao', rotulo: 'Admissão', valor: paraDataBR(c.dataAdmissao) },
     {
@@ -85,8 +92,11 @@ export const montarFicha = (
  * holerite). Sempre com os vazios, e sempre com o mesmo conjunto: é o que
  * identifica a pessoa e o empregador contra quem a jornada corre.
  */
-export const linhasDeIdentificacao = (c: Colaborador): CampoDaFicha[] => {
-  const tudo = montarFicha(c, { incluirVazios: true });
+export const linhasDeIdentificacao = (
+  c: Colaborador,
+  responsavel?: Colaborador | null
+): CampoDaFicha[] => {
+  const tudo = montarFicha(c, { incluirVazios: true, responsavel });
   const daFicha = (chave: string): CampoDaFicha =>
     tudo.find((campo) => campo.chave === chave) || { chave, rotulo: chave, valor: '' };
 
@@ -97,6 +107,7 @@ export const linhasDeIdentificacao = (c: Colaborador): CampoDaFicha[] => {
     daFicha('cargo'),
     daFicha('setor'),
     daFicha('loja'),
+    daFicha('responsavel'),
     daFicha('admissao'),
     daFicha('jornada'),
   ];
