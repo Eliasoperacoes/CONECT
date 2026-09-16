@@ -16,6 +16,8 @@ import {
   NIVEL_TI,
   CARGOS_SUGERIDOS,
   SETORES,
+  cuidaDePessoas,
+  ehAdministrador,
 } from '../tipos';
 import { resolverNivelDaPlanilha, resolverSetorDaPlanilha } from './planilhaFuncionarios';
 
@@ -133,4 +135,28 @@ test('ADMINISTRATIVO entra como setor, e não escala o nível', () => {
   // NÍVEL ela continua não valendo nada, que é o que evita virar TI
   expect(resolverNivelDaPlanilha('Administrativo').nivel).toBe(NIVEL_COLABORADOR);
   expect(resolverNivelDaPlanilha('Administrativo').aviso).toBeTruthy();
+});
+
+test('GERÊNCIA é setor próprio, e não muda a autorização', () => {
+  expect(resolverSetorDaPlanilha('Gerência').setor).toBe('Gerência');
+  expect(resolverSetorDaPlanilha('Gerencia').setor).toBe('Gerência');
+  expect(resolverSetorDaPlanilha('Gerente').setor).toBe('Gerência');
+  expect(resolverSetorDaPlanilha('Gerência').erro).toBeUndefined();
+
+  // Antes "Gerência" no setor caía em Diretoria — mandava todo gerente para
+  // o setor da cúpula
+  expect(resolverSetorDaPlanilha('Gerência').setor).not.toBe('Diretoria');
+
+  // Na coluna de NÍVEL continua valendo 3: a alçada da loja, nem mais nem menos
+  expect(resolverNivelDaPlanilha('Gerente').nivel).toBe(NIVEL_GERENTE);
+  expect(resolverNivelDaPlanilha('Gerência').nivel).toBe(NIVEL_GERENTE);
+});
+
+test('o setor não concede autorização — quem concede é o nível', () => {
+  // Um gerente no setor Gerência continua sem cuidar de pessoas; um
+  // colaborador comum no RH cuida. É o desenho: setor diz onde a pessoa
+  // trabalha, nível diz o que ela pode.
+  expect(cuidaDePessoas({ nivel: NIVEL_GERENTE, setor: 'Gerência' })).toBe(false);
+  expect(cuidaDePessoas({ nivel: NIVEL_COLABORADOR, setor: 'RH' })).toBe(true);
+  expect(ehAdministrador({ nivel: NIVEL_GERENTE })).toBe(false);
 });

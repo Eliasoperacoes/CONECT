@@ -16,7 +16,8 @@ export type Setor =
   | 'Estoque'
   | 'Logística'
   | 'Estágio'
-  | 'Administrativo';
+  | 'Administrativo'
+  | 'Gerência';
 
 // Lista única usada nos formulários e filtros, para não repetir os setores
 export const SETORES: Setor[] = [
@@ -33,6 +34,7 @@ export const SETORES: Setor[] = [
   'Logística',
   'Estágio',
   'Administrativo',
+  'Gerência',
 ];
 
 export type Loja =

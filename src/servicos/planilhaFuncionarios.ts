@@ -106,7 +106,17 @@ const SETORES_PADRAO: Record<string, Setor> = {
   'recursos humanos': 'RH',
   pessoal: 'RH',
   dp: 'RH',
-  gerencia: 'Diretoria',
+  /**
+   * "Gerência" era apelido de Diretoria — e isso mandava todo gerente para o
+   * setor da cúpula. Agora é setor próprio: o gerente responde pela loja
+   * dele, não pela rede.
+   *
+   * O SETOR não dá autorização nenhuma; quem dá é o nível. Um gerente aqui
+   * continua sendo nível 3, com a alçada da loja dele — nem mais, nem menos.
+   */
+  gerencia: 'Gerência',
+  gerente: 'Gerência',
+  gerentes: 'Gerência',
 };
 
 function normalizarTexto(texto: any): string {
@@ -160,6 +170,7 @@ const NIVEIS_PADRAO: Record<string, NivelHierarquico> = {
   supervisor: 2,
   '3': 3,
   gerente: 3,
+  gerencia: 3,
   gestor: 3,
   '4': 4,
   diretoria: 4,
