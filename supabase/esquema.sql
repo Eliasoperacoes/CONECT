@@ -91,6 +91,18 @@ create table if not exists public.mensagens (
 alter table public.mensagens add column if not exists editada_em timestamptz;
 alter table public.colaboradores add column if not exists cnpj text;
 
+-- MENSAGEM FIXADA: fica no alto da conversa, à vista de todos, até alguém
+-- desafixar. Guardamos quem fixou porque, num grupo de 30 pessoas, "quem pôs
+-- isso aqui" é a primeira pergunta — e sem autoria ninguém sabe a quem pedir
+-- para tirar.
+alter table public.mensagens
+  add column if not exists fixada_em      timestamptz,
+  add column if not exists fixada_por_id  text references public.colaboradores(id) on delete set null;
+
+create index if not exists mensagens_fixadas_por_conversa
+  on public.mensagens (conversa_id, fixada_em desc)
+  where fixada_em is not null;
+
 -- ORGANOGRAMA: o responsável direto de cada pessoa.
 --
 -- É esta coluna que decide quem aprova hora de quem. Preenchida, manda; em

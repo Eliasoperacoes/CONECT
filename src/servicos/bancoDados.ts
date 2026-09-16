@@ -2214,6 +2214,73 @@ class BancoDadosConecta {
    * Quem pode apagar uma mensagem: quem a enviou e o Administrador, que
    * precisa poder remover conteúdo indevido de qualquer conversa.
    */
+  /**
+   * Quem pode fixar uma mensagem no alto da conversa.
+   *
+   * Quem pode PUBLICAR ali pode fixar. É a mesma alçada: num canal onde só
+   * a gestão fala, só a gestão fixa; numa conversa entre dois, os dois.
+   *
+   * Não é "só o autor": fixar não é sobre a mensagem, é sobre destacá-la
+   * para o grupo — e quem destaca costuma ser quem coordena, não quem
+   * escreveu.
+   */
+  podeFixarMensagem(mensagem: Mensagem): boolean {
+    return this.podePublicarNaConversa(mensagem.conversaId);
+  }
+
+  /**
+   * Fixa ou desafixa. Guarda quem fixou: num grupo de 30 pessoas, "quem pôs
+   * isso aqui" é a primeira pergunta, e sem autoria ninguém sabe a quem
+   * pedir para tirar.
+   */
+  async alternarFixarMensagem(
+    mensagemId: string
+  ): Promise<{ sucesso: boolean; fixada?: boolean; erro?: string }> {
+    const atual = this.obterColaboradorAtual();
+
+    try {
+      const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+      const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
+      const indice = todas.findIndex((m) => m.id === mensagemId);
+
+      if (indice === -1) return { sucesso: false, erro: 'Mensagem não encontrada.' };
+      if (!this.podeFixarMensagem(todas[indice])) {
+        return { sucesso: false, erro: 'Você não pode fixar mensagem nesta conversa.' };
+      }
+
+      const fixando = !todas[indice].fixadaEm;
+      const atualizada: Mensagem = {
+        ...todas[indice],
+        fixadaEm: fixando ? new Date().toISOString() : undefined,
+        fixadaPorId: fixando ? atual.id : undefined,
+      };
+
+      // O banco primeiro: uma mensagem que não subiu fixada apareceria
+      // fixada só para quem clicou, e o combinado é que todos vejam
+      if (usandoNuvem()) {
+        const res = await nuvemComunicacao.atualizarMensagem(atualizada);
+        if (!res.sucesso) {
+          return { sucesso: false, erro: 'Falha ao salvar no banco.' };
+        }
+      }
+
+      todas[indice] = atualizada;
+      localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(todas));
+      this.notificar();
+
+      return { sucesso: true, fixada: fixando };
+    } catch {
+      return { sucesso: false, erro: 'Não foi possível fixar a mensagem.' };
+    }
+  }
+
+  /** As fixadas de uma conversa, a mais recente primeiro. */
+  obterMensagensFixadas(conversaId: string): Mensagem[] {
+    return this.obterMensagens(conversaId)
+      .filter((m: Mensagem) => !!m.fixadaEm)
+      .sort((a: Mensagem, b: Mensagem) => (b.fixadaEm || '').localeCompare(a.fixadaEm || ''));
+  }
+
   podeExcluirMensagem(mensagem: Mensagem): boolean {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel >= NIVEL_TI) return true;

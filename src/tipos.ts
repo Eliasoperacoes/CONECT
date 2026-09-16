@@ -191,6 +191,12 @@ export interface Mensagem {
   // pronto para exibir; este campo e o endereco permanente dele no banco.
   anexoCaminho?: string;
   ehAvisoDirecao?: boolean;
+  /**
+   * Fixada no alto da conversa, a vista de todos os participantes.
+   * Diferente de fixar CONVERSA na lista, que e preferencia de cada um.
+   */
+  fixadaEm?: string;
+  fixadaPorId?: string;
   reacoes?: Record<string, string[]>; // ex: { '👍': ['colab-1', 'colab-2'], '✅': ['colab-3'] }
 }
 

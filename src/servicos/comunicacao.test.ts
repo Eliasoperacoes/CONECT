@@ -864,3 +864,81 @@ test('A PLANILHA NÃO TRANCA O ADMINISTRADOR DO LADO DE FORA', async () => {
   const elias = bancoDados.obterColaboradores().find((c) => c.login === 'elias');
   expect(elias!.nivel).toBe(5);
 });
+
+// ============================================================
+// FIXAR MENSAGEM: É CONTEÚDO COMPARTILHADO, NÃO PREFERÊNCIA
+//
+// Fixar conversa na lista é do navegador de cada um. Fixar MENSAGEM vale
+// para todos os participantes, então tem de atravessar o banco — ida e
+// volta. Estes testes leem o código da ponte, que é onde isso se perde.
+// ============================================================
+
+test('a ponte com o banco leva E traz as duas colunas do fixar', async () => {
+  /**
+   * O jeito de isto quebrar em silêncio: mapear só a ida. A mensagem sobe
+   * fixada, o banco grava, e ao recarregar volta sem `fixadaEm` — a faixa
+   * some sozinha e ninguém entende por quê.
+   */
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  // Ida: do objeto para a linha
+  expect(ponte).toContain('fixada_em: m.fixadaEm ?? null');
+  expect(ponte).toContain('fixada_por_id: m.fixadaPorId ?? null');
+
+  // Volta: da linha para o objeto
+  expect(ponte).toContain('fixadaEm: linha.fixada_em || undefined');
+  expect(ponte).toContain('fixadaPorId: linha.fixada_por_id || undefined');
+
+  // E a coluna tem que existir no tipo da linha, senão o TypeScript cala
+  expect(ponte).toContain('fixada_em: string | null');
+});
+
+test('o banco tem as colunas e o índice das fixadas', async () => {
+  const sql = await Bun.file(
+    new URL('../../supabase/esquema.sql', import.meta.url)
+  ).text();
+
+  expect(sql).toContain('add column if not exists fixada_em');
+  expect(sql).toContain('add column if not exists fixada_por_id');
+  // Sem índice, abrir uma conversa longa varre a conversa inteira
+  expect(sql).toContain('mensagens_fixadas_por_conversa');
+});
+
+test('AS AÇÕES DA MENSAGEM SÃO ALCANÇÁVEIS NO CELULAR', async () => {
+  /**
+   * O defeito relatado: encaminhar, editar e apagar viviam num
+   * `opacity-0 group-hover:opacity-100`. Toque não dispara hover — então no
+   * aparelho onde a rede mais usa o sistema essas ações eram invisíveis.
+   *
+   * Este teste lê a tela e exige que exista um caminho que não dependa de
+   * hover.
+   */
+  const tela = await Bun.file(
+    new URL('../componentes/TelaConversa.tsx', import.meta.url)
+  ).text();
+
+  // Há um gatilho próprio do celular para abrir as ações
+  expect(tela).toContain('setMenuMensagemId');
+  expect(tela).toContain('md:hidden');
+
+  // E o bloco de ações deixou de ser hover-only: o hover agora é a partir
+  // de md, com o menu valendo abaixo disso
+  expect(tela).toContain("hidden md:flex opacity-0 group-hover:opacity-100");
+});
+
+test('quem fixa é quem pode publicar, não só o autor', async () => {
+  // Fixar não é sobre a mensagem, é sobre destacá-la para o grupo — e quem
+  // destaca costuma ser quem coordena, não quem escreveu. Num canal onde só
+  // a gestão fala, só a gestão fixa.
+  const servico = await Bun.file(
+    new URL('./bancoDados.ts', import.meta.url)
+  ).text();
+
+  const inicio = servico.indexOf('podeFixarMensagem(mensagem: Mensagem): boolean {');
+  const corpo = servico.slice(inicio, inicio + 200);
+
+  expect(corpo).toContain('podePublicarNaConversa');
+  expect(corpo).not.toContain('remetenteId');
+});

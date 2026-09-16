@@ -20,6 +20,8 @@ import {
   Check,
   CheckCheck,
   Forward,
+  Pin,
+  PinOff,
   Copy,
   CheckSquare,
   Trash2,
@@ -45,6 +47,7 @@ import { TelaRadioAoVivo } from './TelaRadioAoVivo';
 import { ModalCamera } from './ModalCamera';
 import { ModalVisualizadorImagem } from './ModalVisualizadorImagem';
 import { ModalEncaminharMensagem } from './ModalEncaminharMensagem';
+import { montarPreviaDaMensagem } from '../servicos/nuvemComunicacao';
 
 interface PropsTelaConversa {
   conversa: Conversa;
@@ -96,6 +99,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   // Estados para Seleção e Encaminhamento de Mensagens
   const [modoSelecao, setModoSelecao] = useState(false);
   const [mensagensSelecionadasIds, setMensagensSelecionadasIds] = useState<string[]>([]);
+  /** Qual mensagem está com o menu aberto no celular. */
+  const [menuMensagemId, setMenuMensagemId] = useState<string | null>(null);
   const [modalEncaminharAberto, setModalEncaminharAberto] = useState(false);
   const [mensagensParaEncaminhar, setMensagensParaEncaminhar] = useState<string[]>([]);
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
@@ -465,6 +470,28 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   };
 
   // Mensagens filtradas se busca estiver ativa
+  /**
+   * As fixadas desta conversa, a mais recente primeiro.
+   *
+   * Sai de `mensagens`, que já é o estado sincronizado — assim fixar num
+   * aparelho aparece no outro sem tratamento à parte.
+   */
+  const mensagensFixadas = mensagens
+    .filter((m) => !!m.fixadaEm)
+    .sort((a, b) => (b.fixadaEm || '').localeCompare(a.fixadaEm || ''));
+
+  /** Rola até a mensagem e a pisca, para o clique na faixa levar a algum lugar. */
+  const irParaMensagem = (id: string) => {
+    const alvo = document.getElementById(`mensagem-${id}`);
+    if (!alvo) return;
+    alvo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    alvo.classList.add('ring-2', 'ring-[var(--c-acento)]', 'rounded-xl');
+    setTimeout(
+      () => alvo.classList.remove('ring-2', 'ring-[var(--c-acento)]', 'rounded-xl'),
+      1600
+    );
+  };
+
   const mensagensExibidas = mensagens.filter((m) => {
     if (!termoBusca.trim()) return true;
     const termo = termoBusca.toLowerCase();
@@ -779,6 +806,56 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       )}
 
       {/* 2. Área de Mensagens (balões) */}
+      {/*
+        A faixa da mensagem fixada.
+
+        Fica FORA da rolagem, colada no alto: uma mensagem fixada que rolasse
+        junto com o resto some na primeira tela de conversa, e aí não fixa
+        nada. Mostra a mais recente e diz quantas outras existem.
+      */}
+      {mensagensFixadas.length > 0 && (
+        <div className="flex-shrink-0 px-3 py-2 bg-[var(--c-acento)]/8 border-b border-[var(--c-acento)]/25 flex items-start gap-2">
+          <Pin className="w-3.5 h-3.5 text-[var(--c-acento)] flex-shrink-0 mt-0.5" />
+
+          <button
+            type="button"
+            onClick={() => irParaMensagem(mensagensFixadas[0].id)}
+            className="flex-1 min-w-0 text-left"
+            title="Ir até a mensagem"
+          >
+            <span className="text-[10px] font-bold text-[var(--c-acento)] uppercase tracking-wider block">
+              Fixada
+              {mensagensFixadas.length > 1 && ` · e mais ${mensagensFixadas.length - 1}`}
+              {(() => {
+                // Quem fixou, para o grupo saber a quem pedir para tirar
+                const quem = mensagensFixadas[0].fixadaPorId
+                  ? bancoDados.obterColaboradorPorId(mensagensFixadas[0].fixadaPorId)
+                  : null;
+                return quem ? ` · por ${quem.nome}` : '';
+              })()}
+            </span>
+            <span className="text-xs text-[var(--c-texto)] block truncate">
+              {montarPreviaDaMensagem(mensagensFixadas[0])}
+            </span>
+          </button>
+
+          {bancoDados.podeFixarMensagem(mensagensFixadas[0]) && (
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await bancoDados.alternarFixarMensagem(mensagensFixadas[0].id);
+                if (!res.sucesso) exibirToast(res.erro || 'Não foi possível desafixar.');
+              }}
+              className="p-1 rounded-lg text-[var(--c-texto-3)] hover:text-red-600 flex-shrink-0"
+              title="Desafixar"
+              aria-label="Desafixar"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {mensagensExibidas.length === 0 ? (
           <div className="h-full flex items-center justify-center text-[var(--c-texto-3)] text-sm">
@@ -1177,12 +1254,69 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                     )}
                   </div>
 
-                  {/* Ações Rápidas ao passar o mouse ou focar (Encaminhar e Selecionar) */}
+                  {/*
+                    As ações da mensagem.
+
+                    No computador aparecem ao passar o mouse. No CELULAR não
+                    havia como alcançá-las: `group-hover` nunca dispara em
+                    toque, então encaminhar, editar e apagar eram invisíveis
+                    no aparelho onde a rede mais usa o sistema.
+
+                    Agora um toque no botão de três pontos abre o mesmo
+                    conjunto. O menu existe só no celular; no computador o
+                    hover continua sendo o caminho, que é mais rápido.
+                  */}
+                  {!modoSelecao && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuMensagemId(menuMensagemId === msg.id ? null : msg.id);
+                      }}
+                      className="md:hidden w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform"
+                      title="Opções da mensagem"
+                      aria-label="Opções da mensagem"
+                    >
+                      <MoreVertical className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
                   {!modoSelecao && (
                     <div
-                      className="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-1 flex-shrink-0"
+                      className={`${
+                        menuMensagemId === msg.id
+                          ? 'flex'
+                          : 'hidden md:flex opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+                      } transition-opacity items-center gap-1 flex-shrink-0`}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      {/* Fixar: fica no alto da conversa, à vista de todos */}
+                      {bancoDados.podeFixarMensagem(msg) && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const res = await bancoDados.alternarFixarMensagem(msg.id);
+                            setMenuMensagemId(null);
+                            if (!res.sucesso) exibirToast(res.erro || 'Não foi possível fixar.');
+                            else
+                              exibirToast(
+                                res.fixada
+                                  ? 'Fixada no alto da conversa, para todos.'
+                                  : 'Desafixada.'
+                              );
+                          }}
+                          className={`w-7 h-7 rounded-full border flex items-center justify-center shadow-xs transition-colors ${
+                            msg.fixadaEm
+                              ? 'bg-[var(--c-acento)] border-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                              : 'bg-[var(--c-superficie)] border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-acento)]'
+                          }`}
+                          title={msg.fixadaEm ? 'Desafixar' : 'Fixar no alto da conversa'}
+                          aria-label={msg.fixadaEm ? 'Desafixar' : 'Fixar mensagem'}
+                        >
+                          {msg.fixadaEm ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         onClick={() => abrirModalEncaminhar([msg.id])}

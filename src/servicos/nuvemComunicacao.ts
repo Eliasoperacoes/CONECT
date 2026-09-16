@@ -94,6 +94,8 @@ interface LinhaMensagem {
   eh_aviso_direcao: boolean;
   reacoes: Record<string, string[]> | null;
   editada_em: string | null;
+  fixada_em: string | null;
+  fixada_por_id: string | null;
   anexo_caminho: string | null;
   criado_em: string;
 }
@@ -131,6 +133,8 @@ const paraLinhaMensagem = (m: Mensagem) => ({
   eh_aviso_direcao: !!m.ehAvisoDirecao,
   reacoes: m.reacoes ?? {},
   editada_em: m.editadaEm ?? null,
+  fixada_em: m.fixadaEm ?? null,
+  fixada_por_id: m.fixadaPorId ?? null,
   anexo_caminho: m.anexoCaminho ?? null,
   criado_em: m.criadoEm,
 });
@@ -277,6 +281,8 @@ class PonteComunicacao {
         ehEncaminhada: linha.eh_encaminhada || undefined,
         ehAvisoDirecao: linha.eh_aviso_direcao || undefined,
         editadaEm: linha.editada_em || undefined,
+        fixadaEm: linha.fixada_em || undefined,
+        fixadaPorId: linha.fixada_por_id || undefined,
         anexoCaminho: linha.anexo_caminho || undefined,
         reacoes: linha.reacoes || undefined,
       };
@@ -445,6 +451,8 @@ class PonteComunicacao {
         legenda: mensagem.legenda ?? null,
         reacoes: mensagem.reacoes ?? {},
         editada_em: mensagem.editadaEm ?? null,
+        fixada_em: mensagem.fixadaEm ?? null,
+        fixada_por_id: mensagem.fixadaPorId ?? null,
       })
       .eq('id', mensagem.id);
 
