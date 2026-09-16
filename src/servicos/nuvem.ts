@@ -342,8 +342,22 @@ class PonteNuvem {
               'de dúvida, procure o RH.',
           };
         }
+        /**
+         * "already registered" quer dizer uma coisa só, e não é ambígua: a
+         * conta de acesso EXISTE. O login está certo; a senha é que não.
+         *
+         * Dizer "login ou senha incorretos" aqui mandava a pessoa conferir o
+         * login — que estava certo — e escondia o único caminho que resolve:
+         * pedir ao RH para resetar o acesso. A senha vive cifrada na
+         * autenticação e ninguém a recupera lendo o banco.
+         */
         if (msg.includes('already registered') || msg.includes('already been registered')) {
-          return { sucesso: false, erro: 'Login ou senha incorretos.' };
+          return {
+            sucesso: false,
+            erro:
+              'Este login já tem acesso ativado, e a senha digitada não é a dele. ' +
+              'A senha de primeiro acesso não vale mais. Peça ao RH para resetar o seu acesso.',
+          };
         }
         if (msg.includes('password')) {
           return {
