@@ -48,6 +48,8 @@ let bancoAuditoria: any[] = [];
 let recusarEscrita = false;
 
 let sessaoViva = true;
+/** O que a ponte mandou para o banco na ultima carga em lote. */
+let colaboradoresNoBanco: any[] = [];
 
 mock.module('./supabase', () => ({
   usandoNuvem: () => modoNuvem,
@@ -77,6 +79,10 @@ mock.module('./nuvem', () => ({
   nuvem: {
     assinarAtualizacoes: () => () => {},
     salvarColaborador: async () => ({ sucesso: true }),
+    salvarColaboradoresEmLote: async (lista: any[]) => {
+      colaboradoresNoBanco = lista.map((c) => ({ ...c }));
+      return { sucesso: true, gravados: lista.length };
+    },
     removerColaborador: async () => ({ sucesso: true }),
     sincronizarPonto: async () => true,
   },
@@ -197,6 +203,7 @@ beforeEach(() => {
   recusarEscrita = false;
   modoNuvem = true;
   sessaoViva = true;
+  colaboradoresNoBanco = [];
   anexosEnviados = [];
   anexosApagados = [];
   armazenamentoFalha = false;
@@ -790,4 +797,70 @@ test('no modo local os resets continuam funcionando', () => {
   const res = bancoDados.limparColaboradoresManterAdmin();
   expect(res.sucesso).toBe(true);
   modoNuvem = true;
+});
+
+// ============================================================
+// CARGA DA PLANILHA: o que é lido tem que chegar na ficha
+// ============================================================
+
+test('CNPJ DA PLANILHA CHEGA NA FICHA DO COLABORADOR', async () => {
+  // O CNPJ era lido da planilha e descartado na importação em lote: a
+  // função não conhecia o campo, então ele sumia sem erro nenhum
+  const res = bancoDados.importarColaboradoresEmLote(
+    [
+      {
+        nome: 'Joana Ribeiro',
+        login: 'joana.ribeiro',
+        cargo: 'Administrativo',
+        loja: 'Pirassununga',
+        setor: 'Administrativo',
+        nivel: 1,
+        matricula: 'MAL-0900',
+        cnpj: '11.222.333/0001-81',
+      },
+    ],
+    true
+  );
+
+  expect(res.sucesso).toBe(true);
+  expect(res.criados).toBe(1);
+
+  const criada = bancoDados.obterColaboradores().find((c) => c.login === 'joana.ribeiro');
+  expect(criada).toBeTruthy();
+  expect(criada!.cnpj).toBe('11.222.333/0001-81');
+  // A matrícula sempre funcionou; serve de controle de que o teste é honesto
+  expect(criada!.matricula).toBe('MAL-0900');
+});
+
+test('atualizar pela planilha preenche o CNPJ de quem já existe', async () => {
+  bancoDados.importarColaboradoresEmLote(
+    [
+      {
+        nome: 'Ana', login: 'ana', cargo: 'Vendedora',
+        loja: 'Pirassununga', setor: 'Balcão', nivel: 1,
+        cnpj: '11.222.333/0001-81',
+      },
+    ],
+    true
+  );
+
+  const ana = bancoDados.obterColaboradores().find((c) => c.login === 'ana');
+  expect(ana!.cnpj).toBe('11.222.333/0001-81');
+});
+
+test('A PLANILHA NÃO TRANCA O ADMINISTRADOR DO LADO DE FORA', async () => {
+  // A linha do próprio admin vindo como nível 1 o rebaixaria — e só um TI
+  // devolve o nível. Ele ficaria trancado fora do sistema que administra.
+  bancoDados.importarColaboradoresEmLote(
+    [
+      {
+        nome: 'Elias', login: 'elias', cargo: 'Diretor',
+        loja: 'Pirassununga', setor: 'TI', nivel: 1,
+      },
+    ],
+    true
+  );
+
+  const elias = bancoDados.obterColaboradores().find((c) => c.login === 'elias');
+  expect(elias!.nivel).toBe(5);
 });

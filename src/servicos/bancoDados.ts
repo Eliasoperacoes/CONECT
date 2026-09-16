@@ -972,6 +972,7 @@ class BancoDadosConecta {
       telefone?: string;
       email?: string;
       matricula?: string;
+      cnpj?: string;
       dataAdmissao?: string;
       observacoes?: string;
     }>,
@@ -1010,19 +1011,33 @@ class BancoDadosConecta {
       if (indiceExistente !== -1) {
         if (atualizarExistentes) {
           const colabExistente = colaboradores[indiceExistente];
-          const ehAdminElias = colabExistente.id === COLABORADOR_ADMIN_ELIAS.id;
+
+          /**
+           * Quem está importando não perde o próprio acesso.
+           *
+           * Antes a proteção comparava com o id fixo do modo de demonstração
+           * — que não existe no banco real, onde o id nasce do cadastro. Na
+           * prática, a linha do próprio administrador vindo com nível 1 o
+           * rebaixaria, e só um TI pode devolver o nível: ele ficaria
+           * trancado do lado de fora do sistema que administra.
+           */
+          const souEu = colabExistente.id === atual.id;
+          const ehAdminElias = souEu || colabExistente.id === COLABORADOR_ADMIN_ELIAS.id;
           colaboradores[indiceExistente] = {
             ...colabExistente,
             nome: linha.nome.trim(),
             cargo: linha.cargo.trim() || colabExistente.cargo,
             loja: linha.loja || colabExistente.loja,
             setor: linha.setor || colabExistente.setor,
-            nivel: ehAdminElias ? 4 : (linha.nivel || colabExistente.nivel),
+            nivel: ehAdminElias
+              ? colabExistente.nivel
+              : linha.nivel || colabExistente.nivel,
             ramal: linha.ramal?.trim() || colabExistente.ramal,
             telefone: linha.telefone?.trim() || colabExistente.telefone,
             email: linha.email?.trim() || colabExistente.email,
             senha: linha.senha?.trim() || colabExistente.senha || SENHA_PADRAO_PRIMEIRO_ACESSO,
             matricula: linha.matricula?.trim() || colabExistente.matricula,
+            cnpj: linha.cnpj?.trim() || colabExistente.cnpj,
             dataAdmissao: linha.dataAdmissao?.trim() || colabExistente.dataAdmissao,
             observacoes: linha.observacoes?.trim() || colabExistente.observacoes,
           };
@@ -1048,6 +1063,7 @@ class BancoDadosConecta {
           telefone: linha.telefone?.trim() || '',
           email: linha.email?.trim() || '',
           matricula: linha.matricula?.trim() || '',
+          cnpj: linha.cnpj?.trim() || '',
           dataAdmissao: linha.dataAdmissao?.trim() || '',
           observacoes: linha.observacoes?.trim() || '',
           ativo: true,
