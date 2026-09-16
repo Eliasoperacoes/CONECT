@@ -678,9 +678,22 @@ class PonteComunicacao {
   ): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
 
-    const { error } = await supabase.from('configuracoes').upsert(
-      {
-        id: true,
+    /**
+     * UPDATE, não upsert.
+     *
+     * A configuração é linha única — o esquema já a semeia com id = true. O
+     * upsert manda `insert ... on conflict`, e um INSERT precisa de
+     * política de INSERT, que esta tabela não tem (só de UPDATE, para o
+     * administrador). O banco recusava com "a nova linha viola a política de
+     * segurança em nível de linha", apontando para um INSERT que nem era
+     * para acontecer.
+     *
+     * Mesma pedra do `salvarConversa`: upsert vira ON CONFLICT, e ON
+     * CONFLICT esbarra na RLS.
+     */
+    const { data, error } = await supabase
+      .from('configuracoes')
+      .update({
         nome_empresa: config.nomeEmpresa,
         bipe_radio_ativo: config.bipeRadioAtivo,
         tempo_maximo_radio_segundos: config.tempoMaximoRadioSegundos,
@@ -689,14 +702,29 @@ class PonteComunicacao {
         modo_manutencao: config.modoManutencao,
         permitir_criacao_grupos_por_operadores: config.permitirCriacaoGruposPorOperadores,
         permissoes_ferramentas: config.permissoesFerramentas ?? null,
-      },
-      { onConflict: 'id' }
-    );
+      })
+      .eq('id', true)
+      .select('id');
 
     if (error) {
       console.error('Falha ao salvar configurações:', error.message);
       return { sucesso: false, erro: error.message };
     }
+
+    /**
+     * Update que não achou linha nenhuma não é erro para o banco — volta
+     * vazio e "deu certo". Seria a pior falha possível aqui: o painel diria
+     * "Salvo" e nada teria sido gravado.
+     */
+    if (!data || data.length === 0) {
+      return {
+        sucesso: false,
+        erro:
+          'A configuração da rede não existe no banco. Rode supabase/esquema.sql ' +
+          'para criá-la (ou confirme que você é Administrador).',
+      };
+    }
+
     return { sucesso: true };
   }
 

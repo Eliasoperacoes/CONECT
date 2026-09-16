@@ -186,3 +186,50 @@ test('os arquivos .sql não têm delimitador de corpo quebrado', async () => {
     expect(pares % 2).toBe(0);
   }
 });
+
+// ============================================================
+// UPSERT ONDE A TABELA SÓ TEM POLÍTICA DE UPDATE
+// ============================================================
+
+test('tabela sem política de INSERT não pode ser gravada com upsert', async () => {
+  /**
+   * Terceira vez que esta pedra aparece: `upsert` vira `insert ... on
+   * conflict` no banco, e um INSERT exige política de INSERT — mesmo quando
+   * a linha já existe e o conflito só ia atualizar.
+   *
+   * `configuracoes` é linha única, semeada pelo esquema, e tem só política
+   * de UPDATE. O upsert morria com "a nova linha viola a política de
+   * segurança em nível de linha", apontando para um INSERT que nem era para
+   * acontecer.
+   *
+   * Este teste lê o esquema e o código: se uma tabela só permite UPDATE,
+   * ninguém pode gravar nela com upsert.
+   */
+  const esquema = semComentarios(await lerSql('esquema.sql'));
+  const codigo = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  // Quais tabelas têm política de INSERT
+  const comInsert = new Set(
+    [...esquema.matchAll(/create policy \w+ on public\.(\w+)\s+for insert/g)].map(
+      (m) => m[1]
+    )
+  );
+
+  // Quais tabelas o código grava com upsert
+  const comUpsert = new Set(
+    [...codigo.matchAll(/from\('(\w+)'\)\s*\.upsert/g)].map((m) => m[1])
+  );
+
+  for (const tabela of comUpsert) {
+    expect({ tabela, temPoliticaDeInsert: comInsert.has(tabela) }).toEqual({
+      tabela,
+      temPoliticaDeInsert: true,
+    });
+  }
+
+  // E o caso concreto: configuracoes não tem INSERT, então não pode ter upsert
+  expect(comInsert.has('configuracoes')).toBe(false);
+  expect(comUpsert.has('configuracoes')).toBe(false);
+});
