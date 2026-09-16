@@ -1183,6 +1183,21 @@ create policy ajustes_remocao on public.ajustes_jornada
   for delete to authenticated using (public.cuido_de_pessoas());
 
 -- ============================================================
+-- RECARREGAR O CACHE DA API
+--
+-- O Supabase conversa com o banco através do PostgREST, que guarda em
+-- memória o desenho de cada tabela. Criar coluna NÃO avisa ele: até o cache
+-- virar, a API responde
+--
+--   "Could not find the 'x' column of 'y' in the schema cache"
+--
+-- mesmo com a coluna já existindo. Aconteceu com permissoes_ferramentas, e
+-- aconteceria de novo com a próxima. Fica no fim do arquivo, depois de toda
+-- alteração de estrutura, para a releitura pegar tudo de uma vez.
+-- ============================================================
+notify pgrst, 'reload schema';
+
+-- ============================================================
 -- CONFERÊNCIA
 --
 -- "Success" no editor não diz o que ficou valendo: um arquivo antigo também

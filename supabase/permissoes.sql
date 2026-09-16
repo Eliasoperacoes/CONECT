@@ -18,8 +18,26 @@
 alter table public.configuracoes
   add column if not exists permissoes_ferramentas jsonb;
 
+-- ------------------------------------------------------------
+-- RECARREGAR O CACHE DA API
+--
+-- O Supabase conversa com o banco através do PostgREST, que guarda em
+-- memória o desenho de cada tabela. Criar a coluna NÃO avisa ele: até o
+-- cache virar, a API responde
+--
+--   "Could not find the 'permissoes_ferramentas' column of 'configuracoes'
+--    in the schema cache"
+--
+-- mesmo com a coluna já existindo no banco. Este aviso força a releitura na
+-- hora, em vez de esperar o cache expirar sozinho.
+-- ------------------------------------------------------------
+notify pgrst, 'reload schema';
+
 -- ============================================================
--- CONFERÊNCIA — coluna_existe tem que ser true
+-- CONFERÊNCIA
+--
+-- coluna_existe .......... tem que ser true
+-- configuracao_atual ..... vem nula na primeira vez; é o esperado
 -- ============================================================
 select
   exists (
