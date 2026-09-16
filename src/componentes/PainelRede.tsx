@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Colaborador, Loja, Setor, INFORMACOES_LOJAS, cuidaDePessoas } from '../tipos';
 import { podeUsar } from '../servicos/permissoes';
+import { pendenciasParaDecidir as pendenciasDeAusencia } from '../servicos/justificativas';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
 import { QuadroFuncionarios } from './QuadroFuncionarios';
@@ -89,8 +90,14 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
   /** Banco de horas e QR do ponto: só RH e Administrador. */
   const podeVerBancoDeHoras = servicoPonto.podeAcessarPainelRH(colaboradorAtual);
 
-  /** Quantas jornadas esperam decisão minha. */
-  const pendenciasParaDecidir = servicoPonto.obterPendenciasParaDecidir().length;
+  /**
+   * Quantas decisões esperam por mim — jornada E ausência.
+   *
+   * Somadas de propósito: são a mesma fila para quem decide, e separar o
+   * contador faria a menor das duas passar despercebida.
+   */
+  const pendenciasParaDecidir =
+    servicoPonto.obterPendenciasParaDecidir().length + pendenciasDeAusencia().length;
 
   /** Tamanho da alçada de quem abriu, para o subtítulo dizer a verdade. */
   const equipeDeQuemAbre = servicoPonto.obterColaboradoresVisiveis().length;

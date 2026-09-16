@@ -38,6 +38,7 @@ import { JanelaChat } from './componentes/JanelaChat';
 import { PainelConversas } from './componentes/PainelConversas';
 import { podeUsar } from './servicos/permissoes';
 import { aplicarPreferencias, assinarPreferencias } from './servicos/preferenciasConversa';
+import { pendenciasParaDecidir as pendenciasDeAusencia, assinarJustificativas } from './servicos/justificativas';
 import { servicoPonto } from './servicos/ponto';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
@@ -170,6 +171,50 @@ export default function App() {
     recarregarDados();
     const cancelar = bancoDados.assinarAlteracoes(recarregarDados);
     return () => cancelar();
+  }, []);
+
+  /**
+   * CIÊNCIA AUTOMÁTICA DA FILA.
+   *
+   * O gestor precisa saber que chegou decisão para ele SEM abrir a fila.
+   * Antes só o número na aba dizia, e quem não abrisse o painel não ficava
+   * sabendo — a hora do colaborador parava lá sem ninguém perceber.
+   *
+   * Avisa só quando a fila CRESCE: notificar a cada sincronização, com o
+   * mesmo total de sempre, viraria ruído e a pessoa desligaria o aviso.
+   */
+  const refPendenciasVistas = useRef<number | null>(null);
+  useEffect(() => {
+    const conferir = () => {
+      if (!bancoDados.estaAutenticado()) return;
+      const total =
+        servicoPonto.obterPendenciasParaDecidir().length + pendenciasDeAusencia().length;
+      const antes = refPendenciasVistas.current;
+      refPendenciasVistas.current = total;
+
+      // Primeira passada só registra o ponto de partida: avisar na abertura
+      // sobre coisa antiga seria dar susto por nada
+      if (antes === null || total <= antes) return;
+
+      const novas = total - antes;
+      mostrarAvisoDeMensagem({
+        titulo:
+          novas === 1
+            ? 'Uma jornada aguarda sua decisão'
+            : `${novas} jornadas aguardam você`,
+        corpo: 'Abra Gerenciar e decida em Aprovar Jornadas.',
+        conversaId: 'fila-de-aprovacao',
+      });
+      tocarAvisoDeMensagem();
+    };
+
+    conferir();
+    const cancelar = servicoPonto.assinarAlteracoes(conferir);
+    const cancelarAusencias = assinarJustificativas(conferir);
+    return () => {
+      cancelar();
+      cancelarAusencias();
+    };
   }, []);
 
   /**

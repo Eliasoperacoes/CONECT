@@ -14,10 +14,22 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, Clock, AlertCircle, Inbox } from 'lucide-react';
-import { AjusteJornada, Colaborador, ROTULO_TIPO_AJUSTE } from '../tipos';
+import { CheckCircle2, XCircle, Clock, AlertCircle, Inbox, Paperclip } from 'lucide-react';
+import {
+  AjusteJornada,
+  Colaborador,
+  ROTULO_TIPO_AJUSTE,
+  ROTULO_TIPO_AUSENCIA,
+  JustificativaAusencia,
+} from '../tipos';
+import {
+  pendenciasParaDecidir as pendenciasDeAusencia,
+  decidirAusencia,
+  assinarJustificativas,
+} from '../servicos/justificativas';
 import { servicoPonto, formatarMinutos, formatarDataBR, formatarDiaCurto } from '../servicos/ponto';
 import { FotoPresenca } from './FotoPresenca';
+import { resolverCaminho } from '../servicos/anexos';
 import { resumoDaFicha } from '../servicos/fichaColaborador';
 
 interface PropsAprovacaoJornada {
@@ -30,13 +42,22 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
   const [motivo, setMotivo] = useState('');
   const [emAndamento, setEmAndamento] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; erro: boolean } | null>(null);
+  const [recusandoAusencia, setRecusandoAusencia] = useState<JustificativaAusencia | null>(
+    null
+  );
+  const [motivoAusencia, setMotivoAusencia] = useState('');
 
   useEffect(() => {
     const cancelar = servicoPonto.assinarAlteracoes(() => setVersao((v) => v + 1));
-    return () => cancelar();
+    const cancelarAusencias = assinarJustificativas(() => setVersao((v) => v + 1));
+    return () => {
+      cancelar();
+      cancelarAusencias();
+    };
   }, []);
 
   const pendencias = servicoPonto.obterPendenciasParaDecidir();
+  const ausencias = pendenciasDeAusencia();
   void versao;
 
   const mostrar = (texto: string, erro = false) => {
@@ -132,6 +153,39 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                     {resumoDaFicha(colaborador)}
                   </span>
 
+                  {/*
+                    O MOTIVO, quando a pessoa escreveu no ato da batida.
+
+                    Vem antes dos números de propósito: o aprovador lê "por
+                    que" antes de "quanto". Sem isto ele via só
+                    "trabalhou 9h10 de 8h00" e a decisão virava carimbo.
+                  */}
+                  {ajuste.motivoColaborador && (
+                    <div className="mt-1.5 p-2 rounded-lg bg-[var(--c-canvas)] border border-[var(--c-borda)]">
+                      <span className="text-[10px] font-bold text-[var(--c-texto-3)] uppercase tracking-wider block">
+                        Motivo informado
+                      </span>
+                      <span className="text-xs text-[var(--c-texto)]">
+                        {ajuste.motivoColaborador}
+                      </span>
+
+                      {ajuste.anexoCaminho && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const url = await resolverCaminho(ajuste.anexoCaminho!);
+                            if (url) window.open(url, '_blank');
+                            else mostrar('Não foi possível abrir o comprovante.', true);
+                          }}
+                          className="mt-1 text-[11px] font-semibold text-[var(--c-acento)] hover:underline inline-flex items-center gap-1"
+                        >
+                          <Paperclip className="w-3 h-3" />
+                          Ver comprovante
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {/* O que a batida apurou, para a decisão não ser no escuro */}
                   <span className="text-[11px] text-[var(--c-texto-3)] block mt-1">
                     {formatarDiaCurto(ajuste.data)} ({formatarDataBR(ajuste.data)}) ·{' '}
@@ -165,6 +219,155 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/*
+        AUSÊNCIAS AGUARDANDO DECISÃO.
+
+        Mesma tela da jornada de propósito: quem responde pela pessoa decide
+        as duas coisas, e obrigar o gestor a procurar em dois lugares faria
+        uma das filas ser esquecida — provavelmente a menor.
+      */}
+      {ausencias.length > 0 && (
+        <div className="flex flex-col gap-2 mt-2">
+          <h3 className="text-sm font-bold text-[var(--c-texto)]">
+            Ausências aguardando decisão
+          </h3>
+
+          {ausencias.map(({ justificativa, colaborador }) => (
+            <div
+              key={justificativa.id}
+              className="p-3.5 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex flex-col sm:flex-row sm:items-center gap-3"
+            >
+              <FotoPresenca
+                foto={colaborador.foto}
+                nome={colaborador.nome}
+                presenca={colaborador.presenca}
+                tamanho="w-10 h-10"
+              />
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-bold text-[var(--c-texto)] truncate">
+                    {colaborador.nome}
+                  </span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-sky-500/10 text-sky-700 border-sky-500/20">
+                    {ROTULO_TIPO_AUSENCIA[justificativa.tipo]}
+                  </span>
+                </div>
+
+                <span className="text-xs text-[var(--c-texto-3)] block">
+                  {resumoDaFicha(colaborador)}
+                </span>
+
+                <span className="text-[11px] text-[var(--c-texto-2)] block mt-1">
+                  {justificativa.dataInicio === justificativa.dataFim
+                    ? formatarDataBR(justificativa.dataInicio)
+                    : `${formatarDataBR(justificativa.dataInicio)} a ${formatarDataBR(
+                        justificativa.dataFim
+                      )}`}
+                  {justificativa.observacao && ` · ${justificativa.observacao}`}
+                </span>
+
+                {justificativa.anexoCaminho && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const url = await resolverCaminho(justificativa.anexoCaminho!);
+                      if (url) window.open(url, '_blank');
+                      else mostrar('Não foi possível abrir o documento.', true);
+                    }}
+                    className="mt-1 text-[11px] font-semibold text-[var(--c-acento)] hover:underline inline-flex items-center gap-1"
+                  >
+                    <Paperclip className="w-3 h-3" />
+                    Ver {justificativa.anexoNome || 'documento'}
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setRecusandoAusencia(justificativa)}
+                  className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/30 transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  Recusar
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await decidirAusencia(justificativa.id, true);
+                    setVersao((v) => v + 1);
+                    mostrar(
+                      res.sucesso
+                        ? 'Aprovada. Os dias deixam de constar como falta.'
+                        : res.erro || 'Não foi possível registrar.',
+                      !res.sucesso
+                    );
+                  }}
+                  className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Aprovar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Recusar ausência: mesmo desenho da jornada — motivo obrigatório,
+          porque a pessoa vai querer saber o que corrigir */}
+      {recusandoAusencia && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-[var(--c-superficie)] w-full max-w-sm rounded-2xl border border-[var(--c-borda)] shadow-xl p-4 flex flex-col gap-3">
+            <span className="text-sm font-bold text-[var(--c-texto)]">
+              Recusar {ROTULO_TIPO_AUSENCIA[recusandoAusencia.tipo]}
+            </span>
+            <textarea
+              value={motivoAusencia}
+              onChange={(e) => setMotivoAusencia(e.target.value)}
+              rows={3}
+              autoFocus
+              placeholder="Diga o que faltou, para a pessoa poder corrigir"
+              className="w-full px-3 py-2 text-sm bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRecusandoAusencia(null);
+                  setMotivoAusencia('');
+                }}
+                className="flex-1 py-2 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)]"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const res = await decidirAusencia(
+                    recusandoAusencia.id,
+                    false,
+                    motivoAusencia
+                  );
+                  if (res.sucesso) {
+                    setRecusandoAusencia(null);
+                    setMotivoAusencia('');
+                    setVersao((v) => v + 1);
+                    mostrar('Recusada.');
+                  } else {
+                    mostrar(res.erro || 'Não foi possível recusar.', true);
+                  }
+                }}
+                className="flex-1 py-2 rounded-xl bg-red-600 text-white text-xs font-bold"
+              >
+                Recusar
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

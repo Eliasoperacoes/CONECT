@@ -19,7 +19,10 @@ import {
   Loader2,
 } from 'lucide-react';
 import { RegistroPonto, ROTULO_MARCACAO } from '../tipos';
-import { servicoPonto } from '../servicos/ponto';
+import { servicoPonto, dataDeHoje } from '../servicos/ponto';
+import { bancoDados } from '../servicos/bancoDados';
+import { enviarAnexo } from '../servicos/anexos';
+import { CardJustificarBatida } from './CardJustificarBatida';
 
 interface PropsModalBaterPonto {
   aberto: boolean;
@@ -41,6 +44,12 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
   const [modoDigitar, setModoDigitar] = useState(false);
   const [codigoDigitado, setCodigoDigitado] = useState('');
   const [registroFeito, setRegistroFeito] = useState<RegistroPonto | null>(null);
+  /** Batida segurada esperando o motivo. */
+  const [pedindoMotivo, setPedindoMotivo] = useState<{
+    conteudo: string;
+    rotulo: string;
+    descricao: string;
+  } | null>(null);
 
   const refVideo = useRef<HTMLVideoElement>(null);
   const refCanvas = useRef<HTMLCanvasElement>(null);
@@ -67,15 +76,51 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
     }
   }, []);
 
-  // Efetiva o registro, tanto pela leitura do QR quanto pelo código digitado
+  /**
+   * Efetiva a batida.
+   *
+   * Antes de registrar, pergunta ao serviço se ESTA marcação, AGORA, cai
+   * fora da janela da jornada. Se cair, abre o card de motivo e só registra
+   * depois que a pessoa escrever — o motivo viaja junto até a apuração.
+   *
+   * A pergunta vem antes do registro de propósito: depois de bater, a
+   * batida já existe e o motivo viraria um remendo opcional que ninguém
+   * preenche.
+   */
   const confirmarCodigo = useCallback(
-    async (conteudo: string) => {
+    async (conteudo: string, justificativa?: { motivo?: string; anexoCaminho?: string }) => {
       if (refProcessando.current) return;
       refProcessando.current = true;
       setEstado('registrando');
       setErro(null);
 
-      const resultado = await servicoPonto.registrarMarcacaoPorCodigo(conteudo);
+      const proxima = servicoPonto.obterProximaMarcacao(
+        bancoDados.obterColaboradorAtual().id,
+        dataDeHoje()
+      );
+
+      if (proxima && !justificativa) {
+        const avaliacao = servicoPonto.avaliarMarcacao(
+          bancoDados.obterColaboradorAtual().id,
+          proxima
+        );
+        if (avaliacao.precisaMotivo) {
+          // Segura o código e devolve a palavra para a pessoa
+          setPedindoMotivo({
+            conteudo,
+            rotulo: ROTULO_MARCACAO[proxima],
+            descricao: avaliacao.descricao,
+          });
+          setEstado(refStream.current ? 'lendo' : 'sem_camera');
+          refProcessando.current = false;
+          return;
+        }
+      }
+
+      const resultado = await servicoPonto.registrarMarcacaoPorCodigo(
+        conteudo,
+        justificativa
+      );
 
       if (resultado.sucesso && resultado.registro) {
         encerrarCamera();
@@ -191,6 +236,7 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
   };
 
   return (
+    <>
     <div
       id="modal-bater-ponto"
       className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in"
@@ -373,5 +419,40 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
         </div>
       </div>
     </div>
+      {/* Motivo no ato: a batida fica segurada até a pessoa escrever */}
+      <CardJustificarBatida
+        aberto={!!pedindoMotivo}
+        rotuloMarcacao={pedindoMotivo?.rotulo || ''}
+        descricao={pedindoMotivo?.descricao || ''}
+        aoCancelar={() => setPedindoMotivo(null)}
+        aoConfirmar={async ({ motivo, anexo }) => {
+          const segurada = pedindoMotivo;
+          setPedindoMotivo(null);
+          if (!segurada) return;
+
+          /**
+           * O comprovante sobe ANTES da batida.
+           *
+           * Se subisse depois, uma falha no envio deixaria a apuração
+           * apontando para um arquivo que não existe — e o aprovador veria
+           * um anexo quebrado, que é pior do que anexo nenhum.
+           */
+          let anexoCaminho: string | undefined;
+          if (anexo) {
+            const eu = bancoDados.obterColaboradorAtual();
+            const enviado = await enviarAnexo(
+              anexo.conteudo,
+              `ponto/${eu.id}`,
+              `${dataDeHoje()}-${Date.now()}`,
+              anexo.nome
+            );
+            anexoCaminho = enviado?.caminho;
+          }
+
+          await confirmarCodigo(segurada.conteudo, { motivo, anexoCaminho });
+        }}
+      />
+
+    </>
   );
 };

@@ -36,6 +36,7 @@ import {
   formatarSaldo,
 } from '../servicos/ponto';
 import { ModalBaterPonto } from './ModalBaterPonto';
+import { AbaJustificar } from './AbaJustificar';
 
 interface PropsAbaPonto {
   colaboradorAtual: Colaborador;
@@ -49,6 +50,7 @@ const ICONE_MARCACAO: Record<TipoMarcacao, React.ComponentType<{ className?: str
 };
 
 export const AbaPonto: React.FC<PropsAbaPonto> = ({ colaboradorAtual }) => {
+  const [secao, setSecao] = useState<'bater' | 'justificar'>('bater');
   const [modalAberto, setModalAberto] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   // Muda a cada alteração no ponto, forçando o recálculo dos dados derivados
@@ -93,6 +95,43 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({ colaboradorAtual }) => {
 
   return (
     <div className="pb-24">
+      {/*
+        Seletor entre bater ponto e justificar ausência.
+
+        Justificar é o caminho do que NÃO passa por batida — atestado, falta,
+        comparecimento. Fica aqui, junto do ponto, porque é onde a pessoa
+        procura quando o assunto é jornada; numa aba distante ninguém acharia.
+      */}
+      <div className="px-4 pt-4">
+        <div className="flex items-center bg-[var(--c-canvas)] border border-[var(--c-borda)] p-1 rounded-xl gap-1">
+          <button
+            type="button"
+            onClick={() => setSecao('bater')}
+            className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+              secao === 'bater'
+                ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                : 'text-[var(--c-texto-2)]'
+            }`}
+          >
+            Meu ponto
+          </button>
+          <button
+            type="button"
+            onClick={() => setSecao('justificar')}
+            className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold transition-all ${
+              secao === 'justificar'
+                ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                : 'text-[var(--c-texto-2)]'
+            }`}
+          >
+            Justificar ausência
+          </button>
+        </div>
+      </div>
+
+      {secao === 'justificar' && <AbaJustificar colaboradorAtual={colaboradorAtual} />}
+
+      <div className={secao === 'bater' ? '' : 'hidden'}>
       {/* Cartão do dia */}
       <div className="p-4">
         <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] overflow-hidden shadow-xs">
@@ -312,6 +351,7 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({ colaboradorAtual }) => {
           {toast}
         </div>
       )}
+      </div>
     </div>
   );
 };
