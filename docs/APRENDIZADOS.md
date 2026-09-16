@@ -109,6 +109,21 @@ O compilador não pega — é TypeScript válido, e `bun run build` passa. Só
 quebra no navegador, e quebra por inteiro. Hoje há teste lendo o `App.tsx` e
 reprovando qualquer hook abaixo do primeiro `return` condicional.
 
+**Ciclo de importação derruba a aplicação inteira.** `nuvem` passou a
+importar `justificativas`, que importa `ponto`, que importa `nuvem`. E
+`ponto` roda `new ServicoPonto()` no carregamento, cujo construtor chama
+`nuvem` — ainda em TDZ. **"Cannot access 'nuvem' before initialization",
+tela branca.**
+
+Segunda vez que o app caiu por algo que `tsc` e `build` aprovam. A correção
+foi mover o cache das ausências para um módulo SEM IMPORT NENHUM
+(`justificativasCache`), que a camada de dados pode importar sem fechar a
+volta. Hoje há teste que carrega os serviços na ordem do pacote e reprova
+import de serviço de regra dentro de `nuvem`.
+
+Regra que ficou: **a camada que fala com o banco não importa serviço de
+regra.** O serviço importa a camada de dados, nunca o contrário.
+
 **A aba padrão sumiu junto com a permissão.** Ao tirar "Visão & Lojas" do
 gerente, o painel abria em branco: era a aba padrão. Toda navegação
 configurável precisa cair na primeira opção que a pessoa realmente tem.

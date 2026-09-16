@@ -20,48 +20,27 @@ import {
   SITUACAO_POR_TIPO,
   TipoAusencia,
 } from '../tipos';
+import {
+  lerJustificativas,
+  gravarJustificativas,
+  assinarJustificativas,
+} from './justificativasCache';
 import { bancoDados } from './bancoDados';
 import { servicoPonto } from './ponto';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
 
-const CHAVE = 'conecta_v4_justificativas_ausencia';
+/**
+ * O armazenamento vive em `justificativasCache`, um módulo sem
+ * dependência nenhuma. A separação existe porque `nuvem` precisa entregar
+ * as ausências do banco, e importar ESTE arquivo fecharia o ciclo
+ * nuvem → justificativas → ponto → nuvem.
+ */
+const ler = lerJustificativas;
+const gravar = gravarJustificativas;
 
-const ouvintes: Array<() => void> = [];
-const notificar = (): void => ouvintes.forEach((o) => o());
-
-export const assinarJustificativas = (ouvinte: () => void): (() => void) => {
-  ouvintes.push(ouvinte);
-  return () => {
-    const i = ouvintes.indexOf(ouvinte);
-    if (i !== -1) ouvintes.splice(i, 1);
-  };
-};
-
-const ler = (): JustificativaAusencia[] => {
-  try {
-    const bruto = localStorage.getItem(CHAVE);
-    const lista = bruto ? JSON.parse(bruto) : [];
-    return Array.isArray(lista) ? lista : [];
-  } catch {
-    return [];
-  }
-};
-
-const gravar = (lista: JustificativaAusencia[]): void => {
-  localStorage.setItem(CHAVE, JSON.stringify(lista));
-  notificar();
-};
-
-/** Troca o cache pelo que veio do banco. */
-export const aplicarJustificativasDaNuvem = (lista: JustificativaAusencia[]): void => {
-  try {
-    localStorage.setItem(CHAVE, JSON.stringify(lista));
-  } catch {
-    // Sem armazenamento: vale só nesta sessão
-  }
-  notificar();
-};
+// Reexportado para quem usa o serviço não precisar saber do cache
+export { assinarJustificativas };
 
 /** Os dias de um período, inclusive as pontas. */
 const diasDoPeriodo = (inicio: string, fim: string): string[] => {

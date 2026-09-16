@@ -27,7 +27,12 @@ import {
 } from '../tipos';
 import { supabase, usandoNuvem, loginParaEmailInterno, normalizarLogin } from './supabase';
 import { nuvemComunicacao } from './nuvemComunicacao';
-import { aplicarJustificativasDaNuvem } from './justificativas';
+/**
+ * A folha, e não `justificativas`: aquele arquivo importa `ponto`, que
+ * importa este — o ciclo fechava e o aplicativo não abria
+ * ("Cannot access 'nuvem' before initialization", tela branca).
+ */
+import { aplicarJustificativasDaNuvem } from './justificativasCache';
 
 /**
  * Enche o cache de conversa, aviso, configuração e auditoria. Fica aqui e não
