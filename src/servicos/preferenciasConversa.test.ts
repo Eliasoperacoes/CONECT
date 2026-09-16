@@ -260,3 +260,35 @@ test('o comando "Selecionar" existe num lugar só', async () => {
   // E continua existindo na mensagem
   expect(semComentarios).toContain('Selecionar');
 });
+
+test('NENHUM HOOK DEPOIS DE UM RETURN CONDICIONAL NO APP', async () => {
+  /**
+   * Isto derrubou a aplicação inteira — tela branca, sem nada no lugar.
+   *
+   * Declarei dois `useMemo` no meio do JSX, depois dos `return` que mostram
+   * a tela de login e a de verificação de sessão. React conta os hooks a
+   * cada render e exige o mesmo número sempre: com o `return` no caminho,
+   * eles rodavam numa passada e não rodavam na outra.
+   *
+   * O compilador não pega — o código é TypeScript válido. O build passa. Só
+   * quebra no navegador, e quebra por inteiro.
+   */
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+  const linhas = app.split('\n');
+
+  const primeiroReturnCondicional = linhas.findIndex((l) =>
+    /^  if \((verificandoSessao|!autenticado|precisaTrocarSenha|painelAdminAberto)\)/.test(l)
+  );
+  expect(primeiroReturnCondicional).toBeGreaterThan(-1);
+
+  const hooksTardios = linhas
+    .map((linha, i) => ({ linha: linha.trim(), numero: i + 1, indice: i }))
+    .filter(
+      ({ linha, indice }) =>
+        indice > primeiroReturnCondicional &&
+        /\b(useState|useEffect|useMemo|useRef|useCallback)\(/.test(linha)
+    )
+    .map(({ numero, linha }) => `App.tsx:${numero} ${linha}`);
+
+  expect(hooksTardios).toEqual([]);
+});

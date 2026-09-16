@@ -99,6 +99,16 @@ de execução não pode virar `right-[${x}px]` — a classe não está na folha
 gerada. Use variável de CSS: `style={{'--direita': x}}` +
 `md:right-[var(--direita)]`. E **confira no CSS do build**.
 
+**Hook depois de `return` derruba a aplicação inteira.** Declarei dois
+`useMemo` no meio do JSX do `App.tsx`, depois dos `return` da tela de login
+e da verificação de sessão. React conta os hooks a cada render e exige o
+mesmo número sempre: com o `return` no caminho, eles rodavam numa passada e
+não na outra. **Tela branca, sem nada no lugar.**
+
+O compilador não pega — é TypeScript válido, e `bun run build` passa. Só
+quebra no navegador, e quebra por inteiro. Hoje há teste lendo o `App.tsx` e
+reprovando qualquer hook abaixo do primeiro `return` condicional.
+
 **A aba padrão sumiu junto com a permissão.** Ao tirar "Visão & Lojas" do
 gerente, o painel abria em branco: era a aba padrão. Toda navegação
 configurável precisa cair na primeira opção que a pessoa realmente tem.

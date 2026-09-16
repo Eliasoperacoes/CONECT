@@ -277,6 +277,26 @@ export default function App() {
     };
   }, []);
 
+  /**
+   * As listas passando pelas mesmas preferências nos dois lados: fixadas no
+   * topo, ocultas fora.
+   *
+   * FICA AQUI, ANTES DOS `return` DE BAIXO, e não junto de onde é usado.
+   * React conta os hooks a cada render e exige o mesmo número sempre; um
+   * `useMemo` depois de um `return` condicional roda uma vez e não roda na
+   * outra, e o React derruba a aplicação inteira — tela branca, sem nada no
+   * lugar. Foi o que aconteceu: eu declarei os dois no meio do JSX.
+   */
+  const conversasVisiveis = useMemo(() => {
+    void versaoPreferencias;
+    return aplicarPreferencias(colaboradorAtual.id, conversasIndividuais);
+  }, [conversasIndividuais, colaboradorAtual.id, versaoPreferencias]);
+
+  const gruposVisiveis = useMemo(() => {
+    void versaoPreferencias;
+    return aplicarPreferencias(colaboradorAtual.id, grupos);
+  }, [grupos, colaboradorAtual.id, versaoPreferencias]);
+
   // Enquanto a sessão do banco não é conferida, não dá para saber se mostra
   // o login ou o sistema. Piscar uma tela e trocar pela outra é pior.
   if (verificandoSessao) {
@@ -449,21 +469,6 @@ export default function App() {
   ];
 
   const abasNavegacao = todasAsAbas.filter((aba) => aba.visivel);
-
-  /**
-   * As listas do celular passando pelas mesmas preferências do computador:
-   * fixadas no topo, ocultas fora. Antes só o painel flutuante aplicava
-   * isso, então fixar no PC não refletia no aparelho.
-   */
-  const conversasVisiveis = useMemo(() => {
-    void versaoPreferencias;
-    return aplicarPreferencias(colaboradorAtual.id, conversasIndividuais);
-  }, [conversasIndividuais, colaboradorAtual.id, versaoPreferencias]);
-
-  const gruposVisiveis = useMemo(() => {
-    void versaoPreferencias;
-    return aplicarPreferencias(colaboradorAtual.id, grupos);
-  }, [grupos, colaboradorAtual.id, versaoPreferencias]);
 
   const totalNaoLidas = conversasIndividuais.reduce((soma, c) => soma + (c.naoLidas || 0), 0);
 
