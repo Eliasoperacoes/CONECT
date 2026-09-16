@@ -59,6 +59,7 @@ import {
   INFORMACOES_LOJAS,
 } from '../tipos';
 import { nuvemComunicacao, UsoDoBanco } from '../servicos/nuvemComunicacao';
+import { PainelPermissoes } from './PainelPermissoes';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA, obterFotoColaborador } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
 import { usandoNuvem } from '../servicos/supabase';
@@ -82,6 +83,7 @@ type AbaAdmin =
   | 'parametros'
   | 'auditoria'
   | 'banco'
+  | 'permissoes'
   | 'backup';
 
 // Mesma regra do quadro de equipe: as listas vêm de tipos.ts. Setor novo
@@ -595,6 +597,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
           { id: 'canais', rotulo: 'Canais & Grupos', icone: MessageSquare },
           { id: 'avisos', rotulo: 'Comunicados Oficiais', icone: Megaphone, contador: avisos.length },
           { id: 'parametros', rotulo: 'Parâmetros & Rádio PTT', icone: Sliders },
+          { id: 'permissoes', rotulo: 'Permissões de Tela', icone: ShieldCheck },
           { id: 'auditoria', rotulo: 'Auditoria & Logs', icone: FileText, contador: auditoria.length },
           { id: 'banco', rotulo: 'Banco de Dados', icone: Database },
           { id: 'backup', rotulo: 'Backup & Dados', icone: Download },
@@ -1362,6 +1365,15 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
           )}
 
           {/* ================= ABA 7: BACKUP & DADOS ================= */}
+          {/* Quais telas cada nível enxerga — o lugar de configurar, em vez
+              de espalhar regra de nível por dez componentes */}
+          {abaAtiva === 'permissoes' && (
+            <PainelPermissoes
+              colaboradorAtual={colaboradorAtual}
+              configuracoes={configuracoes}
+            />
+          )}
+
           {abaAtiva === 'banco' && (
             <div className="space-y-4">
               {/* O que existe hoje no banco */}

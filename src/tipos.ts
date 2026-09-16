@@ -233,6 +233,14 @@ export interface ConfiguracaoSistema {
   nomeEmpresa: string;
   bipeRadioAtivo: boolean;
   tempoMaximoRadioSegundos: number;
+  /**
+   * Quais ferramentas cada nivel enxerga. Chave da ferramenta -> niveis.
+   *
+   * E configuracao da REDE, nao do aparelho: o administrador muda num lugar
+   * e vale em todos. Vazio significa "vale o padrao do catalogo", nunca
+   * "ninguem ve nada" nem "todo mundo ve tudo".
+   */
+  permissoesFerramentas?: Record<string, number[]>;
   /** Meses de conversa guardados antes da limpeza automatica. */
   mesesHistoricoConversas: number;
   /** Quando a limpeza rodou pela ultima vez. */

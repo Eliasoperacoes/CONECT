@@ -26,6 +26,7 @@ import {
 } from '../tipos';
 import { supabase } from './supabase';
 import { resolverCaminhos } from './anexos';
+import { aplicarPermissoes, MapaDePermissoes } from './permissoes';
 
 const CHAVE_CONVERSAS = 'conecta_v4_conversas';
 const CHAVE_MENSAGENS = 'conecta_v4_mensagens';
@@ -654,9 +655,20 @@ class PonteComunicacao {
       ultimaLimpezaConversas: data.ultima_limpeza_conversas ?? undefined,
       modoManutencao: data.modo_manutencao,
       permitirCriacaoGruposPorOperadores: data.permitir_criacao_grupos_por_operadores,
+      permissoesFerramentas: (data.permissoes_ferramentas as MapaDePermissoes) || undefined,
     };
 
     localStorage.setItem(CHAVE_CONFIGURACOES, JSON.stringify(config));
+
+    /**
+     * As permissões de ferramenta vêm junto com a configuração porque são
+     * configuração: valem para a rede, não para o aparelho. O administrador
+     * muda no computador dele e o celular do gerente obedece.
+     *
+     * Vindo nulo, o serviço cai no padrão do catálogo — nunca em "vê tudo".
+     */
+    aplicarPermissoes((data.permissoes_ferramentas as MapaDePermissoes) || null);
+
     this.avisar();
     return true;
   }
@@ -676,6 +688,7 @@ class PonteComunicacao {
         ultima_limpeza_conversas: config.ultimaLimpezaConversas ?? null,
         modo_manutencao: config.modoManutencao,
         permitir_criacao_grupos_por_operadores: config.permitirCriacaoGruposPorOperadores,
+        permissoes_ferramentas: config.permissoesFerramentas ?? null,
       },
       { onConflict: 'id' }
     );

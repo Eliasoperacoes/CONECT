@@ -17,7 +17,8 @@ import {
   Network,
   ClipboardList,
 } from 'lucide-react';
-import { Colaborador, Loja, Setor, INFORMACOES_LOJAS, NIVEL_LIDER_SETOR } from '../tipos';
+import { Colaborador, Loja, Setor, INFORMACOES_LOJAS, cuidaDePessoas } from '../tipos';
+import { podeUsar } from '../servicos/permissoes';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
 import { QuadroFuncionarios } from './QuadroFuncionarios';
@@ -49,7 +50,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
   aoChamarRadio,
   aoAlternarParaGestor,
 }) => {
-  const [subAbaAtiva, setSubAbaAtiva] = useState<SubAbaPainel>('visao_geral');
+  const [subAbaEscolhida, setSubAbaAtiva] = useState<SubAbaPainel>('visao_geral');
   const [estatisticas, setEstatisticas] = useState(bancoDados.obterEstatisticasRede());
 
   const atualizar = () => {
@@ -90,13 +91,74 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
   /** Quantas jornadas esperam decisão minha. */
   const pendenciasParaDecidir = servicoPonto.obterPendenciasParaDecidir().length;
 
+  /** Tamanho da alçada de quem abriu, para o subtítulo dizer a verdade. */
+  const equipeDeQuemAbre = servicoPonto.obterColaboradoresVisiveis().length;
+
+  /** Aba de equipe vazia não é permissão, é ruído: só aparece com equipe. */
+  const temEquipe = equipeDeQuemAbre > 1;
+
+  /**
+   * As abas que esta pessoa realmente tem, na ordem em que aparecem.
+   *
+   * Existe porque a aba guardada no estado pode não ser permitida: o padrão
+   * é "Visão & Lojas", que o gerente não enxerga mais. Sem isto ele abriria
+   * o painel numa tela em branco, sem nada clicável e sem explicação.
+   */
+  const abasPermitidas = useMemo(() => {
+    const lista: SubAbaPainel[] = [];
+    if (podeUsar('visao_lojas', colaboradorAtual)) lista.push('visao_geral');
+    if (podeUsar('quadro_equipe', colaboradorAtual)) lista.push('quadro');
+    if (podeUsar('painel_gestao', colaboradorAtual) && temEquipe) lista.push('gestao');
+    if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
+    if (podeUsar('aprovar_jornadas', colaboradorAtual)) lista.push('aprovacoes');
+    if (podeUsar('banco_horas_rh', colaboradorAtual) && podeVerBancoDeHoras)
+      lista.push('ponto');
+    if (podeUsar('avisos_direcao', colaboradorAtual)) lista.push('avisos');
+    return lista;
+  }, [colaboradorAtual, temEquipe, podeVerBancoDeHoras]);
+
+  /**
+   * A aba que vale. Nunca uma que a pessoa não tenha — nem por estado
+   * antigo, nem por permissão retirada com a tela aberta.
+   */
+  const subAbaAtiva: SubAbaPainel =
+    abasPermitidas.includes(subAbaEscolhida) ? subAbaEscolhida : abasPermitidas[0];
+
   /**
    * Painel de gestão: quem responde por alguém. Líder de setor e gerente
    * acompanham a própria equipe; RH, Diretoria e TI veem a rede — para eles
    * é o mesmo alcance do painel de RH, só que organizado por pessoa.
    */
-  const temEquipe = servicoPonto.obterColaboradoresVisiveis().length > 1;
-  const podeVerGestao = colaboradorAtual.nivel >= NIVEL_LIDER_SETOR && temEquipe;
+
+  /**
+   * Quem enxerga o quê vem do painel de Permissões, não de regra escrita
+   * aqui. Antes cada aba tinha o próprio `nivel >= N`, e mudar quem via o
+   * quê exigia mexer no código de cada componente.
+   *
+   * "Minha Equipe" ainda exige ter equipe: uma aba vazia não é permissão,
+   * é ruído.
+   */
+  const pode = (chave: string) => podeUsar(chave, colaboradorAtual);
+  const podeVerGestao = pode('painel_gestao') && temEquipe;
+
+  /**
+   * O painel muda de nome conforme quem abre.
+   *
+   * Para o gerente ele é o painel da GERÊNCIA dele, não "Recursos Humanos &
+   * Rede" — o nome sugeria acesso à rede inteira e a alçada dele é a
+   * equipe.
+   */
+  const cuidaDeRh = cuidaDePessoas(colaboradorAtual);
+  const tituloDoPainel = cuidaDeRh ? 'Recursos Humanos & Rede' : 'Gerência';
+  const subtituloDoPainel = cuidaDeRh
+    ? `${estatisticas.totalColaboradores} ${
+        estatisticas.totalColaboradores === 1 ? 'colaborador' : 'colaboradores'
+      } em ${estatisticas.totalLojasComEquipe} ${
+        estatisticas.totalLojasComEquipe === 1 ? 'unidade' : 'unidades'
+      } · Rádio PTT & Mensageria`
+    : `${colaboradorAtual.loja} · ${Math.max(equipeDeQuemAbre - 1, 0)} ${
+        equipeDeQuemAbre - 1 === 1 ? 'pessoa' : 'pessoas'
+      } sob sua responsabilidade`;
 
   const lidarIniciarConversaColega = (colegaId: string) => {
     const conversa = bancoDados.obterOuCriarConversaIndividual(colegaId);
@@ -112,20 +174,17 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
               <h1 className="text-lg sm:text-xl font-black text-[var(--c-texto)] tracking-tight">
-                Recursos Humanos & Rede
+                {tituloDoPainel}
               </h1>
             </div>
             <p className="text-xs sm:text-sm text-[var(--c-texto-3)]">
-              {estatisticas.totalColaboradores}{' '}
-              {estatisticas.totalColaboradores === 1 ? 'colaborador' : 'colaboradores'} em{' '}
-              {estatisticas.totalLojasComEquipe}{' '}
-              {estatisticas.totalLojasComEquipe === 1 ? 'unidade' : 'unidades'} · Rádio PTT &
-              Mensageria
+              {subtituloDoPainel}
             </p>
           </div>
 
           {/* Seletor de Sub-Abas do Painel */}
           <div className="flex items-center bg-[var(--c-canvas)] border border-[var(--c-borda)] p-1 rounded-xl gap-1 self-start sm:self-auto max-w-full overflow-x-auto">
+            {pode('visao_lojas') && (
             <button
               type="button"
               id="subaba-visao-geral"
@@ -139,7 +198,9 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               <Building2 className="w-3.5 h-3.5" />
               <span>Visão & Lojas</span>
             </button>
+            )}
 
+            {pode('quadro_equipe') && (
             <button
               type="button"
               id="subaba-quadro-funcionarios"
@@ -153,6 +214,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               <Users className="w-3.5 h-3.5" />
               <span>Quadro de Equipe</span>
             </button>
+            )}
 
             {/* Minha equipe: o dia a dia de quem responde por alguém */}
             {podeVerGestao && (
@@ -176,6 +238,8 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               </button>
             )}
 
+            {pode('organograma') && (
+            <>
             {/* Organograma: quem responde por quem. Fica ao lado do quadro
                 porque é a mesma equipe vista pela cadeia de responsabilidade
                 — e é essa cadeia que decide a fila de aprovação de horas. */}
@@ -192,11 +256,13 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               <Network className="w-3.5 h-3.5" />
               <span>Organograma</span>
             </button>
+            </>
+            )}
 
             {/* Aprovações: todo mundo que responde por alguém tem fila. O
                 contador existe para a fila não passar despercebida — hora
                 parada aqui é hora que não entrou no banco de ninguém. */}
-            {pendenciasParaDecidir > 0 && (
+            {pode('aprovar_jornadas') && pendenciasParaDecidir > 0 && (
               <button
                 type="button"
                 id="subaba-aprovacoes"
@@ -216,7 +282,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             )}
 
             {/* Banco de horas: só quem cuida de RH */}
-            {podeVerBancoDeHoras && (
+            {pode('banco_horas_rh') && podeVerBancoDeHoras && (
               <button
                 type="button"
                 id="subaba-banco-horas"
@@ -232,6 +298,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               </button>
             )}
 
+            {pode('avisos_direcao') && (
             <button
               type="button"
               id="subaba-central-avisos"
@@ -248,6 +315,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                 <span className="w-2 h-2 rounded-full bg-red-500 ring-2 ring-[var(--c-superficie)]" />
               )}
             </button>
+            )}
           </div>
         </div>
       </header>

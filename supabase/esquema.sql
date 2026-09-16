@@ -105,6 +105,18 @@ alter table public.colaboradores
 create index if not exists colaboradores_por_responsavel
   on public.colaboradores (responsavel_id);
 
+-- PERMISSÕES DE FERRAMENTA: qual nível enxerga qual tela.
+--
+-- Fica na configuração porque é configuração da REDE, não do aparelho: o
+-- administrador muda num lugar e vale em todos. Nulo = vale o padrão do
+-- catálogo no aplicativo, nunca "ninguém vê nada" nem "todo mundo vê tudo".
+--
+-- ISTO CONTROLA PORTA, NÃO CONTEÚDO. Ligar uma ferramenta para o gerente
+-- não mostra a rede inteira para ele: o que aparece dentro continua preso à
+-- alçada (posso_decidir_jornada) e às políticas de cada tabela.
+alter table public.configuracoes
+  add column if not exists permissoes_ferramentas jsonb;
+
 create index if not exists mensagens_por_conversa
   on public.mensagens (conversa_id, criado_em);
 

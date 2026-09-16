@@ -1,0 +1,261 @@
+/**
+ * Verificação das permissões de ferramenta — CONECTA
+ *
+ * O pedido: configurar num lugar só quais telas cada nível enxerga, em vez
+ * de espalhar `if (nivel >= 3)` por dez componentes.
+ *
+ * O risco embutido, e o que estes testes prendem:
+ *
+ *  1. o administrador se trancar para fora ao desligar a própria tela;
+ *  2. ferramenta nova nascer invisível para todo mundo e a tela sumir sem
+ *     explicação;
+ *  3. o interruptor virar vazamento — ligar uma ferramenta passar a mostrar
+ *     dado de quem não é da pessoa. Ferramenta é porta; quem decide o que
+ *     há dentro da sala continua sendo a alçada.
+ */
+import { test, expect, beforeEach } from 'bun:test';
+
+class ArmazenamentoFalso {
+  private dados = new Map<string, string>();
+  getItem(k: string) { return this.dados.has(k) ? this.dados.get(k)! : null; }
+  setItem(k: string, v: string) { this.dados.set(k, String(v)); }
+  removeItem(k: string) { this.dados.delete(k); }
+  clear() { this.dados.clear(); }
+}
+const armazenamento = new ArmazenamentoFalso();
+(globalThis as any).localStorage = armazenamento;
+
+const {
+  podeUsar,
+  obterPermissoes,
+  aplicarPermissoes,
+  alternarNivel,
+  restaurarPadrao,
+  ferramentasVisiveis,
+} = await import('./permissoes');
+const { FERRAMENTAS, permissoesPadrao, acharFerramenta } = await import('./ferramentas');
+const {
+  NIVEL_COLABORADOR,
+  NIVEL_LIDER_SETOR,
+  NIVEL_GERENTE,
+  NIVEL_DIRETORIA,
+  NIVEL_TI,
+} = await import('../tipos');
+
+const pessoa = (nivel: number) =>
+  ({
+    id: `p${nivel}`, nome: 'Pessoa', login: 'p', cargo: 'Cargo',
+    setor: 'Balcão', loja: 'Pirassununga', nivel, foto: '',
+    presenca: 'disponivel', vistoPorUltimo: 'agora', ativo: true,
+  }) as any;
+
+beforeEach(() => {
+  armazenamento.clear();
+  aplicarPermissoes(null);
+});
+
+test('sem nada configurado, vale o padrão do catálogo', () => {
+  // Colaborador conversa e bate ponto; não abre painel de administração
+  expect(podeUsar('conversas', pessoa(NIVEL_COLABORADOR))).toBe(true);
+  expect(podeUsar('ponto', pessoa(NIVEL_COLABORADOR))).toBe(true);
+  expect(podeUsar('adm_colaboradores', pessoa(NIVEL_COLABORADOR))).toBe(false);
+
+  // Gerente responde por equipe
+  expect(podeUsar('painel_gestao', pessoa(NIVEL_GERENTE))).toBe(true);
+  expect(podeUsar('aprovar_jornadas', pessoa(NIVEL_GERENTE))).toBe(true);
+});
+
+test('o que o gerente NÃO vê por padrão', () => {
+  // Era a queixa: o gerente abria o painel de RH e via a rede inteira
+  const gerente = pessoa(NIVEL_GERENTE);
+  expect(podeUsar('visao_lojas', gerente)).toBe(false);
+  expect(podeUsar('banco_horas_rh', gerente)).toBe(false);
+  expect(podeUsar('organograma', gerente)).toBe(false);
+  expect(podeUsar('adm_backup', gerente)).toBe(false);
+});
+
+test('líder vê menos que gerente onde isso foi configurado', () => {
+  const lider = pessoa(NIVEL_LIDER_SETOR);
+  const gerente = pessoa(NIVEL_GERENTE);
+
+  // Os dois cuidam de equipe
+  expect(podeUsar('painel_gestao', lider)).toBe(true);
+  expect(podeUsar('painel_gestao', gerente)).toBe(true);
+
+  // E é isto que o painel permite ajustar sem mexer em código: tirar uma
+  // ferramenta do líder mantendo no gerente
+  const { mapa } = alternarNivel(obterPermissoes(), 'quadro_equipe', NIVEL_LIDER_SETOR);
+  aplicarPermissoes(mapa);
+
+  expect(podeUsar('quadro_equipe', lider)).toBe(false);
+  expect(podeUsar('quadro_equipe', gerente)).toBe(true);
+});
+
+// ============================================================
+// AS TRAVAS
+// ============================================================
+
+test('O ADMINISTRADOR NÃO SE TRANCA PARA FORA', () => {
+  // Desligar a própria tela de permissões deixaria o sistema sem ninguém
+  // capaz de religar nada — só mexendo no banco na unha
+  const r = alternarNivel(obterPermissoes(), 'adm_permissoes', NIVEL_TI);
+
+  expect(r.erro).toBeTruthy();
+  expect(r.erro).toContain('trancar');
+  expect(podeUsar('adm_permissoes', pessoa(NIVEL_TI))).toBe(true);
+});
+
+test('mesmo com o banco dizendo o contrário, o TI entra', () => {
+  // Configuração corrompida, gravação pela metade, mão errada no banco: a
+  // saída de emergência tem que valer acima do que estiver gravado
+  aplicarPermissoes({ adm_permissoes: [], adm_banco: [], adm_backup: [] });
+
+  expect(podeUsar('adm_permissoes', pessoa(NIVEL_TI))).toBe(true);
+  expect(podeUsar('adm_banco', pessoa(NIVEL_TI))).toBe(true);
+  // E não vale para os outros níveis
+  expect(podeUsar('adm_permissoes', pessoa(NIVEL_DIRETORIA))).toBe(false);
+});
+
+test('FERRAMENTA NOVA não nasce invisível', () => {
+  // Uma configuração gravada hoje não conhece a ferramenta de amanhã. Se a
+  // resposta fosse "não está no mapa, então não vê", toda tela nova sumiria
+  // até alguém abrir o painel — e ninguém saberia por quê.
+  aplicarPermissoes({ conversas: [NIVEL_COLABORADOR] });
+
+  const padrao = permissoesPadrao();
+  for (const ferramenta of FERRAMENTAS) {
+    expect(obterPermissoes()[ferramenta.chave]).toBeDefined();
+  }
+  // A que não foi gravada mantém o padrão dela
+  expect(obterPermissoes().painel_gestao).toEqual(padrao.painel_gestao);
+});
+
+test('chave fora do catálogo é sempre não', () => {
+  // Erro de digitação numa tela não pode virar tela aberta
+  expect(podeUsar('painel_secreto', pessoa(NIVEL_TI))).toBe(false);
+  expect(podeUsar('', pessoa(NIVEL_TI))).toBe(false);
+});
+
+test('o catálogo não tem chave repetida', () => {
+  // Duas entradas com a mesma chave: a grade mostraria dois interruptores
+  // para a mesma coisa, e um deles não faria nada
+  const chaves = FERRAMENTAS.map((f) => f.chave);
+  expect(new Set(chaves).size).toBe(chaves.length);
+});
+
+test('toda ferramenta tem nome e explicação', () => {
+  // Quem configura precisa saber o efeito do que está desligando
+  for (const f of FERRAMENTAS) {
+    expect(f.nome.length).toBeGreaterThan(2);
+    expect(f.descricao.length).toBeGreaterThan(10);
+  }
+});
+
+test('ligar e desligar é reversível e não vaza para outro nível', () => {
+  let mapa = obterPermissoes();
+  const antes = [...mapa.visao_lojas];
+
+  mapa = alternarNivel(mapa, 'visao_lojas', NIVEL_GERENTE).mapa;
+  aplicarPermissoes(mapa);
+  expect(podeUsar('visao_lojas', pessoa(NIVEL_GERENTE))).toBe(true);
+  // O líder continua fora: mexeu só no nível pedido
+  expect(podeUsar('visao_lojas', pessoa(NIVEL_LIDER_SETOR))).toBe(false);
+
+  mapa = alternarNivel(mapa, 'visao_lojas', NIVEL_GERENTE).mapa;
+  aplicarPermissoes(mapa);
+  expect(mapa.visao_lojas).toEqual(antes);
+});
+
+test('restaurar padrão desfaz tudo', () => {
+  aplicarPermissoes({ conversas: [], adm_colaboradores: [NIVEL_COLABORADOR] });
+  expect(podeUsar('conversas', pessoa(NIVEL_COLABORADOR))).toBe(false);
+
+  aplicarPermissoes(restaurarPadrao());
+  expect(podeUsar('conversas', pessoa(NIVEL_COLABORADOR))).toBe(true);
+  expect(podeUsar('adm_colaboradores', pessoa(NIVEL_COLABORADOR))).toBe(false);
+});
+
+test('a configuração vale em qualquer aparelho, não por navegador', () => {
+  // O mapa é da rede. Aplicar no cache é só refletir o que veio do banco;
+  // um aparelho sem cache tem que cair no padrão, nunca em "vê tudo"
+  aplicarPermissoes(null);
+  armazenamento.clear();
+
+  expect(podeUsar('adm_backup', pessoa(NIVEL_GERENTE))).toBe(false);
+  expect(podeUsar('adm_colaboradores', pessoa(NIVEL_COLABORADOR))).toBe(false);
+});
+
+test('ferramentasVisiveis respeita a área e a permissão', () => {
+  const gerente = pessoa(NIVEL_GERENTE);
+
+  const gestao = ferramentasVisiveis(gerente, 'gestao').map((f) => f.chave);
+  expect(gestao).toContain('painel_gestao');
+  expect(gestao).not.toContain('banco_horas_rh');
+
+  // Nada de administração escapa para o gerente
+  expect(ferramentasVisiveis(gerente, 'administracao')).toHaveLength(0);
+});
+
+test('a tela de permissões avisa onde mexer é perigoso', () => {
+  // Backup leva o sistema inteiro num arquivo; organograma muda quem aprova
+  // hora. Quem configura tem que ver isso antes de ligar.
+  expect(acharFerramenta('adm_backup')?.cuidado).toBeTruthy();
+  expect(acharFerramenta('organograma')?.cuidado).toBeTruthy();
+  expect(acharFerramenta('banco_horas_rh')?.cuidado).toBeTruthy();
+});
+
+// ============================================================
+// O PAINEL NÃO PODE ABRIR EM BRANCO
+// ============================================================
+
+test('todo nível que abre o painel tem pelo menos uma aba', () => {
+  /**
+   * O defeito que isto prende: a aba padrão do painel é "Visão & Lojas", e
+   * o gerente deixou de enxergá-la. Sem uma aba de sobra, ele abriria o
+   * painel numa tela vazia — sem nada clicável e sem explicação de por quê.
+   */
+  const abasDoPainel = [
+    'visao_lojas',
+    'quadro_equipe',
+    'painel_gestao',
+    'organograma',
+    'aprovar_jornadas',
+    'banco_horas_rh',
+    'avisos_direcao',
+  ];
+
+  for (const nivel of [NIVEL_LIDER_SETOR, NIVEL_GERENTE, NIVEL_DIRETORIA, NIVEL_TI]) {
+    const tem = abasDoPainel.filter((chave) => podeUsar(chave, pessoa(nivel)));
+    expect({ nivel, abas: tem.length }).toEqual({ nivel, abas: tem.length });
+    expect(tem.length).toBeGreaterThan(0);
+  }
+});
+
+test('o gerente cai numa aba que ele TEM ao abrir o painel', () => {
+  // A primeira aba permitida dele não pode ser a que foi tirada
+  const gerente = pessoa(NIVEL_GERENTE);
+  expect(podeUsar('visao_lojas', gerente)).toBe(false);
+
+  const primeira = ['visao_lojas', 'quadro_equipe', 'painel_gestao', 'avisos_direcao'].find(
+    (c) => podeUsar(c, gerente)
+  );
+  expect(primeira).toBe('quadro_equipe');
+});
+
+test('desligar TUDO de um nível é possível, mas some do painel inteiro', () => {
+  // Não é proibido — mas quem configurar precisa saber que é isso que faz.
+  // O teste existe para essa consequência ficar registrada, não escondida.
+  aplicarPermissoes({
+    visao_lojas: [], quadro_equipe: [], painel_gestao: [],
+    organograma: [], aprovar_jornadas: [], banco_horas_rh: [], avisos_direcao: [],
+  });
+
+  const gerente = pessoa(NIVEL_GERENTE);
+  const abas = ['visao_lojas', 'quadro_equipe', 'painel_gestao', 'avisos_direcao'].filter(
+    (c) => podeUsar(c, gerente)
+  );
+  expect(abas).toHaveLength(0);
+
+  // E o TI continua entrando no painel de administração para religar
+  expect(podeUsar('adm_permissoes', pessoa(NIVEL_TI))).toBe(true);
+});
