@@ -7,6 +7,12 @@
  */
 import { test, expect } from 'bun:test';
 
+/** O trecho do onScroll da lista de mensagens. */
+const s_rolagem = (tela: string): string => {
+  const i = tela.indexOf('onScroll={');
+  return i === -1 ? '' : tela.slice(i, i + 400);
+};
+
 const lerTela = async (): Promise<string> =>
   Bun.file(new URL('../componentes/TelaConversa.tsx', import.meta.url)).text();
 
@@ -415,8 +421,10 @@ test('o menu de acoes fica fora da lista e ancorado na janela', async () => {
   expect(tela).toContain('e.currentTarget.getBoundingClientRect()');
   expect(tela).toContain('setMenuMensagem({ msg, x: r.left, y: r.bottom })');
 
-  // Rolar move o botão para longe da âncora, então rolar fecha
-  expect(tela).toContain('onScroll={menuMensagem ? fecharMenuMensagem : undefined}');
+  // Rolar move o botão para longe da âncora, então rolar fecha — o menu e o
+  // painel de emoji, que usam a mesma âncora
+  expect(tela).toContain('menuMensagem || painelReacao');
+  expect(tela).toContain('fecharMenuMensagem();');
 
   // Cabe embaixo? Senão abre para cima. E nunca passa da lateral.
   expect(tela).toContain('const cabeAbaixo =');
@@ -452,4 +460,85 @@ test('a classe que esconde a barra de rolagem existe de verdade', async () => {
   const css = await Bun.file(new URL('../index.css', import.meta.url)).text();
   expect(css).toMatch(/\.no-scrollbar\s*\{[^}]*scrollbar-width:\s*none/);
   expect(css).toMatch(/\.no-scrollbar::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
+});
+
+/**
+ * O BALÃO NÃO PODE DEFORMAR.
+ *
+ * O botão de reagir ficava na linha de baixo do balão, junto de "Editada",
+ * da hora e do selo de visto. O balão tem a largura do maior filho — com
+ * "Editada" no meio, essa linha passava a ser mais larga que o próprio
+ * texto, o balão esticava e o emoji ficava colado na borda de dentro, com
+ * cara de defeito.
+ */
+test('a linha de baixo do balao e so informacao, sem botao', async () => {
+  const tela = await lerTela();
+
+  const inicio = tela.indexOf('A LINHA DE BAIXO DO BALÃO');
+  expect(inicio).toBeGreaterThan(-1);
+  const linha = tela.slice(inicio, tela.indexOf('Picker', inicio) + 1 || inicio + 2500);
+
+  // Nenhum botão de reagir aqui dentro
+  expect(linha).not.toContain('title="Reagir com emoji"');
+
+  // E ela pode quebrar em vez de transbordar: transbordar é o que produz a
+  // aparência de defeito numa janela estreita
+  expect(tela).toContain('flex flex-wrap items-center justify-end gap-x-1.5');
+});
+
+/**
+ * O seletor antigo era `absolute -top-9` DENTRO da mensagem: na primeira
+ * mensagem da conversa ele abria para cima e a borda da lista o cortava —
+ * o mesmo defeito que o menu de ações tinha antes de sair de lá.
+ */
+test('o painel de emoji fica fora da lista e ancorado na janela', async () => {
+  const tela = await lerTela();
+
+  /**
+   * O seletor preso à mensagem some por inteiro, estado incluído.
+   *
+   * A verificação é pelo ESTADO, e não pelas classes de posição: os
+   * comentários do arquivo citam "absolute -top-9" ao contar esta história,
+   * e um teste que procurasse o texto reprovaria o código certo por causa da
+   * própria explicação.
+   */
+  expect(tela).not.toContain('mensagemReagindoId');
+  expect(tela).toContain('id="painel-emoji-reacao"');
+  expect(tela).toContain('className="fixed z-[61] p-2 rounded-xl');
+
+  // Mesmo cálculo do menu: uma segunda conta de "cabe embaixo?" discordaria
+  expect(tela).toContain('PAINEL_EMOJI_ALTURA + 12 <= window.innerHeight');
+  expect(tela).toContain('window.innerWidth - PAINEL_EMOJI_LARGURA - 8');
+
+  // Rolar fecha os dois: a âncora é um ponto da tela
+  const rolagem = s_rolagem(tela);
+  expect(rolagem).toContain('fecharMenuMensagem();');
+  expect(rolagem).toContain('fecharPainelReacao();');
+});
+
+test('reagir virou acao do menu, com mais opcoes de emoji', async () => {
+  const tela = await lerTela();
+
+  // Reagir é a primeira do menu: é a ação mais leve das sete
+  const itens = tela.indexOf('const itens: React.ReactNode[] = []');
+  expect(itens).toBeGreaterThan(-1);
+  const ondeReagir = tela.indexOf('key="reagir"', itens);
+  const ondeResponder = tela.indexOf('key="responder"', itens);
+  // As duas precisam EXISTIR antes de comparar: um indexOf que não acha
+  // devolve -1, e -1 é menor que qualquer coisa — o teste passaria justo
+  // quando a ação tivesse sumido
+  expect(ondeReagir).toBeGreaterThan(-1);
+  expect(ondeResponder).toBeGreaterThan(-1);
+  expect(ondeReagir).toBeLessThan(ondeResponder);
+
+  // Eram quatro emoji. "Mais opções", como foi pedido.
+  expect(tela).not.toContain('REACOES_RAPIDAS');
+  const lista = tela.slice(
+    tela.indexOf('const EMOJIS_DE_REACAO'),
+    tela.indexOf('PAINEL_EMOJI_LARGURA')
+  );
+  expect((lista.match(/'/g) || []).length / 2).toBeGreaterThanOrEqual(32);
+
+  // Uma grade só, sem abas nem busca: escolher é um toque
+  expect(tela).toContain('grid grid-cols-8');
 });

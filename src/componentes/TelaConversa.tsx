@@ -58,7 +58,27 @@ interface PropsTelaConversa {
   aoVoltar: () => void;
 }
 
-const REACOES_RAPIDAS = ['👍', '✅', '📦', '🚗'];
+/**
+ * Os emoji de reação.
+ *
+ * Eram QUATRO. "Mais opções", como o Elias pediu — e escolhidos para o que
+ * se responde numa loja de autopeças: confirmar, negar, urgência, peça,
+ * entrega, prazo. Emoji bonito que ninguém usa só faz procurar mais.
+ *
+ * Oito por linha, cinco linhas. Uma grade só, sem abas nem busca: a tela
+ * inteira aparece de uma vez e escolher é um toque.
+ */
+const EMOJIS_DE_REACAO = [
+  '👍', '👎', '✅', '❌', '❗', '❓', '🔥', '⭐',
+  '😀', '😂', '😅', '😊', '😍', '😎', '🤔', '😴',
+  '😢', '😡', '🙏', '👏', '💪', '🤝', '👌', '🫡',
+  '📦', '🚗', '🔧', '🔩', '🛠️', '⚙️', '🚚', '🏁',
+  '💰', '📄', '📅', '⏰', '📌', '⚠️', '🎉', '❤️',
+];
+
+/** Oito colunas de 30px, mais o respiro das bordas. */
+const PAINEL_EMOJI_LARGURA = 268;
+const PAINEL_EMOJI_ALTURA = 190;
 
 /** Largura e altura aproximada do menu de ações, para caber na janela. */
 const MENU_LARGURA = 164;
@@ -125,7 +145,19 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   const [buscaAberta, setBuscaAberta] = useState(false);
   const [termoBusca, setTermoBusca] = useState('');
   const [modalDetalhesAberto, setModalDetalhesAberto] = useState(false);
-  const [mensagemReagindoId, setMensagemReagindoId] = useState<string | null>(null);
+  /**
+   * O painel de emoji aberto, ancorado na JANELA.
+   *
+   * O seletor antigo era `absolute -top-9` dentro da mensagem: na primeira
+   * mensagem da conversa ele abria para cima e a borda da lista o cortava,
+   * igualzinho ao menu de ações antes de sair de lá.
+   */
+  const [painelReacao, setPainelReacao] = useState<{
+    msg: Mensagem;
+    x: number;
+    y: number;
+  } | null>(null);
+  const fecharPainelReacao = () => setPainelReacao(null);
   const [modalCameraAberto, setModalCameraAberto] = useState(false);
   const [imagemAmpliada, setImagemAmpliada] = useState<{ url: string; legenda?: string } | null>(null);
 
@@ -553,7 +585,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
   const lidarReagirMensagem = (msgId: string, emoji: string) => {
     bancoDados.adicionarReacaoMensagem(conversa.id, msgId, emoji);
-    setMensagemReagindoId(null);
+    fecharPainelReacao();
   };
 
   const lidarConfirmarFoto = async (fotoDataUrl: string, legenda?: string) => {
@@ -996,7 +1028,14 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
       <div
         className="flex-1 overflow-y-auto p-4 space-y-3"
-        onScroll={menuMensagem ? fecharMenuMensagem : undefined}
+        onScroll={
+          menuMensagem || painelReacao
+            ? () => {
+                fecharMenuMensagem();
+                fecharPainelReacao();
+              }
+            : undefined
+        }
       >
         {mensagensExibidas.length === 0 ? (
           <div className="h-full flex items-center justify-center text-[var(--c-texto-3)] text-sm">
@@ -1368,22 +1407,27 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       </div>
                     )}
 
-                    {/* Horário, Reação e Confirmação de Visualização */}
-                    <div className="flex items-center justify-end gap-1.5 mt-1 select-none">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMensagemReagindoId(mensagemReagindoId === msg.id ? null : msg.id);
-                        }}
-                        className={`text-xs opacity-60 hover:opacity-100 transition-opacity ${
-                          ehMinha ? 'text-white' : 'text-[var(--c-texto-3)]'
-                        }`}
-                        title="Reagir com emoji"
-                      >
-                        <Smile className="w-3.5 h-3.5" />
-                      </button>
+                    {/*
+                      A LINHA DE BAIXO DO BALÃO É SÓ INFORMAÇÃO: edição, hora
+                      e selo de envio. Nada de botão.
 
+                      O botão de reagir ficava aqui, e era o que deformava o
+                      balão. O balão tem a largura do maior filho — com
+                      "Editada" no meio, esta linha passava a ser mais larga
+                      que o próprio texto, o balão esticava e o emoji ficava
+                      colado na borda de dentro, com cara de defeito. Foi
+                      exatamente o que apareceu em "Essa já chegou ?".
+
+                      Só texto miúdo aqui, e a linha volta a caber embaixo de
+                      quase qualquer mensagem. Reagir virou ação, e ação mora
+                      no menu — como as outras seis.
+
+                      O `flex-wrap` é a garantia do "sempre": numa janela
+                      estreita, com "Editada" e o selo de visto juntos, a
+                      linha passa para baixo em vez de transbordar o balão.
+                      Transbordar é o que produz a aparência de defeito.
+                    */}
+                    <div className="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 mt-1 select-none">
                       {/* Marca de edição: quem lê precisa saber que o texto
                           mudou depois de enviado. */}
                       {msg.editadaEm && (
@@ -1452,26 +1496,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       )}
                     </div>
 
-                    {/* Picker de Reações Rápidas */}
-                    {mensagemReagindoId === msg.id && (
-                      <div
-                        className={`absolute -top-9 ${
-                          ehMinha ? 'right-0' : 'left-0'
-                        } bg-[var(--c-superficie)] border border-[var(--c-borda)] rounded-full px-2 py-1 flex items-center gap-1.5 shadow-lg z-30 animate-in zoom-in-90`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {REACOES_RAPIDAS.map((emoji) => (
-                          <button
-                            key={emoji}
-                            type="button"
-                            onClick={() => lidarReagirMensagem(msg.id, emoji)}
-                            className="text-base hover:scale-125 transition-transform p-0.5"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
 
                   {/*
@@ -1570,6 +1594,28 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
         const msg = menuMensagem.msg;
 
         const itens: React.ReactNode[] = [];
+
+        /**
+         * Reagir vem PRIMEIRO e é a ação mais leve das sete: não escreve
+         * nada, não move nada, e é a que se usa para dizer "recebi" sem
+         * ocupar a conversa com mais uma mensagem.
+         *
+         * Ela morava no rodapé do balão, e era de lá que vinha a deformação
+         * do layout. Aqui dentro não disputa largura com o texto.
+         */
+        itens.push(
+          <ItemDoMenu
+            key="reagir"
+            icone={<Smile className="w-3.5 h-3.5" />}
+            rotulo="Reagir"
+            aoClicar={() => {
+              const ancora = { msg, x: menuMensagem.x, y: menuMensagem.y };
+              fecharMenuMensagem();
+              setPainelReacao(ancora);
+            }}
+          />
+        );
+
         if (podePublicar) {
           itens.push(
             <ItemDoMenu
@@ -1668,6 +1714,55 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               onClick={(e) => e.stopPropagation()}
             >
               {itens}
+            </div>
+          </>
+        );
+      })()}
+
+      {/*
+        O PAINEL DE EMOJI — fora da lista, igual ao menu de ações.
+
+        O seletor antigo era `absolute -top-9` dentro da mensagem: na
+        primeira mensagem da conversa ele abria para cima e a borda da lista
+        o cortava. Mesmo defeito do menu, mesma correção — e o mesmo cálculo,
+        para não haver duas contas de "cabe embaixo?" discordando.
+      */}
+      {painelReacao && (() => {
+        const cabeAbaixo =
+          painelReacao.y + PAINEL_EMOJI_ALTURA + 12 <= window.innerHeight;
+        const topo = cabeAbaixo
+          ? painelReacao.y + 6
+          : Math.max(8, painelReacao.y - PAINEL_EMOJI_ALTURA - 40);
+        const esquerda = Math.min(
+          Math.max(8, painelReacao.x),
+          window.innerWidth - PAINEL_EMOJI_LARGURA - 8
+        );
+
+        return (
+          <>
+            <div className="fixed inset-0 z-[60]" onClick={fecharPainelReacao} />
+            <div
+              id="painel-emoji-reacao"
+              style={{ top: topo, left: esquerda, width: PAINEL_EMOJI_LARGURA }}
+              className="fixed z-[61] p-2 rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] shadow-[var(--s-3)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="grid grid-cols-8 gap-0.5">
+                {EMOJIS_DE_REACAO.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => {
+                      lidarReagirMensagem(painelReacao.msg.id, emoji);
+                      fecharPainelReacao();
+                    }}
+                    className="h-[30px] text-lg leading-none rounded-md hover:bg-[var(--c-superficie-2)] active:scale-90 transition-transform"
+                    title={`Reagir com ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
             </div>
           </>
         );
