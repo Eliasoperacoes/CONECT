@@ -285,3 +285,53 @@ test('a senha de ativação NÃO é reenviada nas atualizações', async () => {
   // Não existe a forma incondicional
   expect(mapa).not.toContain('senha_ativacao: c.senhaAtivacao ?? null');
 });
+
+test('NENHUMA COLUNA "not null" RECEBE null DO CÓDIGO', async () => {
+  /**
+   * O defeito que travou o cadastro do Raphael: a coluna `turno` é
+   * `not null default 'A'`, e o código mandava `turno: c.turno ?? null`.
+   *
+   * Um null EXPLÍCITO não cai no default — ele o anula e viola o not null.
+   * Todo cadastro novo era recusado com 23502, em silêncio, porque a
+   * gravação era disparada sem ninguém esperar a resposta.
+   *
+   * Este teste lê as colunas `not null` da tabela de colaboradores no
+   * esquema e confere que nenhuma delas é enviada como null.
+   */
+  const esquema = await lerSql('escala-turnos.sql');
+  const principal = await lerSql('esquema.sql');
+  const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+
+  // As colunas not null de colaboradores, do CREATE TABLE e dos ALTERs
+  const bloco = principal.slice(
+    principal.indexOf('create table if not exists public.colaboradores'),
+    principal.indexOf(');', principal.indexOf('create table if not exists public.colaboradores'))
+  );
+
+  const naoNulas = [
+    ...[...bloco.matchAll(/^\s{2}(\w+)\s+[^\n]*not null/gm)].map((m) => m[1]),
+    ...[...esquema.matchAll(/add column if not exists (\w+)[^;]*not null/g)].map((m) => m[1]),
+  ];
+
+  expect(naoNulas).toContain('turno');
+
+  // O mapa que monta a linha enviada ao banco
+  const inicio = ponte.indexOf('const paraLinha = (c: Colaborador)');
+  const mapa = ponte.slice(inicio, ponte.indexOf('});', inicio));
+
+  /**
+   * Busca por texto, não por regex: `??` dentro de uma expressão regular é
+   * "nada a repetir" e derruba o teste antes de ele olhar o código. Cada
+   * linha do mapa é uma coluna, então basta comparar linha a linha.
+   */
+  const enviadasComoNull = naoNulas.filter((coluna) =>
+    mapa
+      .split('\n')
+      .some(
+        (linha) =>
+          linha.trim().startsWith(`${coluna}:`) && linha.includes('?? null')
+      )
+  );
+
+  expect(enviadasComoNull).toEqual([]);
+});

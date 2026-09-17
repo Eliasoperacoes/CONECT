@@ -22,6 +22,7 @@ import {
   TipoMarcacao,
   AjusteJornada,
   JustificativaAusencia,
+  TURNO_PADRAO,
   TipoAjuste,
   EstadoAjuste,
 } from '../tipos';
@@ -142,7 +143,13 @@ const paraLinha = (c: Colaborador) => ({
   data_admissao: c.dataAdmissao ?? null,
   observacoes: c.observacoes ?? null,
   carga_horaria_diaria_minutos: c.cargaHorariaDiariaMinutos ?? 490,
-  turno: c.turno ?? null,
+  /**
+   * NUNCA `null`: a coluna e `not null default 'A'`, e um null EXPLICITO
+   * anula o default em vez de cair nele. Cada cadastro novo era recusado
+   * com 23502 — e como a gravacao era disparada sem ninguem esperar, o
+   * painel dizia "cadastrado com sucesso" e a pessoa nao existia no banco.
+   */
+  turno: c.turno || TURNO_PADRAO,
   /**
    * A senha de primeiro acesso só viaja quando foi informada.
    *
