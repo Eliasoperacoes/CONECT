@@ -335,3 +335,44 @@ test('NENHUMA COLUNA "not null" RECEBE null DO CÓDIGO', async () => {
 
   expect(enviadasComoNull).toEqual([]);
 });
+
+test('SENHA DE PRIMEIRO ACESSO PRECISA TER 6 CARACTERES', async () => {
+  /**
+   * O formulário do painel nascia com a senha "123" — três caracteres.
+   * A autenticação do Supabase exige seis, então a conta era criada perfeita
+   * no banco e NUNCA conseguia ativar: a pessoa digitava exatamente o que
+   * estava escrito no painel e ouvia "não foi possível entrar".
+   */
+  const painel = await Bun.file(
+    new URL('../componentes/PainelAdministrativo.tsx', import.meta.url)
+  ).text();
+
+  // O formulário não nasce mais com uma senha que não funciona
+  expect(painel).not.toContain("senha: '123',");
+  expect(painel).toContain('senha: SENHA_PADRAO_PRIMEIRO_ACESSO');
+
+  // E o serviço recusa na porta, com o motivo
+  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
+  expect(servico).toContain('senhaEscolhida.length < 6');
+  expect(servico).toContain('ao menos 6 caracteres');
+});
+
+test('o padrão da rede tem tamanho válido', async () => {
+  // Se a própria constante fosse curta, todo cadastro sem senha explícita
+  // nasceria impossível de ativar
+  const { SENHA_PADRAO_PRIMEIRO_ACESSO } = await import('../tipos');
+  expect(SENHA_PADRAO_PRIMEIRO_ACESSO.length).toBeGreaterThanOrEqual(6);
+});
+
+test('a senha curta é reconhecida ANTES das outras causas', async () => {
+  // Estava por último, e a busca larga por "email" logo acima engolia o
+  // caso: a pessoa recebia um texto sobre confirmação de e-mail quando o
+  // problema era o tamanho da senha
+  const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+
+  const posSenha = ponte.indexOf("msg.includes('password')");
+  const posEmail = ponte.indexOf("msg.includes('rate limit')");
+
+  expect(posSenha).toBeGreaterThan(-1);
+  expect(posSenha).toBeLessThan(posEmail);
+});

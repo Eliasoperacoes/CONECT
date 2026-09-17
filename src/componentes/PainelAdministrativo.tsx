@@ -124,7 +124,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   const [formColab, setFormColab] = useState({
     nome: '',
     login: '',
-    senha: '123',
+    senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
     cargo: '',
     setor: 'Balcão' as Setor,
     loja: 'Pirassununga' as Loja,
@@ -267,7 +267,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     setFormColab({
       nome: '',
       login: '',
-      senha: '123',
+      senha: SENHA_PADRAO_PRIMEIRO_ACESSO,
       cargo: '',
       setor: 'Balcão',
       loja: 'Pirassununga',
@@ -1820,6 +1820,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     <input
                       type="text"
                       value={formColab.senha}
+                      minLength={6}
                       onChange={(e) => setFormColab({ ...formColab, senha: e.target.value })}
                       placeholder={SENHA_PADRAO_PRIMEIRO_ACESSO}
                       className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] font-mono"

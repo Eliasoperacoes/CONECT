@@ -911,6 +911,24 @@ class BancoDadosConecta {
       return { sucesso: false, erro: 'Nome e login são obrigatórios.' };
     }
 
+    /**
+     * A senha de primeiro acesso precisa ter 6 caracteres.
+     *
+     * Não é gosto nosso: é o mínimo da autenticação do Supabase. Uma senha
+     * mais curta cria uma ficha perfeita no banco e uma conta que NUNCA
+     * consegue ativar — a pessoa digita exatamente o que está escrito no
+     * painel e ouve "não foi possível entrar", sem ninguém entender por quê.
+     *
+     * O formulário nascia com "123".
+     */
+    const senhaEscolhida = dados.senha?.trim() || SENHA_PADRAO_PRIMEIRO_ACESSO;
+    if (senhaEscolhida.length < 6) {
+      return {
+        sucesso: false,
+        erro: `A senha de primeiro acesso precisa de ao menos 6 caracteres — "${senhaEscolhida}" tem ${senhaEscolhida.length}. Com menos que isso a pessoa não consegue entrar.`,
+      };
+    }
+
     const colaboradores = this.obterColaboradores();
     const loginJaExiste = colaboradores.some(
       (c) => c.login && c.login.toLowerCase() === dados.login.trim().toLowerCase()
@@ -925,7 +943,7 @@ class BancoDadosConecta {
       id: novoId,
       nome: dados.nome.trim(),
       login: dados.login.trim(),
-      senha: dados.senha?.trim() || SENHA_PADRAO_PRIMEIRO_ACESSO,
+      senha: senhaEscolhida,
       cargo: dados.cargo.trim() || 'Colaborador',
       setor: dados.setor,
       loja: dados.loja,

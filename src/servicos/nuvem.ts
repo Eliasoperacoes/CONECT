@@ -388,6 +388,24 @@ class PonteNuvem {
       if (ativacao.error) {
         const msg = ativacao.error.message.toLowerCase();
 
+        /**
+         * SENHA CURTA VEM PRIMEIRO.
+         *
+         * A autenticação do Supabase exige 6 caracteres e recusa antes de o
+         * gatilho do banco rodar. Esta verificação estava por ÚLTIMO no
+         * encadeamento, e a busca larga por "email" logo acima engolia o
+         * caso — a pessoa recebia um texto sobre confirmação de e-mail
+         * quando o problema era o tamanho da senha.
+         */
+        if (msg.includes('password') || msg.includes('senha')) {
+          return {
+            sucesso: false,
+            erro:
+              'A senha de primeiro acesso precisa ter ao menos 6 caracteres. ' +
+              'Peça ao RH para cadastrar uma senha maior.',
+          };
+        }
+
         // A confirmação por e-mail precisa estar desligada no projeto: o
         // domínio dos logins é interno e nunca receberia a mensagem.
         if (msg.includes('rate limit') || msg.includes('email')) {
@@ -438,12 +456,6 @@ class PonteNuvem {
             erro:
               'Este login já tem acesso ativado, e a senha digitada não é a dele. ' +
               'A senha de primeiro acesso não vale mais. Peça ao RH para resetar o seu acesso.',
-          };
-        }
-        if (msg.includes('password')) {
-          return {
-            sucesso: false,
-            erro: 'A senha precisa ter ao menos 6 caracteres.',
           };
         }
         return { sucesso: false, erro: 'Login ou senha incorretos.' };
