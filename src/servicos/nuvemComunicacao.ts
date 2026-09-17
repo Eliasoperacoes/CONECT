@@ -79,11 +79,40 @@ export const esquecerConversaDoBanco = (conversaId: string): void => {
   }
 };
 const CHAVE_MENSAGENS = 'conecta_v4_mensagens';
+
+/**
+ * Quanto se espera para juntar eventos de tempo real que chegam em rajada.
+ *
+ * Não atrasa a primeira mensagem: o primeiro evento depois de uma calmaria
+ * é atendido na hora. Esta janela só junta o que vem GRUDADO nele — a
+ * rajada de trinta marcações de leitura de alguém abrindo uma conversa com
+ * trinta não lidas, que antes virava trinta sincronizações completas em
+ * cada aparelho da rede.
+ */
+const ESPERA_PARA_JUNTAR_EVENTOS_MS = 500;
 const CHAVE_AVISOS_REDE = 'conecta_v4_avisos_rede';
 const CHAVE_CONFIGURACOES = 'conecta_v4_configuracoes';
 const CHAVE_AUDITORIA = 'conecta_v4_auditoria';
 
 // --- Formatação compartilhada ---
+
+/**
+ * As mensagens que este aparelho mandou e o banco ainda não confirmou.
+ *
+ * Só elas escapam da reescrita do cache na sincronização. Se o cache estiver
+ * ilegível devolve lista vazia: perder uma mensagem em trânsito é ruim, mas
+ * derrubar a sincronização inteira da rede por causa dela é pior.
+ */
+const lerPendentesDoAparelho = (): Mensagem[] => {
+  try {
+    const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+    if (!bruto) return [];
+    const todas: Mensagem[] = JSON.parse(bruto);
+    return todas.filter((m) => m.envio === 'enviando');
+  } catch {
+    return [];
+  }
+};
 
 const horaDe = (iso: string): string =>
   new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -262,6 +291,73 @@ type Ouvinte = () => void;
 class PonteComunicacao {
   private ouvintes: Ouvinte[] = [];
   private canalAberto = false;
+  private sincronizacaoAgendada: ReturnType<typeof setTimeout> | null = null;
+  private sincronizando = false;
+  private pedidoDurante = false;
+  private ultimaSincronizacao = 0;
+
+  /**
+   * JUNTA OS EVENTOS DE TEMPO REAL NUMA SINCRONIZAÇÃO SÓ.
+   *
+   * Cada evento disparava uma sincronização completa, e uma sincronização
+   * completa baixa TODAS as mensagens da rede. Abrir uma conversa com trinta
+   * não lidas grava trinta marcações de leitura, que viram trinta eventos —
+   * e cada aparelho conectado baixava o histórico inteiro trinta vezes, por
+   * causa de alguém abrindo uma conversa do outro lado da rede.
+   *
+   * Com 88 pessoas isso cresce pelo produto das duas pontas. É o custo que
+   * sobrou depois de o envio já ter sido corrigido: o envio ficou rápido, e
+   * o aparelho continuava ocupado baixando o passado.
+   *
+   * Duas travas aqui:
+   *
+   *  - os eventos que chegam juntos viram UMA sincronização (a espera curta
+   *    abaixo);
+   *  - duas sincronizações nunca correm ao mesmo tempo. Se chegar pedido
+   *    durante uma, ele é atendido UMA vez ao final — senão o último a
+   *    responder poderia ser o mais antigo e reescrever o cache com dado
+   *    velho.
+   */
+  private agendarSincronizacao(): void {
+    if (this.sincronizando) {
+      this.pedidoDurante = true;
+      return;
+    }
+    if (this.sincronizacaoAgendada) return;
+
+    /**
+     * O PRIMEIRO EVENTO DEPOIS DE UMA CALMARIA VAI NA HORA.
+     *
+     * Segurar todo evento pela janela deixaria a mensagem do outro demorar
+     * meio segundo para aparecer — trocaria o atraso do envio, que acabamos
+     * de tirar, por um atraso no recebimento. Chat precisa parecer
+     * instantâneo nas duas pontas.
+     *
+     * Então a janela não atrasa a primeira: ela só impede que a SEGUNDA, a
+     * terceira e a trigésima da mesma rajada virem sincronizações próprias.
+     */
+    const desdeAUltima = Date.now() - this.ultimaSincronizacao;
+    const espera =
+      desdeAUltima >= ESPERA_PARA_JUNTAR_EVENTOS_MS
+        ? 0
+        : ESPERA_PARA_JUNTAR_EVENTOS_MS - desdeAUltima;
+
+    this.sincronizacaoAgendada = setTimeout(() => {
+      this.sincronizacaoAgendada = null;
+      this.sincronizando = true;
+      this.ultimaSincronizacao = Date.now();
+
+      this.sincronizarConversas()
+        .catch(() => {})
+        .finally(() => {
+          this.sincronizando = false;
+          if (this.pedidoDurante) {
+            this.pedidoDurante = false;
+            this.agendarSincronizacao();
+          }
+        });
+    }, espera);
+  }
 
   assinarAtualizacoes(ouvinte: Ouvinte): () => void {
     this.ouvintes.push(ouvinte);
@@ -422,7 +518,30 @@ class PonteComunicacao {
     // Tudo que voltou da consulta existe no banco: anotar aqui evita
     // regravar essas conversas a cada mensagem
     listaConversas.forEach((c) => marcarConversaNoBanco(c.id));
-    localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(comAnexos));
+    /**
+     * A MENSAGEM QUE AINDA ESTÁ SUBINDO NÃO PODE SER APAGADA AQUI.
+     *
+     * Esta função reescrevia o cache inteiro com o que veio do banco. Quem
+     * tivesse uma mensagem em trânsito — marcada 'enviando', ainda não
+     * gravada — a via SUMIR da tela no instante em que qualquer outra pessoa
+     * da rede mandasse qualquer coisa, porque o evento de tempo real chega
+     * para todo mundo e dispara esta reescrita.
+     *
+     * Ela voltava sozinha um segundo depois, quando o banco confirmava. Mas
+     * quem estava olhando via a própria mensagem piscar e sumir, e mandava
+     * de novo. É a explicação de mensagem repetida no chat.
+     *
+     * O banco continua sendo a verdade: só sobrevive o que ele AINDA não
+     * conhece e está declaradamente em trânsito. Mensagem que falhou já é
+     * removida por quem a enviou.
+     */
+    const jaNoBanco = new Set(comAnexos.map((m) => m.id));
+    const emTransito = lerPendentesDoAparelho().filter((m) => !jaNoBanco.has(m.id));
+
+    localStorage.setItem(
+      CHAVE_MENSAGENS,
+      JSON.stringify(emTransito.length > 0 ? [...comAnexos, ...emTransito] : comAnexos)
+    );
     this.avisar();
     return true;
   }
@@ -929,7 +1048,7 @@ class PonteComunicacao {
     this.canalAberto = true;
 
     const recarregarConversas = () => {
-      this.sincronizarConversas();
+      this.agendarSincronizacao();
     };
 
     supabase

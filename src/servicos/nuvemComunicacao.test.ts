@@ -213,3 +213,75 @@ test('conversa individual põe as duas pessoas dentro', async () => {
     'colab-elias',
   ]);
 });
+
+/**
+ * A MENSAGEM EM TRÂNSITO SOBREVIVE À SINCRONIZAÇÃO.
+ *
+ * `sincronizarConversas` reescrevia o cache inteiro com o que veio do banco.
+ * Quem tivesse uma mensagem ainda subindo a via SUMIR no instante em que
+ * qualquer pessoa da rede mandasse qualquer coisa — porque o evento de tempo
+ * real chega para todo mundo e dispara a reescrita. Ela voltava um segundo
+ * depois, mas quem olhava já tinha mandado de novo.
+ */
+test('a sincronizacao nao apaga a mensagem que ainda esta subindo', async () => {
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  // A reescrita crua do cache é o que não pode voltar
+  expect(ponte).not.toContain(
+    'localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(comAnexos));'
+  );
+
+  // Só escapa o que o banco AINDA não conhece e está declaradamente em trânsito
+  expect(ponte).toContain('const jaNoBanco = new Set(comAnexos.map((m) => m.id))');
+  expect(ponte).toContain("m.envio === 'enviando'");
+  expect(ponte).toContain('!jaNoBanco.has(m.id)');
+});
+
+/**
+ * OS EVENTOS DE TEMPO REAL VIRAM UMA SINCRONIZAÇÃO SÓ.
+ *
+ * Cada evento disparava uma sincronização completa, e completa quer dizer
+ * TODAS as mensagens da rede. Abrir uma conversa com trinta não lidas grava
+ * trinta marcações de leitura, que viram trinta eventos — e cada aparelho
+ * conectado baixava o histórico inteiro trinta vezes por causa disso.
+ */
+test('os eventos de tempo real nao disparam uma sincronizacao cada', async () => {
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  const inicio = ponte.indexOf('iniciarTempoReal');
+  const fim = ponte.indexOf('limparCache', inicio);
+  expect(inicio).toBeGreaterThan(-1);
+  expect(fim).toBeGreaterThan(inicio);
+  const corpo = ponte.slice(inicio, fim);
+
+  // Nenhum ouvinte do canal chama a sincronização direto
+  expect(corpo).not.toContain('this.sincronizarConversas()');
+  expect(corpo).toContain('this.agendarSincronizacao()');
+
+  // E duas sincronizações não podem correr ao mesmo tempo: a mais antiga
+  // responderia por último e reescreveria o cache com dado velho
+  expect(ponte).toContain('if (this.sincronizando)');
+  expect(ponte).toContain('this.pedidoDurante = true');
+});
+
+/**
+ * A JANELA NÃO PODE ATRASAR A PRIMEIRA MENSAGEM.
+ *
+ * Segurar todo evento trocaria o atraso do envio, que acabou de ser tirado,
+ * por um atraso no recebimento. O primeiro evento depois de uma calmaria vai
+ * na hora; a janela só junta o que vem grudado nele.
+ */
+test('o primeiro evento depois de uma calmaria nao espera', async () => {
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  expect(ponte).toContain('const desdeAUltima = Date.now() - this.ultimaSincronizacao');
+  expect(ponte).toContain('>= ESPERA_PARA_JUNTAR_EVENTOS_MS\n        ? 0');
+  // Espera fixa é justamente o que este teste existe para impedir
+  expect(ponte).not.toContain('}, ESPERA_PARA_JUNTAR_EVENTOS_MS);');
+});
