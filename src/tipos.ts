@@ -281,6 +281,17 @@ export interface Mensagem {
   anexoCaminho?: string;
   ehAvisoDirecao?: boolean;
   /**
+   * Ainda subindo. So no aparelho — nunca vai para o banco.
+   *
+   * Aparece assim que a pessoa aperta enviar. Sem isso, a tela ficava parada
+   * ate seis idas ao banco terminarem, e a pessoa apertava enviar de novo
+   * achando que nao tinha funcionado.
+   *
+   * Nao ha estado de "falhou": mensagem recusada pelo banco e REMOVIDA do
+   * aparelho, porque mensagem que nao gravou nao foi enviada.
+   */
+  envio?: 'enviando';
+  /**
    * Fixada no alto da conversa, a vista de todos os participantes.
    * Diferente de fixar CONVERSA na lista, que e preferencia de cada um.
    */

@@ -16,6 +16,8 @@ import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
 import {
   nuvemComunicacao,
+  conversaJaEstaNoBanco,
+  esquecerConversaDoBanco,
   montarPreviaDaMensagem,
   carimboDeAuditoria,
 } from './nuvemComunicacao';
@@ -2065,19 +2067,32 @@ class BancoDadosConecta {
       }
     }
 
-    // No modo rede a mensagem só vale depois de entrar no banco: mandar para
-    // a rede é o objetivo, e uma mensagem que ficou no aparelho não foi
-    // enviada. A conversa sobe antes porque a mensagem aponta para ela.
+    /**
+     * A MENSAGEM APARECE ANTES DE SUBIR.
+     *
+     * Antes o texto só surgia na tela depois de até cinco idas ao banco — a
+     * conversa (quatro) e a mensagem. No celular isso é quase um segundo de
+     * caixa parada, e a pessoa aperta enviar de novo achando que falhou.
+     *
+     * Agora ela entra na hora marcada como 'enviando' e o relógio ao lado
+     * diz que ainda não confirmou. O compromisso de "só vale depois de
+     * entrar no banco" continua valendo: o que muda é que a espera fica
+     * VISÍVEL em vez de ser uma tela travada.
+     */
+    if (usandoNuvem()) novaMensagem.envio = 'enviando';
+    this.guardarMensagemLocal(novaMensagem, conversas, indice, agora, horaFormatada);
+    this.notificar();
+
     if (usandoNuvem()) {
-      if (indice !== -1) {
+      // A conversa só sobe na primeira vez: depois disso ela já existe, e
+      // regravá-la a cada mensagem custava quatro viagens por nada
+      if (indice !== -1 && !conversaJaEstaNoBanco(conversaId)) {
         const resConversa = await nuvemComunicacao.salvarConversa(
           this.comParticipantesQueExistem(conversas[indice]),
           atual.id
         );
         if (!resConversa.sucesso) {
-          // O motivo que o banco deu vai junto: "verifique a conexão" mandava
-          // olhar para o lugar errado quando o problema era permissão ou
-          // referência quebrada.
+          this.marcarFalhaDeEnvio(novaMensagem.id);
           return {
             sucesso: false,
             erro: `Não foi possível abrir a conversa no banco: ${
@@ -2087,54 +2102,127 @@ class BancoDadosConecta {
         }
       }
 
-      const res = await nuvemComunicacao.salvarMensagem(novaMensagem);
+      let res = await nuvemComunicacao.salvarMensagem(novaMensagem);
+
+      /**
+       * Referência quebrada quer dizer que o atalho mentiu: a conversa não
+       * estava lá. Refaz e tenta uma vez — melhor do que devolver erro para
+       * quem só queria mandar um "bom dia".
+       */
+      if (!res.sucesso && res.conversaAusente && indice !== -1) {
+        esquecerConversaDoBanco(conversaId);
+        const refeita = await nuvemComunicacao.salvarConversa(
+          this.comParticipantesQueExistem(conversas[indice]),
+          atual.id
+        );
+        if (refeita.sucesso) res = await nuvemComunicacao.salvarMensagem(novaMensagem);
+      }
+
       if (!res.sucesso) {
+        this.marcarFalhaDeEnvio(novaMensagem.id);
         return {
           sucesso: false,
           erro: 'Não foi possível enviar. Verifique a conexão e tente de novo.',
         };
       }
+
+      this.confirmarEnvio(novaMensagem.id);
+      return { sucesso: true, mensagem: novaMensagem };
     }
 
+    return { sucesso: true, mensagem: novaMensagem };
+  }
+
+  /** Põe a mensagem no cache e atualiza a prévia da conversa. */
+  private guardarMensagemLocal(
+    mensagem: Mensagem,
+    conversas: Conversa[],
+    indice: number,
+    agora: Date,
+    horaFormatada: string
+  ): void {
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
       const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
-      todas.push(novaMensagem);
+      todas.push(mensagem);
       localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(todas));
 
       if (indice !== -1) {
         conversas[indice].atualizadoEm = agora.toISOString();
         conversas[indice].ultimaMensagem = {
-          texto: montarPreviaDaMensagem(novaMensagem),
+          texto: montarPreviaDaMensagem(mensagem),
           hora: horaFormatada,
-          remetenteId: atual.id,
-          tipo: conteudo.tipo,
+          remetenteId: mensagem.remetenteId,
+          tipo: mensagem.tipo,
         };
         localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
       }
-
-      this.notificar();
-      return { sucesso: true, mensagem: novaMensagem };
     } catch (erro) {
-      // No modo rede a mensagem já está no banco neste ponto. Se o cache do
-      // aparelho encheu, quem falhou foi o cache — a mensagem foi enviada, e
-      // dizer o contrário faria a pessoa mandar tudo de novo.
-      if (usandoNuvem()) {
-        nuvemComunicacao.sincronizarConversas().catch(() => {});
-        this.notificar();
-        return { sucesso: true, mensagem: novaMensagem };
-      }
-
-      // Anexos e recados de voz ocupam espaço; o armazenamento do navegador
-      // tem limite e a mensagem de erro precisa dizer o que fazer.
+      /**
+       * O cache do aparelho encheu.
+       *
+       * No modo rede isso não impede o envio: a mensagem ainda vai para o
+       * banco no passo seguinte, e é de lá que ela volta na próxima
+       * sincronização. Quem falhou foi o cache.
+       */
       const nome = erro instanceof Error ? erro.name : '';
       if (nome === 'QuotaExceededError' || nome === 'NS_ERROR_DOM_QUOTA_REACHED') {
-        return {
-          sucesso: false,
-          erro: 'Armazenamento do aparelho cheio. Peça ao TI para limpar as conversas antigas.',
-        };
+        console.error('Armazenamento do aparelho cheio ao guardar a mensagem.');
       }
-      return { sucesso: false, erro: 'Falha ao salvar mensagem.' };
+    }
+  }
+
+  /**
+   * A confirmação do banco: tira o relógio de "enviando".
+   *
+   * Não regrava a mensagem inteira — só apaga a marca, que é local e nunca
+   * foi para o banco.
+   */
+  private confirmarEnvio(mensagemId: string): void {
+    this.trocarEstadoDeEnvio(mensagemId, undefined);
+  }
+
+  /**
+   * O banco recusou: a mensagem SAI do aparelho.
+   *
+   * Deixá-la na tela, mesmo marcada, criaria uma mensagem que existe só
+   * aqui — e a próxima sincronização a apagaria sem explicação. A regra da
+   * rede é que mensagem não gravada no banco não foi enviada, e a tela tem
+   * de dizer isso removendo o que não subiu.
+   */
+  private marcarFalhaDeEnvio(mensagemId: string): void {
+    try {
+      const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+      if (!bruto) return;
+      const todas: Mensagem[] = JSON.parse(bruto);
+      localStorage.setItem(
+        CHAVE_MENSAGENS,
+        JSON.stringify(todas.filter((m) => m.id !== mensagemId))
+      );
+      this.notificar();
+    } catch {
+      // Sem cache não há o que remover
+    }
+  }
+
+  private trocarEstadoDeEnvio(
+    mensagemId: string,
+    estado: 'enviando' | undefined
+  ): void {
+    try {
+      const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+      if (!bruto) return;
+      const todas: Mensagem[] = JSON.parse(bruto);
+      const indice = todas.findIndex((m) => m.id === mensagemId);
+      if (indice === -1) return;
+
+      if (estado) todas[indice].envio = estado;
+      else delete todas[indice].envio;
+
+      localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(todas));
+      this.notificar();
+    } catch {
+      // Sem cache não há marca para trocar
     }
   }
 

@@ -90,7 +90,15 @@ mock.module('./nuvem', () => ({
 
 const recusa = { sucesso: false, erro: 'sem conexao' };
 
+/** Conversas que o banco falso ja conhece. */
+const conversasNoBancoFalso = new Set<string>();
+
 mock.module('./nuvemComunicacao', () => ({
+  // O registro de conversas ja gravadas: no teste ele comeca vazio, entao
+  // a primeira mensagem de cada conversa exercita o caminho completo
+  conversaJaEstaNoBanco: (id: string) => conversasNoBancoFalso.has(id),
+  marcarConversaNoBanco: (id: string) => conversasNoBancoFalso.add(id),
+  esquecerConversaDoBanco: (id: string) => conversasNoBancoFalso.delete(id),
   montarPreviaDaMensagem: (m: any) => {
     if (m.tipo === 'recado_voz') return '🎤 Recado de voz';
     if (m.tipo === 'arquivo') return `📎 ${m.arquivoNome || 'Arquivo'}`;
@@ -976,4 +984,100 @@ test('quem fixa é quem pode publicar, não só o autor', async () => {
 
   expect(corpo).toContain('podePublicarNaConversa');
   expect(corpo).not.toContain('remetenteId');
+});
+
+// ============================================================
+// O CAMINHO DO ENVIO — ONDE O DELAY MORAVA
+//
+// Uma mensagem de texto fazia SEIS idas ao banco antes de aparecer na tela:
+// quatro em salvarConversa (a conversa, a minha participação, quem já está
+// dentro, os que faltam), a da mensagem, e a do próprio visto. No celular
+// isso é quase um segundo de caixa parada — e a pessoa aperta enviar de
+// novo achando que falhou.
+// ============================================================
+
+test('a conversa NÃO sobe a cada mensagem', async () => {
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
+
+  // Há um registro de quais conversas já existem no banco
+  expect(ponte).toContain('conversaJaEstaNoBanco');
+  expect(ponte).toContain('marcarConversaNoBanco');
+
+  // E o envio consulta esse registro antes de regravar a conversa
+  expect(servico).toContain('!conversaJaEstaNoBanco(conversaId)');
+});
+
+test('o atalho que mente é desfeito, não vira erro para quem escreveu', async () => {
+  /**
+   * Se o registro disser que a conversa está no banco e ela não estiver, o
+   * insert falha com referência quebrada (23503). Devolver erro nesse caso
+   * puniria a pessoa por um atalho nosso: o certo é refazer a conversa e
+   * tentar de novo, uma vez.
+   */
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
+
+  expect(ponte).toContain("conversaAusente: error.code === '23503'");
+  expect(servico).toContain('res.conversaAusente');
+  expect(servico).toContain('esquecerConversaDoBanco');
+});
+
+test('o próprio visto não segura o envio', async () => {
+  // Quem envia já leu o que escreveu. Esperar por esse registro punha uma
+  // ida a mais no caminho crítico, por nada.
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  const inicio = ponte.indexOf('async salvarMensagem');
+  const corpo = ponte.slice(inicio, inicio + 1800);
+
+  expect(corpo).toContain('void this.marcarLeitura');
+  expect(corpo).not.toContain('await this.marcarLeitura');
+});
+
+test('A MENSAGEM APARECE ANTES DE SUBIR, e diz que está subindo', async () => {
+  /**
+   * O compromisso de "só vale depois de entrar no banco" continua: o que
+   * muda é que a espera fica VISÍVEL. Sem o selo, "apareceu" pareceria
+   * "enviado" — pior do que a espera.
+   */
+  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
+
+  // Grava e notifica ANTES do bloco de rede
+  const inicio = servico.indexOf('async enviarMensagem');
+  const corpo = servico.slice(inicio, inicio + 6000);
+
+  const posGuardar = corpo.indexOf('this.guardarMensagemLocal');
+  const posSalvar = corpo.indexOf('nuvemComunicacao.salvarMensagem');
+  expect(posGuardar).toBeGreaterThan(-1);
+  expect(posSalvar).toBeGreaterThan(posGuardar);
+
+  // E o estado do envio existe nos dois sentidos
+  expect(servico).toContain("novaMensagem.envio = 'enviando'");
+  expect(servico).toContain('this.confirmarEnvio');
+  expect(servico).toContain('this.marcarFalhaDeEnvio');
+
+  // A tela mostra os dois estados
+  const tela = await Bun.file(
+    new URL('../componentes/TelaConversa.tsx', import.meta.url)
+  ).text();
+  expect(tela).toContain("msg.envio === 'enviando'");
+});
+
+test('o estado do envio NÃO vai para o banco', async () => {
+  // É marca do aparelho. Subindo, ela voltaria na sincronização e a mensagem
+  // ficaria "enviando" para sempre na tela de quem recebeu.
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  const inicio = ponte.indexOf('const paraLinhaMensagem');
+  const mapa = ponte.slice(inicio, inicio + 1200);
+  expect(mapa).not.toContain('envio');
 });

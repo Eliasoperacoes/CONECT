@@ -30,6 +30,54 @@ import { aplicarPreferenciasDaNuvem } from './preferenciasConversa';
 import { aplicarPermissoes, MapaDePermissoes } from './permissoes';
 
 const CHAVE_CONVERSAS = 'conecta_v4_conversas';
+/**
+ * Conversas que já sabemos existir no banco.
+ *
+ * Existe para não repetir trabalho: `salvarConversa` faz até QUATRO idas ao
+ * banco (a conversa, a minha participação, quem já está dentro, os que
+ * faltam), e ela rodava a cada mensagem enviada — mesmo numa conversa aberta
+ * há meses. Somando a ida da própria mensagem, eram cinco viagens antes de o
+ * texto aparecer na tela.
+ *
+ * Fica no armazenamento do aparelho porque é só um atalho: se estiver
+ * errado, o banco recusa a mensagem por referência quebrada e o envio
+ * refaz a conversa antes de tentar de novo.
+ */
+const CHAVE_CONVERSAS_NO_BANCO = 'conecta_v4_conversas_no_banco';
+
+const lerConversasNoBanco = (): Set<string> => {
+  try {
+    const bruto = localStorage.getItem(CHAVE_CONVERSAS_NO_BANCO);
+    const lista = bruto ? JSON.parse(bruto) : [];
+    return new Set(Array.isArray(lista) ? lista : []);
+  } catch {
+    return new Set();
+  }
+};
+
+export const conversaJaEstaNoBanco = (conversaId: string): boolean =>
+  lerConversasNoBanco().has(conversaId);
+
+export const marcarConversaNoBanco = (conversaId: string): void => {
+  try {
+    const atual = lerConversasNoBanco();
+    if (atual.has(conversaId)) return;
+    atual.add(conversaId);
+    localStorage.setItem(CHAVE_CONVERSAS_NO_BANCO, JSON.stringify([...atual]));
+  } catch {
+    // Sem armazenamento: a conversa sobe de novo, que é só lentidão
+  }
+};
+
+export const esquecerConversaDoBanco = (conversaId: string): void => {
+  try {
+    const atual = lerConversasNoBanco();
+    if (!atual.delete(conversaId)) return;
+    localStorage.setItem(CHAVE_CONVERSAS_NO_BANCO, JSON.stringify([...atual]));
+  } catch {
+    // ignora
+  }
+};
 const CHAVE_MENSAGENS = 'conecta_v4_mensagens';
 const CHAVE_AVISOS_REDE = 'conecta_v4_avisos_rede';
 const CHAVE_CONFIGURACOES = 'conecta_v4_configuracoes';
@@ -371,6 +419,9 @@ class PonteComunicacao {
     });
 
     localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(listaConversas));
+    // Tudo que voltou da consulta existe no banco: anotar aqui evita
+    // regravar essas conversas a cada mensagem
+    listaConversas.forEach((c) => marcarConversaNoBanco(c.id));
     localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(comAnexos));
     this.avisar();
     return true;
@@ -443,6 +494,9 @@ class PonteComunicacao {
       return { sucesso: false, erro: await explicarRecusa(erroParticipantes) };
     }
 
+    // Deu certo: as proximas mensagens desta conversa nao repetem as quatro
+    // idas ao banco que esta funcao faz
+    marcarConversaNoBanco(conversa.id);
     return { sucesso: true };
   }
 
@@ -454,17 +508,35 @@ class PonteComunicacao {
     return { sucesso: true };
   }
 
-  async salvarMensagem(mensagem: Mensagem): Promise<{ sucesso: boolean; erro?: string }> {
+  async salvarMensagem(
+    mensagem: Mensagem
+  ): Promise<{ sucesso: boolean; erro?: string; conversaAusente?: boolean }> {
     if (!supabase) return { sucesso: true };
 
     const { error } = await supabase.from('mensagens').insert(paraLinhaMensagem(mensagem));
     if (error) {
       console.error('Falha ao enviar mensagem ao banco:', error.message);
-      return { sucesso: false, erro: await explicarRecusa(error) };
+      return {
+        sucesso: false,
+        erro: await explicarRecusa(error),
+        /**
+         * 23503 é referência quebrada: a conversa apontada não existe no
+         * banco. Quem chamou sabe refazê-la e tentar de novo, em vez de
+         * devolver erro para quem só queria mandar um "bom dia".
+         */
+        conversaAusente: error.code === '23503',
+      };
     }
 
-    // Quem envia já leu a própria mensagem
-    await this.marcarLeitura([mensagem.id], mensagem.remetenteId);
+    /**
+     * A própria leitura NÃO é esperada.
+     *
+     * Quem envia já leu o que escreveu — é registro de conveniência, não
+     * parte do envio. Esperar por ela acrescentava uma sexta ida ao banco
+     * antes de a mensagem ser dada como enviada, e ninguém no mundo fica
+     * olhando para o relógio por causa do próprio visto.
+     */
+    void this.marcarLeitura([mensagem.id], mensagem.remetenteId);
     return { sucesso: true };
   }
 

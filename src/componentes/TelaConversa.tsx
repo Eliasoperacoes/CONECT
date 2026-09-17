@@ -20,6 +20,8 @@ import {
   Check,
   CheckCheck,
   Forward,
+  Clock,
+  AlertTriangle,
   Pin,
   PinOff,
   Copy,
@@ -1205,8 +1207,24 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                         {msg.horaFormatada}
                       </span>
 
+                      {/*
+                        O SELO DO ENVIO.
+
+                        A mensagem aparece na tela antes de o banco confirmar,
+                        para a caixa não ficar parada. O relógio diz que ainda
+                        está subindo, e o triângulo diz que não subiu — sem
+                        ele, "apareceu" pareceria "enviado", que é pior do
+                        que a espera. Se o banco recusar, a mensagem some — e
+                        o aviso de erro explica por quê.
+                      */}
+                      {ehMinha && msg.envio === 'enviando' && (
+                        <span className="inline-flex items-center ml-0.5" title="Enviando…">
+                          <Clock className="w-3.5 h-3.5 text-white/70 animate-pulse" />
+                        </span>
+                      )}
+
                       {/* Confirmação de Visualização (Visto / Lido) */}
-                      {ehMinha && (
+                      {ehMinha && !msg.envio && (
                         <span
                           className="inline-flex items-center ml-0.5"
                           title={
