@@ -93,3 +93,70 @@ test('anexar e colar usam o mesmo envio de imagem', async () => {
   expect(corpo).toContain('await comprimirImagem(arquivo)');
   expect(corpo).toContain("tipo: 'imagem'");
 });
+
+/**
+ * AVISO DO CELULAR
+ *
+ * Três defeitos que faziam o aviso parecer "simples demais", e o pior deles
+ * era silencioso: o celular não tocava da segunda mensagem em diante.
+ */
+test('o aviso volta a chamar atencao a cada mensagem da mesma conversa', async () => {
+  const avisos = await Bun.file(
+    new URL('./notificacoes.ts', import.meta.url)
+  ).text();
+
+  /**
+   * A `tag` faz o aviso da mesma conversa SUBSTITUIR o anterior, para dez
+   * mensagens não virarem dez pilhas. Só que substituir é silencioso por
+   * padrão: da segunda mensagem em diante o texto trocava sem vibrar e sem
+   * tocar, e quem largou o celular na bancada não ficava sabendo.
+   */
+  expect(avisos).toContain('renotify: true');
+  expect(avisos).toContain('tag: `conecta-${dados.conversaId}`');
+
+  // Na loja, com barulho de oficina, a vibração é o que realmente avisa
+  expect(avisos).toContain('vibrate:');
+});
+
+test('o aviso leva a conversa junto, para o toque saber o que abrir', async () => {
+  const avisos = await Bun.file(
+    new URL('./notificacoes.ts', import.meta.url)
+  ).text();
+
+  // Sem este dado o trabalhador só trazia a janela para a frente, na tela em
+  // que ela estivesse
+  expect(avisos).toContain('conversaId: dados.conversaId');
+
+  const trabalhador = await Bun.file(
+    new URL('../../public/sw-avisos.js', import.meta.url)
+  ).text();
+
+  expect(trabalhador).toContain("tipo: 'conecta:abrir-conversa'");
+  // E o recado vai ANTES do foco: a janela pode demorar a responder
+  expect(trabalhador.indexOf('janela.postMessage')).toBeLessThan(
+    trabalhador.indexOf('return janela.focus()')
+  );
+  // Sistema fechado: abre já na conversa, pelo endereço
+  expect(trabalhador).toContain("destino + '?conversa=' + encodeURIComponent(conversaId)");
+});
+
+test('o app ouve o trabalhador e limpa o endereco depois de usar', async () => {
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+
+  expect(app).toContain("evento.data?.tipo !== 'conecta:abrir-conversa'");
+  expect(app).toContain("navigator.serviceWorker?.addEventListener('message'");
+  expect(app).toContain("navigator.serviceWorker?.removeEventListener('message'");
+
+  /**
+   * O endereço é lido UMA vez e apagado da barra. Sem isso, recarregar a
+   * página reabriria a mesma conversa para sempre.
+   */
+  expect(app).toContain("endereco.searchParams.delete('conversa')");
+  expect(app).toContain('window.history.replaceState');
+
+  /**
+   * O aviso de jornadas usa um id que não é conversa nenhuma. Abrir uma
+   * janela vazia seria pior do que não abrir nada.
+   */
+  expect(app).toContain('!bancoDados.obterConversaPorId(id)');
+});

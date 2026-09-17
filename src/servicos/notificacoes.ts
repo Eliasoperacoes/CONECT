@@ -184,7 +184,43 @@ export const mostrarAvisoDeMensagem = async (dados: {
     tag: `conecta-${dados.conversaId}`,
     icon: '/logo-malachias.svg',
     badge: '/logo-malachias.svg',
-  };
+
+    /**
+     * SEM ISTO O CELULAR FICAVA MUDO DA SEGUNDA MENSAGEM EM DIANTE.
+     *
+     * A `tag` acima faz o aviso da mesma conversa SUBSTITUIR o anterior, em
+     * vez de empilhar dez avisos. Só que substituir é silencioso por padrão:
+     * a segunda, a terceira e a décima mensagem da mesma pessoa trocavam o
+     * texto do aviso sem vibrar e sem tocar. Quem largou o celular na
+     * bancada não ficava sabendo.
+     *
+     * `renotify` mantém a substituição E volta a chamar a atenção.
+     */
+    renotify: true,
+
+    /**
+     * Na loja o celular quase sempre está no bolso ou em cima do balcão, com
+     * barulho de oficina em volta. A vibração é o que realmente avisa.
+     *
+     * O padrão é curto de propósito: vibrar longo a cada mensagem de grupo
+     * cansa, e aviso que cansa é aviso que a pessoa desliga.
+     */
+    vibrate: [120, 60, 120],
+
+    /** O horário real da mensagem, e não o do momento em que o aviso saiu. */
+    timestamp: Date.now(),
+
+    /**
+     * A conversa vai junto do aviso para o trabalhador saber o que abrir no
+     * toque. Sem este dado ele só trazia a janela para a frente, na tela em
+     * que ela estivesse — e a pessoa tinha de achar a conversa na mão,
+     * depois de já ter tocado no aviso daquela conversa.
+     */
+    data: {
+      conversaId: dados.conversaId,
+      url: '/',
+    },
+  } as NotificationOptions;
 
   // Caminho do trabalhador primeiro: é o único que o Android aceita, e no
   // computador funciona igual.

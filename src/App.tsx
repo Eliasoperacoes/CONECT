@@ -121,6 +121,54 @@ export default function App() {
   const fecharJanela = (id: string) =>
     setJanelas((atuais) => atuais.filter((j) => j.id !== id));
 
+  /**
+   * O TOQUE NO AVISO ABRE A CONVERSA DO AVISO.
+   *
+   * O aviso dizia "Fabio: chegou a peça", a pessoa tocava, e o CONECTA só
+   * vinha para a frente na tela em que estivesse — lista, ponto, onde fosse.
+   * Ela tinha de achar a conversa na mão, depois de já ter tocado no aviso
+   * daquela conversa. No celular, que é onde o aviso chega, isso é o
+   * caminho inteiro de novo.
+   *
+   * Dois caminhos até aqui, porque o celular tem os dois casos:
+   *
+   *  - o sistema já estava aberto: o trabalhador manda um recado com a
+   *    conversa e a janela abre;
+   *  - o sistema estava fechado: ele abre com a conversa no endereço, que é
+   *    lido uma vez e apagado da barra — senão recarregar a página
+   *    reabriria a mesma conversa para sempre.
+   */
+  useEffect(() => {
+    const abrirSeExistir = (id: string) => {
+      // O aviso de jornadas usa um id que não é conversa nenhuma. Abrir uma
+      // janela vazia seria pior do que não abrir nada.
+      if (!id || !bancoDados.obterConversaPorId(id)) return;
+      abrirJanela(id);
+    };
+
+    const aoReceberDoTrabalhador = (evento: MessageEvent) => {
+      if (evento.data?.tipo !== 'conecta:abrir-conversa') return;
+      abrirSeExistir(String(evento.data.conversaId || ''));
+    };
+
+    navigator.serviceWorker?.addEventListener('message', aoReceberDoTrabalhador);
+
+    try {
+      const endereco = new URL(window.location.href);
+      const pedida = endereco.searchParams.get('conversa');
+      if (pedida) {
+        endereco.searchParams.delete('conversa');
+        window.history.replaceState({}, '', endereco.toString());
+        abrirSeExistir(pedida);
+      }
+    } catch {
+      // Endereço estranho: não vale derrubar a abertura do sistema por isso
+    }
+
+    return () =>
+      navigator.serviceWorker?.removeEventListener('message', aoReceberDoTrabalhador);
+  }, []);
+
   const alternarEncolhida = (id: string) =>
     setJanelas((atuais) =>
       atuais.map((j) => (j.id === id ? { ...j, encolhida: !j.encolhida } : j))
