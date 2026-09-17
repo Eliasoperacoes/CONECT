@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pin, PinOff, Trash2, Archive, MoreVertical } from 'lucide-react';
+import { Pin, PinOff, Trash2, Archive, MoreVertical, Check } from 'lucide-react';
 import { Conversa } from '../tipos';
 import {
   estaFixada,
@@ -23,6 +23,16 @@ interface PropsItemConversa {
   colaboradorId?: string;
   /** Avisa quem lista para recarregar depois de fixar ou ocultar. */
   aoMudarPreferencia?: () => void;
+  /**
+   * Modo de seleção: em vez de abrir, o toque marca a conversa.
+   *
+   * Quem manda é quem lista, e não este item: a barra de ações e a contagem
+   * vivem lá, e dois donos do mesmo estado é como a contagem passa a
+   * discordar do que está marcado.
+   */
+  modoSelecao?: boolean;
+  marcada?: boolean;
+  aoAlternarMarcada?: () => void;
 }
 
 /**
@@ -39,6 +49,9 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
   aoClicar,
   colaboradorId,
   aoMudarPreferencia,
+  modoSelecao = false,
+  marcada = false,
+  aoAlternarMarcada,
 }) => {
   /**
    * O menu aberto e o ponto da JANELA onde ancorá-lo.
@@ -49,7 +62,10 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
    * mensagem tinha, e corrigida do mesmo jeito.
    */
   const [ancora, setAncora] = useState<{ x: number; y: number } | null>(null);
-  const temAcoes = !!colaboradorId;
+  // Em modo de seleção as ações individuais somem: a barra da lista decide
+  // o que fazer com o conjunto, e ter os dois caminhos ao mesmo tempo só faz
+  // a pessoa errar qual está usando
+  const temAcoes = !!colaboradorId && !modoSelecao;
   const fixada = colaboradorId ? estaFixada(colaboradorId, conversa.id) : false;
 
   const fechar = () => setAncora(null);
@@ -63,11 +79,26 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
     <button
       type="button"
       id={`item-conversa-${conversa.id}`}
-      onClick={aoClicar}
+      onClick={modoSelecao ? aoAlternarMarcada : aoClicar}
       className={`w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-[var(--c-borda)] transition-colors min-h-[64px] active:bg-[var(--c-superficie-2)] ${
-        selecionada ? 'bg-[var(--c-acento-suave)]' : 'bg-[var(--c-superficie)]'
+        selecionada || marcada
+          ? 'bg-[var(--c-acento-suave)]'
+          : 'bg-[var(--c-superficie)]'
       } ${temAcoes ? 'pr-12' : ''}`}
     >
+      {/* A marca da seleção, à frente da foto */}
+      {modoSelecao && (
+        <span
+          className={`flex-shrink-0 w-5 h-5 rounded-full border flex items-center justify-center transition-colors ${
+            marcada
+              ? 'bg-[var(--c-acento)] border-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+              : 'border-[var(--c-borda-forte)] text-transparent'
+          }`}
+        >
+          <Check className="w-3.5 h-3.5 stroke-[3]" />
+        </span>
+      )}
+
       {/* 1. Foto ou Avatar */}
       <div className="relative flex-shrink-0 w-12 h-12 rounded-full overflow-hidden bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex items-center justify-center">
         {conversa.foto ? (

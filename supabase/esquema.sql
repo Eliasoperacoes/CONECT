@@ -410,6 +410,23 @@ create policy participantes_remocao on public.participantes
   for delete to authenticated
   using (colaborador_id = public.meu_colaborador_id() or public.sou_admin());
 
+-- FALTAVA ESTA, e a falta era silenciosa.
+--
+-- A tabela tinha regra de ler, inserir e apagar — e nenhuma de ATUALIZAR.
+-- Com a seguranca por linha ligada, um update sem regra NAO e recusado com
+-- erro: ele encontra ZERO linhas e devolve sucesso. Entao fixar conversa,
+-- arquivar e excluir NUNCA chegaram ao banco — valiam so no navegador de
+-- quem clicou, e a sincronizacao seguinte trazia tudo de volta.
+--
+-- So a propria linha, nos dois lados: o using decide quais linhas a pessoa
+-- alcanca, e o with check impede que ela entregue a linha para outra pessoa
+-- ao gravar. Sem o segundo, daria para mexer na lista do colega.
+drop policy if exists participantes_atualizacao on public.participantes;
+create policy participantes_atualizacao on public.participantes
+  for update to authenticated
+  using (colaborador_id = public.meu_colaborador_id())
+  with check (colaborador_id = public.meu_colaborador_id());
+
 -- MENSAGENS: ler só de conversa que participa; enviar só como você mesmo;
 -- apagar a própria, ou qualquer uma se Administrador.
 drop policy if exists mensagens_leitura on public.mensagens;

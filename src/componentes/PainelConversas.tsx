@@ -16,6 +16,9 @@ import {
   MessageSquare,
   Users,
   Eye,
+  CheckSquare,
+  Archive,
+  Trash2,
 } from 'lucide-react';
 import { Conversa } from '../tipos';
 import { ItemConversa } from './ItemConversa';
@@ -23,6 +26,8 @@ import {
   aplicarPreferencias,
   contarArquivadas,
   reexibirArquivadas,
+  ocultarConversa,
+  removerConversaDaLista,
 } from '../servicos/preferenciasConversa';
 
 type Secao = 'individuais' | 'grupos';
@@ -54,8 +59,17 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
   colaboradorId,
 }) => {
   const [secao, setSecao] = useState<Secao>(secaoInicial);
+  const [selecionando, setSelecionando] = useState(false);
   const [versao, setVersao] = useState(0);
   const [menuAberto, setMenuAberto] = useState<string | null>(null);
+  /**
+   * As conversas marcadas para uma ação em conjunto.
+   *
+   * Limpar a aba uma a uma, com três toques cada, é o que fez o Elias pedir
+   * isto: quem volta de férias tem vinte conversas para tirar da frente.
+   */
+  const [marcadas, setMarcadas] = useState<string[]>([]);
+  const modoSelecao = marcadas.length > 0 || selecionando;
 
   const bruta = secao === 'individuais' ? conversas : grupos;
 
@@ -72,6 +86,31 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
   const recarregar = () => {
     setVersao((v) => v + 1);
     setMenuAberto(null);
+  };
+
+  const sairDaSelecao = () => {
+    setMarcadas([]);
+    setSelecionando(false);
+  };
+
+  const alternarMarcada = (id: string) =>
+    setMarcadas((atuais) =>
+      atuais.includes(id) ? atuais.filter((i) => i !== id) : [...atuais, id]
+    );
+
+  /**
+   * Aplica a mesma ação a todas as marcadas e sai do modo.
+   *
+   * As duas ações passam pelas MESMAS funções do menu de uma conversa só.
+   * Repetir a regra aqui faria arquivar em lote divergir de arquivar uma —
+   * e divergência assim só aparece quando alguém reclama.
+   */
+  const aplicarNasMarcadas = (
+    acao: (colaboradorId: string, conversaId: string) => void
+  ) => {
+    for (const id of marcadas) acao(colaboradorId, id);
+    sairDaSelecao();
+    recarregar();
   };
 
   return (
@@ -106,14 +145,32 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
           })}
         </div>
 
-        <button
-          type="button"
-          onClick={aoFechar}
-          className="p-1.5 rounded-lg hover:bg-[var(--c-superficie-2)] text-[var(--c-texto-3)] hover:text-[var(--c-texto)] transition-colors cursor-pointer"
-          aria-label="Fechar lista"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-0.5">
+          {lista.length > 0 && (
+            <button
+              type="button"
+              onClick={() => (modoSelecao ? sairDaSelecao() : setSelecionando(true))}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                modoSelecao
+                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                  : 'hover:bg-[var(--c-superficie-2)] text-[var(--c-texto-3)] hover:text-[var(--c-texto)]'
+              }`}
+              title={modoSelecao ? 'Cancelar seleção' : 'Selecionar várias conversas'}
+              aria-label={modoSelecao ? 'Cancelar seleção' : 'Selecionar conversas'}
+            >
+              <CheckSquare className="w-4 h-4" />
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={aoFechar}
+            className="p-1.5 rounded-lg hover:bg-[var(--c-superficie-2)] text-[var(--c-texto-3)] hover:text-[var(--c-texto)] transition-colors cursor-pointer"
+            aria-label="Fechar lista"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -136,11 +193,64 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
                 aoClicar={() => aoAbrir(c.id)}
                 colaboradorId={colaboradorId}
                 aoMudarPreferencia={recarregar}
+                modoSelecao={modoSelecao}
+                marcada={marcadas.includes(c.id)}
+                aoAlternarMarcada={() => alternarMarcada(c.id)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/*
+        A BARRA DA SELEÇÃO.
+
+        Fica acima do resto e substitui o rodapé enquanto está ligada: duas
+        barras empilhadas disputando o mesmo canto é onde a pessoa erra o
+        botão.
+
+        As duas ações são as MESMAS do menu de uma conversa só, e chamam as
+        mesmas funções. Arquivar em lote que divergisse de arquivar uma só
+        seria descoberto por reclamação, não por teste.
+      */}
+      {modoSelecao && (
+        <div className="border-t border-[var(--c-borda)] bg-[var(--c-superficie-2)] flex-shrink-0">
+          <div className="px-3 py-1.5 text-[11px] font-bold text-[var(--c-texto-2)]">
+            {marcadas.length === 0
+              ? 'Toque nas conversas para marcar'
+              : `${marcadas.length} ${marcadas.length === 1 ? 'marcada' : 'marcadas'}`}
+          </div>
+          <div className="flex items-stretch border-t border-[var(--c-borda)]">
+            <button
+              type="button"
+              disabled={marcadas.length === 0}
+              onClick={() => aplicarNasMarcadas(ocultarConversa)}
+              className="flex-1 px-2 py-2.5 flex items-center justify-center gap-1.5 text-xs font-semibold text-[var(--c-texto)] hover:bg-[var(--c-superficie)] disabled:opacity-40 disabled:hover:bg-transparent transition-colors cursor-pointer disabled:cursor-default"
+              title="Saem da lista e voltam na próxima mensagem"
+            >
+              <Archive className="w-3.5 h-3.5" />
+              Arquivar
+            </button>
+            <button
+              type="button"
+              disabled={marcadas.length === 0}
+              onClick={() => aplicarNasMarcadas(removerConversaDaLista)}
+              className="flex-1 px-2 py-2.5 flex items-center justify-center gap-1.5 text-xs font-semibold text-red-600 dark:text-red-400 border-l border-[var(--c-borda)] hover:bg-red-500/10 disabled:opacity-40 disabled:hover:bg-transparent transition-colors cursor-pointer disabled:cursor-default"
+              title="Saem da aba e só voltam quando você chamar o colega"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Excluir
+            </button>
+            <button
+              type="button"
+              onClick={sairDaSelecao}
+              className="px-3 py-2.5 flex items-center justify-center text-xs font-semibold text-[var(--c-texto-3)] border-l border-[var(--c-borda)] hover:bg-[var(--c-superficie)] transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/*
         Conversa arquivada não pode virar conversa perdida: a lista diz

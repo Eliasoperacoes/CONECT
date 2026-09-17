@@ -176,12 +176,23 @@ test('fixar e excluir moram no ITEM, não em quem lista', async () => {
   // Um toque abre — não pode depender de passar o mouse
   expect(item).not.toContain('group-hover');
 
-  // E quem lista não pode ter a própria cópia do menu
+  // E quem lista não pode ter a própria CÓPIA DO MENU
   const painel = await Bun.file(
     new URL('../componentes/PainelConversas.tsx', import.meta.url)
   ).text();
-  expect(painel).not.toContain('alternarFixada');
-  expect(painel).not.toContain('ocultarConversa');
+  expect(painel).not.toContain('menu-item-conversa');
+  expect(painel).not.toContain("'Desafixar' : 'Fixar no topo'");
+
+  /**
+   * Chamar as mesmas funções não é cópia — é o contrário.
+   *
+   * O painel usa `ocultarConversa` e `removerConversaDaLista` para agir
+   * sobre VÁRIAS conversas marcadas de uma vez. O que ele não pode é
+   * reescrever a regra: se montasse a preferência na mão, arquivar em lote
+   * divergiria de arquivar uma só, e isso só apareceria por reclamação.
+   */
+  expect(painel).not.toContain('removida: true');
+  expect(painel).not.toContain('ocultaDesde:');
 });
 
 test('as duas listas passam pelas preferências', async () => {

@@ -631,3 +631,75 @@ test('abrir uma conversa desfaz a exclusao dela', async () => {
   expect(app).toContain('const abrirConversaEmTelaCheia');
   expect(app).not.toContain('aoClicar={() => setConversaAtivaId(c.id)}');
 });
+
+/**
+ * A REGRA QUE FALTAVA NO BANCO.
+ *
+ * `participantes` guarda, por pessoa, o que ela decidiu sobre cada conversa:
+ * fixada, arquivada, excluída. A tabela tinha regra de LER, INSERIR e
+ * APAGAR — e nenhuma de ATUALIZAR.
+ *
+ * Com a segurança por linha ligada, um `update` sem regra não dá erro: ele
+ * não encontra linha nenhuma e devolve sucesso. Por isso excluir funcionava
+ * na tela e a próxima sincronização trazia tudo de volta — a escolha nunca
+ * saía do navegador.
+ */
+test('participantes tem regra de ATUALIZAR, e so da propria linha', async () => {
+  const esquema = await Bun.file(
+    new URL('../../supabase/esquema.sql', import.meta.url)
+  ).text();
+
+  const inicio = esquema.indexOf('create policy participantes_atualizacao');
+  expect(inicio).toBeGreaterThan(-1);
+  const regra = esquema.slice(inicio, inicio + 400);
+
+  expect(regra).toContain('for update');
+
+  /**
+   * Os DOIS lados. O `using` decide quais linhas a pessoa alcança; o
+   * `with check` impede que ela entregue a linha para outra pessoa ao
+   * gravar. Sem o segundo, daria para mexer na lista do colega.
+   */
+  expect(regra).toContain('using (colaborador_id = public.meu_colaborador_id())');
+  expect(regra).toContain('with check (colaborador_id = public.meu_colaborador_id())');
+
+  // E o arquivo avulso, para rodar sem reexecutar o esquema inteiro
+  const avulso = await Bun.file(
+    new URL('../../supabase/participantes-atualizacao.sql', import.meta.url)
+  ).text();
+  expect(avulso).toContain('participantes_atualizacao');
+  expect(avulso).toContain("notify pgrst, 'reload schema'");
+});
+
+/**
+ * Limpar a aba uma a uma, com três toques cada, é o que fez pedir isto:
+ * quem volta de férias tem vinte conversas para tirar da frente.
+ */
+test('da para marcar varias conversas e agir sobre todas', async () => {
+  const painel = await Bun.file(
+    new URL('../componentes/PainelConversas.tsx', import.meta.url)
+  ).text();
+
+  expect(painel).toContain('const [marcadas, setMarcadas]');
+  expect(painel).toContain('const alternarMarcada =');
+
+  /**
+   * As duas ações em lote passam pelas MESMAS funções do menu de uma
+   * conversa só. Arquivar em lote que divergisse de arquivar uma seria
+   * descoberto por reclamação, não por teste.
+   */
+  expect(painel).toContain('aplicarNasMarcadas(ocultarConversa)');
+  expect(painel).toContain('aplicarNasMarcadas(removerConversaDaLista)');
+  expect(painel).not.toContain('removida: true');
+});
+
+test('em modo de selecao o toque marca, e o menu individual sai de cena', async () => {
+  const item = await Bun.file(
+    new URL('../componentes/ItemConversa.tsx', import.meta.url)
+  ).text();
+
+  expect(item).toContain('onClick={modoSelecao ? aoAlternarMarcada : aoClicar}');
+
+  // Ter os dois caminhos ao mesmo tempo só faz a pessoa errar qual está usando
+  expect(item).toContain('const temAcoes = !!colaboradorId && !modoSelecao');
+});
