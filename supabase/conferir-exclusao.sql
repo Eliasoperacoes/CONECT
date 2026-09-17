@@ -1,26 +1,16 @@
 -- ============================================================
 -- CONECTA — A EXCLUSÃO DE CONVERSA ESTÁ CHEGANDO AO BANCO?
 --
--- POR QUE A VERSÃO ANTERIOR DEU TUDO ZERO
---
--- Ela filtrava por `meu_colaborador_id()`. No SQL Editor você roda como
--- DONO DO BANCO, e ali `auth.uid()` é nulo — a função não acha ninguém e
--- o filtro compara com vazio. Zero linhas, e nada a ver com o problema.
---
--- Aqui a pessoa é encontrada pelo LOGIN, que funciona no editor.
+-- UMA CONSULTA SÓ, de propósito: o editor do Supabase mostra apenas o
+-- resultado do ÚLTIMO comando, então um arquivo com várias consultas
+-- entrega sempre a errada.
 --
 -- COMO USAR
 --   1. No sistema, exclua UMA conversa agora (não precisa ser todas).
 --   2. Rode este arquivo.
---   3. Me mande as tabelas 2 e 3.
---
--- Só leitura, fora a regra da parte 1 — que pode ser rodada quantas vezes
--- precisar.
+--   3. Me mande a tabela inteira.
 -- ============================================================
 
--- ------------------------------------------------------------
--- 1. GARANTE A REGRA (caso o arquivo anterior não tenha rodado)
--- ------------------------------------------------------------
 drop policy if exists participantes_atualizacao on public.participantes;
 create policy participantes_atualizacao on public.participantes
   for update to authenticated
@@ -30,51 +20,58 @@ create policy participantes_atualizacao on public.participantes
 notify pgrst, 'reload schema';
 
 -- ------------------------------------------------------------
--- 2. O NÚMERO QUE RESPONDE TUDO
+-- TUDO NUMA TABELA.
 --
--- Conta as marcas de exclusão da REDE INTEIRA, sem depender de saber quem
--- é você. Depois de excluir uma conversa, `excluidas` tem que ser >= 1.
---
--- Se vier 0 com participantes > 0, a gravação não está chegando — e aí é
--- permissão, não resíduo.
+-- A linha que decide é "2. EXCLUIDAS (rede inteira)". Depois de excluir
+-- uma conversa ela tem que ser >= 1.
 -- ------------------------------------------------------------
-select
-  count(*)                          as linhas_de_participante,
-  count(*) filter (where removida)  as excluidas,
-  count(*) filter (where fixada)    as fixadas,
-  count(*) filter (where oculta_desde is not null) as arquivadas
-from public.participantes;
-
--- ------------------------------------------------------------
--- 3. AS SUAS CONVERSAS, UMA A UMA
---
--- >>> Se o seu login não for "Elias", troque nas DUAS linhas marcadas <<<
---
--- `tem_mensagem = false` explica um caso legítimo: conversa sem nenhuma
--- mensagem nunca foi gravada no banco e nem aparece aqui. Nessas, a
--- exclusão vale só no aparelho, e está correto.
--- ------------------------------------------------------------
-select
-  c.nome            as conversa,
-  p.removida,
-  p.fixada,
-  p.oculta_desde,
-  exists (select 1 from public.mensagens m where m.conversa_id = c.id) as tem_mensagem
-from public.participantes p
-join public.conversas c on c.id = p.conversa_id
-where p.colaborador_id = (
-  select id from public.colaboradores
-   where lower(trim(login)) = lower(trim('Elias'))   -- <<< TROQUE AQUI
-   limit 1
+with eu as (
+  select id from public.colaboradores where id = 'colab-admin-elias'
 )
-order by p.removida desc, c.nome;
+select * from (
+  select 1 as ordem,
+         'REGRAS em participantes (esperado: 4)' as o_que,
+         (select count(*)::text from pg_policies where tablename = 'participantes') as valor
 
--- ------------------------------------------------------------
--- 4. CONFERE QUE ACHOU VOCÊ
---
--- Se vier vazio, o login da linha acima está errado e a tabela 3 não
--- significa nada.
--- ------------------------------------------------------------
-select id, nome, login, nivel
-from public.colaboradores
-where lower(trim(login)) = lower(trim('Elias'));       -- <<< TROQUE AQUI
+  union all
+  select 2,
+         '>>> EXCLUIDAS (rede inteira) — tem que ser >= 1',
+         (select count(*) filter (where removida)::text from public.participantes)
+
+  union all
+  select 3, 'ARQUIVADAS (rede inteira)',
+         (select count(*) filter (where oculta_desde is not null)::text
+            from public.participantes)
+
+  union all
+  select 4, 'FIXADAS (rede inteira)',
+         (select count(*) filter (where fixada)::text from public.participantes)
+
+  union all
+  select 5, 'linhas de participante na rede',
+         (select count(*)::text from public.participantes)
+
+  union all
+  select 6, 'suas conversas gravadas no banco',
+         (select count(*)::text from public.participantes
+           where colaborador_id = (select id from eu))
+
+  union all
+  select 7, 'suas EXCLUIDAS',
+         (select count(*) filter (where removida)::text from public.participantes
+           where colaborador_id = (select id from eu))
+
+  union all
+  select 8, 'a coluna removida existe?',
+         (select case when count(*) > 0 then 'sim' else 'NAO' end::text
+            from information_schema.columns
+           where table_schema = 'public' and table_name = 'participantes'
+             and column_name = 'removida')
+
+  union all
+  select 9, 'a regra de UPDATE existe?',
+         (select case when count(*) > 0 then 'sim' else 'NAO' end::text
+            from pg_policies
+           where tablename = 'participantes' and cmd = 'UPDATE')
+) tudo
+order by ordem;
