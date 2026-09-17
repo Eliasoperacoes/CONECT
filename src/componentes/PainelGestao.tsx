@@ -39,6 +39,7 @@ import {
 import { bancoDados } from '../servicos/bancoDados';
 import { podeUsar } from '../servicos/permissoes';
 import { BancoDeHoras } from './BancoDeHoras';
+import { CicloSemanal } from './CicloSemanal';
 import { resumoDaFicha } from '../servicos/fichaColaborador';
 import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
@@ -468,6 +469,21 @@ export const PainelGestao: React.FC<Props> = ({
                   />
                 </div>
               </div>
+
+              {/*
+                O CICLO VEM ANTES DA LISTA.
+
+                A lista responde "como está a minha equipe no mês"; o ciclo
+                responde "o que precisa de mim agora". A segunda pergunta é
+                a que o líder faz no sábado, então ela vem primeiro.
+              */}
+              <CicloSemanal
+                colaboradorAtual={colaboradorAtual}
+                aoEscolherPeriodo={(inicio, fim) => {
+                  setDataInicio(inicio);
+                  setDataFim(fim);
+                }}
+              />
 
               <div className="flex flex-col gap-2">
                 {exibidos.length === 0 && (

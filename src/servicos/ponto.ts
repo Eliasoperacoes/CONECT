@@ -174,18 +174,24 @@ export const formatarSaldo = (minutos: number): string => {
 };
 
 /**
- * A semana de SEGUNDA a DOMINGO que contém esta data.
+ * O CICLO DE SÁBADO A SEXTA que contém esta data.
  *
- * Segunda como primeiro dia porque é assim que a folha corre aqui, e
- * porque o SÁBADO precisa cair no fim: é nele que o líder confere o banco
- * de horas da semana que se fechou. Com a semana começando no domingo, o
- * sábado cairia no meio e a conferência olharia meia semana.
+ * É o ciclo da casa, e não uma semana de calendário. Eu havia feito de
+ * segunda a domingo por conta própria, argumentando que assim o sábado
+ * caía no fim — e estava errado: quem fecha o ciclo é a SEXTA, e o sábado
+ * ABRE o seguinte.
+ *
+ * Faz sentido justamente por causa da conferência: quando o líder senta no
+ * sábado para olhar o banco de horas, o ciclo que ele confere terminou na
+ * véspera. Com o sábado no fim, ele estaria conferindo um ciclo que ainda
+ * não acabou — o dia dele mesmo.
  */
 export const semanaDe = (data: string): { inicio: string; fim: string } => {
   const referencia = deDataLocal(data);
-  // getDay: 0 = domingo. Segunda = 1, então domingo recua 6 dias
+  // getDay: 0 = domingo, 6 = sábado. O sábado é o primeiro dia do ciclo,
+  // então ele recua zero e os outros recuam até chegar nele
   const diaDaSemana = referencia.getDay();
-  const recuo = diaDaSemana === 0 ? 6 : diaDaSemana - 1;
+  const recuo = (diaDaSemana + 1) % 7;
 
   const inicio = new Date(referencia);
   inicio.setDate(inicio.getDate() - recuo);
@@ -652,6 +658,83 @@ class ServicoPonto {
       saldoMinutos: minutosTrabalhados - minutosPrevistos,
       diasComPendencia,
     };
+  }
+
+  /**
+   * A RELAÇÃO DO BANCO DE HORAS DA EQUIPE, ciclo a ciclo.
+   *
+   * É o que o líder abre no sábado: uma linha por pessoa, com o que ela
+   * trabalhou no ciclo que fechou, o que ela devia, o saldo e o que ficou
+   * pendente de batida.
+   *
+   * A FOLGA JÁ ENTRA DESCONTADA, e sem ninguém precisar lembrar: o previsto
+   * de cada dia vem de `cargaPrevistaEmMinutos`, que zera o dia de ausência
+   * APROVADA — e a folga de sábado é uma delas. Quem folgou naquele sábado
+   * específico tem 4 horas a menos de previsto naquele ciclo, e fecha em dia
+   * sem dever nada.
+   *
+   * Folga ainda PENDENTE não desconta. É de propósito: enquanto ninguém
+   * autorizou, o sábado ainda é dia de trabalho — e o saldo negativo é
+   * justamente o que faz o líder decidir.
+   */
+  relacaoSemanalDaEquipe(dataNoCiclo: string): {
+    inicio: string;
+    fim: string;
+    linhas: {
+      colaborador: Colaborador;
+      minutosTrabalhados: number;
+      minutosPrevistos: number;
+      cargaContratada: number;
+      saldoMinutos: number;
+      diasComPendencia: string[];
+      folgouNoCiclo: boolean;
+    }[];
+  } {
+    const { inicio, fim } = semanaDe(dataNoCiclo);
+    const eu = bancoDados.obterColaboradorAtual();
+
+    // Só quem eu aprovo: a relação da rede inteira não é minha para olhar
+    const equipe = this.obterColaboradoresVisiveis().filter((c) => c.id !== eu.id);
+
+    const linhas = equipe
+      .map((colaborador) => {
+        const semana = this.apurarSemana(colaborador.id, dataNoCiclo);
+
+        /**
+         * Folgou neste ciclo? Serve para a tela dizer POR QUE o previsto
+         * daquela pessoa veio menor — senão o líder vê 40h50 numa linha e
+         * 44h50 na de baixo sem explicação, e desconfia da conta.
+         */
+        const folgouNoCiclo = listarDatasDoPeriodo(inicio, fim).some(
+          (data) =>
+            ehSabado(data) && situacaoDoDia(colaborador.id, data) === 'folga'
+        );
+
+        return {
+          colaborador,
+          minutosTrabalhados: semana.minutosTrabalhados,
+          minutosPrevistos: semana.minutosPrevistos,
+          cargaContratada: cargaSemanalDe(colaborador),
+          saldoMinutos: semana.saldoMinutos,
+          diasComPendencia: semana.diasComPendencia,
+          folgouNoCiclo,
+        };
+      })
+      /**
+       * Quem tem pendência de batida vem primeiro, depois o maior débito.
+       *
+       * A relação existe para agir, não para consultar: o que precisa de
+       * decisão tem de estar no alto, e não no meio de oitenta linhas
+       * ordenadas por nome.
+       */
+      .sort((a, b) => {
+        if (a.diasComPendencia.length !== b.diasComPendencia.length) {
+          return b.diasComPendencia.length - a.diasComPendencia.length;
+        }
+        return a.saldoMinutos - b.saldoMinutos;
+      });
+
+    return { inicio, fim, linhas };
   }
 
   /**

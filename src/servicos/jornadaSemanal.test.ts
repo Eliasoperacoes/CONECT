@@ -133,22 +133,149 @@ test('sem a pessoa, vale o dia comum da rede', async () => {
 });
 
 /**
- * A semana vai de SEGUNDA a DOMINGO: é como a folha corre, e põe o SÁBADO
- * no fim — que é quando o líder confere o banco de horas da semana que
- * fechou. Com a semana começando no domingo, o sábado cairia no meio.
+ * O CICLO É DE SÁBADO A SEXTA. É o ciclo da casa, e não uma semana de
+ * calendário.
+ *
+ * Eu havia feito de segunda a domingo por conta própria, argumentando que
+ * assim o sábado caía no fim. Estava errado, e o Elias corrigiu: quem fecha
+ * o ciclo é a SEXTA, e o sábado ABRE o seguinte.
+ *
+ * E faz sentido justamente por causa da conferência: quando o líder senta
+ * no sábado para olhar o banco de horas, o ciclo que ele confere terminou
+ * na véspera. Com o sábado no fim, ele estaria conferindo um ciclo que
+ * ainda não acabou — o dia dele mesmo.
  */
-test('a semana vai de segunda a domingo', async () => {
+test('o ciclo vai de sabado a sexta', async () => {
   const { semanaDe } = await import('./ponto');
 
-  // 2026-09-16 é uma quarta
-  expect(semanaDe('2026-09-16')).toEqual({ inicio: '2026-09-14', fim: '2026-09-20' });
+  // 2026-09-19 é um sábado: ele ABRE o ciclo
+  expect(semanaDe('2026-09-19')).toEqual({ inicio: '2026-09-19', fim: '2026-09-25' });
 
-  // A segunda é o primeiro dia dela mesma
-  expect(semanaDe('2026-09-14').inicio).toBe('2026-09-14');
+  // 2026-09-18 é a sexta anterior: ela FECHA o ciclo que começou dia 12
+  expect(semanaDe('2026-09-18')).toEqual({ inicio: '2026-09-12', fim: '2026-09-18' });
 
-  // E o domingo fecha a semana que começou na segunda anterior
-  expect(semanaDe('2026-09-20')).toEqual({ inicio: '2026-09-14', fim: '2026-09-20' });
+  // Domingo, segunda e quarta caem no ciclo aberto pelo sábado dia 19
+  expect(semanaDe('2026-09-20').inicio).toBe('2026-09-19');
+  expect(semanaDe('2026-09-21').inicio).toBe('2026-09-19');
+  expect(semanaDe('2026-09-23').inicio).toBe('2026-09-19');
 
-  // O sábado cai no penúltimo dia, nunca no meio
-  expect(semanaDe('2026-09-19').fim).toBe('2026-09-20');
+  // E todo ciclo tem sete dias
+  const ciclo = semanaDe('2026-09-16');
+  expect(ciclo).toEqual({ inicio: '2026-09-12', fim: '2026-09-18' });
+});
+
+test('o sabado da conferencia olha o ciclo que ACABOU', async () => {
+  const { semanaDe } = await import('./ponto');
+
+  /**
+   * No sábado o líder confere o ciclo anterior — o que fechou na sexta. O
+   * ciclo do próprio sábado mal começou, e conferir ele seria olhar um dia
+   * só.
+   */
+  const sabado = '2026-09-19';
+  const doProprioSabado = semanaDe(sabado);
+  expect(doProprioSabado.inicio).toBe(sabado);
+
+  // O anterior é o que interessa na conferência: fecha na véspera
+  const anterior = semanaDe('2026-09-18');
+  expect(anterior.fim).toBe('2026-09-18');
+});
+
+/**
+ * A RELAÇÃO DO BANCO DE HORAS DO CICLO.
+ *
+ * É o que o líder abre no sábado: uma linha por pessoa da equipe dele, com
+ * o que ela trabalhou no ciclo que fechou, o que devia, o saldo e o que
+ * ficou pendente de batida.
+ */
+const lerPonto = async (): Promise<string> =>
+  Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+
+const semComentarios = (fonte: string): string =>
+  fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+test('a relacao do ciclo e so da equipe de quem abre', async () => {
+  const codigo = semComentarios(await lerPonto());
+  const inicio = codigo.indexOf('relacaoSemanalDaEquipe');
+  const corpo = codigo.slice(inicio, inicio + 3000);
+
+  // A relação da rede inteira não é do líder para olhar
+  expect(corpo).toContain('this.obterColaboradoresVisiveis()');
+  expect(corpo).toContain('c.id !== eu.id');
+});
+
+test('a folga do sabado JA VEM DESCONTADA do previsto do ciclo', async () => {
+  const codigo = await lerPonto();
+
+  /**
+   * É automático, e precisa ser: o previsto de cada dia zera em ausência
+   * APROVADA, e a folga de sábado é uma delas. Quem folgou naquele sábado
+   * específico tem 4 horas a menos de previsto no ciclo e fecha em dia.
+   *
+   * Se alguém acrescentar um desconto de folga à parte, a folga passa a
+   * ser descontada DUAS vezes e a pessoa fecha o ciclo com crédito falso.
+   */
+  expect(codigo).toContain(
+    "if (colaborador && situacaoDoDia(colaborador.id, data) !== 'normal') return 0;"
+  );
+
+  const inicio = codigo.indexOf('relacaoSemanalDaEquipe');
+  const corpo = codigo.slice(inicio, inicio + 3000);
+  expect(corpo).not.toContain('MINUTOS_SABADO');
+});
+
+test('o ciclo marca QUEM folgou, para a conta nao parecer errada', async () => {
+  const codigo = semComentarios(await lerPonto());
+  const inicio = codigo.indexOf('relacaoSemanalDaEquipe');
+  const corpo = codigo.slice(inicio, inicio + 3000);
+
+  /**
+   * Sem esta marca o líder vê 40h50 numa linha e 44h50 na de baixo sem
+   * explicação, e desconfia da conta.
+   */
+  expect(corpo).toContain('folgouNoCiclo');
+  expect(corpo).toContain("situacaoDoDia(colaborador.id, data) === 'folga'");
+});
+
+test('quem precisa de decisao vem primeiro na relacao', async () => {
+  const codigo = semComentarios(await lerPonto());
+  const inicio = codigo.indexOf('relacaoSemanalDaEquipe');
+  const corpo = codigo.slice(inicio, inicio + 3500);
+
+  /**
+   * A relação existe para agir, não para consultar: o que precisa de
+   * decisão tem de estar no alto, e não no meio de oitenta linhas
+   * ordenadas por nome.
+   */
+  expect(corpo).toContain('b.diasComPendencia.length - a.diasComPendencia.length');
+  expect(corpo).toContain('a.saldoMinutos - b.saldoMinutos');
+});
+
+test('o painel do ciclo abre no ciclo FECHADO, nao no de hoje', async () => {
+  const tela = await Bun.file(
+    new URL('../componentes/CicloSemanal.tsx', import.meta.url)
+  ).text();
+
+  /**
+   * A conferência é de sábado, e no sábado o ciclo do dia mal começou —
+   * olhar para ele mostraria um dia só.
+   */
+  expect(tela).toContain('useState(-1)');
+
+  // E não deixa avançar para o futuro
+  expect(tela).toContain('Math.min(d + 1, 0)');
+});
+
+test('o painel do ciclo mostra so quem precisa de decisao', async () => {
+  const tela = await Bun.file(
+    new URL('../componentes/CicloSemanal.tsx', import.meta.url)
+  ).text();
+
+  /**
+   * Não é uma segunda lista da equipe: a de baixo responde "como está minha
+   * equipe no mês", esta responde "o que precisa de mim neste ciclo". Duas
+   * listas iguais seriam duas telas para a mesma coisa.
+   */
+  expect(tela).toContain('const precisamDeVoce = [...totais.comPendencia, ...totais.devendo]');
+  expect(tela).toContain('aoEscolherPeriodo(relacao.inicio, relacao.fim)');
 });
