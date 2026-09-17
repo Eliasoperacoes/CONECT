@@ -361,9 +361,9 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   };
 
   // Confirmar exclusão de colaborador via modal in-app
-  const confirmarExclusaoColaborador = () => {
+  const confirmarExclusaoColaborador = async () => {
     if (!colabParaExcluir) return;
-    const res = bancoDados.removerColaborador(colabParaExcluir.id);
+    const res = await bancoDados.removerColaborador(colabParaExcluir.id);
     if (res.sucesso) {
       // Limpa também o banco de horas, senão sobrariam registros sem dono
       servicoPonto.removerRegistrosDoColaborador(colabParaExcluir.id);

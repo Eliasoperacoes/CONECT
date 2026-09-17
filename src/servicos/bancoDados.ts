@@ -1369,7 +1369,7 @@ class BancoDadosConecta {
   }
 
   // Excluir ou desativar colaborador
-  removerColaborador(id: string): { sucesso: boolean; erro?: string } {
+  async removerColaborador(id: string): Promise<{ sucesso: boolean; erro?: string }> {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel < NIVEL_TI) {
       return { sucesso: false, erro: 'Apenas Administradores podem excluir colaboradores.' };
@@ -1426,7 +1426,31 @@ class BancoDadosConecta {
       this.esquecerUltimoAcessoDoDispositivo();
     }
 
-    if (usandoNuvem()) nuvem.removerColaborador(id);
+    /**
+     * O BANCO PRIMEIRO, igual ao cadastro.
+     *
+     * Antes a remoção ia para o banco sem ninguém esperar a resposta. Se ela
+     * falhasse, a ficha sumia da tela e CONTINUAVA no banco — com o login
+     * ocupado e a senha de primeiro acesso antiga. Quem tentasse recadastrar
+     * a mesma pessoa esbarrava num login já usado, e quem tentasse entrar
+     * continuava batendo na senha velha. Foi exatamente o que aconteceu ao
+     * apagar e recriar um cadastro para tentar consertá-lo.
+     */
+    if (usandoNuvem()) {
+      const res = await nuvem.removerColaborador(id);
+      if (!res.sucesso) {
+        // A ficha volta para a lista: o banco ainda a tem, e fingir que não
+        // seria mentir para quem for recadastrar
+        localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));
+        this.notificar();
+        return {
+          sucesso: false,
+          erro: `A remoção não foi gravada no banco: ${
+            res.erro || 'motivo não informado'
+          }. O cadastro continua lá e o login segue ocupado.`,
+        };
+      }
+    }
 
     this.registrarAuditoria(
       'Remoção de Colaborador',

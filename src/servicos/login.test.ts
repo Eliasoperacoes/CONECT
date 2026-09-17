@@ -432,3 +432,27 @@ test('A CARGA POR PLANILHA continua com o caminho dela', async () => {
   const corpo = servico.slice(inicio, inicio + 6000);
   expect(corpo).not.toContain('this.criarColaborador');
 });
+
+test('excluir um colaborador espera o banco antes de dizer que removeu', async () => {
+  /**
+   * O outro lado do mesmo defeito do cadastro.
+   *
+   * A remoção ia para o banco sem ninguém esperar a resposta. Se ela falhasse,
+   * a ficha sumia da tela e continuava no banco — login ocupado e senha de
+   * primeiro acesso antiga. Apagar e recriar, que é o que qualquer um tenta
+   * quando um cadastro não entra, passava a piorar o problema em vez de
+   * resolvê-lo.
+   */
+  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
+
+  expect(servico).toContain('async removerColaborador(');
+  // A chamada solta, sem espera, é o que não pode voltar
+  expect(servico).not.toContain('if (usandoNuvem()) nuvem.removerColaborador(id);');
+  expect(servico).toContain('const res = await nuvem.removerColaborador(id);');
+
+  // E o painel precisa esperar essa resposta, senão o aviso na tela mente igual
+  const painel = await Bun.file(
+    new URL('../componentes/PainelAdministrativo.tsx', import.meta.url)
+  ).text();
+  expect(painel).toContain('await bancoDados.removerColaborador(');
+});
