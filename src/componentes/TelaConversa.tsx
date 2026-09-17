@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   ArrowLeft,
   MoreVertical,
@@ -216,6 +216,15 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   };
 
   const refFimMensagens = useRef<HTMLDivElement>(null);
+  const refLista = useRef<HTMLDivElement>(null);
+  /**
+   * Enquanto true, a conversa fica grudada no fim.
+   *
+   * Vira false quando a pessoa rola para cima para ler o passado — senão
+   * cada mensagem nova a arrancaria de onde ela está lendo. Volta a true
+   * quando ela desce de novo até o fim.
+   */
+  const grudadoNoFim = useRef(true);
   const refTemporizadorPressione = useRef<NodeJS.Timeout | null>(null);
   const refAudioElemento = useRef<HTMLAudioElement | null>(null);
   const refInputArquivo = useRef<HTMLInputElement>(null);
@@ -251,10 +260,58 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     };
   }, [conversa.id]);
 
-  // Rola para a última mensagem sempre que chegarem novas
-  useEffect(() => {
-    refFimMensagens.current?.scrollIntoView({ behavior: 'smooth' });
+  /**
+   * ABRIR UMA CONVERSA CAI NA ÚLTIMA MENSAGEM.
+   *
+   * Não caía: parava no meio do histórico, ou no começo. Duas causas, e as
+   * duas vinham do mesmo `scrollIntoView({ behavior: 'smooth' })`:
+   *
+   *  - suave é uma ANIMAÇÃO. Ela leva centenas de milissegundos e é
+   *    cancelada por qualquer rolagem que aconteça no meio — inclusive a que
+   *    o próprio navegador faz ao montar a lista. A conversa parava onde a
+   *    animação foi interrompida;
+   *  - a altura da lista ainda ia MUDAR. Foto e áudio só ocupam o espaço
+   *    deles depois de carregar, e cada um que chega empurra o fim para
+   *    baixo. Rolar antes disso é mirar num alvo que ainda vai se mexer.
+   *
+   * Ao abrir, agora é um salto direto: `scrollTop = scrollHeight`, sem
+   * animação, sem alvo que se move. Durante a conversa, mensagem nova
+   * continua suave — ali é acompanhar, não chegar.
+   */
+  useLayoutEffect(() => {
+    const lista = refLista.current;
+    if (!lista) return;
+
+    if (grudadoNoFim.current) {
+      lista.scrollTop = lista.scrollHeight;
+    }
   }, [mensagens]);
+
+  // Trocar de conversa volta a grudar no fim
+  useLayoutEffect(() => {
+    grudadoNoFim.current = true;
+    const lista = refLista.current;
+    if (lista) lista.scrollTop = lista.scrollHeight;
+  }, [conversa.id]);
+
+  /**
+   * A segunda causa, tratada na fonte: foto e áudio que terminam de carregar.
+   *
+   * O evento `load` de `<img>` não sobe pela árvore, então é preciso ouvir
+   * na CAPTURA. Sem isto, abrir uma conversa cheia de fotos parava a rolagem
+   * na altura que a lista tinha antes de as imagens existirem.
+   */
+  useEffect(() => {
+    const lista = refLista.current;
+    if (!lista) return;
+
+    const aoCarregarAlgo = () => {
+      if (grudadoNoFim.current) lista.scrollTop = lista.scrollHeight;
+    };
+
+    lista.addEventListener('load', aoCarregarAlgo, true);
+    return () => lista.removeEventListener('load', aoCarregarAlgo, true);
+  }, [conversa.id]);
 
   // Ouve transmissões ao vivo de rádio de colegas (WebRTC / BroadcastChannel)
   useEffect(() => {
@@ -1027,15 +1084,21 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       )}
 
       <div
+        ref={refLista}
         className="flex-1 overflow-y-auto p-4 space-y-3"
-        onScroll={
-          menuMensagem || painelReacao
-            ? () => {
-                fecharMenuMensagem();
-                fecharPainelReacao();
-              }
-            : undefined
-        }
+        onScroll={(e) => {
+          /**
+           * Quem subiu para ler o passado não pode ser arrancado de lá pela
+           * próxima mensagem. A folga de 80px é para o caso comum de estar
+           * "quase" no fim — ali ainda vale acompanhar.
+           */
+          const el = e.currentTarget;
+          grudadoNoFim.current =
+            el.scrollHeight - el.scrollTop - el.clientHeight <= 80;
+
+          if (menuMensagem) fecharMenuMensagem();
+          if (painelReacao) fecharPainelReacao();
+        }}
       >
         {mensagensExibidas.length === 0 ? (
           <div className="h-full flex items-center justify-center text-[var(--c-texto-3)] text-sm">

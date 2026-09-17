@@ -26,7 +26,10 @@ import {
 } from '../tipos';
 import { supabase } from './supabase';
 import { resolverCaminhos } from './anexos';
-import { aplicarPreferenciasDaNuvem } from './preferenciasConversa';
+import {
+  aplicarPreferenciasDaNuvem,
+  type MapaDePreferencias,
+} from './preferenciasConversa';
 import { aplicarPermissoes, MapaDePermissoes } from './permissoes';
 
 const CHAVE_CONVERSAS = 'conecta_v4_conversas';
@@ -386,7 +389,7 @@ class PonteComunicacao {
       supabase.from('conversas').select('*'),
       supabase
         .from('participantes')
-        .select('conversa_id, colaborador_id, fixada, oculta_desde'),
+        .select('conversa_id, colaborador_id, fixada, oculta_desde, removida'),
       supabase.from('mensagens').select('*').order('criado_em'),
       supabase.from('leituras_mensagem').select('mensagem_id, colaborador_id'),
     ]);
@@ -463,7 +466,15 @@ class PonteComunicacao {
      * aplicar à lista de quem está lendo.
      */
     const meuId = localStorage.getItem('conecta_v4_colaborador_atual');
-    const preferencias: Record<string, { fixada?: boolean; ocultaDesde?: string }> = {};
+    /**
+     * O tipo sai de preferenciasConversa, não é redigitado aqui.
+     *
+     * Redigitado, ele ficou para trás quando `removida` nasceu: o campo vinha
+     * do banco, era montado logo abaixo e o TypeScript recusava — e a saída
+     * fácil seria acrescentar mais uma cópia da forma, criando o quinto caso
+     * de "a mesma coisa escrita em dois lugares" deste sistema.
+     */
+    const preferencias: MapaDePreferencias = {};
 
     (
       (participantes.data || []) as {
@@ -471,6 +482,7 @@ class PonteComunicacao {
         colaborador_id: string;
         fixada?: boolean;
         oculta_desde?: string | null;
+        removida?: boolean | null;
       }[]
     ).forEach((p) => {
       const atual = idsPorConversa.get(p.conversa_id) || [];
@@ -481,6 +493,7 @@ class PonteComunicacao {
         preferencias[p.conversa_id] = {
           fixada: !!p.fixada,
           ocultaDesde: p.oculta_desde || undefined,
+          removida: p.removida || undefined,
         };
       }
     });
@@ -973,7 +986,11 @@ class PonteComunicacao {
   async salvarPreferenciaDeConversa(
     conversaId: string,
     colaboradorId: string,
-    preferencia: { fixada?: boolean; ocultaDesde?: string | null }
+    preferencia: {
+      fixada?: boolean;
+      ocultaDesde?: string | null;
+      removida?: boolean;
+    }
   ): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
 
@@ -982,6 +999,7 @@ class PonteComunicacao {
     if (preferencia.ocultaDesde !== undefined) {
       campos.oculta_desde = preferencia.ocultaDesde;
     }
+    if (preferencia.removida !== undefined) campos.removida = preferencia.removida;
     if (Object.keys(campos).length === 0) return { sucesso: true };
 
     const { error } = await supabase

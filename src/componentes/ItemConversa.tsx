@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
-import { Pin, PinOff, Trash2, MoreVertical } from 'lucide-react';
+import { Pin, PinOff, Trash2, Archive, MoreVertical } from 'lucide-react';
 import { Conversa } from '../tipos';
 import {
   estaFixada,
   alternarFixada,
   ocultarConversa,
+  removerConversaDaLista,
 } from '../servicos/preferenciasConversa';
+
+/** Três linhas de 36px mais o respiro das bordas. */
+const MENU_LARGURA = 168;
+const MENU_ALTURA = 116;
 
 interface PropsItemConversa {
   conversa: Conversa;
@@ -35,11 +40,19 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
   colaboradorId,
   aoMudarPreferencia,
 }) => {
-  const [menuAberto, setMenuAberto] = useState(false);
+  /**
+   * O menu aberto e o ponto da JANELA onde ancorá-lo.
+   *
+   * Era `absolute right-2 top-12` dentro do item da lista. A lista rola e
+   * tem `overflow`, então nas últimas conversas o menu abria para baixo e
+   * era cortado pela borda — a mesma experiência de defeito que o menu da
+   * mensagem tinha, e corrigida do mesmo jeito.
+   */
+  const [ancora, setAncora] = useState<{ x: number; y: number } | null>(null);
   const temAcoes = !!colaboradorId;
   const fixada = colaboradorId ? estaFixada(colaboradorId, conversa.id) : false;
 
-  const fechar = () => setMenuAberto(false);
+  const fechar = () => setAncora(null);
   // Inicial do nome para avatar caso não haja foto
   const obterInicial = (nome: string) => {
     return (nome || '?').charAt(0).toUpperCase();
@@ -115,7 +128,12 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
         type="button"
         onClick={(e) => {
           e.stopPropagation();
-          setMenuAberto((v) => !v);
+          if (ancora) {
+            fechar();
+            return;
+          }
+          const r = e.currentTarget.getBoundingClientRect();
+          setAncora({ x: r.right - MENU_LARGURA, y: r.bottom });
         }}
         title="Opções da conversa"
         aria-label="Opções da conversa"
@@ -125,45 +143,87 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
       </button>
     )}
 
-    {menuAberto && colaboradorId && (
-      <>
-        <div className="fixed inset-0 z-30" onClick={fechar} />
-        <div className="absolute right-2 top-12 z-40 w-56 rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] shadow-xl overflow-hidden text-sm">
-          <button
-            type="button"
-            onClick={() => {
-              alternarFixada(colaboradorId, conversa.id);
-              fechar();
-              aoMudarPreferencia?.();
-            }}
-            className="w-full px-3 py-3 flex items-center gap-2.5 active:bg-[var(--c-canvas)] hover:bg-[var(--c-canvas)] text-[var(--c-texto)] font-semibold"
-          >
-            {fixada ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
-            {fixada ? 'Desafixar' : 'Fixar no topo'}
-          </button>
+    {ancora && colaboradorId && (() => {
+      // Cabe embaixo? Senão abre para cima. E nunca passa da lateral.
+      const cabeAbaixo = ancora.y + MENU_ALTURA + 12 <= window.innerHeight;
+      const topo = cabeAbaixo ? ancora.y + 4 : Math.max(8, ancora.y - MENU_ALTURA - 44);
+      const esquerda = Math.min(
+        Math.max(8, ancora.x),
+        window.innerWidth - MENU_LARGURA - 8
+      );
 
-          <button
-            type="button"
-            onClick={() => {
-              ocultarConversa(colaboradorId, conversa.id);
-              fechar();
-              aoMudarPreferencia?.();
-            }}
-            className="w-full px-3 py-3 flex flex-col items-start gap-0.5 active:bg-red-500/10 hover:bg-red-500/10 text-red-600 font-semibold border-t border-[var(--c-borda)]"
+      return (
+        <>
+          <div className="fixed inset-0 z-[60]" onClick={fechar} />
+          <div
+            id="menu-item-conversa"
+            style={{ top: topo, left: esquerda, width: MENU_LARGURA }}
+            className="fixed z-[61] py-1 rounded-lg bg-[var(--c-superficie)] border border-[var(--c-borda)] shadow-[var(--s-3)] overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
           >
-            <span className="flex items-center gap-2.5">
-              <Trash2 className="w-4 h-4" />
-              Excluir conversa
-            </span>
-            {/* Dizer o que acontece de fato: "excluir" promete apagar */}
-            <span className="text-[11px] font-normal text-[var(--c-texto-3)] text-left leading-tight">
-              Some da sua lista. O histórico fica no banco e volta se escreverem
-              de novo.
-            </span>
-          </button>
-        </div>
-      </>
-    )}
+            <button
+              type="button"
+              onClick={() => {
+                alternarFixada(colaboradorId, conversa.id);
+                fechar();
+                aoMudarPreferencia?.();
+              }}
+              className="w-full px-3 h-9 flex items-center gap-2.5 text-xs font-semibold text-left text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-canvas)] transition-colors"
+            >
+              {fixada ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+              {fixada ? 'Desafixar' : 'Fixar no topo'}
+            </button>
+
+            {/*
+              ARQUIVAR — o nome honesto do que este botão sempre fez.
+
+              Chamava-se "Excluir conversa" e não excluía nada: a conversa
+              voltava sozinha assim que o colega escrevesse. Nome que promete
+              outra coisa faz a pessoa evitar o botão certo com medo de
+              perder o histórico.
+            */}
+            <button
+              type="button"
+              onClick={() => {
+                ocultarConversa(colaboradorId, conversa.id);
+                fechar();
+                aoMudarPreferencia?.();
+              }}
+              className="w-full px-3 h-9 flex items-center gap-2.5 text-xs font-semibold text-left text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-canvas)] transition-colors border-t border-[var(--c-borda)]"
+              title="Sai da lista e volta sozinha na próxima mensagem"
+            >
+              <Archive className="w-3.5 h-3.5" />
+              Arquivar
+            </button>
+
+            {/*
+              EXCLUIR — sai da aba e NÃO volta sozinha.
+
+              É a única diferença para arquivar, e é ela que justifica as
+              duas existirem. Mensagem nova continua chegando: o contador
+              conta e o aviso do celular toca. O que não acontece é a
+              conversa reaparecer na lista por conta própria.
+
+              Nenhuma mensagem é apagada. Chamar o colega de novo traz a
+              conversa inteira de volta.
+            */}
+            <button
+              type="button"
+              onClick={() => {
+                removerConversaDaLista(colaboradorId, conversa.id);
+                fechar();
+                aoMudarPreferencia?.();
+              }}
+              className="w-full px-3 h-9 flex items-center gap-2.5 text-xs font-semibold text-left text-red-600 dark:text-red-400 hover:bg-red-500/10 active:bg-red-500/10 transition-colors border-t border-[var(--c-borda)]"
+              title="Sai da aba e só volta quando você chamar o colega de novo"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Excluir
+            </button>
+          </div>
+        </>
+      );
+    })()}
     </div>
   );
 };

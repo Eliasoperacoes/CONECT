@@ -60,7 +60,11 @@ import { JanelaChat } from './componentes/JanelaChat';
 import { ConversasEmEspera } from './componentes/ConversasEmEspera';
 import { PainelConversas } from './componentes/PainelConversas';
 import { podeUsar } from './servicos/permissoes';
-import { aplicarPreferencias, assinarPreferencias } from './servicos/preferenciasConversa';
+import {
+  aplicarPreferencias,
+  assinarPreferencias,
+  reexibirConversa,
+} from './servicos/preferenciasConversa';
 import {
   pendenciasParaDecidir as pendenciasDeAusencia,
   pendenciasDeFolga,
@@ -139,7 +143,20 @@ export default function App() {
    * conversa continua a um clique no botão de espera, em vez de sumir sem
    * aviso como sumia antes.
    */
-  const abrirJanela = (id: string) =>
+  const abrirJanela = (id: string) => {
+    /**
+     * ABRIR É O PEDIDO DE TRAZER DE VOLTA.
+     *
+     * Conversa excluída sai da lista e não volta sozinha — nem com mensagem
+     * nova. A única coisa que a traz de volta é a pessoa chamar o colega
+     * outra vez, e é exatamente isto aqui.
+     *
+     * Vale para qualquer abertura, e é de propósito: uma conversa que já
+     * está na lista não muda nada com isso, e assim não há um segundo lugar
+     * decidindo quando a remoção acaba.
+     */
+    reexibirConversa(colaboradorAtual.id, id);
+
     setJanelas((atuais) => {
       const outras = atuais.filter((j) => j.id !== id);
       let abertas = 0;
@@ -150,6 +167,13 @@ export default function App() {
         return abertas <= MAXIMO_JANELAS_ABERTAS ? j : { ...j, encolhida: true };
       });
     });
+  };
+
+  /** A mesma abertura do computador, para a tela cheia do celular. */
+  const abrirConversaEmTelaCheia = (id: string) => {
+    reexibirConversa(colaboradorAtual.id, id);
+    setConversaAtivaId(id);
+  };
 
   const fecharJanela = (id: string) =>
     setJanelas((atuais) => atuais.filter((j) => j.id !== id));
@@ -838,7 +862,7 @@ export default function App() {
                       key={c.id}
                       conversa={c}
                       selecionada={conversaAtivaId === c.id}
-                      aoClicar={() => setConversaAtivaId(c.id)}
+                      aoClicar={() => abrirConversaEmTelaCheia(c.id)}
                       colaboradorId={colaboradorAtual.id}
                       aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
                     />
@@ -860,7 +884,7 @@ export default function App() {
                       key={g.id}
                       conversa={g}
                       selecionada={conversaAtivaId === g.id}
-                      aoClicar={() => setConversaAtivaId(g.id)}
+                      aoClicar={() => abrirConversaEmTelaCheia(g.id)}
                       colaboradorId={colaboradorAtual.id}
                       aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
                     />

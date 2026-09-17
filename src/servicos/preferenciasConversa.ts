@@ -30,6 +30,18 @@ export interface PreferenciaDeConversa {
    * mensagem posterior a esta data traz a conversa de volta.
    */
   ocultaDesde?: string;
+  /**
+   * REMOVIDA da lista, e ao contrário de arquivada NÃO volta sozinha.
+   *
+   * A diferença entre as duas é só esta, e é ela que justifica existirem
+   * duas: arquivar é "depois eu vejo" — a conversa volta na próxima
+   * mensagem. Remover é "sai da minha aba" — só volta quando a própria
+   * pessoa chamar o colega de novo.
+   *
+   * NADA é apagado nos dois casos. O histórico fica no banco e aparece
+   * inteiro quando a conversa reabre.
+   */
+  removida?: boolean;
 }
 
 export type MapaDePreferencias = Record<string, PreferenciaDeConversa>;
@@ -139,7 +151,13 @@ export const alternarFixada = (colaboradorId: string, conversaId: string): boole
   return nova;
 };
 
-/** Tira da lista de quem pediu. As mensagens ficam onde estão. */
+/**
+ * ARQUIVAR: tira da lista e devolve na próxima mensagem.
+ *
+ * Chamava-se "excluir" na tela, e não era: nada era excluído, e a conversa
+ * voltava sozinha assim que o colega escrevesse. Nome que descreve outra
+ * coisa faz a pessoa evitar o botão certo com medo de perder o histórico.
+ */
 export const ocultarConversa = (colaboradorId: string, conversaId: string): void => {
   const mapa = obterPreferencias(colaboradorId);
   const agora = new Date().toISOString();
@@ -154,12 +172,49 @@ export const ocultarConversa = (colaboradorId: string, conversaId: string): void
   void subirParaONuvem(conversaId, colaboradorId, { ocultaDesde: agora, fixada: false });
 };
 
+/**
+ * REMOVER: sai da aba e não volta sozinha.
+ *
+ * Mensagem nova do colega continua chegando — o contador conta e o aviso do
+ * celular toca. O que não acontece é a conversa reaparecer na lista por
+ * conta própria: quem decide isso é quem removeu, chamando o colega de
+ * novo.
+ *
+ * O `ocultaDesde` vai junto para a conversa sair na hora, sem esperar
+ * sincronização. E a marca de fixada cai: conversa removida que volta
+ * grudada no topo não faz sentido nenhum.
+ */
+export const removerConversaDaLista = (
+  colaboradorId: string,
+  conversaId: string
+): void => {
+  const mapa = obterPreferencias(colaboradorId);
+  const agora = new Date().toISOString();
+  mapa[conversaId] = {
+    ...(mapa[conversaId] || {}),
+    removida: true,
+    ocultaDesde: agora,
+    fixada: false,
+  };
+  gravar(colaboradorId, mapa);
+  void subirParaONuvem(conversaId, colaboradorId, {
+    removida: true,
+    ocultaDesde: agora,
+    fixada: false,
+  });
+};
+
 export const reexibirConversa = (colaboradorId: string, conversaId: string): void => {
   const mapa = obterPreferencias(colaboradorId);
   if (!mapa[conversaId]) return;
   delete mapa[conversaId].ocultaDesde;
+  // A remoção também cai: abrir a conversa É o pedido de trazê-la de volta
+  delete mapa[conversaId].removida;
   gravar(colaboradorId, mapa);
-  void subirParaONuvem(conversaId, colaboradorId, { ocultaDesde: null });
+  void subirParaONuvem(conversaId, colaboradorId, {
+    ocultaDesde: null,
+    removida: false,
+  });
 };
 
 /**
@@ -174,6 +229,14 @@ export const deveAparecer = (
   conversa: { id: string; atualizadoEm: string }
 ): boolean => {
   const pref = obterPreferencias(colaboradorId)[conversa.id];
+
+  /**
+   * Removida não volta por mensagem nova. É a única diferença entre remover
+   * e arquivar, e ela precisa vir ANTES da comparação de datas — senão a
+   * primeira mensagem do colega desfaria a remoção.
+   */
+  if (pref?.removida) return false;
+
   if (!pref?.ocultaDesde) return true;
 
   const ocultaEm = new Date(pref.ocultaDesde).getTime();
@@ -218,7 +281,7 @@ export const contarOcultas = <T extends { id: string; atualizadoEm: string }>(
 const subirParaONuvem = async (
   conversaId: string,
   colaboradorId: string,
-  preferencia: { fixada?: boolean; ocultaDesde?: string | null }
+  preferencia: { fixada?: boolean; ocultaDesde?: string | null; removida?: boolean }
 ): Promise<void> => {
   const emTransito = chaveEmTransito(colaboradorId, conversaId);
   subindoAgora.add(emTransito);

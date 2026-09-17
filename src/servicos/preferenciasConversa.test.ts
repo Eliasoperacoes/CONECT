@@ -29,6 +29,7 @@ const {
   contarOcultas,
   obterPreferencias,
   aplicarPreferenciasDaNuvem,
+  removerConversaDaLista,
 } = await import('./preferenciasConversa');
 
 const EU = 'colab-elias';
@@ -206,8 +207,10 @@ test('a preferência vai para o BANCO, não fica presa no aparelho', async () =>
     new URL('./preferenciasConversa.ts', import.meta.url)
   ).text();
 
-  // Os três caminhos sobem: fixar, ocultar e reexibir
-  expect((servico.match(/void subirParaONuvem\(/g) || []).length).toBe(3);
+  // Os QUATRO caminhos sobem: fixar, arquivar, excluir e reexibir. Um que
+  // nao suba vale so neste navegador, e a lista do celular da pessoa fica
+  // diferente da do computador dela.
+  expect((servico.match(/void subirParaONuvem\(/g) || []).length).toBe(4);
 
   const ponte = await Bun.file(
     new URL('./nuvemComunicacao.ts', import.meta.url)
@@ -341,4 +344,79 @@ test('o que NAO esta subindo continua vindo do banco', () => {
 
   aplicarPreferenciasDaNuvem(EU, {});
   expect(estaFixada(EU, 'conv-3')).toBe(false);
+});
+
+/**
+ * ARQUIVAR E EXCLUIR SÃO COISAS DIFERENTES.
+ *
+ * O botão chamava-se "Excluir conversa" e não excluía nada: a conversa
+ * voltava sozinha assim que o colega escrevesse. Nome que promete outra
+ * coisa faz a pessoa evitar o botão certo com medo de perder o histórico.
+ *
+ * A diferença entre as duas é UMA só, e é ela que justifica existirem duas.
+ */
+test('arquivada VOLTA sozinha quando chega mensagem nova', () => {
+  ocultarConversa(EU, 'conv-arq');
+
+  // Mensagem antiga não traz de volta
+  expect(deveAparecer(EU, conversa('conv-arq', ONTEM))).toBe(false);
+  // Mensagem nova traz: é o "depois eu vejo"
+  expect(deveAparecer(EU, conversa('conv-arq', DEPOIS))).toBe(true);
+});
+
+test('excluida NAO volta sozinha, nem com mensagem nova', () => {
+  removerConversaDaLista(EU, 'conv-exc');
+
+  expect(deveAparecer(EU, conversa('conv-exc', ONTEM))).toBe(false);
+  /**
+   * Esta é a linha que separa as duas funções. Se ela virar true, remover e
+   * arquivar passam a ser a mesma coisa com dois nomes — duplicação de
+   * função, que é o defeito que o Elias já cobrou mais de uma vez.
+   */
+  expect(deveAparecer(EU, conversa('conv-exc', DEPOIS))).toBe(false);
+});
+
+test('chamar o colega de novo traz a conversa excluida de volta', () => {
+  removerConversaDaLista(EU, 'conv-volta');
+  expect(deveAparecer(EU, conversa('conv-volta', DEPOIS))).toBe(false);
+
+  // Abrir a conversa É o pedido de trazê-la de volta
+  reexibirConversa(EU, 'conv-volta');
+  expect(deveAparecer(EU, conversa('conv-volta', ONTEM))).toBe(true);
+});
+
+test('excluir tira a marca de fixada', () => {
+  alternarFixada(EU, 'conv-fix');
+  expect(estaFixada(EU, 'conv-fix')).toBe(true);
+
+  // Conversa excluída que volta grudada no topo não faz sentido nenhum
+  removerConversaDaLista(EU, 'conv-fix');
+  expect(estaFixada(EU, 'conv-fix')).toBe(false);
+});
+
+test('a exclusao e de quem pediu: o colega continua vendo a conversa dele', () => {
+  removerConversaDaLista(EU, 'conv-minha');
+
+  expect(deveAparecer(EU, conversa('conv-minha', DEPOIS))).toBe(false);
+  expect(deveAparecer(OUTRO, conversa('conv-minha', DEPOIS))).toBe(true);
+});
+
+test('a marca de excluida sobe e desce do banco', async () => {
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  // Um lado sem o outro faz a exclusão valer só neste navegador
+  expect(ponte).toContain('campos.removida = preferencia.removida');
+  expect(ponte).toContain("'conversa_id, colaborador_id, fixada, oculta_desde, removida'");
+  expect(ponte).toContain('removida: p.removida || undefined');
+
+  const sql = await Bun.file(
+    new URL('../../supabase/conversa-removida.sql', import.meta.url)
+  ).text();
+  expect(sql).toContain('add column if not exists removida boolean not null default false');
+  expect(sql).toContain("notify pgrst, 'reload schema'");
+
+  // NENHUMA mensagem é tocada: excluir é sobre a lista de quem pediu
+  expect(sql).not.toContain('delete from');
 });

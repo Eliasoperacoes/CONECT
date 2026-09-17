@@ -10,7 +10,7 @@ import { test, expect } from 'bun:test';
 /** O trecho do onScroll da lista de mensagens. */
 const s_rolagem = (tela: string): string => {
   const i = tela.indexOf('onScroll={');
-  return i === -1 ? '' : tela.slice(i, i + 400);
+  return i === -1 ? '' : tela.slice(i, i + 1200);
 };
 
 const lerTela = async (): Promise<string> =>
@@ -423,8 +423,7 @@ test('o menu de acoes fica fora da lista e ancorado na janela', async () => {
 
   // Rolar move o botão para longe da âncora, então rolar fecha — o menu e o
   // painel de emoji, que usam a mesma âncora
-  expect(tela).toContain('menuMensagem || painelReacao');
-  expect(tela).toContain('fecharMenuMensagem();');
+  expect(tela).toContain('if (menuMensagem) fecharMenuMensagem();');
 
   // Cabe embaixo? Senão abre para cima. E nunca passa da lateral.
   expect(tela).toContain('const cabeAbaixo =');
@@ -512,8 +511,8 @@ test('o painel de emoji fica fora da lista e ancorado na janela', async () => {
 
   // Rolar fecha os dois: a âncora é um ponto da tela
   const rolagem = s_rolagem(tela);
-  expect(rolagem).toContain('fecharMenuMensagem();');
-  expect(rolagem).toContain('fecharPainelReacao();');
+  expect(rolagem).toContain('if (menuMensagem) fecharMenuMensagem();');
+  expect(rolagem).toContain('if (painelReacao) fecharPainelReacao();');
 });
 
 test('reagir virou acao do menu, com mais opcoes de emoji', async () => {
@@ -541,4 +540,94 @@ test('reagir virou acao do menu, com mais opcoes de emoji', async () => {
 
   // Uma grade só, sem abas nem busca: escolher é um toque
   expect(tela).toContain('grid grid-cols-8');
+});
+
+/**
+ * O MENU DA CONVERSA TAMBÉM SAÍA CORTADO.
+ *
+ * Era `absolute right-2 top-12` dentro do item da lista, e a lista rola e
+ * tem `overflow`: nas últimas conversas ele abria para baixo e a borda o
+ * cortava. Terceiro menu do sistema com o mesmo defeito — mensagem, emoji e
+ * agora este.
+ */
+test('o menu da conversa fica ancorado na janela', async () => {
+  const item = await Bun.file(
+    new URL('../componentes/ItemConversa.tsx', import.meta.url)
+  ).text();
+
+  /**
+   * Verificado pelo que o menu É, e não pelas classes antigas: os
+   * comentários deste arquivo citam "absolute right-2 top-12" ao contar
+   * esta história, e um teste que procurasse o texto reprovaria o código
+   * certo por causa da própria explicação.
+   */
+  expect(item).toContain('id="menu-item-conversa"');
+  expect(item).toContain('className="fixed z-[61]');
+
+  // O mesmo cálculo dos outros dois: cabe embaixo, senão abre para cima
+  expect(item).toContain('const cabeAbaixo =');
+  expect(item).toContain('window.innerWidth - MENU_LARGURA - 8');
+  expect(item).toContain('e.currentTarget.getBoundingClientRect()');
+});
+
+test('o menu da conversa oferece Arquivar e Excluir, separados', async () => {
+  const item = await Bun.file(
+    new URL('../componentes/ItemConversa.tsx', import.meta.url)
+  ).text();
+
+  // "Excluir conversa" não excluía nada: arquivava. São duas opções agora,
+  // com as duas ações separadas de verdade.
+  expect(item).toContain('Arquivar');
+  expect(item).toContain('ocultarConversa(colaboradorId, conversa.id)');
+
+  // E a exclusão de verdade, que não volta sozinha
+  expect(item).toContain('removerConversaDaLista(colaboradorId, conversa.id)');
+});
+
+/**
+ * ABRIR UMA CONVERSA CAI NA ÚLTIMA MENSAGEM.
+ *
+ * Não caía: parava no meio do histórico, ou no começo.
+ */
+test('abrir a conversa salta para o fim, sem animacao', async () => {
+  const tela = await lerTela();
+
+  /**
+   * Suave é uma ANIMAÇÃO: leva centenas de milissegundos e é cancelada por
+   * qualquer rolagem no meio — inclusive a que o navegador faz ao montar a
+   * lista. A conversa parava onde a animação foi interrompida.
+   */
+  expect(tela).not.toContain("refFimMensagens.current?.scrollIntoView({ behavior: 'smooth' })");
+  expect(tela).toContain('lista.scrollTop = lista.scrollHeight');
+  expect(tela).toContain('useLayoutEffect');
+
+  /**
+   * A outra causa: foto e áudio só ocupam o espaço deles depois de carregar.
+   * O evento `load` de <img> não sobe pela árvore, então tem de ser ouvido
+   * na CAPTURA — o `true` no fim.
+   */
+  expect(tela).toContain("lista.addEventListener('load', aoCarregarAlgo, true)");
+});
+
+test('quem subiu para ler o passado nao e arrancado de la', async () => {
+  const tela = await lerTela();
+
+  // A trava solta quando a pessoa sobe, e volta quando ela desce até o fim
+  expect(tela).toContain('grudadoNoFim.current =');
+  expect(tela).toContain('el.scrollHeight - el.scrollTop - el.clientHeight <= 80');
+  expect(tela).toContain('if (grudadoNoFim.current)');
+});
+
+test('abrir uma conversa desfaz a exclusao dela', async () => {
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+
+  /**
+   * Conversa excluída não volta nem com mensagem nova. A única coisa que a
+   * traz de volta é a pessoa chamar o colega outra vez — e as DUAS aberturas
+   * precisam fazer isso, senão o celular e o computador discordam sobre o
+   * que está na lista.
+   */
+  expect((app.match(/reexibirConversa\(colaboradorAtual\.id, id\)/g) || []).length).toBe(2);
+  expect(app).toContain('const abrirConversaEmTelaCheia');
+  expect(app).not.toContain('aoClicar={() => setConversaAtivaId(c.id)}');
 });
