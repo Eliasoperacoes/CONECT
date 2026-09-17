@@ -41,13 +41,14 @@ import { resumoDaFicha } from '../servicos/fichaColaborador';
 import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
 import { AprovacaoJornada } from './AprovacaoJornada';
+import { EscalaDeFolgas } from './EscalaDeFolgas';
 
 interface Props {
   colaboradorAtual: Colaborador;
   aoAbrirConversa: (colegaId: string) => void;
 }
 
-type Aba = 'equipe' | 'aprovacoes';
+type Aba = 'equipe' | 'aprovacoes' | 'folgas';
 
 /** Saldo colorido pelo sinal: verde credita a pessoa, âmbar deve. */
 const CorDoSaldo: React.FC<{ minutos: number; className?: string }> = ({
@@ -216,6 +217,20 @@ export const PainelGestao: React.FC<Props> = ({ colaboradorAtual, aoAbrirConvers
             >
               Banco de horas da equipe
             </button>
+            {/* A escala fica AQUI, e não no painel de RH: quem monta a
+                escala de sábado é quem responde pela loja, e ele precisa dela
+                junto do resto da equipe dele */}
+            <button
+              type="button"
+              onClick={() => setAba('folgas')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                aba === 'folgas'
+                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                  : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+              }`}
+            >
+              Escala de folgas
+            </button>
             <button
               type="button"
               onClick={() => setAba('aprovacoes')}
@@ -234,7 +249,11 @@ export const PainelGestao: React.FC<Props> = ({ colaboradorAtual, aoAbrirConvers
             </button>
           </div>
 
-          {aba === 'aprovacoes' ? (
+          {aba === 'folgas' ? (
+            <div className="-m-4 sm:-m-6">
+              <EscalaDeFolgas colaboradorAtual={colaboradorAtual} />
+            </div>
+          ) : aba === 'aprovacoes' ? (
             <div className="-m-4 sm:-m-6">
               <AprovacaoJornada colaboradorAtual={colaboradorAtual} />
             </div>

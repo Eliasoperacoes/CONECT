@@ -307,3 +307,42 @@ test('NINGUÉM APROVA A PRÓPRIA FOLGA', async () => {
   const minha = minhasJustificativas()[0];
   expect((await decidirAusencia(minha.id, true)).sucesso).toBe(false);
 });
+
+test('A LISTA DE TIPOS DO BANCO BATE COM A DO CÓDIGO', async () => {
+  /**
+   * O defeito: a folga de sábado entrou no código e o `check` da tabela
+   * continuou com os quatro tipos antigos. O banco recusava com
+   * "violates check constraint justificativas_ausencia_tipo_check", e o
+   * erro não diz que falta um valor na lista — diz só que a regra falhou.
+   *
+   * Lista fechada em dois lugares é a mesma armadilha que já mordeu este
+   * sistema com os setores e com a função de primeiro acesso.
+   */
+  const { ROTULO_TIPO_AUSENCIA } = await import('../tipos');
+  const noCodigo = Object.keys(ROTULO_TIPO_AUSENCIA).sort();
+
+  const sql = await Bun.file(
+    new URL('../../supabase/ponto-tolerancia-justificativas.sql', import.meta.url)
+  ).text();
+
+  const bloco = sql.slice(sql.indexOf('tipo            text not null check'));
+  const noBanco = [...bloco.slice(0, 400).matchAll(/'([a-z_]+)'/g)]
+    .map((m) => m[1])
+    .filter((v) => noCodigo.includes(v) || v.includes('_') || v === 'outro')
+    .sort();
+
+  for (const tipo of noCodigo) {
+    expect({ tipo, aceitoPeloBanco: noBanco.includes(tipo) }).toEqual({
+      tipo,
+      aceitoPeloBanco: true,
+    });
+  }
+
+  // E a migração avulsa cobre o mesmo conjunto
+  const migracao = await Bun.file(
+    new URL('../../supabase/folga-sabado.sql', import.meta.url)
+  ).text();
+  for (const tipo of noCodigo) {
+    expect(migracao).toContain(`'${tipo}'`);
+  }
+});

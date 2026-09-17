@@ -70,7 +70,13 @@ create table if not exists public.justificativas_ausencia (
   data_inicio     date not null,
   data_fim        date not null,
   tipo            text not null check (
-                    tipo in ('atestado', 'falta_justificada', 'comparecimento', 'outro')
+                    tipo in (
+                      'atestado',
+                      'falta_justificada',
+                      'comparecimento',
+                      'folga_sabado',
+                      'outro'
+                    )
                   ),
   observacao      text,
   anexo_caminho   text,
