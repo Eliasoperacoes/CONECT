@@ -21,8 +21,8 @@ import { Conversa } from '../tipos';
 import { ItemConversa } from './ItemConversa';
 import {
   aplicarPreferencias,
-  contarOcultas,
-  reexibirConversa,
+  contarArquivadas,
+  reexibirArquivadas,
 } from '../servicos/preferenciasConversa';
 
 type Secao = 'individuais' | 'grupos';
@@ -64,9 +64,9 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
     return aplicarPreferencias(colaboradorId, bruta);
   }, [bruta, colaboradorId, versao]);
 
-  const ocultas = useMemo(() => {
+  const arquivadas = useMemo(() => {
     void versao;
-    return contarOcultas(colaboradorId, bruta);
+    return contarArquivadas(colaboradorId, bruta);
   }, [bruta, colaboradorId, versao]);
 
   const recarregar = () => {
@@ -142,19 +142,26 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
         )}
       </div>
 
-      {/* Conversa oculta não pode virar conversa perdida: a lista diz
-          quantas estão fora e devolve todas de uma vez */}
-      {ocultas > 0 && (
+      {/*
+        Conversa arquivada não pode virar conversa perdida: a lista diz
+        quantas estão fora e devolve todas de uma vez.
+
+        AS EXCLUÍDAS NÃO ENTRAM AQUI. Se entrassem, este botão desfaria toda
+        exclusão de uma vez e a diferença entre arquivar e excluir deixaria
+        de existir na prática — um botão genérico vencendo a escolha da
+        pessoa. Excluída só volta chamando o colega de novo.
+      */}
+      {arquivadas > 0 && (
         <button
           type="button"
           onClick={() => {
-            for (const c of bruta) reexibirConversa(colaboradorId, c.id);
+            reexibirArquivadas(colaboradorId, bruta);
             recarregar();
           }}
           className="px-3 py-2 border-t border-[var(--c-borda)] text-[11px] text-[var(--c-texto-3)] hover:text-[var(--c-texto)] hover:bg-[var(--c-canvas)] flex items-center justify-center gap-1.5 flex-shrink-0 transition-colors"
         >
           <Eye className="w-3.5 h-3.5" />
-          {ocultas} {ocultas === 1 ? 'conversa oculta' : 'conversas ocultas'} · mostrar
+          {arquivadas} {arquivadas === 1 ? 'arquivada' : 'arquivadas'} · mostrar
         </button>
       )}
 

@@ -263,10 +263,45 @@ export const aplicarPreferencias = <T extends { id: string; atualizadoEm: string
 };
 
 /** Quantas conversas estão ocultas agora — para a lista oferecer trazê-las de volta. */
-export const contarOcultas = <T extends { id: string; atualizadoEm: string }>(
+/** Está fora da lista por EXCLUSÃO, e não por arquivamento? */
+export const estaRemovida = (colaboradorId: string, conversaId: string): boolean =>
+  !!obterPreferencias(colaboradorId)[conversaId]?.removida;
+
+/**
+ * Quantas estão ARQUIVADAS — e só elas.
+ *
+ * O rodapé da lista usa este número para oferecer "mostrar todas". Se as
+ * excluídas entrassem na conta, um clique ali desfaria toda exclusão de uma
+ * vez, e a diferença entre arquivar e excluir deixaria de existir na
+ * prática — o botão genérico venceria a escolha da pessoa.
+ *
+ * Excluída só volta por um caminho: chamar o colega de novo.
+ */
+export const contarArquivadas = <T extends { id: string; atualizadoEm: string }>(
   colaboradorId: string,
   conversas: T[]
-): number => conversas.filter((c) => !deveAparecer(colaboradorId, c)).length;
+): number =>
+  conversas.filter(
+    (c) => !deveAparecer(colaboradorId, c) && !estaRemovida(colaboradorId, c.id)
+  ).length;
+
+/**
+ * Devolve à lista as arquivadas, sem tocar nas excluídas.
+ *
+ * Existe aqui, e não na tela, porque a regra de "quais voltam" é a mesma que
+ * decide a contagem logo acima. Separadas, elas divergiriam — e a tela
+ * mostraria um número que não bate com o que o botão faz.
+ */
+export const reexibirArquivadas = <T extends { id: string; atualizadoEm: string }>(
+  colaboradorId: string,
+  conversas: T[]
+): void => {
+  for (const c of conversas) {
+    if (deveAparecer(colaboradorId, c)) continue;
+    if (estaRemovida(colaboradorId, c.id)) continue;
+    reexibirConversa(colaboradorId, c.id);
+  }
+};
 
 /**
  * Manda a preferência para o banco.

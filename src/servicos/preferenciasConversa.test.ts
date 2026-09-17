@@ -26,7 +26,9 @@ const {
   reexibirConversa,
   deveAparecer,
   aplicarPreferencias,
-  contarOcultas,
+  contarArquivadas,
+  reexibirArquivadas,
+  estaRemovida,
   obterPreferencias,
   aplicarPreferenciasDaNuvem,
   removerConversaDaLista,
@@ -135,8 +137,8 @@ test('a lista sabe quantas estão escondidas', () => {
   ocultarConversa(EU, 'c1');
   ocultarConversa(EU, 'c2');
 
-  expect(contarOcultas(EU, lista)).toBe(2);
-  expect(contarOcultas(OUTRO, lista)).toBe(0);
+  expect(contarArquivadas(EU, lista)).toBe(2);
+  expect(contarArquivadas(OUTRO, lista)).toBe(0);
 });
 
 test('data estragada não faz a conversa sumir', () => {
@@ -419,4 +421,36 @@ test('a marca de excluida sobe e desce do banco', async () => {
 
   // NENHUMA mensagem é tocada: excluir é sobre a lista de quem pediu
   expect(sql).not.toContain('delete from');
+});
+
+/**
+ * O BOTÃO "MOSTRAR TODAS" NÃO PODE DESFAZER UMA EXCLUSÃO.
+ *
+ * O rodapé da lista conta quantas estão fora e devolve todas de uma vez.
+ * Se as excluídas entrassem nessa conta, um clique ali desfaria toda
+ * exclusão — e a diferença entre arquivar e excluir deixaria de existir na
+ * prática, com um botão genérico vencendo a escolha da pessoa.
+ */
+test('a contagem do rodape ignora as excluidas', () => {
+  const lista = [conversa('a', ONTEM), conversa('b', ONTEM), conversa('c', ONTEM)];
+
+  ocultarConversa(EU, 'a');
+  removerConversaDaLista(EU, 'b');
+
+  // Só a arquivada é oferecida de volta
+  expect(contarArquivadas(EU, lista)).toBe(1);
+  expect(estaRemovida(EU, 'b')).toBe(true);
+});
+
+test('mostrar todas devolve as arquivadas e deixa as excluidas fora', () => {
+  const lista = [conversa('x', ONTEM), conversa('y', ONTEM)];
+
+  ocultarConversa(EU, 'x');
+  removerConversaDaLista(EU, 'y');
+
+  reexibirArquivadas(EU, lista);
+
+  expect(deveAparecer(EU, conversa('x', ONTEM))).toBe(true);
+  // A excluída continua fora: só volta chamando o colega de novo
+  expect(deveAparecer(EU, conversa('y', ONTEM))).toBe(false);
 });
