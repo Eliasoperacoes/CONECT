@@ -927,12 +927,28 @@ class BancoDadosConecta {
     const senhaEscolhida = SENHA_PADRAO_PRIMEIRO_ACESSO;
 
     const colaboradores = this.obterColaboradores();
-    const loginJaExiste = colaboradores.some(
-      (c) => c.login && c.login.toLowerCase() === dados.login.trim().toLowerCase()
+    /**
+     * Quem já usa o login precisa ser NOMEADO.
+     *
+     * "Já existe um colaborador com este login" não diz quem, e o login some
+     * da tela de quem cadastra assim que a recusa aparece — sobra procurar
+     * no Quadro de Equipe. Pior: o gatilho de primeiro acesso acha a ficha
+     * PELO LOGIN, com `limit 1`. Dois cadastros com o mesmo login e quem
+     * entra é sorteio; o outro nunca entra, sem explicação em lugar nenhum.
+     *
+     * O `trim()` dos dois lados é o mesmo que o banco faz em
+     * `lower(trim(login))`: " fabio" e "fabio" são o mesmo login para ele.
+     */
+    const loginPretendido = dados.login.trim().toLowerCase();
+    const jaUsado = colaboradores.find(
+      (c) => c.login && c.login.trim().toLowerCase() === loginPretendido
     );
 
-    if (loginJaExiste) {
-      return { sucesso: false, erro: 'Já existe um colaborador com este login.' };
+    if (jaUsado) {
+      return {
+        sucesso: false,
+        erro: `O login "${dados.login.trim()}" já é de ${jaUsado.nome} (${jaUsado.loja}). Escolha outro: dois cadastros com o mesmo login impedem os dois de entrar.`,
+      };
     }
 
     const novoId = `colab-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;

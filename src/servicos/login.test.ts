@@ -16,6 +16,25 @@
  * ficha em vez de adotar.
  */
 import { test, expect } from 'bun:test';
+
+/**
+ * O corpo de `criarColaborador`, do começo dele até o método seguinte.
+ *
+ * Antes cada teste recortava por número de caracteres — `slice(inicio,
+ * inicio + 4500)`. Pareceu bastar e não bastou: bastou um comentário novo
+ * no meio do método para o fim dele cair fora da janela, e dois testes
+ * falharam apontando para código que estava lá, correto. Teste que quebra
+ * sozinho ensina a ignorar teste quebrado.
+ */
+async function corpoDoCadastro(): Promise<string> {
+  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
+  const inicio = servico.indexOf('async criarColaborador');
+  const fim = servico.indexOf('importarColaboradoresEmLote', inicio);
+  if (inicio < 0 || fim < 0) {
+    throw new Error('nao achei criarColaborador em bancoDados.ts');
+  }
+  return servico.slice(inicio, fim);
+}
 import { normalizarLogin, loginParaEmailInterno, loginEhValido } from './supabase';
 
 const lerSql = async (arquivo: string): Promise<string> =>
@@ -245,13 +264,7 @@ test('o cadastro ESPERA o banco antes de dizer que deu certo', async () => {
    * existia só naquele navegador — depois tentava entrar e ouvia "login não
    * cadastrado na rede", com o nome dela ali na tela de quem cadastrou.
    */
-  const servico = await Bun.file(
-    new URL('./bancoDados.ts', import.meta.url)
-  ).text();
-
-  const inicio = servico.indexOf('async criarColaborador');
-  expect(inicio).toBeGreaterThan(-1);
-  const corpo = servico.slice(inicio, inicio + 4000);
+  const corpo = await corpoDoCadastro();
 
   expect(corpo).toContain('await nuvem.salvarColaborador');
   expect(corpo).toContain('não foi gravado no banco');
@@ -358,9 +371,7 @@ test('SENHA DE PRIMEIRO ACESSO PRECISA TER 6 CARACTERES', async () => {
    * era existir uma escolha que a tela mostrava de um jeito e o código
    * mandava de outro.
    */
-  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
-  const inicio = servico.indexOf('async criarColaborador');
-  const corpo = servico.slice(inicio, inicio + 4500);
+  const corpo = await corpoDoCadastro();
   expect(corpo).toContain('const senhaEscolhida = SENHA_PADRAO_PRIMEIRO_ACESSO;');
 });
 
@@ -395,10 +406,7 @@ test('O CADASTRO MANUAL NÃO ESCOLHE SENHA: é sempre a padrão da rede', async 
    * Duas verdades na mesma tela é sempre isto: uma delas ganha, e não é a
    * que a pessoa lê.
    */
-  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
-
-  const inicio = servico.indexOf('async criarColaborador');
-  const corpo = servico.slice(inicio, inicio + 4500);
+  const corpo = await corpoDoCadastro();
 
   // A senha vem da constante, não do formulário
   expect(corpo).toContain('const senhaEscolhida = SENHA_PADRAO_PRIMEIRO_ACESSO;');
@@ -411,10 +419,7 @@ test('O CADASTRO MANUAL NÃO ESCOLHE SENHA: é sempre a padrão da rede', async 
 test('o cadastro preenche as colunas que o banco exige', async () => {
   // `turno` é not null. Nascer sem ele fazia o código mandar null explícito,
   // que anula o default e derruba a gravação inteira.
-  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
-
-  const inicio = servico.indexOf('async criarColaborador');
-  const corpo = servico.slice(inicio, inicio + 4500);
+  const corpo = await corpoDoCadastro();
 
   expect(corpo).toContain('turno: TURNO_PADRAO');
   expect(corpo).toContain('ativo: true');
@@ -428,8 +433,14 @@ test('A CARGA POR PLANILHA continua com o caminho dela', async () => {
 
   expect(servico).toContain('importarColaboradoresEmLote');
   // A importação tem a própria gravação em lote, e não passa por criarColaborador
+  // Recorte até o método seguinte, e não por número de caracteres: a
+  // asserção abaixo é `not.toContain`, então uma janela curta demais faria
+  // o teste passar por não enxergar — justo o teste que protege a carga das
+  // 88 pessoas que entraram por planilha.
   const inicio = servico.indexOf('importarColaboradoresEmLote');
-  const corpo = servico.slice(inicio, inicio + 6000);
+  const fim = servico.indexOf('podeGerenciarPessoas', inicio);
+  if (inicio < 0 || fim < 0) throw new Error('nao achei a importacao em lote');
+  const corpo = servico.slice(inicio, fim);
   expect(corpo).not.toContain('this.criarColaborador');
 });
 
@@ -455,4 +466,26 @@ test('excluir um colaborador espera o banco antes de dizer que removeu', async (
     new URL('../componentes/PainelAdministrativo.tsx', import.meta.url)
   ).text();
   expect(painel).toContain('await bancoDados.removerColaborador(');
+});
+
+test('dois cadastros nao podem dividir o mesmo login', async () => {
+  /**
+   * O gatilho de primeiro acesso acha a ficha PELO LOGIN, com `limit 1`.
+   * Dois cadastros com o mesmo login e quem entra é sorteio — e o outro
+   * nunca entra, sem que nada na tela explique por quê.
+   */
+  const corpo = await corpoDoCadastro();
+
+  expect(corpo).toContain('const loginPretendido = dados.login.trim().toLowerCase()');
+  // A comparação precisa ignorar caixa: "Fabio" e "fabio" são o mesmo login
+  // para o gatilho, que faz lower(trim(login))
+  expect(corpo).toContain("c.login.trim().toLowerCase() === loginPretendido");
+  // E a recusa precisa dizer de quem é o login, senão não há o que fazer
+  expect(corpo).toContain('jaUsado.nome');
+
+  // O banco confere o mesmo, e é ele quem manda
+  const esquema = await Bun.file(
+    new URL('../../supabase/esquema.sql', import.meta.url)
+  ).text();
+  expect(esquema).toContain('login                           text not null unique');
 });
