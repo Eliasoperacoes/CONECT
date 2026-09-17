@@ -20,6 +20,28 @@ import {
   ClipboardList,
 } from 'lucide-react';
 import { AbaPrincipal, Colaborador, Conversa, Mensagem } from './tipos';
+
+/**
+ * As medidas das janelas de conversa, num lugar só.
+ *
+ * Estavam soltas dentro do cálculo de posição, e havia uma segunda medida
+ * para a janela encolhida que não batia com a largura desenhada na tela —
+ * foi o que embaralhou a fila de conversas minimizadas. Agora a encolhida
+ * não tem medida aqui: quem a enfileira é a barra, com largura própria.
+ */
+/** Onde a primeira janela começa: depois do painel de contatos. */
+const INICIO_DAS_JANELAS = 372;
+const LARGURA_JANELA_ABERTA = 420;
+const ESPACO_ENTRE_JANELAS = 12;
+
+/**
+ * Quantas conversas ficam ABERTAS lado a lado.
+ *
+ * Três de 420px já enchem a largura útil de um monitor comum ao lado do
+ * painel de contatos. A quarta não é recusada nem descartada: a mais antiga
+ * encolhe e desce para a barra, onde continua a um clique.
+ */
+const MAXIMO_JANELAS_ABERTAS = 3;
 import { bancoDados } from './servicos/bancoDados';
 import { ItemConversa } from './componentes/ItemConversa';
 import { FaixaAvisoDirecao } from './componentes/FaixaAvisoDirecao';
@@ -35,6 +57,7 @@ import { TelaDefinirSenha } from './componentes/TelaDefinirSenha';
 import { PainelAdministrativo } from './componentes/PainelAdministrativo';
 import { AbaPonto } from './componentes/AbaPonto';
 import { JanelaChat } from './componentes/JanelaChat';
+import { BarraConversasEncolhidas } from './componentes/BarraConversasEncolhidas';
 import { PainelConversas } from './componentes/PainelConversas';
 import { podeUsar } from './servicos/permissoes';
 import { aplicarPreferencias, assinarPreferencias } from './servicos/preferenciasConversa';
@@ -109,13 +132,30 @@ export default function App() {
     setJanelas((atuais) => {
       const existente = atuais.find((j) => j.id === id);
       if (existente) {
-        // Já aberta: desencolhe e vai para o fim (a ponta visível)
+        // Já aberta: desencolhe e vai para o fim (a ponta visível). É por
+        // aqui que a barra de encolhidas devolve uma conversa à tela.
         return [...atuais.filter((j) => j.id !== id), { id, encolhida: false }];
       }
-      // Quatro janelas já enchem a largura de um monitor comum; a mais
-      // antiga sai para a nova caber sem cobrir as outras
-      const cabem = atuais.length >= 4 ? atuais.slice(1) : atuais;
-      return [...cabem, { id, encolhida: false }];
+      /**
+       * A MAIS ANTIGA ENCOLHE, NÃO FECHA.
+       *
+       * Antes ela era simplesmente descartada para a nova caber: a pessoa
+       * abria a quinta conversa e perdia a primeira, sem aviso e sem
+       * caminho de volta. Agora ela desce para a barra de encolhidas, que
+       * tem lugar para todas.
+       *
+       * O limite é só das ABERTAS: três de 420px já enchem a largura útil
+       * ao lado do painel de contatos. Encolhida não ocupa espaço de
+       * janela, então não há motivo para limitá-las aqui — a barra cuida
+       * disso mostrando cinco e guardando o resto atrás da contagem.
+       */
+      const abertas = atuais.filter((j) => !j.encolhida);
+      const comEspaco =
+        abertas.length >= MAXIMO_JANELAS_ABERTAS
+          ? atuais.map((j) => (j.id === abertas[0].id ? { ...j, encolhida: true } : j))
+          : atuais;
+
+      return [...comEspaco, { id, encolhida: false }];
     });
 
   const fecharJanela = (id: string) =>
@@ -182,17 +222,40 @@ export default function App() {
    * mesmo lugar e uma esconderia a outra.
    */
   const posicoesDasJanelas = useMemo(() => {
-    const LARGURA_ABERTA = 420;
-    const LARGURA_ENCOLHIDA = 210;
-    const ESPACO = 12;
-
-    let direita = 372;
-    return janelas.map((j) => {
-      const minha = direita;
-      direita += (j.encolhida ? LARGURA_ENCOLHIDA : LARGURA_ABERTA) + ESPACO;
-      return { ...j, direita: minha };
-    });
+    let direita = INICIO_DAS_JANELAS;
+    return janelas
+      .filter((j) => !j.encolhida)
+      .map((j) => {
+        const minha = direita;
+        direita += LARGURA_JANELA_ABERTA + ESPACO_ENTRE_JANELAS;
+        return { ...j, direita: minha };
+      });
   }, [janelas]);
+
+  /**
+   * As encolhidas, na ordem em que foram encolhidas.
+   *
+   * Elas NÃO entram na conta acima. Antes entravam, e era essa a causa da
+   * bagunça na tela: o App somava 210px por barra encolhida, enquanto a
+   * barra desenhada crescia com o nome de quem estava do outro lado — umas
+   * caíam por cima das outras e sobrava vão no fim.
+   *
+   * Agora quem enfileira as encolhidas é a própria barra, com largura fixa.
+   * Ninguém calcula posição, então não há duas contas para discordarem.
+   */
+  const conversasEncolhidas = useMemo(
+    () =>
+      janelas
+        .filter((j) => j.encolhida)
+        .map((j) => bancoDados.obterConversaPorId(j.id))
+        .filter((c): c is Conversa => !!c),
+    [janelas]
+  );
+
+  /** O quanto as janelas abertas tomam à direita, para a barra parar antes. */
+  const espacoDasJanelasAbertas =
+    INICIO_DAS_JANELAS +
+    posicoesDasJanelas.length * (LARGURA_JANELA_ABERTA + ESPACO_ENTRE_JANELAS);
   // Qual seção da lista flutuante está aberta no computador (nenhuma = fechada)
   const [secaoListaAberta, setSecaoListaAberta] = useState<'individuais' | 'grupos' | null>(null);
 
@@ -1088,6 +1151,17 @@ export default function App() {
           dentro do RH não perde a consulta que estava fazendo. No computador
           elas ficam lado a lado; no celular só a da frente aparece, porque
           empilhar telas cheias esconderia umas às outras sem aviso. */}
+      {/*
+        A fila das conversas encolhidas. Fica encostada à esquerda e para
+        antes das janelas abertas — nunca por baixo delas.
+      */}
+      <BarraConversasEncolhidas
+        conversas={conversasEncolhidas}
+        espacoDasAbertas={espacoDasJanelasAbertas}
+        aoAbrir={(id) => abrirJanela(id)}
+        aoFechar={(id) => fecharJanela(id)}
+      />
+
       {posicoesDasJanelas.map((janela, indice) => {
         const conversa = bancoDados.obterConversaPorId(janela.id);
         if (!conversa) return null;
@@ -1098,9 +1172,8 @@ export default function App() {
             conversa={conversa}
             colaboradorAtual={colaboradorAtual}
             direita={janela.direita}
-            encolhida={janela.encolhida}
             visivelNoCelular={indice === posicoesDasJanelas.length - 1}
-            aoAlternarEncolher={() => alternarEncolhida(janela.id)}
+            aoEncolher={() => alternarEncolhida(janela.id)}
             aoFechar={() => fecharJanela(janela.id)}
           />
         );

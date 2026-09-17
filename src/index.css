@@ -157,3 +157,20 @@ html, body {
   animation: destaque-citacao 1.6s ease-out;
   border-radius: 0.75rem;
 }
+
+/*
+  Rola sem mostrar a barra de rolagem.
+
+  Usada na fila de conversas encolhidas e nas etiquetas da câmera, nas duas
+  desde sempre — só que a classe NUNCA existiu nesta folha. As duas pediam
+  algo que não estava escrito em lugar nenhum e não fazia nada: uma barra de
+  rolagem cinza atravessava a fila de conversas.
+*/
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

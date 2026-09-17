@@ -257,3 +257,89 @@ test('desistir de citar nao apaga o que ja foi digitado', async () => {
   // E o X da barra mexe só na citação, não no texto
   expect(tela).toContain('onClick={() => setRespondendoId(null)}');
 });
+
+/**
+ * A FILA DAS CONVERSAS ENCOLHIDAS
+ *
+ * Estava embaralhada na tela: uma menor, outra maior, uma por cima da outra
+ * e um vão enorme depois. A causa era a de sempre aqui — a mesma medida
+ * escrita em dois lugares, discordando.
+ */
+test('quem posiciona a conversa encolhida e a barra, nao o App', async () => {
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+
+  /**
+   * O App somava 210px por barra encolhida. A barra desenhada NÃO tinha
+   * 210: crescia com o nome de quem estava do outro lado. "Elias" dava uns
+   * 120, "Aline Karoline Boldrim De..." passava de 230.
+   */
+  expect(app).not.toContain('LARGURA_ENCOLHIDA');
+
+  // A conta de posição é só das abertas
+  const inicio = app.indexOf('const posicoesDasJanelas');
+  const fim = app.indexOf('const conversasEncolhidas', inicio);
+  expect(inicio).toBeGreaterThan(-1);
+  expect(fim).toBeGreaterThan(inicio);
+  expect(app.slice(inicio, fim)).toContain('.filter((j) => !j.encolhida)');
+});
+
+test('a janela de conversa nao desenha mais a versao encolhida', async () => {
+  const janela = await Bun.file(
+    new URL('../componentes/JanelaChat.tsx', import.meta.url)
+  ).text();
+
+  // Dois lugares desenhando a mesma barra é o que produziu a bagunça
+  expect(janela).not.toContain('id="janela-chat-encolhida"');
+  expect(janela).not.toContain('encolhidaLocal');
+});
+
+test('a fila tem largura fixa e no maximo cinco a vista', async () => {
+  const barra = await Bun.file(
+    new URL('../componentes/BarraConversasEncolhidas.tsx', import.meta.url)
+  ).text();
+
+  // Largura FIXA: nome comprido não pode mais empurrar o layout dos outros
+  expect(barra).toContain("className=\"w-[176px] flex-shrink-0");
+  expect(barra).toContain('truncate');
+
+  expect(barra).toContain('MAXIMO_ENCOLHIDAS_A_VISTA = 5');
+  expect(barra).toContain('conversas.slice(0, MAXIMO_ENCOLHIDAS_A_VISTA)');
+  expect(barra).toContain('conversas.slice(MAXIMO_ENCOLHIDAS_A_VISTA)');
+});
+
+test('o que passa de cinco vira contagem com lista, e nao some', async () => {
+  const barra = await Bun.file(
+    new URL('../componentes/BarraConversasEncolhidas.tsx', import.meta.url)
+  ).text();
+
+  // A contagem do que ficou atrás
+  expect(barra).toContain('+{atras.length}');
+  // E a lista para escolher, senão a conversa sumiria sem caminho de volta
+  expect(barra).toContain('atras.map((conversa)');
+  expect(barra).toContain('aoAbrir(conversa.id)');
+});
+
+test('abrir a quarta conversa ENCOLHE a mais antiga, nao a fecha', async () => {
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+
+  /**
+   * Antes a mais antiga era descartada para a nova caber: a pessoa abria a
+   * quinta conversa e perdia a primeira, sem aviso e sem caminho de volta.
+   */
+  expect(app).not.toContain('atuais.slice(1)');
+  expect(app).toContain('MAXIMO_JANELAS_ABERTAS');
+  expect(app).toContain('{ ...j, encolhida: true }');
+});
+
+test('a classe que esconde a barra de rolagem existe de verdade', async () => {
+  /**
+   * `no-scrollbar` era usada na fila de conversas e nas etiquetas da câmera
+   * — e nunca existiu na folha de estilo. As duas pediam algo que não estava
+   * escrito em lugar nenhum.
+   */
+  const css = await Bun.file(new URL('../index.css', import.meta.url)).text();
+  // A regra em si, não só o nome: `.no-scrollbar::-webkit-scrollbar` contém
+  // o nome e sozinho não esconde nada no Firefox
+  expect(css).toMatch(/\.no-scrollbar\s*\{[^}]*scrollbar-width:\s*none/);
+  expect(css).toMatch(/\.no-scrollbar::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
+});

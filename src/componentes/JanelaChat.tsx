@@ -12,8 +12,8 @@
  * pequena demais para duas coisas, então ela ocupa tudo, como sempre foi.
  */
 
-import React, { useState } from 'react';
-import { Minus, X, MessageSquare } from 'lucide-react';
+import React from 'react';
+import { Minus, X } from 'lucide-react';
 import { Colaborador, Conversa } from '../tipos';
 import { TelaConversa } from './TelaConversa';
 
@@ -31,8 +31,16 @@ interface PropsJanelaChat {
    * string não existe na folha de estilo gerada.
    */
   direita?: number;
-  encolhida?: boolean;
-  aoAlternarEncolher?: () => void;
+  /**
+   * Encolher tira a janela daqui e a manda para a barra de encolhidas.
+   *
+   * Esta janela NÃO desenha mais a versão encolhida. Ela desenhava, e o App
+   * também posicionava a encolhida por conta própria com uma largura fixa
+   * que não batia com a largura real do nome — duas contas para a mesma
+   * coisa, discordando. A fila das encolhidas agora é de um lugar só:
+   * BarraConversasEncolhidas.
+   */
+  aoEncolher?: () => void;
   /**
    * No celular só uma janela aparece: não há espaço para lado a lado, e
    * empilhar janelas em tela cheia esconderia umas às outras sem aviso.
@@ -45,48 +53,10 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
   colaboradorAtual,
   aoFechar,
   direita = 372,
-  encolhida: encolhidaProp,
-  aoAlternarEncolher,
+  aoEncolher,
   visivelNoCelular = true,
 }) => {
-  const [encolhidaLocal, setEncolhidaLocal] = useState(false);
-
-  // Com várias janelas, quem manda é o App: ele precisa saber o estado de
-  // todas para calcular a posição de cada uma. Sozinha, a janela se vira.
-  const encolhida = encolhidaProp ?? encolhidaLocal;
-  const alternarEncolher = aoAlternarEncolher ?? (() => setEncolhidaLocal((v) => !v));
   const estilo = { '--direita': `${direita}px` } as React.CSSProperties;
-
-  // Encolhida, vira só uma barra com o nome — o suficiente para lembrar que a
-  // conversa está aberta e para voltar a ela com um clique. Fica na mesma
-  // coluna da janela cheia, não no canto: o canto é da lista de contatos, que
-  // precisa continuar alcançável.
-  if (encolhida) {
-    return (
-      <button
-        type="button"
-        id="janela-chat-encolhida"
-        onClick={alternarEncolher}
-        style={estilo}
-        className="hidden md:flex fixed bottom-0 right-[var(--direita)] z-40 items-center gap-2 px-4 py-2.5 rounded-t-xl bg-[var(--c-superficie)] border border-b-0 border-[var(--c-borda)] shadow-[var(--s-3)] hover:brightness-105 transition-all cursor-pointer"
-      >
-        <MessageSquare className="w-4 h-4 text-[var(--c-acento)]" />
-        <span className="text-xs font-bold text-[var(--c-texto)] max-w-[160px] truncate">
-          {conversa.nome}
-        </span>
-        <span
-          onClick={(e) => {
-            e.stopPropagation();
-            aoFechar();
-          }}
-          className="ml-1 p-0.5 rounded-md hover:bg-[var(--c-superficie-2)] text-[var(--c-texto-3)]"
-          aria-label="Fechar conversa"
-        >
-          <X className="w-3.5 h-3.5" />
-        </span>
-      </button>
-    );
-  }
 
   return (
     // Cada lado é declarado sozinho de propósito. O atalho `inset-0` define os
@@ -108,7 +78,7 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
         <div className="flex items-center gap-0.5">
           <button
             type="button"
-            onClick={alternarEncolher}
+            onClick={aoEncolher}
             className="p-1.5 rounded-lg hover:bg-[var(--c-superficie)] text-[var(--c-texto-3)] hover:text-[var(--c-texto)] transition-colors cursor-pointer"
             aria-label="Encolher conversa"
           >
