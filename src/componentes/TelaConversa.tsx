@@ -225,6 +225,27 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
    */
   const LIMITE_ANEXO_BYTES = 2 * 1024 * 1024; // 2 MB
 
+  /**
+   * Manda um arquivo de imagem para a conversa como FOTO.
+   *
+   * Existe separado porque agora tem dois caminhos até aqui: o clipe de
+   * anexo e o Ctrl+V. Devolve false quando o navegador não conseguiu abrir
+   * a imagem — aí quem chamou decide se tenta como anexo comum.
+   */
+  const enviarComoImagem = async (arquivo: File): Promise<boolean> => {
+    const imagem = await comprimirImagem(arquivo);
+    if (!imagem) return false;
+
+    const resultado = await bancoDados.enviarMensagem(conversa.id, {
+      tipo: 'imagem',
+      imagemUrl: imagem,
+    });
+    if (!resultado.sucesso) {
+      exibirToast(resultado.erro || 'Não foi possível enviar a foto.');
+    }
+    return true;
+  };
+
   const lidarEnvioArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const arquivos = e.target.files;
     if (!arquivos || arquivos.length === 0) return;
@@ -237,15 +258,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     // Foto anexada é foto: entra na conversa como imagem, não como documento
     // para baixar. Vai reduzida, porque foto de celular estoura o navegador.
     if (ehArquivoDeImagem(arquivo)) {
-      const imagem = await comprimirImagem(arquivo);
-      if (imagem) {
-        const resultado = await bancoDados.enviarMensagem(conversa.id, {
-          tipo: 'imagem',
-          imagemUrl: imagem,
-        });
-        if (!resultado.sucesso) {
-          exibirToast(resultado.erro || 'Não foi possível enviar a foto.');
-        }
+      if (await enviarComoImagem(arquivo)) {
         limparCampo();
         return;
       }
@@ -511,6 +524,54 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
   // Regra no banco: apenas pessoas com permissão veem os botões de envio
   const podePublicar = bancoDados.podePublicarNaConversa(conversa.id);
+
+  /**
+   * CTRL+V MANDA O PRINT.
+   *
+   * Tirar print e colar é como se manda uma tela de sistema, um pedido ou um
+   * código de peça no computador. Sem isto era preciso salvar o arquivo,
+   * achar a pasta e anexar — três passos para o que devia ser um atalho.
+   *
+   * O ouvinte fica na JANELA, não no campo de texto: quem acaba de apertar
+   * PrintScreen não clicou em lugar nenhum, e exigir foco no campo faria o
+   * Ctrl+V parecer quebrado metade das vezes.
+   *
+   * Colar texto continua sendo colar texto: só imagem é interceptada, e só
+   * quando não se está digitando dentro de outro campo.
+   */
+  useEffect(() => {
+    if (!podePublicar) return;
+
+    const aoColar = (evento: ClipboardEvent) => {
+      const itens = evento.clipboardData?.items;
+      if (!itens) return;
+
+      // Colar dentro de outro campo de texto é do campo, não da conversa
+      const alvo = evento.target as HTMLElement | null;
+      const etiqueta = alvo?.tagName;
+      const digitandoEmOutroLugar =
+        (etiqueta === 'INPUT' && alvo?.id !== 'campo-mensagem-texto') ||
+        etiqueta === 'TEXTAREA' ||
+        alvo?.isContentEditable === true;
+      if (digitandoEmOutroLugar) return;
+
+      const daImagem = Array.from(itens).find((i) => i.type.startsWith('image/'));
+      if (!daImagem) return;
+
+      const arquivo = daImagem.getAsFile();
+      if (!arquivo) return;
+
+      // Só agora: até aqui podia ser texto, e texto colado é do campo
+      evento.preventDefault();
+
+      void enviarComoImagem(arquivo).then((foi) => {
+        if (!foi) exibirToast('Não foi possível ler a imagem colada.');
+      });
+    };
+
+    window.addEventListener('paste', aoColar);
+    return () => window.removeEventListener('paste', aoColar);
+  }, [podePublicar, conversa.id]);
 
   const participantesGrupo = conversa.tipo === 'grupo'
     ? bancoDados.obterColaboradores().filter((c) => conversa.participantesIds.includes(c.id))
@@ -1539,13 +1600,25 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
             </button>
 
             {/* Centro: Barra de Texto no Meio */}
-            <form onSubmit={lidarEnvioTexto} className="flex-1 flex items-center gap-2 min-w-0">
+            <form
+              onSubmit={lidarEnvioTexto}
+              autoComplete="off"
+              className="flex-1 flex items-center gap-2 min-w-0"
+            >
               <input
                 id="campo-mensagem-texto"
                 type="text"
                 value={textoMensagem}
                 onChange={(e) => setTextoMensagem(e.target.value)}
                 placeholder="Mensagem"
+                /**
+                 * O navegador abria uma lista com tudo que já foi digitado
+                 * aqui, por cima da conversa. É o histórico de formulário
+                 * dele, não uma função nossa — e num campo de conversa não
+                 * serve para nada: ninguém quer reenviar a mensagem de
+                 * ontem, e a lista tapa justamente o que se está lendo.
+                 */
+                autoComplete="off"
                 className="w-full bg-[var(--c-superficie-2)] text-[var(--c-texto)] text-base sm:text-sm rounded-full px-4 py-2.5 outline-none border border-transparent focus:border-[var(--c-acento)] placeholder:text-[var(--c-texto-3)] min-h-[44px]"
               />
             </form>
