@@ -177,6 +177,33 @@ export interface Colaborador {
   observacoes?: string;
   // Jornada contratada por dia útil, em minutos. Base do banco de horas.
   cargaHorariaDiariaMinutos?: number;
+  /**
+   * A carga da SEMANA, em minutos. É esta que manda no banco de horas.
+   *
+   * O saldo passou a ser semanal porque a rede não tem uma jornada só:
+   * colaborador cumpre 8h10 por dia mais o sábado; estagiário cumpre 30h na
+   * semana, e há os que fazem 6h de segunda a sexta e os que fazem menos
+   * por dia e vêm no sábado completar. Cobrar por DIA reprovava os dois
+   * últimos todo dia, sem que nada estivesse errado.
+   */
+  cargaSemanalMinutos?: number;
+  /**
+   * Vem trabalhar aos sábados?
+   *
+   * Não dá para deduzir do cargo nem do setor: entre os estagiários, quem
+   * fecha 6h por dia NÃO vem, e quem fecha menos VEM completar. São dois
+   * contratos diferentes no mesmo setor.
+   */
+  trabalhaSabado?: boolean;
+  /**
+   * O dia tem intervalo de almoço (quatro batidas) ou é direto (duas)?
+   *
+   * Jornada de até 6h não exige intervalo, e é o caso de boa parte dos
+   * estagiários. Cobrar deles a saída e o retorno do almoço deixava o dia
+   * eternamente "pela metade" — era o que fazia o sistema dizer que não
+   * cumpriram a jornada.
+   */
+  temIntervalo?: boolean;
 }
 
 // ============================================================
@@ -249,6 +276,71 @@ export const MINUTOS_SABADO =
  * dia útil de 8h00.
  */
 export const CARGA_HORARIA_PADRAO_MINUTOS = minutosDoTurno(TURNOS[0]);
+
+/**
+ * A semana contratada de quem cumpre o turno inteiro.
+ *
+ * Cinco dias úteis de 8h10 mais quatro horas de sábado: 44h50.
+ *
+ * É o relógio dos turnos cadastrados, com o almoço de 1h30 que a rede
+ * pratica — não um número escolhido. Se a jornada contratada for outra, o
+ * lugar de mudar é a ficha de cada pessoa, e não este padrão.
+ */
+export const MINUTOS_SEMANA_PADRAO = CARGA_HORARIA_PADRAO_MINUTOS * 5 + MINUTOS_SABADO;
+
+/** A semana do estágio: 30 horas, cheguem elas como chegarem. */
+export const MINUTOS_SEMANA_ESTAGIO = 30 * 60;
+
+/** Jornada diária de estágio quando a ficha não diz outra coisa. */
+export const MINUTOS_DIA_ESTAGIO = 6 * 60;
+
+/**
+ * Esta pessoa é de estágio?
+ *
+ * Pelo SETOR, que é o que a rede já cadastra. É só o PADRÃO: o que vale de
+ * verdade são os campos da ficha, porque entre os estagiários há contratos
+ * diferentes — e um dia pode haver estagiário fora do setor Estágio.
+ */
+export const ehDeEstagio = (colaborador?: {
+  setor?: string;
+  cargo?: string;
+}): boolean =>
+  (colaborador?.setor || '').toLowerCase().includes('está') ||
+  (colaborador?.setor || '').toLowerCase().includes('esta') ||
+  (colaborador?.cargo || '').toLowerCase().includes('estagi');
+
+/** A carga da semana desta pessoa, com o padrão do contrato dela. */
+export const cargaSemanalDe = (colaborador?: {
+  cargaSemanalMinutos?: number;
+  setor?: string;
+  cargo?: string;
+}): number =>
+  colaborador?.cargaSemanalMinutos ??
+  (ehDeEstagio(colaborador) ? MINUTOS_SEMANA_ESTAGIO : MINUTOS_SEMANA_PADRAO);
+
+/**
+ * Esta pessoa trabalha aos sábados?
+ *
+ * O padrão do estágio é NÃO: quem cumpre as 6h de segunda a sexta já fechou
+ * a semana. Quem vem ao sábado é exceção e está marcado na ficha.
+ */
+export const trabalhaNoSabado = (colaborador?: {
+  trabalhaSabado?: boolean;
+  setor?: string;
+  cargo?: string;
+}): boolean => colaborador?.trabalhaSabado ?? !ehDeEstagio(colaborador);
+
+/**
+ * O dia desta pessoa tem intervalo de almoço?
+ *
+ * O padrão do estágio é NÃO: jornada de até 6h não exige intervalo, e o dia
+ * dele é entrada e saída, direto.
+ */
+export const temIntervaloNoDia = (colaborador?: {
+  temIntervalo?: boolean;
+  setor?: string;
+  cargo?: string;
+}): boolean => colaborador?.temIntervalo ?? !ehDeEstagio(colaborador);
 
 /**
  * Tolerancia diaria padrao, em minutos.

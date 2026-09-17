@@ -44,6 +44,9 @@ import {
   EstadoAjuste,
   ROTULO_TIPO_AJUSTE,
   minutosComSinal,
+  trabalhaNoSabado,
+  temIntervaloNoDia,
+  cargaSemanalDe,
 } from '../tipos';
 import { bancoDados } from './bancoDados';
 import { linhasDeIdentificacao, contatoEmLinha } from './fichaColaborador';
@@ -125,8 +128,34 @@ export const ehSabado = (data: string): boolean =>
  * quatro deixaria todo sábado eternamente incompleto — e dia incompleto não
  * apura, então o sábado nunca entraria no banco de horas de ninguém.
  */
-export const marcacoesEsperadas = (data: string): TipoMarcacao[] =>
-  ehSabado(data) ? ['entrada', 'saida'] : ORDEM_MARCACOES;
+/**
+ * Quais batidas se espera desta pessoa neste dia.
+ *
+ * ANTES OLHAVA SÓ A DATA, e era daí que vinha o defeito relatado: o
+ * sistema cobrava de todo mundo quatro batidas e um sábado.
+ *
+ * Quem faz 6h direto, sem almoço, batia duas vezes e o dia ficava
+ * eternamente "pela metade". Quem não vem ao sábado tinha todo sábado
+ * marcado como dia não cumprido. Nenhum dos dois estava errado — a
+ * pergunta é que estava.
+ *
+ * Sem pessoa, mantém o comportamento antigo: há chamadas que só sabem a
+ * data, e para elas o dia comum da rede é a resposta certa.
+ */
+export const marcacoesEsperadas = (
+  data: string,
+  colaborador?: Colaborador
+): TipoMarcacao[] => {
+  if (ehSabado(data)) {
+    // Não trabalha aos sábados: não há batida a esperar, e o dia não é dela
+    if (colaborador && !trabalhaNoSabado(colaborador)) return [];
+    return ['entrada', 'saida'];
+  }
+
+  if (colaborador && !temIntervaloNoDia(colaborador)) return ['entrada', 'saida'];
+
+  return ORDEM_MARCACOES;
+};
 
 /** 95 -> "1h35"; -95 -> "-1h35"; 0 -> "0h00" */
 export const formatarMinutos = (minutos: number): string => {
@@ -142,6 +171,29 @@ export const formatarSaldo = (minutos: number): string => {
   const arredondado = Math.round(minutos);
   if (arredondado === 0) return '0h00';
   return arredondado > 0 ? `+${formatarMinutos(arredondado)}` : formatarMinutos(arredondado);
+};
+
+/**
+ * A semana de SEGUNDA a DOMINGO que contém esta data.
+ *
+ * Segunda como primeiro dia porque é assim que a folha corre aqui, e
+ * porque o SÁBADO precisa cair no fim: é nele que o líder confere o banco
+ * de horas da semana que se fechou. Com a semana começando no domingo, o
+ * sábado cairia no meio e a conferência olharia meia semana.
+ */
+export const semanaDe = (data: string): { inicio: string; fim: string } => {
+  const referencia = deDataLocal(data);
+  // getDay: 0 = domingo. Segunda = 1, então domingo recua 6 dias
+  const diaDaSemana = referencia.getDay();
+  const recuo = diaDaSemana === 0 ? 6 : diaDaSemana - 1;
+
+  const inicio = new Date(referencia);
+  inicio.setDate(inicio.getDate() - recuo);
+
+  const fim = new Date(inicio);
+  fim.setDate(fim.getDate() + 6);
+
+  return { inicio: paraDataLocal(inicio), fim: paraDataLocal(fim) };
 };
 
 /** Lista de datas AAAA-MM-DD entre dois dias, inclusive. */
@@ -519,12 +571,98 @@ class ServicoPonto {
      */
     if (colaborador && situacaoDoDia(colaborador.id, data) !== 'normal') return 0;
 
-    if (ehSabado(data)) return MINUTOS_SABADO;
+    /**
+     * Sábado de quem não trabalha aos sábados não prevê nada.
+     *
+     * Previa 4 horas para todo mundo, e o estagiário que cumpre as 6h de
+     * segunda a sexta fechava o mês com 16 horas de débito por um sábado
+     * que nunca foi dele.
+     */
+    if (ehSabado(data)) {
+      return trabalhaNoSabado(colaborador) ? MINUTOS_SABADO : 0;
+    }
 
     return (
       colaborador?.cargaHorariaDiariaMinutos ??
       minutosDoTurno(acharTurno(colaborador?.turno))
     );
+  }
+
+  /**
+   * A SEMANA É A UNIDADE DO BANCO DE HORAS, e não o dia.
+   *
+   * O dia sozinho não diz nada nesta rede. O estagiário que faz 5h de
+   * segunda a sexta e 5h no sábado fecha as 30h dele — mas é reprovado
+   * cinco vezes por dia curto se a conta for diária. O colaborador que sai
+   * dez minutos mais cedo numa terça e compensa na quinta fecha a semana em
+   * dia, e a conta diária marca um débito e um crédito que nunca deviam ter
+   * existido.
+   *
+   * Aqui se soma o que a pessoa trabalhou na semana e se compara com a
+   * carga semanal DELA. É isso que vai para o banco de horas, e é isso que
+   * o líder olha no sábado.
+   *
+   * A semana vai de SEGUNDA a DOMINGO: é como a folha corre e como o sábado
+   * fecha o ciclo, em vez de partir a semana ao meio.
+   */
+  apurarSemana(
+    colaboradorId: string,
+    dataQualquerDaSemana: string
+  ): {
+    inicio: string;
+    fim: string;
+    minutosTrabalhados: number;
+    minutosPrevistos: number;
+    saldoMinutos: number;
+    diasComPendencia: string[];
+  } {
+    const colaborador = bancoDados.obterColaboradorPorId(colaboradorId);
+    const { inicio, fim } = semanaDe(dataQualquerDaSemana);
+
+    let minutosTrabalhados = 0;
+    let minutosPrevistos = 0;
+    const diasComPendencia: string[] = [];
+    const hoje = dataDeHoje();
+
+    for (const data of listarDatasDoPeriodo(inicio, fim)) {
+      const jornada = this.obterJornadaDoDia(colaboradorId, data);
+      minutosTrabalhados += jornada.minutosTrabalhados;
+      minutosPrevistos += jornada.minutosPrevistos;
+
+      /**
+       * Pendência é batida que FALTA num dia que já passou — não é dia
+       * curto. Dia curto agora é assunto do saldo da semana; falta de
+       * batida é assunto de quem responde pela pessoa, porque só ela sabe
+       * o que aconteceu.
+       */
+      if (data >= hoje) continue;
+      const esperadas = marcacoesEsperadas(data, colaborador);
+      if (esperadas.length === 0) continue;
+      if (situacaoDoDia(colaboradorId, data) !== 'normal') continue;
+
+      const feitas = esperadas.filter((t) => !!jornada.marcacoes[t]).length;
+      if (feitas > 0 && feitas < esperadas.length) diasComPendencia.push(data);
+    }
+
+    return {
+      inicio,
+      fim,
+      minutosTrabalhados,
+      minutosPrevistos,
+      saldoMinutos: minutosTrabalhados - minutosPrevistos,
+      diasComPendencia,
+    };
+  }
+
+  /**
+   * O que a semana DEVERIA ter, pela carga contratada da pessoa.
+   *
+   * Diferente do previsto somado dia a dia: aquele desconta folga e
+   * ausência aprovada, este é o contrato limpo. Serve para a tela dizer
+   * "30h na semana" sem ter de explicar por que naquela semana foram 25.
+   */
+  cargaSemanalDoColaborador(colaboradorId: string): number {
+    return cargaSemanalDe(bancoDados.obterColaboradorPorId(colaboradorId));
   }
 
   /** Consolida um dia: horas trabalhadas, intervalo e saldo contra a jornada. */
@@ -817,7 +955,7 @@ class ServicoPonto {
         const data = paraDataLocal(referencia);
         if (data >= hoje) continue;
 
-        const esperadas = marcacoesEsperadas(data);
+        const esperadas = marcacoesEsperadas(data, pessoa);
         const jornada = this.obterJornadaDoDia(pessoa.id, data);
         const batidas = Object.keys(jornada.marcacoes).length;
         // Conta as ESPERADAS, nao quaisquer: no sabado, uma entrada mais
@@ -829,6 +967,8 @@ class ServicoPonto {
         if (ehDiaDeFolga(data)) continue;
         // Dia abonado não é dia pela metade: já foi decidido por outra via
         if (situacaoDoDia(pessoa.id, data) !== 'normal') continue;
+        // Sem batida esperada o dia não é dela — sábado de quem não vem
+        if (esperadas.length === 0) continue;
         if (batidas === 0 || feitas >= esperadas.length) continue;
 
         // Já levantado, decidido ou coberto por ausência aprovada: não repete
