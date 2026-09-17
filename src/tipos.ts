@@ -307,6 +307,15 @@ export interface Mensagem {
    * Fixada no alto da conversa, a vista de todos os participantes.
    * Diferente de fixar CONVERSA na lista, que e preferencia de cada um.
    */
+  /**
+   * A mensagem que esta responde, quando é uma resposta.
+   *
+   * Guarda só o id. O texto citado é montado na hora, a partir da mensagem
+   * original — copiar o texto junto pareceria mais simples e criaria uma
+   * segunda verdade: original editado ou apagado, e a citação continuaria
+   * mostrando o que já não existe.
+   */
+  respondendoA?: string;
   fixadaEm?: string;
   fixadaPorId?: string;
   reacoes?: Record<string, string[]>; // ex: { '👍': ['colab-1', 'colab-2'], '✅': ['colab-3'] }

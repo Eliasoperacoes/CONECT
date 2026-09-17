@@ -29,6 +29,7 @@ import {
   Trash2,
   ImageOff,
   Pencil,
+  Reply,
 } from 'lucide-react';
 import {
   Conversa,
@@ -103,6 +104,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   const [mensagensSelecionadasIds, setMensagensSelecionadasIds] = useState<string[]>([]);
   /** Qual mensagem está com o menu aberto no celular. */
   const [menuMensagemId, setMenuMensagemId] = useState<string | null>(null);
+  /** A mensagem que está sendo respondida, enquanto a resposta é escrita. */
+  const [respondendoId, setRespondendoId] = useState<string | null>(null);
   const [modalEncaminharAberto, setModalEncaminharAberto] = useState(false);
   const [mensagensParaEncaminhar, setMensagensParaEncaminhar] = useState<string[]>([]);
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
@@ -208,14 +211,50 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     // A caixa esvazia antes da ida ao banco para a digitação não travar. Se o
     // envio falhar, o texto volta para a caixa em vez de se perder.
     setTextoMensagem('');
+    // A citação sai da caixa junto com o texto. Se o envio falhar ela volta,
+    // senão a resposta reenviada perderia justamente o contexto.
+    const citada = respondendoId;
+    setRespondendoId(null);
+
     const res = await bancoDados.enviarMensagem(conversa.id, {
       tipo: 'texto',
       texto: textoLimpo,
+      respondendoA: citada || undefined,
     });
     if (!res.sucesso) {
       setTextoMensagem(textoLimpo);
+      setRespondendoId(citada);
       exibirToast(res.erro || 'Não foi possível enviar a mensagem.');
     }
+  };
+
+  /**
+   * Começa a responder: guarda a mensagem citada e põe o foco na caixa.
+   *
+   * O foco importa mais do que parece — no celular é o que abre o teclado.
+   * Sem ele a pessoa toca em "Responder", a citação aparece e ela ainda
+   * precisa de um segundo toque para começar a escrever.
+   */
+  const responderMensagem = (msg: Mensagem) => {
+    setRespondendoId(msg.id);
+    setMenuMensagemId(null);
+    setTimeout(() => {
+      document.getElementById('campo-mensagem-texto')?.focus();
+    }, 0);
+  };
+
+  /**
+   * Leva a conversa até a mensagem citada e a destaca por um instante.
+   *
+   * Citação que não leva a lugar nenhum obriga a rolar procurando — que é
+   * exatamente o trabalho que responder deveria poupar.
+   */
+  const irAteMensagem = (id: string) => {
+    const alvo = document.getElementById(`mensagem-${id}`);
+    if (!alvo) return;
+    alvo.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    alvo.classList.add('destaque-citacao');
+    setTimeout(() => alvo.classList.remove('destaque-citacao'), 1600);
   };
 
   /**
@@ -998,6 +1037,61 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                         : 'bg-[var(--c-superficie)] text-[var(--c-texto)] border border-[var(--c-borda)] rounded-bl-xs'
                     }`}
                   >
+                    {/*
+                      A CITAÇÃO DA MENSAGEM RESPONDIDA.
+
+                      Fica DENTRO do balão, no alto, e leva até a original ao
+                      ser tocada. Citação que não leva a lugar nenhum obriga
+                      a rolar procurando — que é o trabalho que responder
+                      deveria poupar.
+
+                      O texto é montado na hora a partir da mensagem
+                      original. Copiá-lo junto pareceria mais simples e
+                      criaria uma segunda verdade: original editado, e a
+                      citação continuaria mostrando o que já não existe.
+                    */}
+                    {msg.respondendoA && (() => {
+                      const citada = mensagens.find((m) => m.id === msg.respondendoA);
+                      const autor = citada
+                        ? bancoDados.obterColaboradorPorId(citada.remetenteId)
+                        : undefined;
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (citada) irAteMensagem(citada.id);
+                          }}
+                          disabled={!citada}
+                          className={`w-full text-left mb-1.5 pl-2 py-1 border-l-[3px] rounded-r-md text-[11px] leading-snug ${
+                            ehMinha
+                              ? 'border-white/60 bg-white/15'
+                              : 'border-[var(--c-acento)] bg-[var(--c-acento-suave)]'
+                          } ${citada ? 'cursor-pointer' : 'cursor-default opacity-70'}`}
+                        >
+                          <span
+                            className={`block font-bold ${
+                              ehMinha ? 'text-white/90' : 'text-[var(--c-acento)]'
+                            }`}
+                          >
+                            {citada
+                              ? autor?.nome || 'Colaborador'
+                              : 'Mensagem apagada'}
+                          </span>
+                          <span
+                            className={`block truncate ${
+                              ehMinha ? 'text-white/75' : 'text-[var(--c-texto-2)]'
+                            }`}
+                          >
+                            {citada
+                              ? montarPreviaDaMensagem(citada)
+                              : 'A mensagem original não está mais na conversa.'}
+                          </span>
+                        </button>
+                      );
+                    })()}
+
                     {/* Indicador de Mensagem Encaminhada */}
                     {msg.ehEncaminhada && (
                       <div
@@ -1366,6 +1460,23 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       className="hidden md:flex opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity items-center gap-1 flex-shrink-0"
                       onClick={(e) => e.stopPropagation()}
                     >
+                      {/*
+                        Responder vem PRIMEIRO: é a ação mais usada de todas
+                        as que estão aqui, e o que a rede pediu para melhorar
+                        o contexto entre as pessoas.
+                      */}
+                      {podePublicar && (
+                        <button
+                          type="button"
+                          onClick={() => responderMensagem(msg)}
+                          className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-acento)] hover:border-[var(--c-acento)]/40 flex items-center justify-center shadow-xs transition-colors"
+                          title="Responder esta mensagem"
+                          aria-label="Responder mensagem"
+                        >
+                          <Reply className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+
                       {/* Fixar: fica no alto da conversa, à vista de todos */}
                       {bancoDados.podeFixarMensagem(msg) && (
                         <button
@@ -1471,6 +1582,17 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       } ${abrirMenuParaCima ? 'bottom-full mb-1' : 'top-full mt-1'}`}
                       onClick={(e) => e.stopPropagation()}
                     >
+                      {podePublicar && (
+                        <button
+                          type="button"
+                          onClick={() => responderMensagem(msg)}
+                          className="w-full px-3 py-3 flex items-center gap-2.5 active:bg-[var(--c-canvas)] text-[var(--c-texto)] font-semibold border-b border-[var(--c-borda)]"
+                        >
+                          <Reply className="w-4 h-4" />
+                          Responder
+                        </button>
+                      )}
+
                       {bancoDados.podeFixarMensagem(msg) && (
                         <button
                           type="button"
@@ -1585,6 +1707,44 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       {/* 3. Rodapé com Ação: Câmera à esquerda, Barra de Texto no meio e Anexo no outro lado */}
       {podePublicar ? (
         <footer className="w-full bg-[var(--c-superficie)] border-t border-[var(--c-borda)] p-3 flex flex-col gap-2 pb-[max(12px,env(safe-area-inset-bottom))]">
+          {/*
+            A CITAÇÃO ENQUANTO A RESPOSTA É ESCRITA.
+
+            Fica acima da caixa, e não dentro dela: a caixa é o lugar do que
+            se está escrevendo, e misturar as duas coisas faria a citação
+            parecer texto a ser apagado.
+
+            O X sai da resposta sem apagar o que já foi digitado — desistir
+            de citar não é desistir de escrever.
+          */}
+          {respondendoId && (() => {
+            const citada = mensagens.find((m) => m.id === respondendoId);
+            if (!citada) return null;
+            const autor = bancoDados.obterColaboradorPorId(citada.remetenteId);
+
+            return (
+              <div className="flex items-center gap-2 bg-[var(--c-superficie-2)] border-l-[3px] border-[var(--c-acento)] rounded-r-lg px-2.5 py-1.5">
+                <div className="flex-1 min-w-0">
+                  <span className="block text-[11px] font-bold text-[var(--c-acento)]">
+                    Respondendo {autor?.nome || 'Colaborador'}
+                  </span>
+                  <span className="block text-xs text-[var(--c-texto-2)] truncate">
+                    {montarPreviaDaMensagem(citada)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRespondendoId(null)}
+                  className="w-8 h-8 flex items-center justify-center rounded-full text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:bg-[var(--c-canvas)] flex-shrink-0"
+                  title="Deixar de responder"
+                  aria-label="Deixar de responder"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })()}
+
           {/* Linha de digitação de texto com câmera à esquerda, texto no meio e anexo no outro lado */}
           <div className="flex items-center gap-2">
             {/* Lado Esquerdo: Botão de Tirar Foto com a Câmera */}

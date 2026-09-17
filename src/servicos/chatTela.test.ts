@@ -160,3 +160,100 @@ test('o app ouve o trabalhador e limpa o endereco depois de usar', async () => {
    */
   expect(app).toContain('!bancoDados.obterConversaPorId(id)');
 });
+
+/**
+ * RESPONDER MENSAGEM
+ *
+ * Pedido do Elias, para melhorar o contexto entre as pessoas: em grupo com
+ * dez pessoas falando, "pode ser" não diz a que.
+ */
+test('a resposta guarda so o id da mensagem citada', async () => {
+  const tipos = await Bun.file(new URL('../tipos.ts', import.meta.url)).text();
+  expect(tipos).toContain('respondendoA?: string;');
+
+  /**
+   * Copiar o texto citado junto pareceria mais simples e criaria uma segunda
+   * verdade: original editado, e a citação continuaria mostrando o que já
+   * não existe.
+   */
+  expect(tipos).not.toContain('textoRespondido');
+  expect(tipos).not.toContain('respondendoTexto');
+});
+
+test('a resposta atravessa o caminho inteiro ate o banco', async () => {
+  const servico = await Bun.file(
+    new URL('./bancoDados.ts', import.meta.url)
+  ).text();
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  // O envio aceita e carrega
+  expect(servico).toContain('respondendoA?: string;');
+  expect(servico).toContain('respondendoA: conteudo.respondendoA');
+
+  // Sobe e desce do banco. Um lado sem o outro faz a citação sumir ao
+  // recarregar a página — e só aparece para quem estava com a aba aberta.
+  expect(ponte).toContain('responde_a: m.respondendoA ?? null');
+  expect(ponte).toContain('respondendoA: linha.responde_a || undefined');
+  expect(ponte).toContain('responde_a: string | null;');
+});
+
+test('a coluna da resposta existe no banco e nao apaga em cascata', async () => {
+  const sql = await Bun.file(
+    new URL('../../supabase/responder-mensagem.sql', import.meta.url)
+  ).text();
+
+  expect(sql).toContain('add column if not exists responde_a');
+
+  /**
+   * `on delete set null`, nunca cascade: quem apaga a mensagem original não
+   * pode apagar as respostas dela. A conversa continua legível e só a
+   * citação some — apagar em cascata levaria junto o que as OUTRAS pessoas
+   * escreveram.
+   */
+  expect(sql).toContain('on delete set null');
+  expect(sql).not.toContain('on delete cascade');
+
+  // Toda mudança de estrutura precisa avisar o PostgREST, senão a coluna
+  // existe no banco e o aplicativo jura que não
+  expect(sql).toContain("notify pgrst, 'reload schema'");
+});
+
+test('a tela responde, cita e leva ate a mensagem original', async () => {
+  const tela = await lerTela();
+
+  // Responder existe nos DOIS caminhos: o hover do computador e o menu do
+  // celular. Só um dos dois deixaria metade da rede sem a função.
+  expect((tela.match(/responderMensagem\(msg\)/g) || []).length).toBe(2);
+
+  // A citação leva até a original: citação que não leva a lugar nenhum
+  // obriga a rolar procurando, que é o trabalho que responder deveria poupar
+  expect(tela).toContain('irAteMensagem(citada.id)');
+  expect(tela).toContain('destaque-citacao');
+
+  // O texto citado é montado na hora, a partir da mensagem original
+  expect(tela).toContain('montarPreviaDaMensagem(citada)');
+
+  // Original apagado: a resposta continua legível, com o aviso no lugar
+  expect(tela).toContain("'Mensagem apagada'");
+});
+
+test('desistir de citar nao apaga o que ja foi digitado', async () => {
+  const tela = await lerTela();
+
+  const inicio = tela.indexOf('const lidarEnvioTexto');
+  const fim = tela.indexOf('const responderMensagem', inicio);
+  const corpo = tela.slice(inicio, fim);
+
+  /**
+   * A citação sai da caixa junto com o texto e VOLTA se o envio falhar.
+   * Sem isso a resposta reenviada perderia justamente o contexto que a
+   * pessoa quis dar.
+   */
+  expect(corpo).toContain('const citada = respondendoId');
+  expect(corpo).toContain('setRespondendoId(citada)');
+
+  // E o X da barra mexe só na citação, não no texto
+  expect(tela).toContain('onClick={() => setRespondendoId(null)}');
+});

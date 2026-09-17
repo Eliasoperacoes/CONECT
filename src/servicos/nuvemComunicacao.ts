@@ -170,6 +170,7 @@ interface LinhaMensagem {
   legenda: string | null;
   eh_encaminhada: boolean;
   eh_aviso_direcao: boolean;
+  responde_a: string | null;
   reacoes: Record<string, string[]> | null;
   editada_em: string | null;
   fixada_em: string | null;
@@ -209,6 +210,7 @@ const paraLinhaMensagem = (m: Mensagem) => ({
   legenda: m.legenda ?? null,
   eh_encaminhada: !!m.ehEncaminhada,
   eh_aviso_direcao: !!m.ehAvisoDirecao,
+  responde_a: m.respondendoA ?? null,
   reacoes: m.reacoes ?? {},
   editada_em: m.editadaEm ?? null,
   fixada_em: m.fixadaEm ?? null,
@@ -426,6 +428,7 @@ class PonteComunicacao {
         lida: lidaPor.some((id) => id !== linha.remetente_id),
         lidaPor,
         ehEncaminhada: linha.eh_encaminhada || undefined,
+        respondendoA: linha.responde_a || undefined,
         ehAvisoDirecao: linha.eh_aviso_direcao || undefined,
         editadaEm: linha.editada_em || undefined,
         fixadaEm: linha.fixada_em || undefined,

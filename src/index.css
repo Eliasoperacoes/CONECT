@@ -138,3 +138,22 @@ html, body {
 .anim-onda {
   animation: onda-audio 0.8s ease-in-out infinite alternate;
 }
+
+/*
+  O PISCA DA MENSAGEM CITADA.
+
+  Ao tocar numa citação a conversa rola até a mensagem original — e sem um
+  sinal a pessoa chega lá sem saber qual das mensagens à vista é a que ela
+  procurava. O destaque dura pouco de propósito: é para achar, não para
+  marcar.
+*/
+@keyframes destaque-citacao {
+  0%   { background-color: var(--c-acento-suave); }
+  70%  { background-color: var(--c-acento-suave); }
+  100% { background-color: transparent; }
+}
+
+.destaque-citacao {
+  animation: destaque-citacao 1.6s ease-out;
+  border-radius: 0.75rem;
+}

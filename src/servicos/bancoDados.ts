@@ -2089,6 +2089,7 @@ class BancoDadosConecta {
       imagemUrl?: string;
       legenda?: string;
       ehEncaminhada?: boolean;
+      respondendoA?: string;
     }
   ): Promise<{ sucesso: boolean; mensagem?: Mensagem; erro?: string }> {
     if (!this.podePublicarNaConversa(conversaId)) {
@@ -2117,6 +2118,7 @@ class BancoDadosConecta {
       lida: false,
       lidaPor: [atual.id],
       ehEncaminhada: !!conteudo.ehEncaminhada,
+      respondendoA: conteudo.respondendoA,
       ehAvisoDirecao: conversaId === 'grupo-avisos-da-rede',
     };
 
