@@ -391,9 +391,57 @@ test('o menu unico oferece as seis acoes, com rotulo em texto', async () => {
     expect(menu).toContain(acao);
   }
   expect(menu).toContain("msg.fixadaEm ? 'Desafixar' : 'Fixar para todos'");
+});
 
-  // E o menu deixou de ser exclusivo do celular
-  expect(menu).not.toContain('md:hidden absolute z-40');
+/**
+ * O MENU NÃO PODE SER CORTADO NEM MEXER NA ROLAGEM.
+ *
+ * Ele morava DENTRO da lista de mensagens, posicionado em relação ao balão.
+ * A lista tem `overflow`, então perto do topo da conversa o menu aparecia
+ * cortado ao meio — e abrir um menu alto ainda atrapalhava a rolagem.
+ */
+test('o menu de acoes fica fora da lista e ancorado na janela', async () => {
+  const tela = await lerTela();
+
+  const inicio = tela.indexOf('O MENU DAS AÇÕES');
+  const menu = tela.slice(inicio, inicio + 6000);
+
+  // Posição da JANELA, não do balão: não há borda de lista que o corte
+  expect(menu).not.toContain('absolute z-40');
+  expect(tela).toContain('id="menu-acoes-mensagem"');
+  expect(tela).toContain('className="fixed z-[61]');
+
+  // A âncora vem do botão, medida na hora do clique
+  expect(tela).toContain('e.currentTarget.getBoundingClientRect()');
+  expect(tela).toContain('setMenuMensagem({ msg, x: r.left, y: r.bottom })');
+
+  // Rolar move o botão para longe da âncora, então rolar fecha
+  expect(tela).toContain('onScroll={menuMensagem ? fecharMenuMensagem : undefined}');
+
+  // Cabe embaixo? Senão abre para cima. E nunca passa da lateral.
+  expect(tela).toContain('const cabeAbaixo =');
+  expect(tela).toContain('window.innerWidth - MENU_LARGURA - 8');
+});
+
+/**
+ * "A ideia é boa, mas na prática muito ruim" — o menu de 208px de largura
+ * com linhas de 44px passava de 260px de altura. Compacto ele dá o mesmo
+ * alcance em pouco mais de um terço do espaço.
+ */
+test('o menu de acoes e compacto', async () => {
+  const tela = await lerTela();
+
+  expect(tela).toContain('MENU_LARGURA = 164');
+  expect(tela).toContain('MENU_ALTURA_ITEM = 32');
+
+  // As linhas saem de um lugar só: seis cópias da mesma classe é como elas
+  // começam a divergir de tamanho entre si
+  expect(tela).toContain('const ItemDoMenu');
+  expect(tela).toContain("className={`w-full px-3 h-8 flex items-center gap-2.5 text-xs");
+
+  // A largura e a altura antigas não podem voltar
+  expect(tela).not.toContain('w-52 rounded-xl');
+  expect(tela).not.toContain('px-3 py-3 flex items-center gap-2.5');
 });
 
 test('a classe que esconde a barra de rolagem existe de verdade', async () => {

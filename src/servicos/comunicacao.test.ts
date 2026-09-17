@@ -931,7 +931,7 @@ test('AS AÇÕES DA MENSAGEM SÃO ALCANÇÁVEIS NO CELULAR', async () => {
   // aparelhos: as ações deixaram de ter duas listas quando a fileira de seis
   // ícones do computador saiu. No celular o botão fica sempre à mão; no
   // computador ele aparece ao passar o mouse.
-  expect(tela).toContain('setMenuMensagemId');
+  expect(tela).toContain('setMenuMensagem({ msg, x: r.left, y: r.bottom })');
   expect(tela).toContain('md:opacity-0 md:group-hover:opacity-100');
 
   // A fileira de ícones do computador não pode voltar: eram seis alvos
@@ -954,15 +954,19 @@ test('no celular as ações são um PAINEL, não botões na linha da mensagem', 
     new URL('../componentes/TelaConversa.tsx', import.meta.url)
   ).text();
 
-  const inicio = tela.indexOf('{menuMensagemId === msg.id && (');
+  const inicio = tela.indexOf('{menuMensagem && (() => {');
   expect(inicio).toBeGreaterThan(-1);
-  // 6000: o menu tem cinco itens com rótulo e permissão; 4000 cortava antes
-  // do último e reprovava o código certo
   const menu = tela.slice(inicio, inicio + 6000);
 
-  // Flutuante e com largura própria: não disputa espaço com o balão
-  expect(menu).toContain('absolute');
-  expect(menu).toContain('w-52');
+  /**
+   * Flutuante e com largura própria: não disputa espaço com o balão.
+   *
+   * Ele já foi `absolute` dentro da lista de mensagens, e isso trouxe outro
+   * defeito: perto do topo da conversa a borda da lista o cortava ao meio.
+   * Agora é `fixed`, ancorado na janela pelo canto do botão.
+   */
+  expect(menu).toContain('className="fixed z-[61]');
+  expect(menu).toContain('width: MENU_LARGURA');
 
   // Rótulos em texto — ícone sozinho num menu de toque não diz o que faz
   for (const rotulo of ['Encaminhar', 'Selecionar', 'Apagar']) {
@@ -972,8 +976,10 @@ test('no celular as ações são um PAINEL, não botões na linha da mensagem', 
   // Fundo que fecha ao tocar fora, senão o menu fica preso aberto
   expect(menu).toContain('fixed inset-0');
 
-  // Nas últimas mensagens abre para cima, senão sai da tela
-  expect(tela).toContain('abrirMenuParaCima');
+  // Se não couber embaixo, abre para cima — antes isso era decidido pelo
+  // ÍNDICE da mensagem na lista, que chutava; agora é medido na janela
+  expect(tela).not.toContain('abrirMenuParaCima');
+  expect(menu).toContain('const cabeAbaixo =');
 });
 
 test('quem fixa é quem pode publicar, não só o autor', async () => {

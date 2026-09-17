@@ -60,6 +60,36 @@ interface PropsTelaConversa {
 
 const REACOES_RAPIDAS = ['👍', '✅', '📦', '🚗'];
 
+/** Largura e altura aproximada do menu de ações, para caber na janela. */
+const MENU_LARGURA = 164;
+const MENU_ALTURA_ITEM = 32;
+
+/**
+ * Uma linha do menu de ações.
+ *
+ * Compacta de propósito. A primeira versão tinha 208px de largura e linhas
+ * de 44px: seis delas passavam de 260px de altura e, perto do topo da
+ * conversa, o menu aparecia cortado ao meio. Ícone pequeno, texto de 12 e
+ * pouco respiro dão o mesmo alcance em pouco mais de um terço do espaço.
+ */
+const ItemDoMenu: React.FC<{
+  icone: React.ReactNode;
+  rotulo: string;
+  perigo?: boolean;
+  aoClicar: () => void;
+}> = ({ icone, rotulo, perigo, aoClicar }) => (
+  <button
+    type="button"
+    onClick={aoClicar}
+    className={`w-full px-3 h-8 flex items-center gap-2.5 text-xs font-semibold text-left hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-canvas)] transition-colors ${
+      perigo ? 'text-red-600 dark:text-red-400' : 'text-[var(--c-texto)]'
+    }`}
+  >
+    <span className="flex-shrink-0 opacity-80">{icone}</span>
+    <span className="truncate">{rotulo}</span>
+  </button>
+);
+
 /** Segundos em M:SS — 3 vira "0:03" e 75 vira "1:15". */
 const formatarSegundos = (total: number): string => {
   const seguros = Math.max(0, Math.round(total));
@@ -103,7 +133,21 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   const [modoSelecao, setModoSelecao] = useState(false);
   const [mensagensSelecionadasIds, setMensagensSelecionadasIds] = useState<string[]>([]);
   /** Qual mensagem está com o menu aberto no celular. */
-  const [menuMensagemId, setMenuMensagemId] = useState<string | null>(null);
+  /**
+   * O menu de ações aberto: a mensagem E o ponto da tela onde ancorá-lo.
+   *
+   * A posição é guardada em coordenadas da JANELA, não do balão. O menu
+   * antes era `absolute` dentro da lista de mensagens, que rola e tem
+   * `overflow`: perto do topo ele era CORTADO ao meio pela borda da lista, e
+   * abrir um menu alto ainda empurrava a rolagem. Fora da lista, ancorado na
+   * janela, não há o que o corte.
+   */
+  const [menuMensagem, setMenuMensagem] = useState<{
+    msg: Mensagem;
+    x: number;
+    y: number;
+  } | null>(null);
+  const fecharMenuMensagem = () => setMenuMensagem(null);
   /** A mensagem que está sendo respondida, enquanto a resposta é escrita. */
   const [respondendoId, setRespondendoId] = useState<string | null>(null);
   const [modalEncaminharAberto, setModalEncaminharAberto] = useState(false);
@@ -237,7 +281,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
    */
   const responderMensagem = (msg: Mensagem) => {
     setRespondendoId(msg.id);
-    setMenuMensagemId(null);
+    fecharMenuMensagem();
     setTimeout(() => {
       document.getElementById('campo-mensagem-texto')?.focus();
     }, 0);
@@ -950,7 +994,10 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div
+        className="flex-1 overflow-y-auto p-4 space-y-3"
+        onScroll={menuMensagem ? fecharMenuMensagem : undefined}
+      >
         {mensagensExibidas.length === 0 ? (
           <div className="h-full flex items-center justify-center text-[var(--c-texto-3)] text-sm">
             {termoBusca ? 'Nenhuma mensagem encontrada.' : 'Nenhuma mensagem ainda.'}
@@ -976,7 +1023,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
              * fora da tela — e é justamente nas mensagens recentes que as
              * pessoas apagam e encaminham.
              */
-            const abrirMenuParaCima = indiceDaMensagem >= mensagensExibidas.length - 3;
 
             // Fotos anexadas antes desta correção foram gravadas como arquivo.
             // Se o conteúdo é uma imagem, mostra como foto em vez de download.
@@ -1452,7 +1498,14 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setMenuMensagemId(menuMensagemId === msg.id ? null : msg.id);
+                        if (menuMensagem?.msg.id === msg.id) {
+                          fecharMenuMensagem();
+                          return;
+                        }
+                        // O canto do botão é a âncora; quem decide de que
+                        // lado o menu cabe é o cálculo na hora de desenhar
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setMenuMensagem({ msg, x: r.left, y: r.bottom });
                       }}
                       className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] flex items-center justify-center flex-shrink-0 active:scale-95 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 transition-all"
                       title="Opções da mensagem"
@@ -1463,119 +1516,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                   )}
 
                 </div>
-
-                {/*
-                  O MENU DAS AÇÕES — um só, para computador e celular.
-
-                  A primeira tentativa foi acrescentar botõezinhos à linha da
-                  mensagem. Não funcionou: a linha já está na largura máxima,
-                  então no telefone eles caíam fora da tela — e o container só
-                  rola na vertical, então nem dava para alcançá-los.
-
-                  É um painel flutuante ancorado na mensagem, com rótulo em
-                  texto. Ocupa a largura que precisa, não disputa espaço com o
-                  balão, e diz o que cada coisa faz em vez de pedir que se
-                  adivinhe pelo desenho.
-                */}
-                {menuMensagemId === msg.id && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-30"
-                      onClick={() => setMenuMensagemId(null)}
-                    />
-                    <div
-                      className={`absolute z-40 w-52 rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] shadow-xl overflow-hidden text-sm ${
-                        ehMinha ? 'right-0' : 'left-0'
-                      } ${abrirMenuParaCima ? 'bottom-full mb-1' : 'top-full mt-1'}`}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {podePublicar && (
-                        <button
-                          type="button"
-                          onClick={() => responderMensagem(msg)}
-                          className="w-full px-3 py-3 flex items-center gap-2.5 active:bg-[var(--c-canvas)] text-[var(--c-texto)] font-semibold border-b border-[var(--c-borda)]"
-                        >
-                          <Reply className="w-4 h-4" />
-                          Responder
-                        </button>
-                      )}
-
-                      {bancoDados.podeFixarMensagem(msg) && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setMenuMensagemId(null);
-                            const res = await bancoDados.alternarFixarMensagem(msg.id);
-                            if (!res.sucesso) exibirToast(res.erro || 'Não foi possível fixar.');
-                            else
-                              exibirToast(
-                                res.fixada
-                                  ? 'Fixada no alto da conversa, para todos.'
-                                  : 'Desafixada.'
-                              );
-                          }}
-                          className="w-full px-3 py-3 flex items-center gap-2.5 active:bg-[var(--c-canvas)] text-[var(--c-texto)] font-semibold border-b border-[var(--c-borda)]"
-                        >
-                          {msg.fixadaEm ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
-                          {msg.fixadaEm ? 'Desafixar' : 'Fixar para todos'}
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuMensagemId(null);
-                          abrirModalEncaminhar([msg.id]);
-                        }}
-                        className="w-full px-3 py-3 flex items-center gap-2.5 active:bg-[var(--c-canvas)] text-[var(--c-texto)] font-semibold border-b border-[var(--c-borda)]"
-                      >
-                        <Forward className="w-4 h-4" />
-                        Encaminhar
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMenuMensagemId(null);
-                          setModoSelecao(true);
-                          setMensagensSelecionadasIds([msg.id]);
-                        }}
-                        className="w-full px-3 py-3 flex items-center gap-2.5 active:bg-[var(--c-canvas)] text-[var(--c-texto)] font-semibold border-b border-[var(--c-borda)]"
-                      >
-                        <CheckSquare className="w-4 h-4" />
-                        Selecionar
-                      </button>
-
-                      {bancoDados.podeEditarMensagem(msg) && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMenuMensagemId(null);
-                            iniciarEdicao(msg);
-                          }}
-                          className="w-full px-3 py-3 flex items-center gap-2.5 active:bg-[var(--c-canvas)] text-[var(--c-texto)] font-semibold border-b border-[var(--c-borda)]"
-                        >
-                          <Pencil className="w-4 h-4" />
-                          Editar
-                        </button>
-                      )}
-
-                      {bancoDados.podeExcluirMensagem(msg) && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setMenuMensagemId(null);
-                            setMensagemParaExcluir(msg);
-                          }}
-                          className="w-full px-3 py-3 flex items-center gap-2.5 active:bg-red-500/10 text-red-600 font-semibold"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Apagar
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
 
                 {/* Badges de Reações Exibidas */}
                 {reacoes.length > 0 && (
@@ -1610,6 +1550,128 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
         )}
         <div ref={refFimMensagens} />
       </div>
+
+      {/*
+        O MENU DAS AÇÕES — um só, para computador e celular, e FORA da lista.
+
+        Ele morava dentro da lista de mensagens, posicionado em relação ao
+        balão. Duas consequências, as duas relatadas por quem usa: perto do
+        topo da conversa ele saía CORTADO ao meio pela borda da lista, que
+        tem `overflow`; e abrir um menu alto atrapalhava a rolagem.
+
+        Aqui fora, ancorado na janela pelo canto do botão, não há borda que o
+        corte. O cálculo abaixo só garante que ele não passe do rodapé nem da
+        lateral: se não couber embaixo, abre para cima.
+
+        A rolagem FECHA o menu — a âncora é um ponto da tela, e rolar move o
+        botão para longe dela.
+      */}
+      {menuMensagem && (() => {
+        const msg = menuMensagem.msg;
+
+        const itens: React.ReactNode[] = [];
+        if (podePublicar) {
+          itens.push(
+            <ItemDoMenu
+              key="responder"
+              icone={<Reply className="w-3.5 h-3.5" />}
+              rotulo="Responder"
+              aoClicar={() => responderMensagem(msg)}
+            />
+          );
+        }
+        if (bancoDados.podeFixarMensagem(msg)) {
+          itens.push(
+            <ItemDoMenu
+              key="fixar"
+              icone={
+                msg.fixadaEm ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />
+              }
+              rotulo={msg.fixadaEm ? 'Desafixar' : 'Fixar para todos'}
+              aoClicar={async () => {
+                fecharMenuMensagem();
+                const res = await bancoDados.alternarFixarMensagem(msg.id);
+                if (!res.sucesso) exibirToast(res.erro || 'Não foi possível fixar.');
+                else
+                  exibirToast(
+                    res.fixada ? 'Fixada no alto da conversa, para todos.' : 'Desafixada.'
+                  );
+              }}
+            />
+          );
+        }
+        itens.push(
+          <ItemDoMenu
+            key="encaminhar"
+            icone={<Forward className="w-3.5 h-3.5" />}
+            rotulo="Encaminhar"
+            aoClicar={() => {
+              fecharMenuMensagem();
+              abrirModalEncaminhar([msg.id]);
+            }}
+          />,
+          <ItemDoMenu
+            key="selecionar"
+            icone={<CheckSquare className="w-3.5 h-3.5" />}
+            rotulo="Selecionar"
+            aoClicar={() => {
+              fecharMenuMensagem();
+              setModoSelecao(true);
+              setMensagensSelecionadasIds([msg.id]);
+            }}
+          />
+        );
+        if (bancoDados.podeEditarMensagem(msg)) {
+          itens.push(
+            <ItemDoMenu
+              key="editar"
+              icone={<Pencil className="w-3.5 h-3.5" />}
+              rotulo="Editar"
+              aoClicar={() => {
+                fecharMenuMensagem();
+                iniciarEdicao(msg);
+              }}
+            />
+          );
+        }
+        if (bancoDados.podeExcluirMensagem(msg)) {
+          itens.push(
+            <ItemDoMenu
+              key="apagar"
+              icone={<Trash2 className="w-3.5 h-3.5" />}
+              rotulo="Apagar"
+              perigo
+              aoClicar={() => {
+                fecharMenuMensagem();
+                setMensagemParaExcluir(msg);
+              }}
+            />
+          );
+        }
+
+        // Cabe embaixo? Senão abre para cima. E nunca passa da lateral.
+        const altura = itens.length * MENU_ALTURA_ITEM + 8;
+        const cabeAbaixo = menuMensagem.y + altura + 12 <= window.innerHeight;
+        const topo = cabeAbaixo ? menuMensagem.y + 6 : Math.max(8, menuMensagem.y - altura - 40);
+        const esquerda = Math.min(
+          Math.max(8, menuMensagem.x),
+          window.innerWidth - MENU_LARGURA - 8
+        );
+
+        return (
+          <>
+            <div className="fixed inset-0 z-[60]" onClick={fecharMenuMensagem} />
+            <div
+              id="menu-acoes-mensagem"
+              style={{ top: topo, left: esquerda, width: MENU_LARGURA }}
+              className="fixed z-[61] py-1 rounded-lg bg-[var(--c-superficie)] border border-[var(--c-borda)] shadow-[var(--s-3)] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {itens}
+            </div>
+          </>
+        );
+      })()}
 
       {/* 3. Rodapé com Ação: Câmera à esquerda, Barra de Texto no meio e Anexo no outro lado */}
       {podePublicar ? (
