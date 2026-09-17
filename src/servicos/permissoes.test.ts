@@ -476,3 +476,96 @@ test('o contador "sem bater hoje" leva a uma lista', async () => {
   expect(gestao).toContain('semBaterHoje');
   expect(gestao).toContain('Quem ainda não bateu o ponto hoje');
 });
+
+/**
+ * A FUSÃO DE "MINHA EQUIPE" COM "BANCO DE HORAS".
+ *
+ * A duplicação era literal: a primeira vista de "Minha Equipe" já se
+ * chamava "Banco de horas da equipe", e ao lado dela havia uma aba de topo
+ * chamada "Banco de Horas". Quem tinha as duas permissões via o mesmo nome
+ * em dois lugares, um dentro do outro.
+ */
+test('nao existe mais aba de topo separada para o banco de horas', async () => {
+  const painel = await Bun.file(
+    new URL('../componentes/PainelRede.tsx', import.meta.url)
+  ).text();
+
+  // O destino da aba antiga não pode sobrar: aba que aparece e não está na
+  // lista de permitidas é escolhida e cai fora no clique seguinte
+  expect(painel).not.toContain("subAbaAtiva === 'ponto'");
+  expect(painel).not.toContain("lista.push('ponto')");
+  expect(painel).not.toContain("import { BancoDeHoras }");
+});
+
+/**
+ * NADA DE ACESSO PODE TER SE PERDIDO NA FUSÃO.
+ *
+ * Um gerente SEM equipe cadastrada chegava ao cartaz de QR pela aba de topo
+ * que saiu. Sem este `||`, a fusão tiraria o QR dele sem aviso — e ele é a
+ * única forma de a loja dele bater ponto.
+ */
+test('quem so tem o cartaz de QR continua alcancando a aba', async () => {
+  const painel = await Bun.file(
+    new URL('../componentes/PainelRede.tsx', import.meta.url)
+  ).text();
+
+  const inicio = painel.indexOf('const podeVerGestao =');
+  const regra = painel.slice(inicio, inicio + 300);
+  expect(regra).toContain("pode('banco_horas_rh')");
+  expect(regra).toContain("pode('qr_ponto')");
+
+  // E a mesma condição na lista de abas permitidas, senão as duas discordam
+  const lista = painel.slice(
+    painel.indexOf('const abasPermitidas'),
+    painel.indexOf('const subAbaAtiva')
+  );
+  expect(lista).toContain("podeUsar('banco_horas_rh', colaboradorAtual)");
+  expect(lista).toContain("podeUsar('qr_ponto', colaboradorAtual)");
+});
+
+test('as vistas do RH continuam com as permissoes delas', async () => {
+  const gestao = await Bun.file(
+    new URL('../componentes/PainelGestao.tsx', import.meta.url)
+  ).text();
+
+  /**
+   * A fusão não pode virar promoção: quem não tinha banco de horas da rede
+   * continua sem, e o botão nem aparece.
+   */
+  expect(gestao).toContain("const veRede = podeUsar('banco_horas_rh', colaboradorAtual)");
+  expect(gestao).toContain("const veQr = podeUsar('qr_ponto', colaboradorAtual)");
+  expect(gestao).toContain('{veRede && (');
+  expect(gestao).toContain('{veQr && (');
+
+  // E é a MESMA tela de antes, não uma cópia
+  expect(gestao).toContain('<BancoDeHoras colaboradorAtual={colaboradorAtual} abaFixa="banco_horas" />');
+  expect(gestao).toContain('<BancoDeHoras colaboradorAtual={colaboradorAtual} abaFixa="qrcodes" />');
+});
+
+test('a tela do RH esconde a barra propria quando esta dentro de Gerenciar', async () => {
+  const banco = await Bun.file(
+    new URL('../componentes/BancoDeHoras.tsx', import.meta.url)
+  ).text();
+
+  // Duas barras empilhadas fariam a pessoa descobrir qual das duas manda
+  expect(banco).toContain("abaFixa ? 'hidden' : 'flex'");
+
+  /**
+   * A permissão fica por ÚLTIMO: quem não vê banco de horas cai no cartaz,
+   * mesmo que alguém peça a vista errada de fora.
+   */
+  expect(banco).toContain("const abaEfetiva: AbaRH = !veBancoDeHoras\n    ? 'qrcodes'\n    : abaFixa ?? abaAtiva;");
+});
+
+test('um gerente sem equipe abre numa vista que ele tem', async () => {
+  const gestao = await Bun.file(
+    new URL('../componentes/PainelGestao.tsx', import.meta.url)
+  ).text();
+
+  // Abrir numa lista vazia faria a aba parecer quebrada
+  expect(gestao).toContain("const abaInicial: Aba = temEquipe ? 'equipe' : veRede ? 'rede' : 'qr'");
+
+  // E "tem equipe" vem de quem já o calculava, não de uma segunda conta
+  expect(gestao).toContain('temEquipe: boolean;');
+  expect(gestao).not.toContain('resumoDaEquipeDe');
+});

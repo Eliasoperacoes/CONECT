@@ -37,6 +37,8 @@ import {
   dataDeHoje,
 } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
+import { podeUsar } from '../servicos/permissoes';
+import { BancoDeHoras } from './BancoDeHoras';
 import { resumoDaFicha } from '../servicos/fichaColaborador';
 import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
@@ -46,9 +48,28 @@ import { EscalaDeFolgas } from './EscalaDeFolgas';
 interface Props {
   colaboradorAtual: Colaborador;
   aoAbrirConversa: (colegaId: string) => void;
+  /**
+   * Há alguém sob a responsabilidade de quem abriu?
+   *
+   * Vem de fora porque quem lista já sabia — e porque um gerente SEM equipe
+   * ainda precisa entrar aqui pelo cartaz de QR da loja dele.
+   */
+  temEquipe: boolean;
 }
 
-type Aba = 'equipe' | 'sem_bater' | 'aprovacoes' | 'folgas';
+/**
+ * As vistas de gestão, numa barra só.
+ *
+ * "rede" e "qr" vinham de uma ABA DE TOPO separada, chamada "Banco de
+ * Horas". Só que a primeira vista daqui já se chamava "Banco de horas da
+ * equipe": o mesmo nome em dois lugares, um dentro do outro, e quem tinha
+ * as duas permissões via as duas.
+ *
+ * Agora é uma barra única. O que mudou foi ONDE se chega, não o que cada
+ * tela faz: a rede continua sendo a tela do RH, com correção de marcação e
+ * exportação, e a equipe continua sendo a cadeia de quem abre.
+ */
+type Aba = 'equipe' | 'sem_bater' | 'aprovacoes' | 'folgas' | 'rede' | 'qr';
 
 /** Saldo colorido pelo sinal: verde credita a pessoa, âmbar deve. */
 const CorDoSaldo: React.FC<{ minutos: number; className?: string }> = ({
@@ -68,8 +89,26 @@ const CorDoSaldo: React.FC<{ minutos: number; className?: string }> = ({
   </strong>
 );
 
-export const PainelGestao: React.FC<Props> = ({ colaboradorAtual, aoAbrirConversa }) => {
-  const [aba, setAba] = useState<Aba>('equipe');
+export const PainelGestao: React.FC<Props> = ({
+  colaboradorAtual,
+  aoAbrirConversa,
+  temEquipe,
+}) => {
+  const veRede = podeUsar('banco_horas_rh', colaboradorAtual);
+  const veQr = podeUsar('qr_ponto', colaboradorAtual);
+
+  /**
+   * Quem NÃO tem equipe ainda pode entrar aqui — um gerente sem ninguém
+   * cadastrado abaixo dele precisa do cartaz de QR da loja. Para ele a
+   * barra começa no que ele de fato alcança, e não numa lista vazia.
+   *
+   * O "tem equipe" vem de quem já o calculava, e não de uma segunda conta
+   * aqui dentro: duas definições da mesma coisa é como as telas passam a
+   * discordar sobre quem aparece.
+   */
+  const abaInicial: Aba = temEquipe ? 'equipe' : veRede ? 'rede' : 'qr';
+
+  const [aba, setAba] = useState<Aba>(abaInicial);
   const [dataInicio, setDataInicio] = useState(primeiroDiaDoMes());
   const [dataFim, setDataFim] = useState(dataDeHoje());
   const [busca, setBusca] = useState('');
@@ -289,9 +328,59 @@ export const PainelGestao: React.FC<Props> = ({ colaboradorAtual, aoAbrirConvers
                 </span>
               )}
             </button>
+
+            {/*
+              AS DUAS QUE VIERAM DA ABA DE TOPO.
+
+              "Rede" é a tela do RH: todas as lojas, correção de marcação e
+              exportação. Continua sendo exatamente a mesma tela, com as
+              mesmas permissões — o que mudou foi só o caminho até ela.
+
+              O nome é "Rede" e não "Banco de Horas" porque a PRIMEIRA vista
+              desta barra já é o banco de horas, da equipe de quem abre. Dois
+              itens com o mesmo nome na mesma barra é o defeito que esta
+              fusão veio corrigir, não um a repetir.
+            */}
+            {veRede && (
+              <button
+                type="button"
+                onClick={() => setAba('rede')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  aba === 'rede'
+                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+                }`}
+              >
+                Rede (todas as lojas)
+              </button>
+            )}
+
+            {veQr && (
+              <button
+                type="button"
+                onClick={() => setAba('qr')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  aba === 'qr'
+                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+                }`}
+              >
+                QR do ponto
+              </button>
+            )}
           </div>
 
-          {aba === 'sem_bater' ? (
+          {/*
+            As duas vistas que vieram da aba de topo entram ANTES da cadeia
+            de `if` da equipe: elas não usam nada do que vem abaixo — nem a
+            busca, nem o período, nem a lista — e a tela de rede traz o seu
+            próprio.
+          */}
+          {aba === 'rede' ? (
+            <BancoDeHoras colaboradorAtual={colaboradorAtual} abaFixa="banco_horas" />
+          ) : aba === 'qr' ? (
+            <BancoDeHoras colaboradorAtual={colaboradorAtual} abaFixa="qrcodes" />
+          ) : aba === 'sem_bater' ? (
             <div className="flex flex-col gap-2">
               <div>
                 <h3 className="text-sm font-bold text-[var(--c-texto)]">

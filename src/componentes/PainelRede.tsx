@@ -26,7 +26,6 @@ import { bancoDados } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
 import { QuadroFuncionarios } from './QuadroFuncionarios';
 import { CentralAvisos } from './CentralAvisos';
-import { BancoDeHoras } from './BancoDeHoras';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { Organograma } from './Organograma';
 import { PainelGestao } from './PainelGestao';
@@ -44,7 +43,6 @@ type SubAbaPainel =
   | 'gestao'
   | 'organograma'
   | 'aprovacoes'
-  | 'ponto'
   | 'avisos';
 
 export const PainelRede: React.FC<PropsPainelRede> = ({
@@ -119,15 +117,21 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
     const lista: SubAbaPainel[] = [];
     if (podeUsar('visao_lojas', colaboradorAtual)) lista.push('visao_geral');
     if (podeUsar('quadro_equipe', colaboradorAtual)) lista.push('quadro');
+    /**
+     * "Gerenciar" reúne a equipe, o banco de horas da rede e o cartaz de QR.
+     *
+     * A condição é a mesma da barra, e precisa ser: uma aba que aparece e
+     * não está nesta lista é escolhida e cai fora no clique seguinte.
+     */
     if (
-      (podeUsar('painel_gestao', colaboradorAtual) ||
+      ((podeUsar('painel_gestao', colaboradorAtual) ||
         podeUsar('aprovar_jornadas', colaboradorAtual)) &&
-      temEquipe
+        temEquipe) ||
+      podeUsar('banco_horas_rh', colaboradorAtual) ||
+      podeUsar('qr_ponto', colaboradorAtual)
     )
       lista.push('gestao');
     if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
-    if (podeUsar('banco_horas_rh', colaboradorAtual) || podeUsar('qr_ponto', colaboradorAtual))
-      lista.push('ponto');
     if (podeUsar('avisos_direcao', colaboradorAtual)) lista.push('avisos');
     return lista;
   }, [colaboradorAtual, temEquipe, podeVerBancoDeHoras]);
@@ -154,7 +158,18 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    * é ruído.
    */
   const pode = (chave: string) => podeUsar(chave, colaboradorAtual);
-  const podeVerGestao = (pode('painel_gestao') || pode('aprovar_jornadas')) && temEquipe;
+  /**
+   * Com o banco de horas e o cartaz de QR morando aqui dentro, esta aba
+   * deixou de ser só "tenho equipe".
+   *
+   * Um gerente sem ninguém cadastrado abaixo dele ainda precisa do cartaz
+   * da loja — e antes ele chegava nele por uma aba própria, que saiu. Sem
+   * este `||` a fusão tiraria o QR dele sem aviso.
+   */
+  const podeVerGestao =
+    ((pode('painel_gestao') || pode('aprovar_jornadas')) && temEquipe) ||
+    pode('banco_horas_rh') ||
+    pode('qr_ponto');
 
   /**
    * O painel muda de nome conforme quem abre.
@@ -244,7 +259,15 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                 }`}
               >
                 <ClipboardList className="w-3.5 h-3.5" />
-                <span>Minha Equipe</span>
+                {/*
+                  O NOME MUDOU COM O CONTEÚDO.
+
+                  Era "Minha Equipe" e a aba tinha só a equipe de quem abre.
+                  Agora ela reúne também o banco de horas da rede e o cartaz
+                  de QR — para o RH, "minha equipe" passaria a mentir sobre
+                  o alcance do que está lá dentro.
+                */}
+                <span>Equipe &amp; Ponto</span>
                 {pendenciasParaDecidir > 0 && (
                   <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
                     {pendenciasParaDecidir}
@@ -280,34 +303,20 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                 dois é o certo — e o contador aparecia duas vezes na mesma
                 tela. */}
 
-            {/* Banco de horas: só quem cuida de RH */}
-            {(pode('banco_horas_rh') || pode('qr_ponto')) && (
-              <button
-                type="button"
-                id="subaba-banco-horas"
-                onClick={() => setSubAbaAtiva('ponto')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-                  subAbaAtiva === 'ponto'
-                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-                }`}
-              >
-                {/* O nome segue o que a pessoa tem de fato: chamar de
-                    "Banco de Horas" uma tela que só mostra o cartaz faria
-                    o gerente procurar um saldo que não está lá */}
-                {pode('banco_horas_rh') ? (
-                  <>
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Banco de Horas</span>
-                  </>
-                ) : (
-                  <>
-                    <QrCode className="w-3.5 h-3.5" />
-                    <span>QR do Ponto</span>
-                  </>
-                )}
-              </button>
-            )}
+            {/*
+              A ABA "BANCO DE HORAS" SAIU DAQUI.
+
+              Ela virou uma vista dentro de "Gerenciar", numa barra única
+              junto das vistas de equipe. O motivo: a primeira vista de lá já
+              se chamava "Banco de horas da equipe", e quem tinha as duas
+              permissões via o mesmo nome em dois lugares, um dentro do
+              outro. Quem tem só o cartaz continua chegando nele por lá, como
+              "QR do ponto".
+
+              Nada de tela mudou: a de rede continua sendo a do RH, com
+              correção de marcação e exportação, e com as mesmas permissões.
+              O que mudou foi o caminho.
+            */}
 
             {pode('avisos_direcao') && (
             <button
@@ -607,6 +616,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
           <PainelGestao
             colaboradorAtual={colaboradorAtual}
             aoAbrirConversa={lidarIniciarConversaColega}
+            temEquipe={temEquipe}
           />
         )}
 
@@ -615,7 +625,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
           <Organograma colaboradorAtual={colaboradorAtual} />
         )}
 
-        {subAbaAtiva === 'ponto' && <BancoDeHoras colaboradorAtual={colaboradorAtual} />}
 
         {/* SUB-ABA 4: CENTRAL DE AVISOS DA DIREÇÃO */}
         {subAbaAtiva === 'avisos' && (

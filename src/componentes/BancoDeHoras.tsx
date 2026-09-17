@@ -61,11 +61,26 @@ import { podeUsar } from '../servicos/permissoes';
 
 interface PropsBancoDeHoras {
   colaboradorAtual: Colaborador;
+  /**
+   * Mostra UMA vista só, sem a barra de abas própria.
+   *
+   * Existe porque esta tela deixou de ser uma aba de topo: ela agora mora
+   * dentro de "Gerenciar", numa barra única junto das vistas de equipe. Com
+   * a barra própria ali dentro seriam duas barras empilhadas, e a pessoa
+   * teria de descobrir qual das duas manda.
+   *
+   * Sem a prop, a tela continua inteira e com a barra — é assim que ela
+   * funciona em qualquer outro lugar que venha a usá-la.
+   */
+  abaFixa?: 'banco_horas' | 'qrcodes';
 }
 
 type AbaRH = 'banco_horas' | 'qrcodes';
 
-export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) => {
+export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
+  colaboradorAtual,
+  abaFixa,
+}) => {
   const [abaAtiva, setAbaAtiva] = useState<AbaRH>('banco_horas');
   const [dataInicio, setDataInicio] = useState(primeiroDiaDoMes());
   const [dataFim, setDataFim] = useState(dataDeHoje());
@@ -135,7 +150,15 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
    * Quem só tem o cartaz não pode cair na aba do banco de horas, que é a
    * primeira do estado — abriria numa tela que ele não enxerga.
    */
-  const abaEfetiva: AbaRH = veBancoDeHoras ? abaAtiva : 'qrcodes';
+  /**
+   * A vista fixa manda quando vem de fora; senão vale a escolha de dentro.
+   *
+   * A permissão continua por último de propósito: quem não vê banco de
+   * horas cai no cartaz, mesmo que alguém peça a vista errada.
+   */
+  const abaEfetiva: AbaRH = !veBancoDeHoras
+    ? 'qrcodes'
+    : abaFixa ?? abaAtiva;
 
   // Gera as imagens dos QRs sempre que a aba é aberta ou um código muda
   useEffect(() => {
@@ -367,8 +390,18 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({ colaboradorAtual }) 
 
   return (
     <div className="w-full flex flex-col text-[var(--c-texto)]">
-      {/* Alternância entre o banco de horas e os cartazes de QR das lojas */}
-      <nav className="px-4 sm:px-6 pt-4 flex gap-1.5 overflow-x-auto">
+      {/*
+        A barra própria só aparece quando esta tela é dona de si.
+
+        Dentro de "Gerenciar" ela é uma vista entre outras, e a barra de lá
+        já escolhe qual. Duas barras empilhadas fariam a pessoa descobrir
+        qual das duas manda.
+      */}
+      <nav
+        className={`px-4 sm:px-6 pt-4 gap-1.5 overflow-x-auto ${
+          abaFixa ? 'hidden' : 'flex'
+        }`}
+      >
         {([
           ...(veBancoDeHoras
             ? [{ id: 'banco_horas' as const, rotulo: 'Banco de Horas', icone: Clock }]
