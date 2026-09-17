@@ -170,3 +170,52 @@ rodada.
 registered`, que não é ambíguo: a conta existe, a senha é que não bate. A
 mensagem mandava conferir o login — que estava certo — e escondia o único
 caminho que resolvia.
+
+## Manda e não espera
+
+**Se a ação muda o banco, a tela só confirma depois que o banco confirmou.**
+
+Custou três rodadas com um cadastro que "dava certo" e não entrava. Três
+lugares tinham o mesmo formato — `nuvem.alguma(coisa)` chamado sem `await`,
+com o resultado ignorado:
+
+| Onde | O que a tela dizia | O que era verdade |
+|---|---|---|
+| Cadastrar colaborador | "Cadastrado com sucesso" | A ficha nunca chegou ao banco; a pessoa existia só naquele navegador e ouvia "login não cadastrado na rede" |
+| Excluir colaborador | "Removido com sucesso" | A ficha continuava no banco, com o login ocupado e a senha de ativação velha |
+| Salvar ficha | Nada | A alteração se perdia em silêncio |
+
+O segundo é o mais cruel: apagar e recriar é a primeira coisa que qualquer
+um tenta quando um cadastro não entra, e estava **piorando** o problema.
+
+Sinal para procurar: uma chamada a `nuvem.` que não começa com `await` e
+cujo retorno ninguém lê.
+
+## Duas verdades na mesma tela
+
+**Uma delas ganha, e não é a que a pessoa lê.**
+
+O painel de cadastro *mostrava* "Entra com 123456" e o estado do formulário
+mandava `'123'`. Enquanto a senha nem chegava ao banco, a diferença não
+aparecia. Quando a gravação foi consertada, a senha passou a chegar —
+**errada**. O banco esperava `123`, a pessoa digitava o que a tela mandava, e
+o erro "persistiu" depois da correção.
+
+A saída não foi validar o tamanho: foi **tirar a escolha**. Cadastro manual
+não escolhe senha, nasce sempre com a padrão da rede. Uma senha a menos para
+errar é uma senha a menos para explicar depois.
+
+## Recortar arquivo por número de caracteres
+
+Vários testes liam o código-fonte com `slice(inicio, inicio + 4500)`. Bastou
+um comentário novo no meio do método para o fim dele cair fora da janela:
+dois testes falharam apontando para código correto.
+
+O caso grave era o teste que protege a **carga por planilha**: recortava 6000
+caracteres e afirmava `not.toContain`. Janela curta demais o fazia **passar
+por não enxergar** — o pior tipo de teste, justo no que guarda as 88 pessoas
+que entraram por ali.
+
+Recorte sempre até o **método seguinte**, nunca por tamanho. E, quando a
+asserção for `not.toContain`, confirme por mutação que ela ainda morde no
+**fim** do trecho.
