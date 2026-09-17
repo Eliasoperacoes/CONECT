@@ -163,6 +163,8 @@ export interface Colaborador {
    * apagaria a senha de quem ainda nao entrou.
    */
   senhaAtivacao?: string;
+  /** Ainda usa a senha da rede e precisa definir a propria no primeiro acesso. */
+  precisaTrocarSenha?: boolean;
   departamento?: string;
   /**
    * Responsável direto no organograma. É quem aprova a hora desta pessoa —

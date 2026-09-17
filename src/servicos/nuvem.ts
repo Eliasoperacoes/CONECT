@@ -159,6 +159,11 @@ const paraLinha = (c: Colaborador) => ({
    * ninguém saber.
    */
   ...(c.senhaAtivacao ? { senha_ativacao: c.senhaAtivacao } : {}),
+  // Mesma regra do campo acima: só viaja quando dito, senão cada alteração
+  // de ramal reabriria a troca de senha de quem já definiu a dele
+  ...(c.precisaTrocarSenha === undefined
+    ? {}
+    : { precisa_trocar_senha: c.precisaTrocarSenha }),
   ativo: c.ativo,
 });
 

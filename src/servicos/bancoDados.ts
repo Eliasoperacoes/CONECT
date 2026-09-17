@@ -36,6 +36,7 @@ import {
   RegistroAuditoria,
   ConfiguracaoSistema,
   CARGA_HORARIA_PADRAO_MINUTOS,
+  TURNO_PADRAO,
   SENHA_PADRAO_PRIMEIRO_ACESSO,
 } from '../tipos';
 
@@ -912,22 +913,18 @@ class BancoDadosConecta {
     }
 
     /**
-     * A senha de primeiro acesso precisa ter 6 caracteres.
+     * A SENHA DE CADASTRO NÃO É ESCOLHIDA.
      *
-     * Não é gosto nosso: é o mínimo da autenticação do Supabase. Uma senha
-     * mais curta cria uma ficha perfeita no banco e uma conta que NUNCA
-     * consegue ativar — a pessoa digita exatamente o que está escrito no
-     * painel e ouve "não foi possível entrar", sem ninguém entender por quê.
+     * Todo colaborador novo nasce com a senha padrão da rede e é obrigado a
+     * trocá-la no primeiro acesso.
      *
-     * O formulário nascia com "123".
+     * Deixar o administrador digitar uma senha aqui só produziu problema: o
+     * formulário nascia com "123", abaixo do mínimo de 6 da autenticação, e
+     * criava uma ficha perfeita no banco com uma conta que nunca conseguia
+     * ativar. Uma senha a menos para errar é uma senha a menos para
+     * explicar depois.
      */
-    const senhaEscolhida = dados.senha?.trim() || SENHA_PADRAO_PRIMEIRO_ACESSO;
-    if (senhaEscolhida.length < 6) {
-      return {
-        sucesso: false,
-        erro: `A senha de primeiro acesso precisa de ao menos 6 caracteres — "${senhaEscolhida}" tem ${senhaEscolhida.length}. Com menos que isso a pessoa não consegue entrar.`,
-      };
-    }
+    const senhaEscolhida = SENHA_PADRAO_PRIMEIRO_ACESSO;
 
     const colaboradores = this.obterColaboradores();
     const loginJaExiste = colaboradores.some(
@@ -956,6 +953,15 @@ class BancoDadosConecta {
       email: dados.email?.trim() || '',
       cargaHorariaDiariaMinutos:
         dados.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS,
+      /**
+       * Preenchido aqui, e não deixado para o padrão do banco.
+       *
+       * A coluna `turno` é `not null`, e o cadastro nascia sem ela: o código
+       * mandava null explícito, que anula o default e viola o not null. Todo
+       * cadastro era recusado — em silêncio. Preencher na origem é mais
+       * barato do que confiar que o outro lado conserte.
+       */
+      turno: TURNO_PADRAO,
       ativo: true,
       criadoEm: new Date().toISOString(),
     };
@@ -972,9 +978,14 @@ class BancoDadosConecta {
     if (usandoNuvem()) {
       const res = await nuvem.salvarColaborador({
         ...novoColab,
-        // A senha escolhida agora é a de PRIMEIRO ACESSO, e o banco precisa
-        // dela: é o que o gatilho confere quando a pessoa entra
+        /**
+         * A senha de PRIMEIRO ACESSO vai junto: é o que o gatilho confere
+         * quando a pessoa entra. E a obrigação de trocar vai explícita, em
+         * vez de depender do padrão da coluna — cadastro que nasce sem essa
+         * marca deixa a pessoa usando a senha da rede para sempre.
+         */
         senhaAtivacao: novoColab.senha,
+        precisaTrocarSenha: true,
       } as Colaborador);
 
       if (!res.sucesso) {

@@ -351,10 +351,17 @@ test('SENHA DE PRIMEIRO ACESSO PRECISA TER 6 CARACTERES', async () => {
   expect(painel).not.toContain("senha: '123',");
   expect(painel).toContain('senha: SENHA_PADRAO_PRIMEIRO_ACESSO');
 
-  // E o serviço recusa na porta, com o motivo
+  /**
+   * E o serviço nem aceita senha: o cadastro manual usa sempre a padrão.
+   *
+   * Validar o tamanho seria remendo — o problema não era a senha ser curta,
+   * era existir uma escolha que a tela mostrava de um jeito e o código
+   * mandava de outro.
+   */
   const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
-  expect(servico).toContain('senhaEscolhida.length < 6');
-  expect(servico).toContain('ao menos 6 caracteres');
+  const inicio = servico.indexOf('async criarColaborador');
+  const corpo = servico.slice(inicio, inicio + 4500);
+  expect(corpo).toContain('const senhaEscolhida = SENHA_PADRAO_PRIMEIRO_ACESSO;');
 });
 
 test('o padrão da rede tem tamanho válido', async () => {
@@ -375,4 +382,53 @@ test('a senha curta é reconhecida ANTES das outras causas', async () => {
 
   expect(posSenha).toBeGreaterThan(-1);
   expect(posSenha).toBeLessThan(posEmail);
+});
+
+test('O CADASTRO MANUAL NÃO ESCOLHE SENHA: é sempre a padrão da rede', async () => {
+  /**
+   * A armadilha que custou três rodadas: o painel MOSTRAVA "Entra com
+   * 123456" e o estado do formulário mandava "123". Enquanto a senha não
+   * chegava ao banco, ninguém via. Quando passou a chegar, ela chegou
+   * ERRADA — o banco passou a esperar "123" e a pessoa digitava o que a
+   * tela dizia.
+   *
+   * Duas verdades na mesma tela é sempre isto: uma delas ganha, e não é a
+   * que a pessoa lê.
+   */
+  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
+
+  const inicio = servico.indexOf('async criarColaborador');
+  const corpo = servico.slice(inicio, inicio + 4500);
+
+  // A senha vem da constante, não do formulário
+  expect(corpo).toContain('const senhaEscolhida = SENHA_PADRAO_PRIMEIRO_ACESSO;');
+  expect(corpo).not.toContain('dados.senha?.trim() ||');
+
+  // E a troca no primeiro acesso é explícita, não herdada do padrão da coluna
+  expect(corpo).toContain('precisaTrocarSenha: true');
+});
+
+test('o cadastro preenche as colunas que o banco exige', async () => {
+  // `turno` é not null. Nascer sem ele fazia o código mandar null explícito,
+  // que anula o default e derruba a gravação inteira.
+  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
+
+  const inicio = servico.indexOf('async criarColaborador');
+  const corpo = servico.slice(inicio, inicio + 4500);
+
+  expect(corpo).toContain('turno: TURNO_PADRAO');
+  expect(corpo).toContain('ativo: true');
+  expect(corpo).toContain('presenca:');
+});
+
+test('A CARGA POR PLANILHA continua com o caminho dela', async () => {
+  // A correção do cadastro manual não pode ter mexido na importação: são
+  // 88 pessoas que já entraram por ali
+  const servico = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
+
+  expect(servico).toContain('importarColaboradoresEmLote');
+  // A importação tem a própria gravação em lote, e não passa por criarColaborador
+  const inicio = servico.indexOf('importarColaboradoresEmLote');
+  const corpo = servico.slice(inicio, inicio + 6000);
+  expect(corpo).not.toContain('this.criarColaborador');
 });
