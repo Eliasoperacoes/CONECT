@@ -38,7 +38,11 @@ import { JanelaChat } from './componentes/JanelaChat';
 import { PainelConversas } from './componentes/PainelConversas';
 import { podeUsar } from './servicos/permissoes';
 import { aplicarPreferencias, assinarPreferencias } from './servicos/preferenciasConversa';
-import { pendenciasParaDecidir as pendenciasDeAusencia, assinarJustificativas } from './servicos/justificativas';
+import {
+  pendenciasParaDecidir as pendenciasDeAusencia,
+  pendenciasDeFolga,
+  assinarJustificativas,
+} from './servicos/justificativas';
 import { servicoPonto } from './servicos/ponto';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
@@ -188,7 +192,9 @@ export default function App() {
     const conferir = () => {
       if (!bancoDados.estaAutenticado()) return;
       const total =
-        servicoPonto.obterPendenciasParaDecidir().length + pendenciasDeAusencia().length;
+        servicoPonto.obterPendenciasParaDecidir().length +
+        pendenciasDeAusencia().length +
+        pendenciasDeFolga().length;
       const antes = refPendenciasVistas.current;
       refPendenciasVistas.current = total;
 

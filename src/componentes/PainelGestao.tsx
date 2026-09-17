@@ -48,7 +48,7 @@ interface Props {
   aoAbrirConversa: (colegaId: string) => void;
 }
 
-type Aba = 'equipe' | 'aprovacoes' | 'folgas';
+type Aba = 'equipe' | 'sem_bater' | 'aprovacoes' | 'folgas';
 
 /** Saldo colorido pelo sinal: verde credita a pessoa, âmbar deve. */
 const CorDoSaldo: React.FC<{ minutos: number; className?: string }> = ({
@@ -106,6 +106,15 @@ export const PainelGestao: React.FC<Props> = ({ colaboradorAtual, aoAbrirConvers
 
   const pendencias = servicoPonto.obterPendenciasParaDecidir();
 
+  /**
+   * Quem não bateu hoje. Sai do mesmo resumo da equipe — não há segunda
+   * consulta nem segunda regra: é a mesma lista, filtrada.
+   */
+  const semBaterHoje = useMemo(
+    () => equipe.filter((r) => !r.registrouHoje),
+    [equipe]
+  );
+
   const totais = useMemo(() => {
     const saldoBanco = equipe.reduce((t, r) => t + r.saldoAcumuladoMinutos, 0);
     const semBaterHoje = equipe.filter((r) => !r.registrouHoje).length;
@@ -121,15 +130,27 @@ export const PainelGestao: React.FC<Props> = ({ colaboradorAtual, aoAbrirConvers
     janela.document.close();
   };
 
+  /**
+   * Um número que não leva a lugar nenhum não serve para nada.
+   *
+   * "Sem bater hoje: 23" dizia que havia um problema e deixava o gestor
+   * procurar quem, um por um, na lista de 24 pessoas. Cartão com `aoAbrir`
+   * vira botão e leva direto à lista.
+   */
   const Cartao: React.FC<{
     titulo: string;
     valor: React.ReactNode;
     detalhe: string;
     icone: React.ReactNode;
     alerta?: boolean;
-  }> = ({ titulo, valor, detalhe, icone, alerta }) => (
+    aoAbrir?: () => void;
+  }> = ({ titulo, valor, detalhe, icone, alerta, aoAbrir }) => (
     <div
+      onClick={aoAbrir}
+      role={aoAbrir ? 'button' : undefined}
       className={`p-3.5 rounded-2xl border flex flex-col gap-1 ${
+        aoAbrir ? 'cursor-pointer hover:brightness-105 active:scale-[0.99] transition-all' : ''
+      } ${
         alerta
           ? 'bg-amber-500/5 border-amber-500/25'
           : 'bg-[var(--c-superficie)] border-[var(--c-borda)]'
@@ -198,9 +219,14 @@ export const PainelGestao: React.FC<Props> = ({ colaboradorAtual, aoAbrirConvers
             <Cartao
               titulo="Sem bater hoje"
               valor={totais.semBaterHoje}
-              detalhe={`${totais.comPendencia} dia(s) em aberto no período`}
+              detalhe={
+                totais.semBaterHoje > 0 ? 'toque para ver quem' : 'todo mundo bateu'
+              }
               icone={<AlertTriangle className="w-3.5 h-3.5" />}
               alerta={totais.semBaterHoje > 0}
+              aoAbrir={
+                totais.semBaterHoje > 0 ? () => setAba('sem_bater') : undefined
+              }
             />
           </div>
 
@@ -220,6 +246,22 @@ export const PainelGestao: React.FC<Props> = ({ colaboradorAtual, aoAbrirConvers
             {/* A escala fica AQUI, e não no painel de RH: quem monta a
                 escala de sábado é quem responde pela loja, e ele precisa dela
                 junto do resto da equipe dele */}
+            {totais.semBaterHoje > 0 && (
+              <button
+                type="button"
+                onClick={() => setAba('sem_bater')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  aba === 'sem_bater'
+                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+                }`}
+              >
+                Sem bater hoje
+                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {totais.semBaterHoje}
+                </span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setAba('folgas')}
@@ -249,7 +291,49 @@ export const PainelGestao: React.FC<Props> = ({ colaboradorAtual, aoAbrirConvers
             </button>
           </div>
 
-          {aba === 'folgas' ? (
+          {aba === 'sem_bater' ? (
+            <div className="flex flex-col gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-[var(--c-texto)]">
+                  Quem ainda não bateu o ponto hoje
+                </h3>
+                <p className="text-xs text-[var(--c-texto-3)]">
+                  Pode ser folga, atestado ou esquecimento. Chame a pessoa antes de
+                  o dia fechar — depois vira dia sem fechar, e aí é decisão sua.
+                </p>
+              </div>
+
+              {semBaterHoje.map((r) => (
+                <div
+                  key={r.colaborador.id}
+                  className="p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex items-center gap-3"
+                >
+                  <FotoPresenca
+                    foto={r.colaborador.foto}
+                    nome={r.colaborador.nome}
+                    presenca={r.colaborador.presenca}
+                    tamanho="w-9 h-9"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-bold text-[var(--c-texto)] block truncate">
+                      {r.colaborador.nome}
+                    </span>
+                    <span className="text-[11px] text-[var(--c-texto-3)] block truncate">
+                      {resumoDaFicha(r.colaborador)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => aoAbrirConversa(r.colaborador.id)}
+                    title="Chamar no chat"
+                    className="p-2 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] hover:brightness-110 transition-all flex-shrink-0"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : aba === 'folgas' ? (
             <div className="-m-4 sm:-m-6">
               <EscalaDeFolgas colaboradorAtual={colaboradorAtual} />
             </div>

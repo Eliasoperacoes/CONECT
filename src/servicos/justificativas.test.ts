@@ -56,6 +56,7 @@ const {
   situacaoDoDia,
   minhasJustificativas,
   diasCobertos,
+  pendenciasDeFolga,
 } = await import('./justificativas');
 
 beforeEach(() => {
@@ -275,8 +276,9 @@ test('folga RECUSADA não queima o direito do mês', async () => {
   // Senão uma recusa do gestor tiraria da pessoa o direito daquele mês
   await pedirFolga('2026-09-19');
   logado = CHEFE;
+  // A folga tem fila PROPRIA: ela se julga pela escala, nao pelo documento
   await decidirAusencia(
-    pendenciasParaDecidir()[0].justificativa.id,
+    pendenciasDeFolga()[0].justificativa.id,
     false,
     'Sábado de balanço'
   );
@@ -293,9 +295,11 @@ test('a folga precisa da autorização do gestor', async () => {
   expect(situacaoDoDia(ANA.id, '2026-09-19')).toBe('normal');
 
   logado = CHEFE;
-  expect(pendenciasParaDecidir()).toHaveLength(1);
-  await decidirAusencia(pendenciasParaDecidir()[0].justificativa.id, true);
+  // Nao aparece na fila de ausencias: folga se decide na Escala de folgas
+  expect(pendenciasParaDecidir()).toHaveLength(0);
+  expect(pendenciasDeFolga()).toHaveLength(1);
 
+  await decidirAusencia(pendenciasDeFolga()[0].justificativa.id, true);
   expect(situacaoDoDia(ANA.id, '2026-09-19')).toBe('folga');
 });
 

@@ -68,6 +68,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
   }, []);
 
   const pendencias = servicoPonto.obterPendenciasParaDecidir();
+  // Sem a folga: ela é decidida na Escala de folgas, com o calendário à vista
   const ausencias = pendenciasDeAusencia();
   void versao;
 
@@ -302,7 +303,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
       {ausencias.length > 0 && (
         <div className="flex flex-col gap-2 mt-2">
           <h3 className="text-sm font-bold text-[var(--c-texto)]">
-            Ausências aguardando decisão
+            Atestados e faltas aguardando decisão
           </h3>
 
           {ausencias.map(({ justificativa, colaborador }) => (

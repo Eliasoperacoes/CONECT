@@ -23,6 +23,7 @@ import {
 import { Colaborador, JustificativaAusencia } from '../tipos';
 import { servicoPonto, formatarDataBR } from '../servicos/ponto';
 import { lerJustificativas } from '../servicos/justificativasCache';
+import { decidirAusencia, assinarJustificativas } from '../servicos/justificativas';
 import { bancoDados } from '../servicos/bancoDados';
 
 interface Props {
@@ -55,6 +56,35 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth());
+  const [versao, setVersao] = useState(0);
+  const [recusando, setRecusando] = useState<JustificativaAusencia | null>(null);
+  const [motivo, setMotivo] = useState('');
+  const [aviso, setAviso] = useState<{ texto: string; erro: boolean } | null>(null);
+
+  const mostrar = (texto: string, erro = false) => {
+    setAviso({ texto, erro });
+    setTimeout(() => setAviso(null), 5000);
+  };
+
+  const podeDecidir = (j: JustificativaAusencia): boolean => {
+    const dono = bancoDados.obterColaboradorPorId(j.colaboradorId);
+    return !!dono && servicoPonto.podeDecidirSobre(dono);
+  };
+
+  const decidir = async (j: JustificativaAusencia, aprovar: boolean, motivoRecusa?: string) => {
+    const res = await decidirAusencia(j.id, aprovar, motivoRecusa);
+    setVersao((v) => v + 1);
+    if (!res.sucesso) {
+      mostrar(res.erro || 'Não foi possível registrar.', true);
+      return false;
+    }
+    mostrar(
+      aprovar
+        ? `Folga de ${nomeDe(j.colaboradorId)} aprovada para ${formatarDataBR(j.dataInicio)}.`
+        : 'Folga recusada. A pessoa pode escolher outro sábado no mesmo mês.'
+    );
+    return true;
+  };
 
   /**
    * A equipe é a mesma da alçada: quem o gestor aprova é quem ele escala.
@@ -74,6 +104,7 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
 
   /** As folgas do mês, por sábado. Só de quem é da equipe. */
   const porSabado = useMemo(() => {
+    void versao;
     const idsDaEquipe = new Set(equipe.map((c) => c.id));
     const mapa = new Map<string, JustificativaAusencia[]>();
 
@@ -87,7 +118,7 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
       mapa.set(j.dataInicio, lista);
     }
     return mapa;
-  }, [equipe, sabados]);
+  }, [equipe, sabados, versao]);
 
   /** Quem ainda não marcou folga no mês — é a cobrança que o gestor faz. */
   const semFolga = useMemo(() => {
@@ -258,6 +289,18 @@ ${
         </div>
       </div>
 
+      {aviso && (
+        <div
+          className={`p-3 rounded-xl text-xs font-semibold ${
+            aviso.erro
+              ? 'bg-red-500/10 border border-red-500/20 text-red-600'
+              : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-700'
+          }`}
+        >
+          {aviso.texto}
+        </div>
+      )}
+
       {/* Navegação do mês */}
       <div className="flex items-center justify-center gap-3">
         <button
@@ -307,15 +350,42 @@ ${
                 </span>
               ) : (
                 folgas.map((f) => (
-                  <div key={f.id} className="flex items-center gap-1.5 text-xs">
-                    {f.estado === 'aprovada' ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                    ) : (
-                      <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                  <div key={f.id} className="flex flex-col gap-1.5">
+                    <div className="flex items-center gap-1.5 text-xs">
+                      {f.estado === 'aprovada' ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                      ) : (
+                        <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      )}
+                      <span className="text-[var(--c-texto)] truncate">
+                        {nomeDe(f.colaboradorId)}
+                      </span>
+                    </div>
+
+                    {/*
+                      A DECISÃO FICA AQUI, e não numa fila à parte.
+                      Autorizar folga é olhar a escala: quantos já estão de
+                      folga neste sábado, e quem. Numa fila solta o gestor
+                      decidiria sem ver nada disso.
+                    */}
+                    {f.estado === 'pendente' && podeDecidir(f) && (
+                      <div className="flex items-center gap-1.5 pl-5">
+                        <button
+                          type="button"
+                          onClick={() => setRecusando(f)}
+                          className="px-2 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-bold text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/30 transition-colors"
+                        >
+                          Recusar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => decidir(f, true)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition-colors"
+                        >
+                          Aprovar
+                        </button>
+                      </div>
                     )}
-                    <span className="text-[var(--c-texto)] truncate">
-                      {nomeDe(f.colaboradorId)}
-                    </span>
                   </div>
                 ))
               )}
@@ -339,6 +409,54 @@ ${
             <span className="text-[11px] text-[var(--c-texto-2)]">
               {semFolga.map((c) => c.nome).join(' · ')}
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Recusar exige motivo: a pessoa precisa saber para escolher outro
+          sábado — e recusada não queima o direito do mês */}
+      {recusando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-[var(--c-superficie)] w-full max-w-sm rounded-2xl border border-[var(--c-borda)] shadow-xl p-4 flex flex-col gap-3">
+            <span className="text-sm font-bold text-[var(--c-texto)]">
+              Recusar a folga de {nomeDe(recusando.colaboradorId)}
+            </span>
+            <span className="text-[11px] text-[var(--c-texto-3)]">
+              {formatarDataBR(recusando.dataInicio)} · ela poderá escolher outro
+              sábado no mesmo mês.
+            </span>
+            <textarea
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              rows={3}
+              autoFocus
+              placeholder="Ex.: sábado de balanço, precisamos da equipe completa"
+              className="w-full px-3 py-2 text-sm bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] resize-none"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRecusando(null);
+                  setMotivo('');
+                }}
+                className="flex-1 py-2 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)]"
+              >
+                Voltar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (await decidir(recusando, false, motivo)) {
+                    setRecusando(null);
+                    setMotivo('');
+                  }
+                }}
+                className="flex-1 py-2 rounded-xl bg-red-600 text-white text-xs font-bold"
+              >
+                Recusar
+              </button>
+            </div>
           </div>
         </div>
       )}

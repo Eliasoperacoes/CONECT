@@ -419,3 +419,60 @@ test('QR do Ponto é ferramenta separada do Banco de Horas', () => {
   expect(podeUsar('qr_ponto', pessoa(NIVEL_TI))).toBe(true);
   expect(podeUsar('banco_horas_rh', pessoa(NIVEL_TI))).toBe(true);
 });
+
+// ============================================================
+// UM CAMINHO POR FUNÇÃO
+//
+// A fila de aprovação chegou a existir no menu superior E dentro de Minha
+// Equipe, com o contador aparecendo duas vezes na mesma tela. Dois caminhos
+// para a mesma coisa fazem a pessoa procurar qual dos dois é o certo.
+// ============================================================
+
+test('a fila de aprovação existe num lugar só', async () => {
+  const painel = await Bun.file(
+    new URL('../componentes/PainelRede.tsx', import.meta.url)
+  ).text();
+
+  // O painel não renderiza mais a fila direto: ela vive dentro de PainelGestao
+  expect(painel).not.toContain('<AprovacaoJornada');
+  expect(painel).not.toContain("subaba-aprovacoes");
+
+  const gestao = await Bun.file(
+    new URL('../componentes/PainelGestao.tsx', import.meta.url)
+  ).text();
+  expect(gestao).toContain('<AprovacaoJornada');
+});
+
+test('FOLGA NÃO É AUSÊNCIA: as filas são separadas', async () => {
+  /**
+   * As duas usam a mesma tabela porque o caminho de aprovação é o mesmo, mas
+   * são coisas diferentes para quem decide: a ausência se julga pelo
+   * documento, e a folga pela ESCALA — quantos já estão de folga naquele
+   * sábado. Misturadas, o gestor decidia folga sem ver o calendário.
+   */
+  const servico = await Bun.file(
+    new URL('./justificativas.ts', import.meta.url)
+  ).text();
+
+  // A fila padrão exclui a folga
+  expect(servico).toContain("j.tipo !== 'folga_sabado'");
+  expect(servico).toContain('pendenciasDeFolga');
+
+  // E a decisão da folga mora na escala
+  const escala = await Bun.file(
+    new URL('../componentes/EscalaDeFolgas.tsx', import.meta.url)
+  ).text();
+  expect(escala).toContain('decidirAusencia');
+});
+
+test('o contador "sem bater hoje" leva a uma lista', async () => {
+  // Numero que nao leva a lugar nenhum nao serve: dizia que havia 23
+  // problemas e deixava o gestor procurar quem, um por um
+  const gestao = await Bun.file(
+    new URL('../componentes/PainelGestao.tsx', import.meta.url)
+  ).text();
+
+  expect(gestao).toContain("setAba('sem_bater')");
+  expect(gestao).toContain('semBaterHoje');
+  expect(gestao).toContain('Quem ainda não bateu o ponto hoje');
+});

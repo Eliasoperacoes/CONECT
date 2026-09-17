@@ -21,6 +21,7 @@ import {
 import { Colaborador, Loja, Setor, INFORMACOES_LOJAS, cuidaDePessoas } from '../tipos';
 import { podeUsar } from '../servicos/permissoes';
 import { pendenciasParaDecidir as pendenciasDeAusencia } from '../servicos/justificativas';
+import { pendenciasDeFolga } from '../servicos/justificativas';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
 import { QuadroFuncionarios } from './QuadroFuncionarios';
@@ -97,7 +98,9 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    * contador faria a menor das duas passar despercebida.
    */
   const pendenciasParaDecidir =
-    servicoPonto.obterPendenciasParaDecidir().length + pendenciasDeAusencia().length;
+    servicoPonto.obterPendenciasParaDecidir().length +
+    pendenciasDeAusencia().length +
+    pendenciasDeFolga().length;
 
   /** Tamanho da alçada de quem abriu, para o subtítulo dizer a verdade. */
   const equipeDeQuemAbre = servicoPonto.obterColaboradoresVisiveis().length;
@@ -116,9 +119,13 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
     const lista: SubAbaPainel[] = [];
     if (podeUsar('visao_lojas', colaboradorAtual)) lista.push('visao_geral');
     if (podeUsar('quadro_equipe', colaboradorAtual)) lista.push('quadro');
-    if (podeUsar('painel_gestao', colaboradorAtual) && temEquipe) lista.push('gestao');
+    if (
+      (podeUsar('painel_gestao', colaboradorAtual) ||
+        podeUsar('aprovar_jornadas', colaboradorAtual)) &&
+      temEquipe
+    )
+      lista.push('gestao');
     if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
-    if (podeUsar('aprovar_jornadas', colaboradorAtual)) lista.push('aprovacoes');
     if (podeUsar('banco_horas_rh', colaboradorAtual) || podeUsar('qr_ponto', colaboradorAtual))
       lista.push('ponto');
     if (podeUsar('avisos_direcao', colaboradorAtual)) lista.push('avisos');
@@ -147,7 +154,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    * é ruído.
    */
   const pode = (chave: string) => podeUsar(chave, colaboradorAtual);
-  const podeVerGestao = pode('painel_gestao') && temEquipe;
+  const podeVerGestao = (pode('painel_gestao') || pode('aprovar_jornadas')) && temEquipe;
 
   /**
    * O painel muda de nome conforme quem abre.
@@ -267,27 +274,11 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             </>
             )}
 
-            {/* Aprovações: todo mundo que responde por alguém tem fila. O
-                contador existe para a fila não passar despercebida — hora
-                parada aqui é hora que não entrou no banco de ninguém. */}
-            {pode('aprovar_jornadas') && pendenciasParaDecidir > 0 && (
-              <button
-                type="button"
-                id="subaba-aprovacoes"
-                onClick={() => setSubAbaAtiva('aprovacoes')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-                  subAbaAtiva === 'aprovacoes'
-                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-                }`}
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Aprovar Jornadas</span>
-                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
-                  {pendenciasParaDecidir}
-                </span>
-              </button>
-            )}
+            {/* "Aprovar Jornadas" saiu daqui de propósito: a fila vive
+                dentro de Minha Equipe, junto da equipe que ela decide. Dois
+                caminhos para a mesma fila fazem a pessoa procurar qual dos
+                dois é o certo — e o contador aparecia duas vezes na mesma
+                tela. */}
 
             {/* Banco de horas: só quem cuida de RH */}
             {(pode('banco_horas_rh') || pode('qr_ponto')) && (
@@ -611,10 +602,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
         )}
 
         {/* SUB-ABA 3: BANCO DE HORAS E QR DO PONTO */}
-        {subAbaAtiva === 'aprovacoes' && (
-          <AprovacaoJornada colaboradorAtual={colaboradorAtual} />
-        )}
-
         {/* SUB-ABA: A EQUIPE DE QUEM RESPONDE POR ALGUÉM */}
         {subAbaAtiva === 'gestao' && (
           <PainelGestao

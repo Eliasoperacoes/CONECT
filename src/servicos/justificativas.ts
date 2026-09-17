@@ -191,12 +191,26 @@ export const minhasJustificativas = (): JustificativaAusencia[] => {
  * segunda regra de alçada aqui. Ela já recusa a si mesmo, então ninguém
  * aprova a própria ausência nem sendo Diretoria ou TI.
  */
-export const pendenciasParaDecidir = (): {
+export const pendenciasParaDecidir = (opcoes: { tipo?: 'ausencia' | 'folga' } = {}): {
   justificativa: JustificativaAusencia;
   colaborador: Colaborador;
 }[] =>
   ler()
     .filter((j) => j.estado === 'pendente')
+    /**
+     * FOLGA NÃO É AUSÊNCIA.
+     *
+     * As duas usam a mesma tabela porque o caminho de aprovação é o mesmo,
+     * mas são coisas diferentes para quem decide: a ausência se julga pelo
+     * documento, e a folga se julga pela ESCALA — quantos já estão de folga
+     * naquele sábado. Misturá-las numa fila só obrigava o gestor a decidir
+     * folga sem ver o calendário.
+     */
+    .filter((j) =>
+      opcoes.tipo === 'folga'
+        ? j.tipo === 'folga_sabado'
+        : j.tipo !== 'folga_sabado'
+    )
     .map((justificativa) => ({
       justificativa,
       colaborador: bancoDados.obterColaboradorPorId(justificativa.colaboradorId),
@@ -266,3 +280,6 @@ export { situacaoDoDia };
 /** Os dias cobertos por uma solicitação, para a tela mostrar o alcance. */
 export const diasCobertos = (justificativa: JustificativaAusencia): string[] =>
   diasDoPeriodo(justificativa.dataInicio, justificativa.dataFim);
+
+/** A fila de FOLGAS, decidida na Escala de folgas. */
+export const pendenciasDeFolga = () => pendenciasParaDecidir({ tipo: 'folga' });
