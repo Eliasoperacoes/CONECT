@@ -344,7 +344,14 @@ test('o que NAO esta subindo continua vindo do banco', () => {
   aplicarPreferenciasDaNuvem(EU, { 'conv-3': { fixada: true } });
   expect(estaFixada(EU, 'conv-3')).toBe(true);
 
-  aplicarPreferenciasDaNuvem(EU, {});
+  /**
+   * O banco continua conhecendo a conversa e diz que ela não está fixada.
+   *
+   * A resposta precisa CITAR a conversa. Mandar um mapa vazio significa
+   * outra coisa — "o banco não sabe nada sobre conversa nenhuma" —, e era
+   * tratar as duas como iguais que ressuscitava conversa excluída.
+   */
+  aplicarPreferenciasDaNuvem(EU, { 'conv-3': { fixada: false } });
   expect(estaFixada(EU, 'conv-3')).toBe(false);
 });
 
@@ -453,4 +460,71 @@ test('mostrar todas devolve as arquivadas e deixa as excluidas fora', () => {
   expect(deveAparecer(EU, conversa('x', ONTEM))).toBe(true);
   // A excluída continua fora: só volta chamando o colega de novo
   expect(deveAparecer(EU, conversa('y', ONTEM))).toBe(false);
+});
+
+/**
+ * EXCLUIR TODAS E ABRIR UMA NÃO PODE TRAZER TODAS DE VOLTA.
+ *
+ * Relatado por quem usa: a pessoa excluía todas as conversas para limpar a
+ * aba, abria UMA para falar com alguém, e voltavam todas juntas.
+ *
+ * A causa: o banco só tem linha de participante para conversa que JÁ EXISTE
+ * nele, e conversa sem nenhuma mensagem nunca foi gravada. A preferência
+ * dessas é um `update` que não acha linha — não dá erro, só não faz nada.
+ * Abrir uma conversa dispara uma sincronização, e o mapa inteiro era
+ * substituído pelo que o banco sabia: nada sobre as vazias.
+ */
+test('a sincronizacao nao ressuscita conversa que o banco nao conhece', () => {
+  /**
+   * O estado é montado pela PRÓPRIA sincronização, e não pela ação de
+   * excluir.
+   *
+   * Excluir dispara uma subida ao banco, e enquanto ela está em trânsito
+   * existe outra proteção que segura o valor local. Ela venceria aqui e o
+   * teste passaria sem testar a regra que interessa — foi o que aconteceu na
+   * primeira versão deste teste.
+   */
+  aplicarPreferenciasDaNuvem(EU, {
+    'conv-vazia-1': { removida: true },
+    'conv-vazia-2': { removida: true },
+  });
+  expect(deveAparecer(EU, conversa('conv-vazia-1', DEPOIS))).toBe(false);
+
+  /**
+   * Agora o banco responde falando SÓ da conversa que ele conhece — a que
+   * tem mensagem. Ele não tem linha de participante para conversa vazia, e
+   * portanto não tem nada a dizer sobre as outras duas.
+   */
+  aplicarPreferenciasDaNuvem(EU, { 'conv-com-mensagem': { fixada: false } });
+
+  expect(deveAparecer(EU, conversa('conv-vazia-1', DEPOIS))).toBe(false);
+  expect(deveAparecer(EU, conversa('conv-vazia-2', DEPOIS))).toBe(false);
+});
+
+test('sobre o que o banco CONHECE, quem manda continua sendo ele', () => {
+  aplicarPreferenciasDaNuvem(EU, { 'conv-conhecida': { removida: true } });
+  expect(deveAparecer(EU, conversa('conv-conhecida', ONTEM))).toBe(false);
+
+  /**
+   * Aqui o banco CITA a conversa e diz que ela não está mais removida — foi
+   * devolvida à lista no computador da pessoa, por exemplo. Ignorar isso
+   * deixaria o celular e o computador dela discordando para sempre.
+   */
+  aplicarPreferenciasDaNuvem(EU, { 'conv-conhecida': { fixada: false } });
+
+  expect(deveAparecer(EU, conversa('conv-conhecida', ONTEM))).toBe(true);
+});
+
+test('o aplicativo avisa quando a preferencia nao achou linha no banco', async () => {
+  const ponte = await Bun.file(
+    new URL('./nuvemComunicacao.ts', import.meta.url)
+  ).text();
+
+  /**
+   * Um `update` que não encontra linha devolve sucesso e não faz nada.
+   * Ficar em silêncio foi o que escondeu este defeito: a preferência valia
+   * no aparelho, sumia na sincronização seguinte, e nada dizia por quê.
+   */
+  expect(ponte).toContain(".select('conversa_id')");
+  expect(ponte).toContain('if (!data || data.length === 0)');
 });

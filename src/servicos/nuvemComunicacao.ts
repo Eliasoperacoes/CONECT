@@ -1002,16 +1002,39 @@ class PonteComunicacao {
     if (preferencia.removida !== undefined) campos.removida = preferencia.removida;
     if (Object.keys(campos).length === 0) return { sucesso: true };
 
-    const { error } = await supabase
+    /**
+     * O `select` no fim existe para saber SE alguma linha foi mesmo mudada.
+     *
+     * Um `update` que não encontra linha não dá erro: ele simplesmente não
+     * faz nada, e devolve sucesso. E não encontrar é comum aqui — o banco só
+     * tem linha de participante para conversa que já existe nele, e conversa
+     * sem nenhuma mensagem nunca foi gravada.
+     *
+     * Ficar em silêncio nesse caso foi o que escondeu o defeito por um
+     * tempo: a preferência valia no aparelho, sumia na sincronização
+     * seguinte, e nada em lugar nenhum dizia por quê.
+     */
+    const { data, error } = await supabase
       .from('participantes')
       .update(campos)
       .eq('conversa_id', conversaId)
-      .eq('colaborador_id', colaboradorId);
+      .eq('colaborador_id', colaboradorId)
+      .select('conversa_id');
 
     if (error) {
       console.error('Falha ao salvar preferência da conversa:', error.message);
       return { sucesso: false, erro: error.message };
     }
+
+    if (!data || data.length === 0) {
+      // Não é falha: a conversa ainda não existe no banco por não ter
+      // mensagem. Vale o que está no aparelho, e a sincronização respeita
+      // isso — ver aplicarPreferenciasDaNuvem.
+      console.info(
+        `Preferência de ${conversaId} vale só neste aparelho: a conversa ainda não existe no banco.`
+      );
+    }
+
     return { sucesso: true };
   }
 

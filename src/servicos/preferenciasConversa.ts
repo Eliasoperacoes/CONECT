@@ -80,16 +80,44 @@ export const aplicarPreferenciasDaNuvem = (
   if (!colaboradorId) return;
 
   /**
-   * O banco é a verdade, MENOS para o que ainda não chegou nele.
+   * O banco é a verdade sobre o que ele CONHECE — e só sobre isso.
    *
-   * Sem esta ressalva a sincronização desfaz a escolha que a pessoa acabou
-   * de fazer, porque o banco ainda não sabe dela.
+   * Duas coisas ele não conhece, e as duas precisam sobreviver à reescrita:
+   * o que ainda está subindo, e a conversa que nunca chegou a existir no
+   * banco por não ter nenhuma mensagem.
    */
   const aManter = obterPreferencias(colaboradorId);
   const resultado: MapaDePreferencias = { ...vindas };
 
   for (const conversaId of Object.keys(aManter)) {
+    /**
+     * 1. O QUE AINDA ESTÁ SUBINDO.
+     *
+     * A escolha acabou de ser feita e o banco ainda não sabe dela.
+     */
     if (subindoAgora.has(chaveEmTransito(colaboradorId, conversaId))) {
+      resultado[conversaId] = aManter[conversaId];
+      continue;
+    }
+
+    /**
+     * 2. O QUE O BANCO NUNCA VIU.
+     *
+     * O banco só tem linha de participante para conversa que JÁ EXISTE nele
+     * — e conversa sem nenhuma mensagem nunca foi gravada. A gravação da
+     * preferência dessas é um `update` que não encontra linha: não dá erro,
+     * simplesmente não faz nada.
+     *
+     * Sem esta ressalva acontecia o seguinte, e foi relatado: a pessoa
+     * excluía TODAS as conversas para limpar a aba, muitas delas vazias;
+     * abria UMA para falar com alguém; a abertura disparava uma
+     * sincronização; e o mapa inteiro era substituído pelo que o banco
+     * sabia — que era nada sobre as vazias. Todas voltavam de uma vez.
+     *
+     * O banco manda sobre o que ele CONHECE. Sobre conversa que ele nunca
+     * ouviu falar, quem manda é o aparelho.
+     */
+    if (!(conversaId in vindas)) {
       resultado[conversaId] = aManter[conversaId];
     }
   }
