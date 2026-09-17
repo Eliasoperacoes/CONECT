@@ -739,7 +739,9 @@ test('o balao pode encolher, e a foto se ajusta a ele', async () => {
 
   // A foto pede porcentagem do balão, não uma medida fixa maior que ele
   expect(semComentarios(tela)).not.toContain('min-w-[180px] max-w-xs sm:max-w-sm');
-  expect(tela).toContain('flex flex-col gap-1.5 py-1 w-full max-w-full min-w-0');
+  // O que importa é a largura vir do balão, não o espaçamento — este muda
+  // quando o desenho do balão muda, e já mudou uma vez
+  expect(tela).toContain('w-full max-w-full min-w-0');
   expect(tela).toContain('w-full max-w-full h-auto max-h-72 object-cover');
 });
 
@@ -765,4 +767,54 @@ test('a conversa nao rola de lado', async () => {
    * conteúdo fica cortado.
    */
   expect(tela).toContain('flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3');
+});
+
+/**
+ * BALÃO DE FOTO É QUASE SÓ A FOTO.
+ *
+ * O balão usava o mesmo respiro para tudo: 14px nos lados, 10px em cima e
+ * embaixo. Num balão de texto isso é o certo; numa foto vira uma moldura
+ * grossa em volta da imagem.
+ */
+test('o balao de foto aperta, e o de texto nao', async () => {
+  const tela = await lerTela();
+  const codigo = semComentarios(tela);
+
+  // Um só lugar decide, e ele olha o tipo da mensagem
+  expect(codigo).toContain('const balaoDeFoto = ehFoto && !!urlDaFoto');
+  expect(codigo).toContain("balaoDeFoto ? 'p-[3px]' : 'px-3.5 py-2.5'");
+
+  // O respiro antigo não pode continuar fixo no balão
+  expect(codigo).not.toContain('min-w-0 rounded-2xl px-3.5 py-2.5');
+});
+
+test('legenda, hora e citacao recuperam o respiro que o balao perdeu', async () => {
+  const tela = await lerTela();
+  const codigo = semComentarios(tela);
+
+  /**
+   * Apertar o balão sem devolver o respiro a estes três coloca texto
+   * encostado na borda — troca uma moldura grossa por outra feiura.
+   */
+  expect(codigo).toContain("balaoDeFoto ? 'px-2 pb-0.5' : ''");
+  expect(codigo).toContain("balaoDeFoto ? 'px-2 pt-1' : ''");
+  expect(codigo).toContain("balaoDeFoto ? 'mt-1 mx-1' : ''");
+
+  // E a legenda, que fica colada na foto
+  expect(codigo).toContain('px-2 pt-0.5 leading-snug break-words');
+});
+
+test('o canto da foto acompanha o canto do balao', async () => {
+  const tela = await lerTela();
+  const codigo = semComentarios(tela);
+
+  /**
+   * Com 3px de respiro, a foto e o balão quase dividem a mesma borda. O
+   * canto da foto precisa ser um passo menor que o do balão (16px), senão
+   * sobra um bico branco em cada quina.
+   */
+  expect(codigo).toContain('rounded-[13px] overflow-hidden');
+  // E a borda cinza em volta da foto sai: com o balão apertado ela vira
+  // um contorno duplo
+  expect(codigo).not.toContain('border border-black/5 dark:border-white/10');
 });

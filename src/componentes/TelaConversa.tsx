@@ -1142,6 +1142,21 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                 (ehDataUrlDeImagem(msg.arquivoUrl) || ehNomeDeImagem(msg.arquivoNome)));
             const urlDaFoto = msg.tipo === 'imagem' ? msg.imagemUrl : msg.arquivoUrl;
 
+            /**
+             * BALÃO DE FOTO É QUASE SÓ A FOTO.
+             *
+             * O balão tinha o mesmo respiro para tudo: 14px nos lados, 10px
+             * em cima e embaixo. Num balão de texto isso é o certo; numa
+             * foto vira uma moldura grossa em volta da imagem, que foi o que
+             * o Elias apontou comparando com o WhatsApp.
+             *
+             * Aqui a foto encosta na borda — 3px, só o bastante para o canto
+             * arredondado do balão aparecer por fora do canto da foto. O
+             * respiro volta para a legenda e para a hora, que são texto e
+             * precisam dele.
+             */
+            const balaoDeFoto = ehFoto && !!urlDaFoto;
+
             return (
               <div
                 key={msg.id}
@@ -1199,7 +1214,9 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
                   {/* Balão de Mensagem */}
                   <div
-                    className={`relative max-w-[85%] sm:max-w-[70%] min-w-0 rounded-2xl px-3.5 py-2.5 text-sm shadow-[var(--s-1)] ${
+                    className={`relative max-w-[85%] sm:max-w-[70%] min-w-0 rounded-2xl text-sm shadow-[var(--s-1)] ${
+                      balaoDeFoto ? 'p-[3px]' : 'px-3.5 py-2.5'
+                    } ${
                       ehMinha
                         ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] rounded-br-xs'
                         : 'bg-[var(--c-superficie)] text-[var(--c-texto)] border border-[var(--c-borda)] rounded-bl-xs'
@@ -1233,6 +1250,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                           }}
                           disabled={!citada}
                           className={`w-full text-left mb-1.5 pl-2 py-1 border-l-[3px] rounded-r-md text-[11px] leading-snug ${
+                            balaoDeFoto ? 'mt-1 mx-1' : ''
+                          } ${
                             ehMinha
                               ? 'border-white/60 bg-white/15'
                               : 'border-[var(--c-acento)] bg-[var(--c-acento-suave)]'
@@ -1264,8 +1283,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                     {msg.ehEncaminhada && (
                       <div
                         className={`flex items-center gap-1 text-[11px] mb-1 italic select-none font-medium ${
-                          ehMinha ? 'text-white/80' : 'text-[var(--c-texto-3)]'
-                        }`}
+                          balaoDeFoto ? 'px-2 pt-1' : ''
+                        } ${ehMinha ? 'text-white/80' : 'text-[var(--c-texto-3)]'}`}
                       >
                         <Forward className="w-3 h-3 flex-shrink-0" />
                         <span>Encaminhada</span>
@@ -1462,7 +1481,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                          * foto pedia 384px dentro de um balão de 270px, e o
                          * `min-w-[180px]` ainda impedia o encolhimento.
                          */
-                        className="flex flex-col gap-1.5 py-1 w-full max-w-full min-w-0"
+                        className="flex flex-col gap-1 w-full max-w-full min-w-0"
                       >
                         <div
                           onClick={() =>
@@ -1471,7 +1490,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                               legenda: msg.legenda,
                             })
                           }
-                          className="relative rounded-xl overflow-hidden cursor-pointer group/foto max-h-72 bg-black/10 border border-black/5 dark:border-white/10"
+                          className="relative rounded-[13px] overflow-hidden cursor-pointer group/foto max-h-72 bg-black/10"
                           title="Clique para ampliar a foto"
                         >
                           <img
@@ -1491,7 +1510,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
                         {msg.legenda && (
                           <p
-                            className={`text-xs sm:text-sm font-medium px-0.5 leading-snug break-words ${
+                            className={`text-xs sm:text-sm font-medium px-2 pt-0.5 leading-snug break-words ${
                               ehMinha ? 'text-white' : 'text-[var(--c-texto)]'
                             }`}
                           >
@@ -1521,7 +1540,11 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       linha passa para baixo em vez de transbordar o balão.
                       Transbordar é o que produz a aparência de defeito.
                     */}
-                    <div className="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 mt-1 select-none">
+                    <div
+                      className={`flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 mt-1 select-none ${
+                        balaoDeFoto ? 'px-2 pb-0.5' : ''
+                      }`}
+                    >
                       {/* Marca de edição: quem lê precisa saber que o texto
                           mudou depois de enviado. */}
                       {msg.editadaEm && (
