@@ -57,12 +57,34 @@ export const sugerirLoginValido = (texto: string): string =>
 export const loginParaEmailInterno = (login: string): string =>
   `${normalizarLogin(login).replace(/[^a-z0-9._-]/g, '')}@${DOMINIO_INTERNO}`;
 
-const configurado = !!(
-  URL_SUPABASE &&
-  CHAVE_SUPABASE &&
-  URL_SUPABASE.startsWith('http') &&
-  CHAVE_SUPABASE.length > 20
-);
+/**
+ * TESTE NUNCA FALA COM O BANCO DE VERDADE.
+ *
+ * O `.env` é carregado sozinho quando os testes rodam, e com ele
+ * `usandoNuvem()` passava a ser verdadeiro DENTRO da suíte. Os testes
+ * faziam chamadas de rede ao Supabase de produção sem ninguém pedir.
+ *
+ * Isso apareceu depurando outra coisa: um teste de preferência de conversa
+ * demorava e acabava mandando um `update` para o banco da rede. Hoje é
+ * inofensivo — são linhas que não existem, zero afetadas —, mas está a uma
+ * linha de distância de um teste escrever algo real numa tabela real.
+ *
+ * O corte é aqui, na origem: sem cliente, não há como alcançar o banco por
+ * engano em lugar nenhum do sistema. Quem precisa testar comportamento de
+ * nuvem troca o módulo por um dublê, que é como os testes daqui já fazem.
+ */
+const emTeste =
+  (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') ||
+  (import.meta.env?.MODE as string | undefined) === 'test';
+
+const configurado =
+  !emTeste &&
+  !!(
+    URL_SUPABASE &&
+    CHAVE_SUPABASE &&
+    URL_SUPABASE.startsWith('http') &&
+    CHAVE_SUPABASE.length > 20
+  );
 
 /** Há um banco na nuvem configurado neste ambiente? */
 export const usandoNuvem = (): boolean => configurado;

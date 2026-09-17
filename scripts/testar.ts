@@ -24,6 +24,23 @@ for (const arquivo of arquivos) {
   const execucao = Bun.spawnSync(['bun', 'test', arquivo], {
     stdout: 'inherit',
     stderr: 'inherit',
+    /**
+     * SEGUNDA TRANCA CONTRA FALAR COM O BANCO DE PRODUÇÃO.
+     *
+     * A primeira está em `supabase.ts`, que não cria cliente em modo de
+     * teste. Esta existe porque a primeira é uma linha de código que alguém
+     * pode simplificar sem perceber o que ela segura — e aqui as chaves nem
+     * chegam ao processo.
+     *
+     * Vale só para `bun run test`. Quem roda `bun test arquivo` direto
+     * continua protegido pela tranca de dentro.
+     */
+    env: {
+      ...process.env,
+      VITE_SUPABASE_URL: '',
+      VITE_SUPABASE_ANON_KEY: '',
+      NODE_ENV: 'test',
+    },
   });
   if (execucao.exitCode !== 0) houveFalha = true;
 }
