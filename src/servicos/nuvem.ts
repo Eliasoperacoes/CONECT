@@ -103,11 +103,24 @@ const paraColaborador = (linha: LinhaColaborador): Colaborador => ({
   observacoes: linha.observacoes || undefined,
   cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos,
   turno: linha.turno || undefined,
+  // Não volta do banco: é segredo de entrega, e a tela do RH mostra a
+  // partir do que ela própria guardou
+  senhaAtivacao: undefined,
   ativo: linha.ativo,
   criadoEm: linha.criado_em,
 });
 
-/** A senha nunca vai para a tabela: quem guarda é a autenticação do Supabase. */
+/**
+ * A senha de LOGIN nunca vai para a tabela: quem guarda é a autenticação do
+ * Supabase, cifrada.
+ *
+ * A de PRIMEIRO ACESSO vai, em `senha_ativacao`. São coisas diferentes: essa
+ * é a que o RH entrega em mão e que o gatilho confere uma única vez, sendo
+ * apagada na ativação.
+ *
+ * Sem isso, o painel mostrava a senha que o administrador escolheu e o
+ * sistema exigia a padrão — duas verdades, e a pessoa não entrava.
+ */
 const paraLinha = (c: Colaborador) => ({
   id: c.id,
   nome: c.nome,
@@ -130,6 +143,15 @@ const paraLinha = (c: Colaborador) => ({
   observacoes: c.observacoes ?? null,
   carga_horaria_diaria_minutos: c.cargaHorariaDiariaMinutos ?? 490,
   turno: c.turno ?? null,
+  /**
+   * A senha de primeiro acesso só viaja quando foi informada.
+   *
+   * `salvarColaborador` roda em toda alteração — foto, presença, ramal. Se o
+   * campo fosse sempre enviado, cada uma delas mandaria `null` e apagaria a
+   * senha de quem ainda não entrou, deixando a pessoa com a padrão sem
+   * ninguém saber.
+   */
+  ...(c.senhaAtivacao ? { senha_ativacao: c.senhaAtivacao } : {}),
   ativo: c.ativo,
 });
 

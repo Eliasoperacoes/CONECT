@@ -153,6 +153,16 @@ export interface Colaborador {
    * Vazio = turno A.
    */
   turno?: string;
+  /**
+   * Senha do PRIMEIRO ACESSO — a que o RH entrega em mao.
+   *
+   * Diferente da senha de login, que vive cifrada na autenticacao e nunca
+   * passa por aqui. Esta o banco confere UMA vez, na ativacao, e apaga.
+   *
+   * So viaja quando preenchida: mandar vazio numa atualizacao qualquer
+   * apagaria a senha de quem ainda nao entrou.
+   */
+  senhaAtivacao?: string;
   departamento?: string;
   /**
    * Responsável direto no organograma. É quem aprova a hora desta pessoa —

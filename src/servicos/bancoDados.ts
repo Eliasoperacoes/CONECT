@@ -888,7 +888,7 @@ class BancoDadosConecta {
   }
 
   // Criar colaborador via Painel ADM
-  criarColaborador(dados: {
+  async criarColaborador(dados: {
     nome: string;
     login: string;
     senha?: string;
@@ -901,7 +901,7 @@ class BancoDadosConecta {
     email?: string;
     foto?: string;
     cargaHorariaDiariaMinutos?: number;
-  }): { sucesso: boolean; colaborador?: Colaborador; erro?: string } {
+  }): Promise<{ sucesso: boolean; colaborador?: Colaborador; erro?: string }> {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel < NIVEL_TI) {
       return { sucesso: false, erro: 'Apenas o Administrador de TI possui permissão para cadastrar colaboradores.' };
@@ -942,14 +942,38 @@ class BancoDadosConecta {
       criadoEm: new Date().toISOString(),
     };
 
+    /**
+     * O BANCO PRIMEIRO.
+     *
+     * Antes a ficha ia para o banco sem ninguém esperar a resposta: se a
+     * gravação falhasse, o painel dizia "cadastrado" e a pessoa existia só
+     * naquele navegador. Ela então tentava entrar e ouvia "login não
+     * cadastrado na rede" — sem ninguém entender por quê, porque o nome
+     * estava lá na tela de quem cadastrou.
+     */
+    if (usandoNuvem()) {
+      const res = await nuvem.salvarColaborador({
+        ...novoColab,
+        // A senha escolhida agora é a de PRIMEIRO ACESSO, e o banco precisa
+        // dela: é o que o gatilho confere quando a pessoa entra
+        senhaAtivacao: novoColab.senha,
+      } as Colaborador);
+
+      if (!res.sucesso) {
+        return {
+          sucesso: false,
+          erro: `O cadastro não foi gravado no banco: ${
+            res.erro || 'motivo não informado'
+          }. A pessoa não conseguiria entrar.`,
+        };
+      }
+    }
+
     colaboradores.push(novoColab);
     localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));
 
     // Adiciona o novo colaborador automaticamente aos canais padrões da loja e da rede
     this.garantirGruposDoSistemaPara(novoId);
-
-    // Espelha a ficha no banco, senão o cadastro ficaria só neste navegador
-    if (usandoNuvem()) nuvem.salvarColaborador(novoColab);
 
     this.registrarAuditoria(
       'Cadastro de Colaborador',

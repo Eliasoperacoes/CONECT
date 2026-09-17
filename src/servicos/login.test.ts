@@ -233,3 +233,55 @@ test('tabela sem política de INSERT não pode ser gravada com upsert', async ()
   expect(comInsert.has('configuracoes')).toBe(false);
   expect(comUpsert.has('configuracoes')).toBe(false);
 });
+
+// ============================================================
+// CADASTRO NOVO PRECISA CONSEGUIR ENTRAR
+// ============================================================
+
+test('o cadastro ESPERA o banco antes de dizer que deu certo', async () => {
+  /**
+   * O defeito: a ficha ia para o banco sem ninguém esperar resposta. Se a
+   * gravação falhasse, o painel dizia "cadastrado com sucesso" e a pessoa
+   * existia só naquele navegador — depois tentava entrar e ouvia "login não
+   * cadastrado na rede", com o nome dela ali na tela de quem cadastrou.
+   */
+  const servico = await Bun.file(
+    new URL('./bancoDados.ts', import.meta.url)
+  ).text();
+
+  const inicio = servico.indexOf('async criarColaborador');
+  expect(inicio).toBeGreaterThan(-1);
+  const corpo = servico.slice(inicio, inicio + 4000);
+
+  expect(corpo).toContain('await nuvem.salvarColaborador');
+  expect(corpo).toContain('não foi gravado no banco');
+  // E a gravação vem ANTES de dar o cadastro por feito
+  expect(corpo.indexOf('await nuvem.salvarColaborador')).toBeLessThan(
+    corpo.indexOf('colaboradores.push(novoColab)')
+  );
+});
+
+test('a senha que o painel mostra é a que o banco espera', async () => {
+  /**
+   * Eram duas verdades: o painel exibia a senha escolhida no cadastro, e o
+   * gatilho exigia a padrão da rede — porque a senha nunca chegava ao banco.
+   * A pessoa digitava o que estava escrito na tela e não entrava.
+   */
+  const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+
+  expect(ponte).toContain('senha_ativacao: c.senhaAtivacao');
+  // Condicional: enviar sempre apagaria a senha a cada troca de foto
+  expect(ponte).toContain('...(c.senhaAtivacao ?');
+});
+
+test('a senha de ativação NÃO é reenviada nas atualizações', async () => {
+  // `salvarColaborador` roda em toda alteração. Mandar o campo sempre faria
+  // cada troca de ramal apagar a senha de quem ainda não entrou.
+  const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+
+  const inicio = ponte.indexOf('const paraLinha = (c: Colaborador)');
+  const mapa = ponte.slice(inicio, inicio + 2500);
+
+  // Não existe a forma incondicional
+  expect(mapa).not.toContain('senha_ativacao: c.senhaAtivacao ?? null');
+});

@@ -321,7 +321,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   };
 
   // Salva colaborador (criação ou edição)
-  const salvarColaborador = (e: React.FormEvent) => {
+  const salvarColaborador = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formColab.nome.trim() || !formColab.login.trim()) {
       exibirToast('Nome e login são obrigatórios.', true);
@@ -350,7 +350,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
         exibirToast(res.erro || 'Falha ao atualizar.', true);
       }
     } else {
-      const res = bancoDados.criarColaborador(formColab);
+      const res = await bancoDados.criarColaborador(formColab);
       if (res.sucesso) {
         exibirToast(`Colaborador ${formColab.nome} cadastrado com sucesso.`);
         setModalColabAberto(false);
