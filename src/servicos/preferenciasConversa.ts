@@ -37,6 +37,24 @@ export type MapaDePreferencias = Record<string, PreferenciaDeConversa>;
 const ouvintes: Array<() => void> = [];
 
 /**
+ * As preferências que este aparelho acabou de mudar e ainda estão subindo.
+ *
+ * Existe pelo mesmo motivo que a mensagem em trânsito precisa sobreviver à
+ * sincronização: fixar e ocultar respondem na tela na hora e sobem depois.
+ * Se uma sincronização que já estava a caminho chegasse no meio, ela
+ * reescrevia o mapa com o estado ANTIGO do banco — e a conversa que você
+ * acabou de tirar da lista voltava sozinha, ou a que você fixou se
+ * desfixava. Segundos depois se corrigia, o que é pior: a pessoa já apertou
+ * de novo.
+ *
+ * A chave é pessoa + conversa, porque a preferência é de quem a escolheu.
+ */
+const subindoAgora = new Set<string>();
+
+const chaveEmTransito = (colaboradorId: string, conversaId: string): string =>
+  `${colaboradorId}::${conversaId}`;
+
+/**
  * Substitui o cache local pelo que veio do banco.
  *
  * Chamado pela sincronização. O banco é a verdade; o armazenamento do
@@ -48,8 +66,24 @@ export const aplicarPreferenciasDaNuvem = (
   vindas: MapaDePreferencias
 ): void => {
   if (!colaboradorId) return;
+
+  /**
+   * O banco é a verdade, MENOS para o que ainda não chegou nele.
+   *
+   * Sem esta ressalva a sincronização desfaz a escolha que a pessoa acabou
+   * de fazer, porque o banco ainda não sabe dela.
+   */
+  const aManter = obterPreferencias(colaboradorId);
+  const resultado: MapaDePreferencias = { ...vindas };
+
+  for (const conversaId of Object.keys(aManter)) {
+    if (subindoAgora.has(chaveEmTransito(colaboradorId, conversaId))) {
+      resultado[conversaId] = aManter[conversaId];
+    }
+  }
+
   try {
-    localStorage.setItem(chaveDe(colaboradorId), JSON.stringify(vindas));
+    localStorage.setItem(chaveDe(colaboradorId), JSON.stringify(resultado));
   } catch {
     // Sem armazenamento: vale só nesta sessão
   }
@@ -186,6 +220,9 @@ const subirParaONuvem = async (
   colaboradorId: string,
   preferencia: { fixada?: boolean; ocultaDesde?: string | null }
 ): Promise<void> => {
+  const emTransito = chaveEmTransito(colaboradorId, conversaId);
+  subindoAgora.add(emTransito);
+
   try {
     const { usandoNuvem } = await import('./supabase');
     if (!usandoNuvem()) return;
@@ -193,5 +230,15 @@ const subirParaONuvem = async (
     await nuvemComunicacao.salvarPreferenciaDeConversa(conversaId, colaboradorId, preferencia);
   } catch {
     // Sem rede: fica valendo o que está no aparelho
+  } finally {
+    /**
+     * A proteção acaba junto com a subida, dê certo ou não.
+     *
+     * Se deu certo, a próxima sincronização traz o mesmo valor e nada muda.
+     * Se falhou, o banco volta a mandar — e é isso mesmo: preferência que
+     * não subiu não vale nos outros aparelhos, e uma tela dizendo que vale
+     * seria outra tela mentindo.
+     */
+    subindoAgora.delete(emTransito);
   }
 };

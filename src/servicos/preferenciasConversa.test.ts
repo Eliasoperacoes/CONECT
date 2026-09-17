@@ -28,6 +28,7 @@ const {
   aplicarPreferencias,
   contarOcultas,
   obterPreferencias,
+  aplicarPreferenciasDaNuvem,
 } = await import('./preferenciasConversa');
 
 const EU = 'colab-elias';
@@ -298,4 +299,46 @@ test('NENHUM HOOK DEPOIS DE UM RETURN CONDICIONAL NO APP', async () => {
     .map(({ numero, linha }) => `App.tsx:${numero} ${linha}`);
 
   expect(hooksTardios).toEqual([]);
+});
+
+
+/**
+ * A ESCOLHA QUE ACABOU DE SER FEITA NÃO PODE SER DESFEITA PELA SINCRONIZAÇÃO.
+ *
+ * Fixar e ocultar respondem na tela na hora e sobem depois. Uma sincronização
+ * que já estava a caminho chegava no meio e reescrevia o mapa com o estado
+ * ANTIGO do banco: a conversa que a pessoa acabou de tirar da lista voltava
+ * sozinha, e a que ela fixou se desfixava.
+ *
+ * Com 88 pessoas, sincronização chegando no meio não é exceção — é o normal.
+ */
+test('fixar sobrevive a uma sincronizacao que chega no meio', () => {
+  // A pessoa fixa: a subida para o banco começa e ainda não terminou
+  alternarFixada(EU, 'conv-1');
+  expect(estaFixada(EU, 'conv-1')).toBe(true);
+
+  // O banco responde com o que ele sabia ANTES: nada fixado
+  aplicarPreferenciasDaNuvem(EU, {});
+
+  expect(estaFixada(EU, 'conv-1')).toBe(true);
+});
+
+test('ocultar sobrevive a uma sincronizacao que chega no meio', () => {
+  ocultarConversa(EU, 'conv-2');
+  // Mensagem ANTIGA: a conversa oculta não deve reaparecer
+  expect(deveAparecer(EU, conversa('conv-2', ONTEM))).toBe(false);
+
+  aplicarPreferenciasDaNuvem(EU, {});
+
+  expect(deveAparecer(EU, conversa('conv-2', ONTEM))).toBe(false);
+});
+
+test('o que NAO esta subindo continua vindo do banco', () => {
+  // Nada em trânsito para esta conversa: o banco manda, e é isso mesmo —
+  // senão uma preferência velha do aparelho sobreviveria para sempre
+  aplicarPreferenciasDaNuvem(EU, { 'conv-3': { fixada: true } });
+  expect(estaFixada(EU, 'conv-3')).toBe(true);
+
+  aplicarPreferenciasDaNuvem(EU, {});
+  expect(estaFixada(EU, 'conv-3')).toBe(false);
 });
