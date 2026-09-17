@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  ChevronDown,
 } from 'lucide-react';
 import { Colaborador, JustificativaAusencia } from '../tipos';
 import { servicoPonto, formatarDataBR } from '../servicos/ponto';
@@ -100,6 +101,9 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
     [colaboradorAtual.id]
   );
 
+  /** A lista de quem não marcou começa fechada: são 23 nomes. */
+  const [semFolgaAberta, setSemFolgaAberta] = useState(false);
+
   const sabados = useMemo(() => sabadosDoMes(ano, mes), [ano, mes]);
 
   /** As folgas do mês, por sábado. Só de quem é da equipe. */
@@ -145,23 +149,41 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
    */
   const montarDocumento = (): string => {
     const linhas = sabados
-      .map((sabado) => {
-        const folgas = porSabado.get(sabado) || [];
+      .map((sabado, indice) => {
+        const folgas = (porSabado.get(sabado) || []).filter(
+          (f) => f.estado !== 'recusada'
+        );
+
+        /**
+         * Um nome por linha, em corpo grande.
+         *
+         * Este papel é lido em pé, a um metro do quadro de avisos, por quem
+         * está passando. Nome separado por vírgula economiza espaço e obriga
+         * a pessoa a caçar o dela no meio da frase.
+         */
         const pessoas = folgas.length
-          ? folgas
+          ? `<ul class="gente">${folgas
               .map(
                 (f) =>
-                  `${nomeDe(f.colaboradorId)}${
-                    f.estado === 'pendente' ? ' (aguardando aprovação)' : ''
-                  }`
+                  `<li>${nomeDe(f.colaboradorId)}${
+                    f.estado === 'pendente'
+                      ? ' <span class="aguardando">aguardando aprovação</span>'
+                      : ''
+                  }</li>`
               )
-              .join('<br>')
-          : '<span class="vazio">Ninguém de folga</span>';
+              .join('')}</ul>`
+          : '<span class="vazio">Ninguém de folga · equipe completa</span>';
 
-        return `<tr>
-          <td class="dia">${formatarDataBR(sabado)}</td>
-          <td class="qtd">${folgas.length}</td>
-          <td>${pessoas}</td>
+        const dia = sabado.slice(8, 10);
+        const mesDoDia = NOMES_DOS_MESES[Number(sabado.slice(5, 7)) - 1];
+
+        return `<tr class="${indice % 2 ? 'par' : ''}">
+          <td class="dia">
+            <span class="numero">${dia}</span>
+            <span class="mes">${mesDoDia}</span>
+          </td>
+          <td class="qtd"><span>${folgas.length}</span></td>
+          <td class="quem">${pessoas}</td>
         </tr>`;
       })
       .join('');
@@ -170,51 +192,116 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
       .flat()
       .filter((f) => f.estado === 'pendente').length;
 
+    const emitidaEm = formatarDataBR(
+      `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(
+        hoje.getDate()
+      ).padStart(2, '0')}`
+    );
+
+    /**
+     * ESTE DOCUMENTO É UM CARTAZ, e não um relatório.
+     *
+     * Ele é impresso e pregado no quadro de avisos da loja. Quem lê está em
+     * pé, de passagem, procurando o próprio nome — por isso corpo grande,
+     * dia em destaque e uma pessoa por linha.
+     *
+     * A lista de "sem folga marcada" SAIU daqui de propósito: ela é cobrança
+     * interna do gestor, não informação de mural. Pregar no quadro os nomes
+     * de quem não marcou expõe as pessoas sem servir para nada — quem lê
+     * quer saber quem folga, não quem faltou marcar. Na tela ela continua.
+     */
     return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <title>Escala de folgas · ${NOMES_DOS_MESES[mes]} de ${ano}</title>
 <style>
-  body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 28px; color: #111; }
-  h1 { font-size: 18px; margin: 0 0 2px; }
-  .sub { font-size: 12px; color: #555; margin-bottom: 18px; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; background: #f1f3f5; padding: 8px; border: 1px solid #dee2e6; }
-  td { padding: 8px; border: 1px solid #dee2e6; vertical-align: top; }
-  .dia { white-space: nowrap; font-weight: 600; width: 110px; }
-  .qtd { text-align: center; width: 60px; }
-  .vazio { color: #868e96; font-style: italic; }
-  .aviso { margin-top: 16px; font-size: 12px; color: #555; }
-  .falta { margin-top: 20px; font-size: 12px; }
-  .falta strong { display: block; margin-bottom: 4px; }
-  @media print { body { margin: 12px; } }
+  @page { size: A4 portrait; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    margin: 0; color: #111827; -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  header { border-bottom: 3px solid #111827; padding-bottom: 10px; margin-bottom: 18px; }
+  .chapeu {
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    color: #6b7280; font-weight: 700;
+  }
+  h1 { font-size: 30px; margin: 2px 0 6px; letter-spacing: -0.5px; }
+  .onde { font-size: 15px; font-weight: 600; color: #374151; }
+  .quando { font-size: 15px; color: #6b7280; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+    color: #6b7280; text-align: left; padding: 0 10px 6px; font-weight: 700;
+  }
+  tbody tr { border-top: 1px solid #d1d5db; }
+  tbody tr.par { background: #f9fafb; }
+  td { padding: 12px 10px; vertical-align: top; }
+
+  .dia { width: 110px; white-space: nowrap; }
+  .dia .numero { font-size: 30px; font-weight: 800; line-height: 1; display: block; }
+  .dia .mes {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: #6b7280; font-weight: 700;
+  }
+
+  .qtd { width: 72px; text-align: center; }
+  .qtd span {
+    display: inline-block; min-width: 34px; padding: 5px 0;
+    border: 2px solid #111827; border-radius: 8px;
+    font-size: 17px; font-weight: 800;
+  }
+
+  .gente { margin: 0; padding: 0; list-style: none; columns: 2; column-gap: 24px; }
+  .gente li {
+    font-size: 15px; font-weight: 600; padding: 2px 0;
+    break-inside: avoid; -webkit-column-break-inside: avoid;
+  }
+  .aguardando {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: #92400e; background: #fef3c7;
+    padding: 1px 5px; border-radius: 4px; white-space: nowrap;
+  }
+  .vazio { color: #9ca3af; font-style: italic; font-size: 14px; }
+
+  .aviso {
+    margin-top: 16px; font-size: 12px; color: #92400e;
+    background: #fffbeb; border: 1px solid #fde68a;
+    border-radius: 8px; padding: 8px 10px;
+  }
+
+  footer {
+    margin-top: 22px; padding-top: 8px; border-top: 1px solid #d1d5db;
+    font-size: 10px; color: #6b7280; display: flex;
+    justify-content: space-between; gap: 12px;
+  }
 </style></head><body>
-<h1>Escala de folgas de sábado</h1>
-<div class="sub">
-  ${NOMES_DOS_MESES[mes]} de ${ano} · ${colaboradorAtual.loja} ·
-  equipe de ${colaboradorAtual.nome} · ${equipe.length} pessoas ·
-  emitida em ${formatarDataBR(
-    `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(
-      hoje.getDate()
-    ).padStart(2, '0')}`
-  )}
-</div>
+
+<header>
+  <div class="chapeu">Malachias Autopeças · Escala de sábado</div>
+  <h1>Folgas de ${NOMES_DOS_MESES[mes]}</h1>
+  <div class="onde">${colaboradorAtual.loja}</div>
+  <div class="quando">Equipe de ${colaboradorAtual.nome} · ${equipe.length} pessoas</div>
+</header>
 
 <table>
-  <thead><tr><th>Sábado</th><th>Folgas</th><th>Quem</th></tr></thead>
+  <thead>
+    <tr><th>Sábado</th><th style="text-align:center">Folgas</th><th>Quem folga</th></tr>
+  </thead>
   <tbody>${linhas}</tbody>
 </table>
 
 ${
   pendentes > 0
-    ? `<div class="aviso"><strong>Atenção:</strong> ${pendentes} folga(s) ainda aguardando aprovação. Só as aprovadas valem.</div>`
+    ? `<div class="aviso"><strong>${pendentes} folga(s) ainda aguardando aprovação.</strong> Só as aprovadas valem — confirme com a liderança antes de se programar.</div>`
     : ''
 }
 
-${
-  semFolga.length > 0
-    ? `<div class="falta"><strong>Ainda sem folga marcada neste mês (${semFolga.length}):</strong>
-       ${semFolga.map((c) => c.nome).join(' · ')}</div>`
-    : ''
-}
+<footer>
+  <span>Emitida em ${emitidaEm} · cada colaborador tem direito a uma folga de sábado por mês</span>
+  <span>CONECTA</span>
+</footer>
 </body></html>`;
   };
 
@@ -324,71 +411,145 @@ ${
         </button>
       </div>
 
-      {/* Um cartão por sábado */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {/*
+        A ESCALA COMO ESCALA, e não como cartões soltos.
+
+        Eram cartões numa grade que quebrava de linha: com 23 pessoas
+        escolhendo folga, uns ficariam altos, outros vazios, e a grade
+        desalinhava. Colunas lado a lado, de mesma altura, leem-se como um
+        quadro de escala — que é o que isto é.
+
+        Cada coluna diz o número que o gestor precisa: quantos folgam E
+        quantos ficam na loja. "3 de folga" sozinho não decide nada; "3 de
+        folga, 20 na loja" decide.
+      */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
         {sabados.map((sabado) => {
-          const folgas = porSabado.get(sabado) || [];
+          const folgas = (porSabado.get(sabado) || []).filter(
+            (f) => f.estado !== 'recusada'
+          );
+          const ficam = Math.max(equipe.length - folgas.length, 0);
+          const proporcao = equipe.length
+            ? Math.round((folgas.length / equipe.length) * 100)
+            : 0;
+
+          const dia = sabado.slice(8, 10);
+          const mesCurto = NOMES_DOS_MESES[Number(sabado.slice(5, 7)) - 1].slice(0, 3);
+
           return (
             <div
               key={sabado}
-              className="p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex flex-col gap-2"
+              className="rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] overflow-hidden flex flex-col"
             >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="text-sm font-bold text-[var(--c-texto)]">
-                  {formatarDataBR(sabado)}
-                </span>
-                <span className="text-[11px] text-[var(--c-texto-3)]">
-                  {folgas.length === 0
-                    ? 'ninguém'
-                    : `${folgas.length} ${folgas.length === 1 ? 'folga' : 'folgas'}`}
-                </span>
+              {/* Cabeçalho da coluna: o dia grande, como num calendário */}
+              <div className="px-3 pt-3 pb-2.5 border-b border-[var(--c-borda)]">
+                <div className="flex items-end justify-between gap-2">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-2xl font-extrabold leading-none text-[var(--c-texto)]">
+                      {dia}
+                    </span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
+                      {mesCurto}
+                    </span>
+                  </div>
+                  <span
+                    className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                      folgas.length === 0
+                        ? 'bg-[var(--c-superficie-2)] text-[var(--c-texto-3)]'
+                        : 'bg-[var(--c-acento-suave)] text-[var(--c-acento)]'
+                    }`}
+                  >
+                    {folgas.length} {folgas.length === 1 ? 'folga' : 'folgas'}
+                  </span>
+                </div>
+
+                <div className="mt-2 flex items-center gap-2">
+                  {/* Quanto da equipe sai neste sábado, de relance */}
+                  <div className="flex-1 h-1.5 rounded-full bg-[var(--c-superficie-2)] overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-[var(--c-acento)] transition-all"
+                      style={{ width: `${proporcao}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] text-[var(--c-texto-3)] whitespace-nowrap">
+                    {ficam} na loja
+                  </span>
+                </div>
               </div>
 
-              {folgas.length === 0 ? (
-                <span className="text-xs text-[var(--c-texto-3)] italic">
-                  Equipe completa
-                </span>
-              ) : (
-                folgas.map((f) => (
-                  <div key={f.id} className="flex flex-col gap-1.5">
-                    <div className="flex items-center gap-1.5 text-xs">
-                      {f.estado === 'aprovada' ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                      ) : (
-                        <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                      )}
-                      <span className="text-[var(--c-texto)] truncate">
-                        {nomeDe(f.colaboradorId)}
-                      </span>
-                    </div>
+              {/*
+                A lista rola DENTRO da coluna.
 
-                    {/*
-                      A DECISÃO FICA AQUI, e não numa fila à parte.
-                      Autorizar folga é olhar a escala: quantos já estão de
-                      folga neste sábado, e quem. Numa fila solta o gestor
-                      decidiria sem ver nada disso.
-                    */}
-                    {f.estado === 'pendente' && podeDecidir(f) && (
-                      <div className="flex items-center gap-1.5 pl-5">
-                        <button
-                          type="button"
-                          onClick={() => setRecusando(f)}
-                          className="px-2 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-bold text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/30 transition-colors"
-                        >
-                          Recusar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => decidir(f, true)}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition-colors"
-                        >
-                          Aprovar
-                        </button>
+                Sem isto, um sábado com dez folgas esticaria a coluna e
+                deixaria as outras três com um vão embaixo — que é como a
+                grade de cartões desalinhava.
+              */}
+              <div className="p-2 flex flex-col gap-1 max-h-72 overflow-y-auto">
+                {folgas.length === 0 ? (
+                  <span className="px-1 py-3 text-xs text-[var(--c-texto-3)] italic text-center">
+                    Equipe completa
+                  </span>
+                ) : (
+                  folgas.map((f) => {
+                    const pessoa = bancoDados.obterColaboradorPorId(f.colaboradorId);
+                    const pendente = f.estado === 'pendente';
+
+                    return (
+                      <div
+                        key={f.id}
+                        className={`rounded-xl px-2 py-1.5 ${
+                          pendente
+                            ? 'bg-amber-500/10 border border-amber-500/30'
+                            : 'bg-[var(--c-canvas)]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          {pendente ? (
+                            <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                          ) : (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <span className="block text-xs font-semibold text-[var(--c-texto)] truncate">
+                              {pessoa?.nome || nomeDe(f.colaboradorId)}
+                            </span>
+                            {pessoa && (
+                              <span className="block text-[10px] text-[var(--c-texto-3)] truncate">
+                                {pessoa.setor}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/*
+                          A DECISÃO FICA AQUI, e não numa fila à parte.
+                          Autorizar folga é olhar a escala: quantos já estão
+                          de folga neste sábado, e quem. Numa fila solta o
+                          gestor decidiria sem ver nada disso.
+                        */}
+                        {pendente && podeDecidir(f) && (
+                          <div className="flex items-center gap-1 mt-1.5 pl-5">
+                            <button
+                              type="button"
+                              onClick={() => setRecusando(f)}
+                              className="flex-1 px-2 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-bold text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/30 transition-colors"
+                            >
+                              Recusar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => decidir(f, true)}
+                              className="flex-1 px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition-colors"
+                            >
+                              Aprovar
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))
-              )}
+                    );
+                  })
+                )}
+              </div>
             </div>
           );
         })}
@@ -399,17 +560,48 @@ ${
         do mês, e mês fechado sem marcar é direito perdido — a pessoa
         raramente lembra sozinha.
       */}
+      {/*
+        RECOLHIDA POR PADRÃO.
+
+        São 23 nomes numa loja como Pirassununga. Abertos, ocupam mais
+        espaço do que a escala inteira e empurram para baixo justamente o
+        que se veio olhar. O número já é o aviso; a lista é o detalhe de
+        quem vai cobrar.
+      */}
       {semFolga.length > 0 && (
-        <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/25 flex gap-2.5">
-          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-          <div className="min-w-0">
-            <span className="text-xs font-bold text-[var(--c-texto)] block">
+        <div className="rounded-xl bg-amber-500/5 border border-amber-500/25 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setSemFolgaAberta((v) => !v)}
+            className="w-full px-3 py-2.5 flex items-center gap-2.5 text-left hover:bg-amber-500/5 transition-colors cursor-pointer"
+          >
+            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <span className="flex-1 min-w-0 text-xs font-bold text-[var(--c-texto)]">
               {semFolga.length} sem folga marcada em {NOMES_DOS_MESES[mes]}
             </span>
-            <span className="text-[11px] text-[var(--c-texto-2)]">
-              {semFolga.map((c) => c.nome).join(' · ')}
+            <span className="text-[11px] font-semibold text-[var(--c-texto-3)] whitespace-nowrap">
+              {semFolgaAberta ? 'ocultar' : 'ver quem'}
             </span>
-          </div>
+            <ChevronDown
+              className={`w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0 transition-transform ${
+                semFolgaAberta ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+
+          {semFolgaAberta && (
+            <div className="px-3 pb-3 pt-0.5 flex flex-wrap gap-1.5 border-t border-amber-500/20">
+              {semFolga.map((c) => (
+                <span
+                  key={c.id}
+                  className="text-[11px] px-2 py-1 rounded-lg bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)]"
+                  title={`${c.cargo} · ${c.setor}`}
+                >
+                  {c.nome}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
