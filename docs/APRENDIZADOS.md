@@ -219,3 +219,46 @@ que entraram por ali.
 Recorte sempre até o **método seguinte**, nunca por tamanho. E, quando a
 asserção for `not.toContain`, confirme por mutação que ela ainda morde no
 **fim** do trecho.
+
+## Reescrever o cache por inteiro
+
+**O banco é a verdade, menos para o que ainda não chegou nele.**
+
+Irmão do "manda e não espera", e apareceu três vezes na mesma auditoria do
+chat. A sincronização substituía o cache local inteiro pelo que veio do
+banco, e atropelava tudo que estava em trânsito:
+
+| Onde | O que a pessoa via |
+|---|---|
+| Mensagens | A mensagem que ela acabou de mandar **sumia** da tela quando qualquer outra pessoa da rede mandava qualquer coisa. Voltava um segundo depois — e ela já tinha mandado de novo |
+| Fixar conversa | A conversa se **desfixava** sozinha |
+| Excluir conversa | A conversa **voltava** para a lista |
+
+A causa é sempre a mesma corrida: a ação responde na tela na hora e sobe
+depois; uma sincronização que já estava a caminho chega no meio e escreve o
+estado antigo por cima. **Com 88 pessoas conectadas isso não é exceção, é o
+normal** — qualquer mensagem de qualquer pessoa dispara uma sincronização em
+todos os aparelhos.
+
+A saída não é parar de reescrever: é marcar o que está em trânsito e
+proteger só isso. Quando a subida termina, a proteção acaba — dando certo ou
+não. Preferência que não subiu não vale nos outros aparelhos, e uma tela
+dizendo que vale seria outra tela mentindo.
+
+**Sinal para procurar:** um `localStorage.setItem` que grava direto o que
+veio do banco, sem olhar o que já estava lá.
+
+## Tempo real sem juntar rajada
+
+Cada evento do Supabase disparava uma sincronização completa — e completa
+quer dizer *todas* as mensagens da rede, mais os endereços assinados de todo
+anexo.
+
+O multiplicador estava onde ninguém olhava: as **marcações de leitura**.
+Abrir uma conversa com trinta não lidas grava trinta marcações, que viram
+trinta eventos, e cada aparelho conectado baixava o histórico inteiro trinta
+vezes — por causa de alguém abrindo uma conversa do outro lado da rede.
+
+Ao juntar rajada, **não atrase a primeira**: seria trocar o atraso do envio
+por um atraso no recebimento. O primeiro evento depois de uma calmaria vai
+na hora; a janela só junta o que vem grudado nele.
