@@ -1429,16 +1429,23 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                   </div>
 
                   {/*
-                    As ações da mensagem.
+                    AS AÇÕES DA MENSAGEM FICAM ATRÁS DE UM BOTÃO SÓ.
 
-                    No computador aparecem ao passar o mouse. No CELULAR não
-                    havia como alcançá-las: `group-hover` nunca dispara em
-                    toque, então encaminhar, editar e apagar eram invisíveis
-                    no aparelho onde a rede mais usa o sistema.
+                    Antes o computador mostrava as seis de uma vez — responder,
+                    fixar, encaminhar, selecionar, editar, apagar — numa
+                    fileira de ícones sem rótulo que aparecia a cada passada
+                    de mouse. Seis alvos pequenos e parecidos ao lado de cada
+                    balão: a conversa virava painel de controle, e escolher
+                    exigia parar para decifrar qual desenho era qual.
 
-                    Agora um toque no botão de três pontos abre o mesmo
-                    conjunto. O menu existe só no celular; no computador o
-                    hover continua sendo o caminho, que é mais rápido.
+                    E havia DOIS menus para o mesmo conjunto: a fileira do
+                    computador e este painel, escrito para o celular. Duas
+                    listas da mesma coisa é como funções passam a divergir —
+                    já aconteceu aqui com setor, ficha e alçada.
+
+                    Agora é um só, com rótulo em texto, nos dois aparelhos. No
+                    computador ele aparece ao passar o mouse; no celular fica
+                    sempre à mão, porque `group-hover` nunca dispara em toque.
                   */}
                   {!modoSelecao && (
                     <button
@@ -1447,7 +1454,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                         e.stopPropagation();
                         setMenuMensagemId(menuMensagemId === msg.id ? null : msg.id);
                       }}
-                      className="md:hidden w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] flex items-center justify-center flex-shrink-0 active:scale-95 transition-transform"
+                      className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] flex items-center justify-center flex-shrink-0 active:scale-95 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 transition-all"
                       title="Opções da mensagem"
                       aria-label="Opções da mensagem"
                     >
@@ -1455,129 +1462,29 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                     </button>
                   )}
 
-                  {!modoSelecao && (
-                    <div
-                      className="hidden md:flex opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity items-center gap-1 flex-shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {/*
-                        Responder vem PRIMEIRO: é a ação mais usada de todas
-                        as que estão aqui, e o que a rede pediu para melhorar
-                        o contexto entre as pessoas.
-                      */}
-                      {podePublicar && (
-                        <button
-                          type="button"
-                          onClick={() => responderMensagem(msg)}
-                          className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-acento)] hover:border-[var(--c-acento)]/40 flex items-center justify-center shadow-xs transition-colors"
-                          title="Responder esta mensagem"
-                          aria-label="Responder mensagem"
-                        >
-                          <Reply className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-
-                      {/* Fixar: fica no alto da conversa, à vista de todos */}
-                      {bancoDados.podeFixarMensagem(msg) && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            const res = await bancoDados.alternarFixarMensagem(msg.id);
-                            setMenuMensagemId(null);
-                            if (!res.sucesso) exibirToast(res.erro || 'Não foi possível fixar.');
-                            else
-                              exibirToast(
-                                res.fixada
-                                  ? 'Fixada no alto da conversa, para todos.'
-                                  : 'Desafixada.'
-                              );
-                          }}
-                          className={`w-7 h-7 rounded-full border flex items-center justify-center shadow-xs transition-colors ${
-                            msg.fixadaEm
-                              ? 'bg-[var(--c-acento)] border-[var(--c-acento)] text-[var(--c-sobre-acento)]'
-                              : 'bg-[var(--c-superficie)] border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-acento)]'
-                          }`}
-                          title={msg.fixadaEm ? 'Desafixar' : 'Fixar no alto da conversa'}
-                          aria-label={msg.fixadaEm ? 'Desafixar' : 'Fixar mensagem'}
-                        >
-                          {msg.fixadaEm ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
-                        </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => abrirModalEncaminhar([msg.id])}
-                        className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-blue-600 hover:bg-[var(--c-superficie-2)] flex items-center justify-center shadow-xs transition-colors"
-                        title="Encaminhar esta mensagem"
-                        aria-label="Encaminhar mensagem"
-                      >
-                        <Forward className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setModoSelecao(true);
-                          setMensagensSelecionadasIds([msg.id]);
-                        }}
-                        className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)] flex items-center justify-center shadow-xs transition-colors"
-                        title="Selecionar mensagem"
-                        aria-label="Selecionar"
-                      >
-                        <CheckSquare className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Editar: só o autor, e só mensagem de texto */}
-                      {bancoDados.podeEditarMensagem(msg) && (
-                        <button
-                          type="button"
-                          id={`botao-editar-mensagem-${msg.id}`}
-                          onClick={() => iniciarEdicao(msg)}
-                          className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-acento)] hover:border-[var(--c-acento)]/40 flex items-center justify-center shadow-xs transition-colors"
-                          title="Editar esta mensagem"
-                          aria-label="Editar mensagem"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-
-                      {/* Excluir: própria mensagem, ou qualquer uma se Admin */}
-                      {bancoDados.podeExcluirMensagem(msg) && (
-                        <button
-                          type="button"
-                          id={`botao-excluir-mensagem-${msg.id}`}
-                          onClick={() => setMensagemParaExcluir(msg)}
-                          className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/40 hover:bg-red-500/10 flex items-center justify-center shadow-xs transition-colors"
-                          title="Apagar esta mensagem"
-                          aria-label="Apagar mensagem"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  )}
                 </div>
 
                 {/*
-                  O MENU DO CELULAR.
+                  O MENU DAS AÇÕES — um só, para computador e celular.
 
-                  A primeira tentativa foi acrescentar os mesmos botõezinhos
-                  à linha da mensagem. Não funcionou: a linha já está na
-                  largura máxima, então no telefone eles caíam fora da tela —
-                  e o container só rola na vertical, então nem dava para
-                  alcançá-los. Os botões existiam e continuavam inalcançáveis.
+                  A primeira tentativa foi acrescentar botõezinhos à linha da
+                  mensagem. Não funcionou: a linha já está na largura máxima,
+                  então no telefone eles caíam fora da tela — e o container só
+                  rola na vertical, então nem dava para alcançá-los.
 
-                  Agora é um painel flutuante, ancorado na mensagem, com
-                  rótulo em texto. Ocupa a largura que precisa e não disputa
-                  espaço com o balão.
+                  É um painel flutuante ancorado na mensagem, com rótulo em
+                  texto. Ocupa a largura que precisa, não disputa espaço com o
+                  balão, e diz o que cada coisa faz em vez de pedir que se
+                  adivinhe pelo desenho.
                 */}
                 {menuMensagemId === msg.id && (
                   <>
                     <div
-                      className="fixed inset-0 z-30 md:hidden"
+                      className="fixed inset-0 z-30"
                       onClick={() => setMenuMensagemId(null)}
                     />
                     <div
-                      className={`md:hidden absolute z-40 w-52 rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] shadow-xl overflow-hidden text-sm ${
+                      className={`absolute z-40 w-52 rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] shadow-xl overflow-hidden text-sm ${
                         ehMinha ? 'right-0' : 'left-0'
                       } ${abrirMenuParaCima ? 'bottom-full mb-1' : 'top-full mt-1'}`}
                       onClick={(e) => e.stopPropagation()}

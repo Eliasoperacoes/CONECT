@@ -57,7 +57,7 @@ import { TelaDefinirSenha } from './componentes/TelaDefinirSenha';
 import { PainelAdministrativo } from './componentes/PainelAdministrativo';
 import { AbaPonto } from './componentes/AbaPonto';
 import { JanelaChat } from './componentes/JanelaChat';
-import { BarraConversasEncolhidas } from './componentes/BarraConversasEncolhidas';
+import { ConversasEmEspera } from './componentes/ConversasEmEspera';
 import { PainelConversas } from './componentes/PainelConversas';
 import { podeUsar } from './servicos/permissoes';
 import { aplicarPreferencias, assinarPreferencias } from './servicos/preferenciasConversa';
@@ -128,34 +128,27 @@ export default function App() {
    * janela dela: seriam duas caixas do mesmo diálogo, cada uma com a sua
    * rolagem.
    */
+  /**
+   * Abre a conversa NO PRIMEIRO LUGAR, ao lado do painel de contatos.
+   *
+   * É onde o olho vai: quem acaba de escolher uma conversa quer vê-la, não
+   * procurá-la na ponta esquerda de uma fileira. Antes ela entrava no fim, e
+   * escolher da lista abria a conversa no canto mais distante da tela.
+   *
+   * Três lugares abertos, e só. O que passa disso ENCOLHE — nunca fecha. A
+   * conversa continua a um clique no botão de espera, em vez de sumir sem
+   * aviso como sumia antes.
+   */
   const abrirJanela = (id: string) =>
     setJanelas((atuais) => {
-      const existente = atuais.find((j) => j.id === id);
-      if (existente) {
-        // Já aberta: desencolhe e vai para o fim (a ponta visível). É por
-        // aqui que a barra de encolhidas devolve uma conversa à tela.
-        return [...atuais.filter((j) => j.id !== id), { id, encolhida: false }];
-      }
-      /**
-       * A MAIS ANTIGA ENCOLHE, NÃO FECHA.
-       *
-       * Antes ela era simplesmente descartada para a nova caber: a pessoa
-       * abria a quinta conversa e perdia a primeira, sem aviso e sem
-       * caminho de volta. Agora ela desce para a barra de encolhidas, que
-       * tem lugar para todas.
-       *
-       * O limite é só das ABERTAS: três de 420px já enchem a largura útil
-       * ao lado do painel de contatos. Encolhida não ocupa espaço de
-       * janela, então não há motivo para limitá-las aqui — a barra cuida
-       * disso mostrando cinco e guardando o resto atrás da contagem.
-       */
-      const abertas = atuais.filter((j) => !j.encolhida);
-      const comEspaco =
-        abertas.length >= MAXIMO_JANELAS_ABERTAS
-          ? atuais.map((j) => (j.id === abertas[0].id ? { ...j, encolhida: true } : j))
-          : atuais;
+      const outras = atuais.filter((j) => j.id !== id);
+      let abertas = 0;
 
-      return [...comEspaco, { id, encolhida: false }];
+      return [{ id, encolhida: false }, ...outras].map((j) => {
+        if (j.encolhida) return j;
+        abertas += 1;
+        return abertas <= MAXIMO_JANELAS_ABERTAS ? j : { ...j, encolhida: true };
+      });
     });
 
   const fecharJanela = (id: string) =>
@@ -240,8 +233,9 @@ export default function App() {
    * barra desenhada crescia com o nome de quem estava do outro lado — umas
    * caíam por cima das outras e sobrava vão no fim.
    *
-   * Agora quem enfileira as encolhidas é a própria barra, com largura fixa.
-   * Ninguém calcula posição, então não há duas contas para discordarem.
+   * Agora elas nem são desenhadas uma a uma: viram uma contagem só, num
+   * botão fixo no canto. Ninguém calcula posição de conversa encolhida, em
+   * nenhum lugar — e sem conta não há duas contas para discordarem.
    */
   const conversasEncolhidas = useMemo(
     () =>
@@ -252,10 +246,6 @@ export default function App() {
     [janelas]
   );
 
-  /** O quanto as janelas abertas tomam à direita, para a barra parar antes. */
-  const espacoDasJanelasAbertas =
-    INICIO_DAS_JANELAS +
-    posicoesDasJanelas.length * (LARGURA_JANELA_ABERTA + ESPACO_ENTRE_JANELAS);
   // Qual seção da lista flutuante está aberta no computador (nenhuma = fechada)
   const [secaoListaAberta, setSecaoListaAberta] = useState<'individuais' | 'grupos' | null>(null);
 
@@ -1152,12 +1142,11 @@ export default function App() {
           elas ficam lado a lado; no celular só a da frente aparece, porque
           empilhar telas cheias esconderia umas às outras sem aviso. */}
       {/*
-        A fila das conversas encolhidas. Fica encostada à esquerda e para
-        antes das janelas abertas — nunca por baixo delas.
+        Tudo que não coube nos três lugares abertos, num botão só no canto.
+        Nada se espalha para a esquerda porque não há nada para espalhar.
       */}
-      <BarraConversasEncolhidas
+      <ConversasEmEspera
         conversas={conversasEncolhidas}
-        espacoDasAbertas={espacoDasJanelasAbertas}
         aoAbrir={(id) => abrirJanela(id)}
         aoFechar={(id) => fecharJanela(id)}
       />

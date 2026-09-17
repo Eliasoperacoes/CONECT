@@ -223,9 +223,9 @@ test('a coluna da resposta existe no banco e nao apaga em cascata', async () => 
 test('a tela responde, cita e leva ate a mensagem original', async () => {
   const tela = await lerTela();
 
-  // Responder existe nos DOIS caminhos: o hover do computador e o menu do
-  // celular. Só um dos dois deixaria metade da rede sem a função.
-  expect((tela.match(/responderMensagem\(msg\)/g) || []).length).toBe(2);
+  // Um caminho so, agora que as acoes moram todas no mesmo menu. Dois seria
+  // duas listas da mesma coisa, que e como funcoes passam a divergir.
+  expect((tela.match(/responderMensagem\(msg\)/g) || []).length).toBe(1);
 
   // A citação leva até a original: citação que não leva a lugar nenhum
   // obriga a rolar procurando, que é o trabalho que responder deveria poupar
@@ -259,87 +259,149 @@ test('desistir de citar nao apaga o que ja foi digitado', async () => {
 });
 
 /**
- * A FILA DAS CONVERSAS ENCOLHIDAS
+ * AS CONVERSAS QUE NÃO COUBERAM
  *
- * Estava embaralhada na tela: uma menor, outra maior, uma por cima da outra
- * e um vão enorme depois. A causa era a de sempre aqui — a mesma medida
- * escrita em dois lugares, discordando.
+ * Duas tentativas erradas antes desta, e vale o registro das duas porque a
+ * segunda parecia consertar a primeira e repetiu o mesmo estrago.
+ *
+ * 1ª: o App posicionava cada conversa encolhida somando 210px por barra,
+ *     enquanto a barra desenhada crescia com o nome de quem estava do outro
+ *     lado. Umas caíam por cima das outras e sobrava vão no fim.
+ *
+ * 2ª: uma fila de pastilhas de largura fixa, cinco à vista. Com três
+ *     conversas abertas ocupando a direita, sobravam uns 230px para a fila:
+ *     as pastilhas seguintes ficavam roladas para fora, invisíveis, e sem
+ *     barra de rolagem para denunciar que existiam.
+ *
+ * As duas terminavam no mesmo lugar: conversa aberta que some sem caminho
+ * de volta. Agora não há fila nenhuma — há uma contagem.
  */
-test('quem posiciona a conversa encolhida e a barra, nao o App', async () => {
+test('nao existe mais fila de conversas encolhidas se espalhando', async () => {
+  const arquivos = [...new Bun.Glob('src/**/*.tsx').scanSync('.')];
+
+  // O componente da fila foi removido, não apenas deixado de usar
+  expect(arquivos).not.toContain('src/componentes/BarraConversasEncolhidas.tsx');
+
   const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+  expect(app).toContain('<ConversasEmEspera');
 
   /**
-   * O App somava 210px por barra encolhida. A barra desenhada NÃO tinha
-   * 210: crescia com o nome de quem estava do outro lado. "Elias" dava uns
-   * 120, "Aline Karoline Boldrim De..." passava de 230.
+   * Nenhuma conta de posição para conversa encolhida, em lugar nenhum. Era
+   * de onde vinham as duas versões do problema.
    */
   expect(app).not.toContain('LARGURA_ENCOLHIDA');
+  expect(app).not.toContain('espacoDasAbertas');
 
-  // A conta de posição é só das abertas
+  const espera = await Bun.file(
+    new URL('../componentes/ConversasEmEspera.tsx', import.meta.url)
+  ).text();
+  // Posição fixa no canto: não acompanha as janelas, então não escorrega
+  expect(espera).toContain('fixed bottom-0 left-3');
+  expect(espera).not.toContain('maxWidth');
+});
+
+test('so as abertas ganham posicao, e sao no maximo tres', async () => {
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+
   const inicio = app.indexOf('const posicoesDasJanelas');
   const fim = app.indexOf('const conversasEncolhidas', inicio);
   expect(inicio).toBeGreaterThan(-1);
   expect(fim).toBeGreaterThan(inicio);
   expect(app.slice(inicio, fim)).toContain('.filter((j) => !j.encolhida)');
+
+  expect(app).toContain('MAXIMO_JANELAS_ABERTAS = 3');
 });
 
-test('a janela de conversa nao desenha mais a versao encolhida', async () => {
-  const janela = await Bun.file(
-    new URL('../componentes/JanelaChat.tsx', import.meta.url)
-  ).text();
-
-  // Dois lugares desenhando a mesma barra é o que produziu a bagunça
-  expect(janela).not.toContain('id="janela-chat-encolhida"');
-  expect(janela).not.toContain('encolhidaLocal');
-});
-
-test('a fila tem largura fixa e no maximo cinco a vista', async () => {
-  const barra = await Bun.file(
-    new URL('../componentes/BarraConversasEncolhidas.tsx', import.meta.url)
-  ).text();
-
-  // Largura FIXA: nome comprido não pode mais empurrar o layout dos outros
-  expect(barra).toContain("className=\"w-[176px] flex-shrink-0");
-  expect(barra).toContain('truncate');
-
-  expect(barra).toContain('MAXIMO_ENCOLHIDAS_A_VISTA = 5');
-  expect(barra).toContain('conversas.slice(0, MAXIMO_ENCOLHIDAS_A_VISTA)');
-  expect(barra).toContain('conversas.slice(MAXIMO_ENCOLHIDAS_A_VISTA)');
-});
-
-test('o que passa de cinco vira contagem com lista, e nao some', async () => {
-  const barra = await Bun.file(
-    new URL('../componentes/BarraConversasEncolhidas.tsx', import.meta.url)
-  ).text();
-
-  // A contagem do que ficou atrás
-  expect(barra).toContain('+{atras.length}');
-  // E a lista para escolher, senão a conversa sumiria sem caminho de volta
-  expect(barra).toContain('atras.map((conversa)');
-  expect(barra).toContain('aoAbrir(conversa.id)');
-});
-
-test('abrir a quarta conversa ENCOLHE a mais antiga, nao a fecha', async () => {
+/**
+ * Quem acaba de escolher uma conversa quer VÊ-LA, não procurá-la na ponta
+ * esquerda de uma fileira. Antes ela entrava no fim, e escolher da lista
+ * abria a conversa no canto mais distante da tela.
+ */
+test('a conversa escolhida abre no primeiro lugar', async () => {
   const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
 
-  /**
-   * Antes a mais antiga era descartada para a nova caber: a pessoa abria a
-   * quinta conversa e perdia a primeira, sem aviso e sem caminho de volta.
-   */
-  expect(app).not.toContain('atuais.slice(1)');
-  expect(app).toContain('MAXIMO_JANELAS_ABERTAS');
-  expect(app).toContain('{ ...j, encolhida: true }');
+  const inicio = app.indexOf('const abrirJanela');
+  const fim = app.indexOf('const fecharJanela', inicio);
+  const corpo = app.slice(inicio, fim);
+
+  // A nova vai na frente da lista, e o primeiro lugar é o mais próximo do
+  // painel de contatos
+  expect(corpo).toContain('[{ id, encolhida: false }, ...outras]');
+  expect(corpo).not.toContain('[...atuais, { id, encolhida: false }]');
+});
+
+/**
+ * Antes a mais antiga era DESCARTADA para a nova caber: a pessoa abria a
+ * quarta conversa e perdia a primeira, sem aviso e sem caminho de volta.
+ */
+test('o que passa de tres encolhe, nunca fecha', async () => {
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+
+  const inicio = app.indexOf('const abrirJanela');
+  const fim = app.indexOf('const fecharJanela', inicio);
+  const corpo = app.slice(inicio, fim);
+
+  expect(corpo).not.toContain('atuais.slice(1)');
+  expect(corpo).toContain('{ ...j, encolhida: true }');
+  expect(corpo).toContain('abertas <= MAXIMO_JANELAS_ABERTAS');
+});
+
+test('a contagem abre a lista e nada some sem caminho de volta', async () => {
+  const espera = await Bun.file(
+    new URL('../componentes/ConversasEmEspera.tsx', import.meta.url)
+  ).text();
+
+  // A contagem de TUDO que está em espera, não de um resto
+  expect(espera).toContain('const quantas = conversas.length');
+  // E a lista inteira para escolher
+  expect(espera).toContain('conversas.map((conversa)');
+  expect(espera).toContain('aoAbrir(conversa.id)');
+});
+
+/**
+ * AS AÇÕES DA MENSAGEM FICAM ATRÁS DE UM BOTÃO SÓ.
+ *
+ * O computador mostrava as seis de uma vez — responder, fixar, encaminhar,
+ * selecionar, editar, apagar — numa fileira de ícones sem rótulo a cada
+ * passada de mouse. Seis alvos pequenos e parecidos ao lado de cada balão.
+ *
+ * E eram DOIS menus para o mesmo conjunto: a fileira do computador e o
+ * painel do celular. Duas listas da mesma coisa é como funções passam a
+ * divergir — já aconteceu aqui com setor, ficha e alçada.
+ */
+test('as acoes da mensagem nao aparecem todas de uma vez', async () => {
+  const tela = await lerTela();
+
+  // A fileira de ícones do computador não existe mais
+  expect(tela).not.toContain('hidden md:flex opacity-0 group-hover:opacity-100');
+
+  // O botão de opções vale nos dois aparelhos
+  expect(tela).not.toContain('md:hidden w-7 h-7 rounded-full');
+  expect(tela).toContain('md:opacity-0 md:group-hover:opacity-100');
+});
+
+test('o menu unico oferece as seis acoes, com rotulo em texto', async () => {
+  const tela = await lerTela();
+
+  const inicio = tela.indexOf('O MENU DAS AÇÕES');
+  expect(inicio).toBeGreaterThan(-1);
+  const menu = tela.slice(inicio, inicio + 6000);
+
+  for (const acao of ['Responder', 'Encaminhar', 'Selecionar', 'Editar', 'Apagar']) {
+    expect(menu).toContain(acao);
+  }
+  expect(menu).toContain("msg.fixadaEm ? 'Desafixar' : 'Fixar para todos'");
+
+  // E o menu deixou de ser exclusivo do celular
+  expect(menu).not.toContain('md:hidden absolute z-40');
 });
 
 test('a classe que esconde a barra de rolagem existe de verdade', async () => {
   /**
-   * `no-scrollbar` era usada na fila de conversas e nas etiquetas da câmera
-   * — e nunca existiu na folha de estilo. As duas pediam algo que não estava
-   * escrito em lugar nenhum.
+   * `no-scrollbar` é usada nas etiquetas da câmera — e nunca existiu na
+   * folha de estilo. Pedia algo que não estava escrito em lugar nenhum.
    */
   const css = await Bun.file(new URL('../index.css', import.meta.url)).text();
-  // A regra em si, não só o nome: `.no-scrollbar::-webkit-scrollbar` contém
-  // o nome e sozinho não esconde nada no Firefox
   expect(css).toMatch(/\.no-scrollbar\s*\{[^}]*scrollbar-width:\s*none/);
   expect(css).toMatch(/\.no-scrollbar::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
 });

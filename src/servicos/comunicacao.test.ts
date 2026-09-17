@@ -927,12 +927,17 @@ test('AS AÇÕES DA MENSAGEM SÃO ALCANÇÁVEIS NO CELULAR', async () => {
     new URL('../componentes/TelaConversa.tsx', import.meta.url)
   ).text();
 
-  // Há um gatilho próprio do celular para abrir as ações
+  // Há um gatilho que não depende de hover, e ele é o MESMO nos dois
+  // aparelhos: as ações deixaram de ter duas listas quando a fileira de seis
+  // ícones do computador saiu. No celular o botão fica sempre à mão; no
+  // computador ele aparece ao passar o mouse.
   expect(tela).toContain('setMenuMensagemId');
-  expect(tela).toContain('md:hidden');
+  expect(tela).toContain('md:opacity-0 md:group-hover:opacity-100');
 
-  // O bloco de hover é só do computador, a partir de md
-  expect(tela).toContain("hidden md:flex opacity-0 group-hover:opacity-100");
+  // A fileira de ícones do computador não pode voltar: eram seis alvos
+  // pequenos e sem rótulo ao lado de cada balão, e uma segunda lista das
+  // mesmas ações
+  expect(tela).not.toContain("hidden md:flex opacity-0 group-hover:opacity-100");
 });
 
 test('no celular as ações são um PAINEL, não botões na linha da mensagem', async () => {
