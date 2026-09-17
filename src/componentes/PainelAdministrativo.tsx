@@ -201,7 +201,16 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     exibirToast(
       res.sucesso
         ? meses > 0
-          ? `Regra salva: as imagens ficam guardadas por ${meses} ${meses === 1 ? 'mês' : 'meses'}.`
+          ? /**
+             * "as imagens ficam guardadas" dizia MENOS do que a regra faz.
+             *
+             * Ela apaga a mensagem inteira — texto, foto, recado de voz e
+             * documento. Quem lesse só este aviso escolheria 1 mês achando
+             * que estava mexendo em foto, e perderia conversa.
+             */
+            `Regra salva: conversas com mais de ${meses} ${
+              meses === 1 ? 'mês' : 'meses'
+            } serão apagadas por inteiro — texto, foto, áudio e documento. Ponto e cadastros não são tocados.`
           : 'Limpeza automática desligada. Nada será removido sem você mandar.'
         : res.erro || 'Falha ao salvar a regra.',
       !res.sucesso

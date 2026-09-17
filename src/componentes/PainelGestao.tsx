@@ -351,7 +351,7 @@ export const PainelGestao: React.FC<Props> = ({
                     : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
                 }`}
               >
-                Rede (todas as lojas)
+                Rede
               </button>
             )}
 

@@ -440,9 +440,18 @@ export default function App() {
         setPrecisaTrocarSenha(await nuvem.precisaTrocarSenha());
         setAutenticado(true);
 
-        // A regra de guarda das imagens roda aqui, em segundo plano: é a
-        // única sessão que tem direito de limpar, e esperar por ela seria
-        // segurar a abertura do sistema por uma tarefa de manutenção.
+        /**
+         * A REGRA DE GUARDA DO HISTÓRICO roda aqui, em segundo plano.
+         *
+         * Apaga a mensagem inteira — texto, foto, recado de voz e documento
+         * — passado o prazo das configurações (2 meses por padrão). Ponto,
+         * cadastros e banco de horas não são tocados nunca.
+         *
+         * É a única sessão com direito de limpar, e no máximo uma vez por
+         * dia: a marca da última execução fica nas configurações da REDE,
+         * não no aparelho, senão cada computador rodaria a sua. Esperar por
+         * ela seria segurar a abertura do sistema por manutenção.
+         */
         bancoDados.aplicarRegraDeLimpeza().catch(() => {});
       }
       setVerificandoSessao(false);
