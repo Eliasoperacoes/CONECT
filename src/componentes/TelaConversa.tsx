@@ -1085,7 +1085,15 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
       <div
         ref={refLista}
-        className="flex-1 overflow-y-auto p-4 space-y-3"
+        /**
+         * `overflow-x-hidden` é a garantia final do "sempre alinhado".
+         *
+         * O conserto de verdade está nos `min-w-0` acima. Isto aqui existe
+         * para o dia em que alguém acrescentar um conteúdo novo ao balão e
+         * esquecer: em vez de a conversa inteira ganhar barra de rolagem
+         * horizontal, só aquele conteúdo fica cortado.
+         */
+        className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3"
         onScroll={(e) => {
           /**
            * Quem subiu para ler o passado não pode ser arrancado de lá pela
@@ -1153,8 +1161,20 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                 )}
 
                 {/* Linha da Mensagem com Checkbox (se em modo seleção) e Ações Rápidas (se hover) */}
+                {/*
+                  O `min-w-0` aqui e no balão é o que segura o layout.
+
+                  Item de flex não encolhe abaixo do conteúdo dele por
+                  padrão (`min-width: auto`). Então uma foto larga fazia o
+                  balão ignorar o próprio `max-w`, esticar além da conversa
+                  e criar barra de rolagem horizontal na lista inteira —
+                  foi o que aconteceu com a foto do cadastro da peça.
+
+                  Com `min-w-0`, o `max-w` do balão volta a valer e a foto
+                  se ajusta a ele.
+                */}
                 <div
-                  className={`flex items-center gap-2 max-w-full ${
+                  className={`flex items-center gap-2 max-w-full min-w-0 ${
                     ehMinha ? 'flex-row-reverse' : 'flex-row'
                   }`}
                 >
@@ -1179,7 +1199,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
                   {/* Balão de Mensagem */}
                   <div
-                    className={`relative max-w-[85%] sm:max-w-[70%] rounded-2xl px-3.5 py-2.5 text-sm shadow-[var(--s-1)] ${
+                    className={`relative max-w-[85%] sm:max-w-[70%] min-w-0 rounded-2xl px-3.5 py-2.5 text-sm shadow-[var(--s-1)] ${
                       ehMinha
                         ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] rounded-br-xs'
                         : 'bg-[var(--c-superficie)] text-[var(--c-texto)] border border-[var(--c-borda)] rounded-bl-xs'
@@ -1262,7 +1282,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                     {/* Edição acontece no próprio balão, para a pessoa ver o
                         texto no contexto da conversa enquanto reescreve. */}
                     {msg.tipo === 'texto' && editandoId === msg.id && (
-                      <div className="flex flex-col gap-2 min-w-[200px]">
+                      <div className="flex flex-col gap-2 w-full min-w-0">
                         <textarea
                           id={`campo-edicao-${msg.id}`}
                           value={textoEditado}
@@ -1376,7 +1396,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
                     {/* Tipo: Arquivo (documentos; fotos caem no bloco de imagem) */}
                     {msg.tipo === 'arquivo' && !ehFoto && (
-                      <div className="flex items-center gap-3 py-1 min-w-[200px]">
+                      <div className="flex items-center gap-3 py-1 w-full min-w-0">
                         <div
                           className={`w-9 h-9 rounded-lg flex items-center justify-center ${
                             ehMinha ? 'bg-white/20' : 'bg-[var(--c-acento-suave)] text-[var(--c-acento)]'
@@ -1432,7 +1452,18 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
                     {/* Tipo: Imagem — foto da câmera ou anexada pelo clipe */}
                     {ehFoto && urlDaFoto && (
-                      <div className="flex flex-col gap-1.5 py-1 min-w-[180px] max-w-xs sm:max-w-sm">
+                      <div
+                        /**
+                         * Largura em PORCENTAGEM do balão, não em rem.
+                         *
+                         * Era `max-w-xs sm:max-w-sm` — 384px a partir do
+                         * `sm:`. E `sm:` responde ao tamanho da JANELA, não
+                         * ao do balão: numa conversa flutuante de 420px a
+                         * foto pedia 384px dentro de um balão de 270px, e o
+                         * `min-w-[180px]` ainda impedia o encolhimento.
+                         */
+                        className="flex flex-col gap-1.5 py-1 w-full max-w-full min-w-0"
+                      >
                         <div
                           onClick={() =>
                             setImagemAmpliada({
@@ -1446,7 +1477,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                           <img
                             src={urlDaFoto}
                             alt={msg.legenda || 'Foto'}
-                            className="w-full h-auto max-h-72 object-cover transition-transform duration-200 group-hover/foto:scale-[1.02]"
+                            className="w-full max-w-full h-auto max-h-72 object-cover transition-transform duration-200 group-hover/foto:scale-[1.02]"
                             loading="lazy"
                             referrerPolicy="no-referrer"
                           />

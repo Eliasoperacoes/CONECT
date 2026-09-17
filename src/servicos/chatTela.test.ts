@@ -13,6 +13,16 @@ const s_rolagem = (tela: string): string => {
   return i === -1 ? '' : tela.slice(i, i + 1200);
 };
 
+/**
+ * O código da tela, SEM os comentários.
+ *
+ * Três vezes um teste reprovou o código certo porque procurava um texto que
+ * só existia no comentário que explicava por que aquele texto tinha saído.
+ * Quando a verificação é sobre o que o código FAZ, ela lê só o código.
+ */
+const semComentarios = (fonte: string): string =>
+  fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
 const lerTela = async (): Promise<string> =>
   Bun.file(new URL('../componentes/TelaConversa.tsx', import.meta.url)).text();
 
@@ -702,4 +712,57 @@ test('em modo de selecao o toque marca, e o menu individual sai de cena', async 
 
   // Ter os dois caminhos ao mesmo tempo só faz a pessoa errar qual está usando
   expect(item).toContain('const temAcoes = !!colaboradorId && !modoSelecao');
+});
+
+/**
+ * O BALÃO NÃO PODE SER ESTICADO POR UMA FOTO.
+ *
+ * Relatado: uma foto de cadastro de peça esticou o balão além da conversa e
+ * criou barra de rolagem horizontal na lista inteira. Outras fotos cabiam —
+ * a diferença era a largura de origem daquela.
+ *
+ * Duas causas somadas:
+ *
+ *  - item de flex NÃO encolhe abaixo do conteúdo dele por padrão
+ *    (`min-width: auto`). O balão ignorava o próprio `max-w`;
+ *  - a foto pedia largura em rem: `max-w-xs sm:max-w-sm`, ou seja 384px a
+ *    partir do `sm:`. E `sm:` responde ao tamanho da JANELA, não ao do
+ *    balão — numa conversa flutuante de 420px, a foto pedia 384px dentro de
+ *    um balão de 270px.
+ */
+test('o balao pode encolher, e a foto se ajusta a ele', async () => {
+  const tela = await lerTela();
+
+  // O balão volta a respeitar o próprio limite
+  expect(tela).toContain("relative max-w-[85%] sm:max-w-[70%] min-w-0 rounded-2xl");
+  expect(tela).toContain('flex items-center gap-2 max-w-full min-w-0');
+
+  // A foto pede porcentagem do balão, não uma medida fixa maior que ele
+  expect(semComentarios(tela)).not.toContain('min-w-[180px] max-w-xs sm:max-w-sm');
+  expect(tela).toContain('flex flex-col gap-1.5 py-1 w-full max-w-full min-w-0');
+  expect(tela).toContain('w-full max-w-full h-auto max-h-72 object-cover');
+});
+
+test('nenhum conteudo do balao exige largura fixa', async () => {
+  const tela = await lerTela();
+
+  /**
+   * Arquivo e áudio também pediam `min-w-[200px]`. Em janela estreita
+   * empurram do mesmo jeito — só ainda não tinham sido notados.
+   */
+  const codigo = semComentarios(tela);
+  expect(codigo).not.toContain('min-w-[200px]');
+  expect(codigo).not.toContain('min-w-[180px]');
+});
+
+test('a conversa nao rola de lado', async () => {
+  const tela = await lerTela();
+
+  /**
+   * Garantia final. O conserto de verdade são os `min-w-0`; isto existe
+   * para o dia em que alguém acrescentar conteúdo novo ao balão e esquecer:
+   * em vez de a conversa inteira ganhar barra horizontal, só aquele
+   * conteúdo fica cortado.
+   */
+  expect(tela).toContain('flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3');
 });
