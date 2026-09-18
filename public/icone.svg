@@ -1,13 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" rx="128" fill="#2563EB"/>
-  <!-- Walkie-talkie & onda radio -->
+  <!--
+    Balão de conversa. O desenho anterior era um walkie-talkie com ondas de
+    rádio, e o Rádio saiu do sistema — o aplicativo estava se anunciando por
+    uma função que não existe mais.
+
+    Mesmo traçado dos PNGs gerados por scripts/gerar-icones.ts. Mexeu aqui,
+    rode o gerador para os dois não divergirem.
+  -->
+  <rect width="512" height="512" rx="113" fill="#2563EB"/>
   <g fill="#FFFFFF">
-    <path d="M190 80h24v70h-24z"/>
-    <rect x="170" y="140" width="172" height="270" rx="36"/>
-    <circle cx="256" cy="220" r="32" fill="#2563EB"/>
-    <rect x="200" y="280" width="112" height="12" rx="6" fill="#2563EB"/>
-    <rect x="200" y="306" width="112" height="12" rx="6" fill="#2563EB"/>
-    <rect x="200" y="332" width="80" height="12" rx="6" fill="#2563EB"/>
+    <rect x="113" y="128" width="287" height="215" rx="67"/>
+    <path d="M174 323 L164 415 L266 323 Z"/>
   </g>
-  <path d="M370 190c24 20 24 54 0 74M400 160c44 38 44 98 0 134" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" fill="none"/>
 </svg>

@@ -44,9 +44,20 @@ test('o microfone NAO fica mais aberto o tempo todo', async () => {
   const gravador = await Bun.file(
     new URL('./gravadorVoz.ts', import.meta.url)
   ).text();
-  // Abre ao tocar no botão, e fecha ao terminar
-  expect(gravador).toContain('navigator.mediaDevices.getUserMedia');
-  expect(gravador).toContain('faixa.stop()');
+
+  /**
+   * Abre ao tocar no botão, e fecha ao terminar — mas por `midia`, nunca
+   * direto no navegador.
+   *
+   * Antes esta linha exigia `navigator.mediaDevices.getUserMedia` aqui
+   * dentro. Só que fluxo aberto direto é fluxo que só esta classe conhece:
+   * se ela não fechar, ninguém mais consegue. `midia` guarda a referência
+   * e solta junto com as outras quando o aplicativo vai para segundo
+   * plano, que é quando a queixa da câmera acesa aparecia.
+   */
+  expect(gravador).toContain('abrirFluxo(');
+  expect(gravador).toContain('soltarFluxo(');
+  expect(gravador).not.toContain('navigator.mediaDevices.getUserMedia');
 });
 
 test('o formato do audio e NEGOCIADO com o aparelho', async () => {

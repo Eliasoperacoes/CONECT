@@ -16,7 +16,13 @@
  * O formato é NEGOCIADO com o aparelho: iPhone não grava webm, Android não
  * grava mp4 em toda versão. Fixar um formato faz a gravação falhar em
  * silêncio na metade da rede.
+ *
+ * O microfone é aberto por `midia`, nunca direto no navegador: é lá que o
+ * fluxo fica registrado para ser desligado mesmo quando esta classe não é
+ * quem fecha.
  */
+
+import { abrirFluxo, soltarFluxo, capturaDisponivel } from './midia';
 
 /** O que sai de uma gravação. */
 export interface AudioGravado {
@@ -49,9 +55,7 @@ const melhorFormato = (): string => {
 };
 
 export const gravacaoDisponivel = (): boolean =>
-  typeof navigator !== 'undefined' &&
-  !!navigator.mediaDevices?.getUserMedia &&
-  typeof MediaRecorder !== 'undefined';
+  capturaDisponivel() && typeof MediaRecorder !== 'undefined';
 
 class GravadorDeVoz {
   private gravador: MediaRecorder | null = null;
@@ -74,18 +78,18 @@ class GravadorDeVoz {
     if (!gravacaoDisponivel()) return false;
     if (this.estaGravando()) return true;
 
-    try {
-      this.fluxo = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-    } catch {
-      // Permissão negada, ou microfone em uso por outro programa
-      return false;
-    }
+    // Passa por `midia` para o fluxo ficar registrado: microfone que o
+    // aplicativo esquece aberto aparece no celular como gravação sem fim
+    this.fluxo = await abrirFluxo({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+
+    // Permissão negada, ou microfone em uso por outro programa
+    if (!this.fluxo) return false;
 
     const tipo = melhorFormato();
     this.pedacos = [];
@@ -160,7 +164,7 @@ class GravadorDeVoz {
    * desinstalar.
    */
   private soltarMicrofone(): void {
-    this.fluxo?.getTracks().forEach((faixa) => faixa.stop());
+    soltarFluxo(this.fluxo);
     this.fluxo = null;
     this.gravador = null;
   }

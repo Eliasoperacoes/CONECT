@@ -22,6 +22,7 @@ import { RegistroPonto, ROTULO_MARCACAO } from '../tipos';
 import { servicoPonto, dataDeHoje } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 import { enviarAnexo } from '../servicos/anexos';
+import { abrirFluxo, soltarFluxo, assinarRetomada } from '../servicos/midia';
 import { CardJustificarBatida } from './CardJustificarBatida';
 
 interface PropsModalBaterPonto {
@@ -77,10 +78,8 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
       cancelAnimationFrame(refQuadro.current);
       refQuadro.current = null;
     }
-    if (refStream.current) {
-      refStream.current.getTracks().forEach((faixa) => faixa.stop());
-      refStream.current = null;
-    }
+    soltarFluxo(refStream.current);
+    refStream.current = null;
     if (refVideo.current) {
       refVideo.current.srcObject = null;
     }
@@ -190,14 +189,12 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
     setEstado('iniciando');
 
     try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error('sem suporte');
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
+      // Sempre por `midia`, para o fluxo poder ser desligado de fora
+      const stream = await abrirFluxo({
         video: { facingMode: { ideal: 'environment' } },
         audio: false,
       });
+      if (!stream) throw new Error('sem câmera');
       refStream.current = stream;
 
       if (refVideo.current) {
@@ -244,7 +241,21 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
       encerrarCamera();
       refProcessando.current = false;
     };
-  }, [aberto, encerrarCamera, iniciarCamera]);
+  }, [aberto, encerrarCamera, iniciarCamera, codigoInicial]);
+
+  /**
+   * Volta a ler o QR quando o aplicativo retorna para a frente.
+   *
+   * `midia` desliga a câmera ao ir para segundo plano. Sem retomar, quem
+   * trocou de aplicativo no meio da batida voltaria para um retângulo preto
+   * e teria de fechar e abrir a tela.
+   */
+  useEffect(() => {
+    if (!aberto) return;
+    return assinarRetomada(() => {
+      if (!refStream.current && estado === 'lendo') iniciarCamera();
+    });
+  }, [aberto, estado, iniciarCamera]);
 
   if (!aberto) return null;
 

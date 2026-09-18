@@ -9,6 +9,7 @@ import {
   Check,
   AlertCircle,
 } from 'lucide-react';
+import { abrirFluxo, soltarFluxo, assinarRetomada } from '../servicos/midia';
 
 interface PropsModalCamera {
   aberto: boolean;
@@ -58,11 +59,23 @@ export const ModalCamera: React.FC<PropsModalCamera> = ({
     };
   }, [aberto, cameraTraseira]);
 
+  /**
+   * Reabre a câmera quando o aplicativo volta para a frente.
+   *
+   * `midia` desliga tudo ao ir para segundo plano — senão o celular mostra
+   * o CONECTA usando a câmera enquanto a pessoa está em outro aplicativo.
+   * Sem esta retomada ela voltaria para uma tela preta.
+   */
+  useEffect(() => {
+    if (!aberto) return;
+    return assinarRetomada(() => {
+      if (!refStream.current && !fotoCapturada) iniciarCamera();
+    });
+  }, [aberto, fotoCapturada]);
+
   const encerrarCamera = () => {
-    if (refStream.current) {
-      refStream.current.getTracks().forEach((track) => track.stop());
-      refStream.current = null;
-    }
+    soltarFluxo(refStream.current);
+    refStream.current = null;
     if (refVideo.current) {
       refVideo.current.srcObject = null;
     }
@@ -73,20 +86,18 @@ export const ModalCamera: React.FC<PropsModalCamera> = ({
     encerrarCamera();
 
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Navegador não suporta captura direta de vídeo.');
-      }
-
-      const constraints: MediaStreamConstraints = {
+      // Sempre por `midia`: é lá que o fluxo fica registrado para poder ser
+      // desligado quando o aplicativo vai para segundo plano
+      const stream = await abrirFluxo({
         video: {
           facingMode: cameraTraseira ? { ideal: 'environment' } : 'user',
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },
         audio: false,
-      };
+      });
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (!stream) throw new Error('Câmera indisponível.');
       refStream.current = stream;
 
       if (refVideo.current) {
