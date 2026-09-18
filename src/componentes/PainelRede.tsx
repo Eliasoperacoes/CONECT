@@ -117,6 +117,16 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    * é "Visão & Lojas", que o gerente não enxerga mais. Sem isto ele abriria
    * o painel numa tela em branco, sem nada clicável e sem explicação.
    */
+  /**
+   * Declarado AQUI, e não mais embaixo.
+   *
+   * Ele é lido pelo `useMemo` logo abaixo. Estando declarado depois, o
+   * TypeScript aceitava — a leitura está dentro de uma função — mas essa
+   * função roda no PRIMEIRO RENDER, e aí é uma variável usada antes de
+   * existir. Tela branca, sem erro em tempo de compilação.
+   */
+  const cuidaDeRh = cuidaDePessoas(colaboradorAtual);
+
   const abasPermitidas = useMemo(() => {
     const lista: SubAbaPainel[] = [];
     if (podeUsar('visao_lojas', colaboradorAtual)) lista.push('visao_geral');
@@ -147,7 +157,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
     if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
     if (podeUsar('avisos_direcao', colaboradorAtual)) lista.push('avisos');
     return lista;
-  }, [colaboradorAtual, temEquipe, podeVerBancoDeHoras]);
+  }, [colaboradorAtual, temEquipe, podeVerBancoDeHoras, cuidaDeRh]);
 
   /**
    * A aba que vale. Nunca uma que a pessoa não tenha — nem por estado
@@ -191,7 +201,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    * Rede" — o nome sugeria acesso à rede inteira e a alçada dele é a
    * equipe.
    */
-  const cuidaDeRh = cuidaDePessoas(colaboradorAtual);
   const tituloDoPainel = cuidaDeRh ? 'Recursos Humanos & Rede' : 'Gerência';
   const subtituloDoPainel = cuidaDeRh
     ? `${estatisticas.totalColaboradores} ${
