@@ -41,6 +41,7 @@ Numa base nova, nesta ordem:
 | 14 | `periodo-de-teste.sql` | A faixa de "sistema em teste". Nasce desligada; liga no painel ADM |
 | 15 | `rh-holerite-advertencia.sql` | Holerites e advertências. **Leitura apertada:** a pessoa vê só os dela, o RH vê todos, mais ninguém vê nada |
 | 16 | `documentos-pessoais-no-balde.sql` | **Protege o ARQUIVO**, não só a linha. Sem ele, o caminho do holerite de um colega era adivinhável |
+| 17 | `aprovar-jornada-lider.sql` | **O líder consegue aprovar.** Sem ele a aba mostra "new row violates row-level security policy": a criação da pendência não conhecia líder, só a própria pessoa e o RH. Também deixa o líder decidir a própria jornada |
 
 Todos são idempotentes: rodar de novo não quebra nada.
 

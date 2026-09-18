@@ -1198,7 +1198,19 @@ security definer
 set search_path = public
 as $$
   select
-    -- Ninguém decide sobre a própria hora, em nível nenhum
+    -- O LÍDER DECIDE A PRÓPRIA JORNADA.
+    -- Condicionado a responder por alguém: sem isso, qualquer pessoa
+    -- aprovaria as próprias horas e a fila deixaria de existir.
+    (
+      alvo = public.meu_colaborador_id()
+      and exists (
+        select 1 from public.colaboradores
+         where responsavel_id = public.meu_colaborador_id()
+      )
+    )
+
+    or (
+    -- Quem não responde por ninguém não decide sobre a própria hora
     alvo is distinct from public.meu_colaborador_id()
     and (
       -- RH, Diretoria e TI seguem por fora da cadeia: o controle é deles
@@ -1235,7 +1247,7 @@ as $$
              or (eu.nivel = 2 and eu.setor = solicitante.setor)
            )
       )
-    );
+    ));
 $$;
 
 -- LEITURA: cada um vê a própria apuração; quem decide vê a de quem responde
@@ -1249,12 +1261,22 @@ create policy ajustes_leitura on public.ajustes_jornada
 
 -- CRIAÇÃO: nasce do ponto da própria pessoa, sempre pendente. O RH também
 -- cria, porque corrigir uma marcação reescreve a apuração do dia.
+--
+-- E o LÍDER, sempre pendente: ao abrir "Aprovar jornadas" ele levanta os
+-- dias que fecharam pela metade, e essa linha é de outra pessoa. Sem este
+-- terceiro caso a aba mostrava "new row violates row-level security
+-- policy" — a leitura e a decisão já sabiam de líder, só a criação não.
+--
+-- Pela MESMA função das outras duas, de propósito: escrita à mão outra
+-- vez, ela voltaria a divergir.
 drop policy if exists ajustes_abertura on public.ajustes_jornada;
 create policy ajustes_abertura on public.ajustes_jornada
   for insert to authenticated
   with check (
     (colaborador_id = public.meu_colaborador_id() and estado = 'pendente')
     or public.cuido_de_pessoas()
+    -- Só PENDENTE: levantar o dia é para decidir, não é decidir
+    or (public.posso_decidir_jornada(colaborador_id) and estado = 'pendente')
   );
 
 -- DECISÃO: só quem responde pela pessoa. É isto que impede pular etapas —

@@ -485,9 +485,15 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
         </div>
       )}
 
+      {/*
+        O texto dizia "você não aparece na própria fila", e isso deixou de
+        ser verdade quando ficou combinado que o líder aprova as próprias
+        horas. Quem responde por alguém se vê na fila; quem não responde
+        por ninguém continua dependendo do responsável dele.
+      */}
       <p className="text-[11px] text-[var(--c-texto-3)] px-1">
-        Você não aparece na própria fila. Quem decide sobre a sua jornada é quem responde por
-        você — {colaboradorAtual.nivel >= 3 ? 'a Diretoria' : 'o gerente da loja'}.
+        Quem responde por alguém decide também a própria jornada — por isso os seus dias
+        aparecem aqui junto com os da equipe.
       </p>
     </div>
   );

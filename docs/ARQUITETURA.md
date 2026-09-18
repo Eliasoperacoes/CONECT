@@ -190,7 +190,7 @@ conversa.
 
 | Trava | Onde | Sem ela |
 |---|---|---|
-| Ninguém aprova a própria hora | `temAlcadaSobre` + `posso_decidir_jornada()` | Quem está no topo da cadeia se auto-aprova |
+| Quem não responde por ninguém não aprova a própria hora | `temAlcadaSobre` + `posso_decidir_jornada()` | Cada um carimba o próprio dia e a fila deixa de existir |
 | TI não se tranca para fora | `sempreParaTI` em `permissoes.ts` | Desligar a tela de Permissões deixa o sistema sem ninguém capaz de religar |
 | Migração de permissão só TIRA acesso | `obterPermissoes` | Migração que amplia acesso sozinha ninguém percebe |
 | Ciclo no organograma | `podeSerResponsavelDe` (cria) e limite de profundidade (lê) | A tela entra em recursão e o navegador morre |
