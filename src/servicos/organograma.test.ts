@@ -94,15 +94,28 @@ test('POSICIONADO: quem a cadeia não indica perde a alçada que a regra dava', 
   expect(temAlcadaSobre(GERENTE, ANA_SOB_GERENTE, rede, REGRA_AUTOMATICA)).toBe(true);
 });
 
-test('NÃO POSICIONADO: a regra automática continua valendo', () => {
-  // Pedro não está na cadeia. Sem esta rede de segurança, as horas dele
-  // ficariam paradas até alguém arrastá-lo no quadro.
+/**
+ * NÃO POSICIONADO CAI PARA O RH — e não para o líder do setor.
+ *
+ * Havia uma rede de segurança: líder alcançava o setor inteiro, gerente
+ * alcançava a loja. O efeito prático era a líder de Compras recebendo para
+ * aprovar horas de gente que não é dela, só por dividirem o setor — a
+ * cadeia dizia uma coisa e a fila mostrava outra.
+ *
+ * Ninguém fica sem aprovador: RH, Diretoria e TI enxergam a rede. E é
+ * melhor assim — a pessoa vira pendência de quem pode consertar o
+ * organograma, em vez de ser entregue a um líder que não responde por ela.
+ */
+test('NAO POSICIONADO: so o RH alcanca', () => {
   expect(estaPosicionado(PEDRO)).toBe(false);
-  expect(temAlcadaSobre(LIDER, PEDRO, REDE, REGRA_AUTOMATICA)).toBe(true);
-  expect(temAlcadaSobre(GERENTE, PEDRO, REDE, REGRA_AUTOMATICA)).toBe(true);
 
-  // Mas a regra automática segue com os limites dela
+  // Dividir o setor não é responder por alguém. Dividir a loja também não.
+  expect(temAlcadaSobre(LIDER, PEDRO, REDE, REGRA_AUTOMATICA)).toBe(false);
+  expect(temAlcadaSobre(GERENTE, PEDRO, REDE, REGRA_AUTOMATICA)).toBe(false);
   expect(temAlcadaSobre(OUTRA_LOJA, PEDRO, REDE, REGRA_AUTOMATICA)).toBe(false);
+
+  // O RH continua alcançando: ninguém fica com a hora parada
+  expect(temAlcadaSobre(RH, PEDRO, REDE, REGRA_AUTOMATICA)).toBe(true);
 });
 
 test('RH, Diretoria e TI decidem por fora da cadeia', () => {
@@ -110,11 +123,26 @@ test('RH, Diretoria e TI decidem por fora da cadeia', () => {
   expect(temAlcadaSobre(RH, PEDRO, REDE, REGRA_AUTOMATICA)).toBe(true);
 });
 
-test('NINGUÉM decide a própria hora, nem no topo da cadeia', () => {
-  // Nem quem cuida de pessoas, nem quem não tem ninguém acima
-  expect(temAlcadaSobre(RH, RH, REDE, REGRA_AUTOMATICA)).toBe(false);
-  expect(temAlcadaSobre(GERENTE, GERENTE, REDE, REGRA_AUTOMATICA)).toBe(false);
+/**
+ * QUEM LIDERA DECIDE A PRÓPRIA HORA; QUEM NÃO LIDERA, NÃO.
+ *
+ * Era "ninguém, em hipótese alguma". Mudou por decisão do Elias: quem
+ * lidera aprova também as suas.
+ *
+ * "Quem lidera" é ter gente PENDURADA ABAIXO no organograma — não é cargo
+ * nem nível. Um gerente sem ninguém sob ele é subordinado como qualquer
+ * outro, e quem decide por ele é quem está acima.
+ */
+test('quem lidera decide a propria hora; quem nao lidera, nao', () => {
+  // A Ana não tem ninguém abaixo: continua sem decidir sobre si
   expect(temAlcadaSobre(ANA, ANA, REDE, REGRA_AUTOMATICA)).toBe(false);
+
+  // O líder tem a Ana pendurada nele
+  const comEquipe = [LIDER, { ...ANA, responsavelId: 'lider' }];
+  expect(temAlcadaSobre(LIDER, LIDER, comEquipe, REGRA_AUTOMATICA)).toBe(true);
+
+  // E nível não basta: gerente sem ninguém abaixo não decide a própria
+  expect(temAlcadaSobre(GERENTE, GERENTE, [GERENTE, PEDRO], REGRA_AUTOMATICA)).toBe(false);
 });
 
 test('subordinado não aprova o próprio chefe', () => {
@@ -286,9 +314,19 @@ test('a equipe é exatamente quem a pessoa pode aprovar', () => {
   }
 });
 
-test('o gestor não entra na própria equipe', () => {
-  // Senão o total da equipe somaria o saldo dele junto
-  expect(minhaEquipe(GERENTE, REDE).map((c) => c.id)).not.toContain('gerente');
+/**
+ * QUEM LIDERA ENTRA NA PRÓPRIA EQUIPE.
+ *
+ * Ficava de fora porque "o extrato dele é da aba Eu". Deixou de valer: ele
+ * APROVA as próprias horas agora, e aprovar sem ver o extrato ao lado do da
+ * equipe seria decidir no escuro.
+ */
+test('quem lidera entra na propria equipe; quem nao lidera, nao', () => {
+  const comEquipe = [GERENTE, { ...ANA, responsavelId: 'gerente' }];
+  expect(minhaEquipe(GERENTE, comEquipe).map((c) => c.id)).toContain('gerente');
+
+  // Sem ninguém abaixo, ele não aparece nem para si: não há o que aprovar
+  expect(minhaEquipe(GERENTE, [GERENTE, PEDRO]).map((c) => c.id)).not.toContain('gerente');
 });
 
 test('posicionar alguém em outra cadeia TIRA ele do painel do líder', () => {

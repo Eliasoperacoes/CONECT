@@ -130,7 +130,8 @@ export const minhaEquipe = (
     .filter(
       (c) =>
         c.ativo !== false &&
-        c.id !== quem.id &&
+        // A própria pessoa entra quando ela lidera: agora ela aprova as
+        // horas dela, e acompanhar sem poder decidir não serviria de nada
         temAlcadaSobre(quem, c, todos, regraAutomaticaDeAlcada)
     )
     .sort((a, b) => a.nome.localeCompare(b.nome));
@@ -145,20 +146,43 @@ export const temAlcadaSobre = (
   quem: Colaborador,
   alvo: Colaborador,
   todos: Colaborador[],
-  regraAutomatica: (quem: Colaborador, alvo: Colaborador) => boolean
+  // Mantida na assinatura por compatibilidade: a regra automática deixou de
+  // decidir alçada. Ver o comentário abaixo.
+  _regraAutomatica?: (quem: Colaborador, alvo: Colaborador) => boolean
 ): boolean => {
-  // Ninguém decide sobre a própria hora, em hipótese alguma. Nem quem
-  // cuida de pessoas, nem quem está no topo do organograma.
-  if (quem.id === alvo.id) return false;
+  /**
+   * O LÍDER APROVA AS PRÓPRIAS HORAS.
+   *
+   * Era "ninguém decide sobre a própria hora, em hipótese alguma". Mudou
+   * por decisão do Elias: quem lidera aprova também as suas.
+   *
+   * "Quem lidera" é quem tem gente pendurada abaixo no organograma — não é
+   * cargo nem nível. Um líder sem ninguém sob ele não aprova as próprias
+   * horas: ele é subordinado como qualquer outro, e quem decide é quem está
+   * acima dele.
+   */
+  if (quem.id === alvo.id) return subordinadosDiretos(quem, todos).length > 0;
 
   // RH, Diretoria e TI seguem por fora da cadeia: o controle é deles
   if (cuidaDePessoas(quem)) return true;
 
-  // Posicionado no organograma: a cadeia manda, e só ela
-  if (estaPosicionado(alvo)) return respondePor(quem, alvo, todos);
-
-  // Ainda não posicionado: vale a regra automática de antes
-  return regraAutomatica(quem, alvo);
+  /**
+   * DAQUI PARA BAIXO, QUEM MANDA É O ORGANOGRAMA — E SÓ ELE.
+   *
+   * Antes havia uma regra automática por trás: líder de setor alcançava
+   * TODO o setor, gerente alcançava a loja inteira. Ela existia como rede
+   * de segurança para quem ainda não tinha sido posicionado na cadeia.
+   *
+   * O efeito prático era outro, e foi o que o Elias viu: a líder de Compras
+   * recebia para aprovar as horas de gente que não é dela, só por dividirem
+   * o setor. A cadeia dizia uma coisa e a fila mostrava outra.
+   *
+   * Quem não está posicionado NÃO fica sem aprovador: cai para RH,
+   * Diretoria e TI, que enxergam a rede inteira. É melhor assim — a pessoa
+   * aparece como pendência de quem pode consertar o organograma, em vez de
+   * ser silenciosamente entregue a um líder que não responde por ela.
+   */
+  return respondePor(quem, alvo, todos);
 };
 
 /**

@@ -25,7 +25,15 @@ const CHEFE = {
   loja: 'Pirassununga', nivel: 3, foto: '', presenca: 'disponivel',
   vistoPorUltimo: 'agora', ativo: true,
 };
-const ANA = { ...CHEFE, id: 'ana', nome: 'Ana', login: 'ana', nivel: 1, setor: 'Balcão' };
+/**
+ * A Ana pendurada no Chefe: o alcance vem do ORGANOGRAMA, e nao de
+ * dividirem a loja. Sem a cadeia montada, ninguem responde por ela — e e
+ * assim que a rede vai funcionar de verdade.
+ */
+const ANA = {
+  ...CHEFE, id: 'ana', nome: 'Ana', login: 'ana', nivel: 1,
+  setor: 'Balcão', responsavelId: 'chefe',
+};
 const OUTRO = {
   ...CHEFE, id: 'outro', nome: 'Outro', login: 'outro', loja: 'Descalvado',
 };
@@ -136,9 +144,16 @@ test('a fila é de quem responde pela pessoa, e só dele', async () => {
   expect(pendenciasParaDecidir()).toHaveLength(0);
 });
 
-test('NINGUÉM APROVA A PRÓPRIA AUSÊNCIA', async () => {
-  // Nem o gerente, nem quem está no topo. A trava vem de podeDecidirSobre,
-  // a mesma da hora extra — não há uma segunda regra aqui.
+/**
+ * QUEM LIDERA APROVA A PRÓPRIA AUSÊNCIA; QUEM NÃO LIDERA, NÃO.
+ *
+ * A trava caiu para quem tem gente pendurada abaixo — decisão do Elias,
+ * junto com a da hora extra. E vale a mesma coisa aqui de propósito: a
+ * regra vem de `podeDecidirSobre`, e não há uma segunda escrita neste
+ * arquivo. Se houvesse, um dia elas discordariam.
+ */
+test('quem lidera aprova a propria ausencia', async () => {
+  // O Chefe tem a Ana pendurada nele
   logado = CHEFE;
   await solicitarAusencia({
     dataInicio: '2026-09-16',
@@ -146,12 +161,13 @@ test('NINGUÉM APROVA A PRÓPRIA AUSÊNCIA', async () => {
     tipo: 'comparecimento',
   });
 
-  expect(pendenciasParaDecidir()).toHaveLength(0);
+  // Ela aparece para ele mesmo decidir
+  expect(pendenciasParaDecidir()).toHaveLength(1);
 
   const minha = minhasJustificativas()[0];
   const res = await decidirAusencia(minha.id, true);
-  expect(res.sucesso).toBe(false);
-  expect(situacaoDoDia(CHEFE.id, '2026-09-16')).toBe('normal');
+  expect(res.sucesso).toBe(true);
+  expect(situacaoDoDia(CHEFE.id, '2026-09-16')).toBe('comparecimento');
 });
 
 test('recusar EXIGE motivo', async () => {
@@ -303,13 +319,24 @@ test('a folga precisa da autorização do gestor', async () => {
   expect(situacaoDoDia(ANA.id, '2026-09-19')).toBe('folga');
 });
 
-test('NINGUÉM APROVA A PRÓPRIA FOLGA', async () => {
+test('quem lidera aprova a propria folga; quem nao lidera, nao', async () => {
   logado = CHEFE;
   await pedirFolga('2026-09-19');
 
-  expect(pendenciasParaDecidir()).toHaveLength(0);
+  // Folga tem fila própria: ela não se julga pelo documento, e sim pela
+  // escala do sábado
+  expect(pendenciasDeFolga()).toHaveLength(1);
   const minha = minhasJustificativas()[0];
-  expect((await decidirAusencia(minha.id, true)).sucesso).toBe(false);
+  expect((await decidirAusencia(minha.id, true)).sucesso).toBe(true);
+
+  /**
+   * E a Ana, que não lidera ninguém, continua sem aprovar a dela. O direito
+   * é de quem responde por alguém — não é de todo mundo.
+   */
+  logado = ANA;
+  await pedirFolga('2026-09-26');
+  const daAna = minhasJustificativas()[0];
+  expect((await decidirAusencia(daAna.id, true)).sucesso).toBe(false);
 });
 
 test('A LISTA DE TIPOS DO BANCO BATE COM A DO CÓDIGO', async () => {

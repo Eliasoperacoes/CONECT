@@ -730,10 +730,12 @@ class ServicoPonto {
     }[];
   } {
     const { inicio, fim } = semanaDe(dataNoCiclo);
-    const eu = bancoDados.obterColaboradorAtual();
 
-    // Só quem eu aprovo: a relação da rede inteira não é minha para olhar
-    const equipe = this.obterColaboradoresVisiveis().filter((c) => c.id !== eu.id);
+    // Só quem eu aprovo: a relação da rede inteira não é minha para olhar.
+    // Quem lidera aparece na própria relação, porque aprova as próprias horas.
+    const equipe = this.obterColaboradoresVisiveis().filter((c) =>
+      this.podeDecidirSobre(c)
+    );
 
     const linhas = equipe
       .map((colaborador) => {
@@ -821,7 +823,19 @@ class ServicoPonto {
     }
 
     const minutosPrevistos = this.cargaPrevistaEmMinutos(colaborador, data);
-    const completa = marcacoesEsperadas(data).every((tipo) => !!marcacoes[tipo]);
+    /**
+     * O QUE FECHA O DIA DEPENDE DE QUEM É A PESSOA.
+     *
+     * Estava perguntando só pela data, e por isso cobrava quatro batidas de
+     * quem faz seis horas direto: o dia dela nunca ficava "completo", e a
+     * tela dizia jornada incompleta todo santo dia.
+     *
+     * É o mesmo defeito que eu corrigi em `levantarDiasIncompletos` e
+     * deixei passar aqui — o segundo lugar que faz a mesma pergunta.
+     */
+    const completa = marcacoesEsperadas(data, colaborador).every(
+      (tipo) => !!marcacoes[tipo]
+    );
     const emAndamento = entrada !== null && saida === null;
 
     // Dia sem nenhuma marcação em fim de semana não é falta nem saldo negativo;
@@ -1066,9 +1080,16 @@ class ServicoPonto {
     const hoje = dataDeHoje();
     let criados = 0;
 
-    // Só quem eu aprovo: levantar o da rede inteira encheria a fila de
-    // gente que não é minha
-    const equipe = this.obterColaboradoresVisiveis().filter((c) => c.id !== eu.id);
+    /**
+     * Só quem eu aprovo — e agora isso pode me incluir.
+     *
+     * A pergunta é a MESMA da fila de decisão (`podeDecidirSobre`), e por
+     * isso é ela que responde: se a lista aqui divergisse, apareceria
+     * pendência sem quem a decida, ou o contrário.
+     */
+    const equipe = this.obterColaboradoresVisiveis().filter((c) =>
+      this.podeDecidirSobre(c)
+    );
 
     for (const pessoa of equipe) {
       for (let i = 1; i <= diasParaTras; i++) {

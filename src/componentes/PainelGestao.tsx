@@ -124,9 +124,19 @@ export const PainelGestao: React.FC<Props> = ({
    */
   const equipe: ResumoPontoColaborador[] = useMemo(() => {
     void versao;
+    /**
+     * Quem lidera aparece na própria lista.
+     *
+     * Antes a pessoa era tirada daqui porque "o extrato dela é da aba Eu".
+     * Deixou de valer: agora ela APROVA as próprias horas, e aprovar sem ver
+     * o extrato ao lado do da equipe seria decidir no escuro.
+     *
+     * A pergunta é a mesma da fila de decisão — se esta lista divergisse,
+     * haveria pendência sem quem a decida.
+     */
     return servicoPonto
       .obterResumoDoPeriodo(dataInicio, dataFim)
-      .filter((r) => r.colaborador.id !== colaboradorAtual.id);
+      .filter((r) => servicoPonto.podeDecidirSobre(r.colaborador));
   }, [dataInicio, dataFim, colaboradorAtual.id, versao]);
 
   const termo = busca.trim().toLowerCase();

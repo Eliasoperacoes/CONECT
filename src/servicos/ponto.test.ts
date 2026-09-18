@@ -432,24 +432,57 @@ const comEquipeCompleta = (quem: any) => {
   colaboradorLogado = quem;
 };
 
-test('LÍDER DE COMPRAS: enxerga o setor nas cinco lojas, não só a dela', () => {
+/**
+ * QUEM MANDA É O ORGANOGRAMA, E SÓ ELE.
+ *
+ * Havia uma regra automática por trás: líder de setor alcançava TODO o
+ * setor, gerente alcançava a loja inteira. Ela existia como rede de
+ * segurança para quem ainda não tinha sido posicionado na cadeia.
+ *
+ * O efeito prático era outro, e foi o que o Elias viu na tela: a líder de
+ * Compras recebia para aprovar horas de gente que não é dela, só por
+ * dividirem o setor. A cadeia dizia uma coisa e a fila mostrava outra.
+ */
+test('LIDER SO ALCANCA QUEM ESTA PENDURADO NELE', () => {
+  // João é de Compras como a Maria, e na cadeia NÃO é dela
   comEquipeCompleta(MARIA_COMPRAS_MATRIZ);
 
   const nomes = servicoPonto.obterColaboradoresVisiveis().map((c) => c.nome).sort();
 
-  // O João é de Compras em Porto Ferreira: limitar pela loja esconderia dele
+  // Só ela mesma: dividir o setor não é responder por alguém
+  expect(nomes).toEqual(['Maria']);
+  expect(nomes).not.toContain('João');
+});
+
+test('com o organograma montado, o lider alcanca quem e dele', () => {
+  equipe = [
+    ELIAS,
+    ANA,
+    { ...JOAO_COMPRAS_FILIAL, responsavelId: MARIA_COMPRAS_MATRIZ.id },
+    MARIA_COMPRAS_MATRIZ,
+    PEDRO_BALCAO_MATRIZ,
+  ];
+  colaboradorLogado = MARIA_COMPRAS_MATRIZ;
+
+  const nomes = servicoPonto.obterColaboradoresVisiveis().map((c) => c.nome).sort();
+
+  // Agora sim: a cadeia diz que o João é dela
   expect(nomes).toEqual(['João', 'Maria']);
-  // E ninguém de outro setor entra
   expect(nomes).not.toContain('Pedro');
 });
 
-test('gerente enxerga a loja inteira, de todos os setores', () => {
+test('gerente tambem so alcanca quem esta pendurado nele', () => {
+  /**
+   * Antes ele pegava a loja inteira. Um gerente que não posicionou ninguém
+   * na cadeia não recebe ninguém — e quem ficou de fora cai para RH, que
+   * enxerga a rede e pode consertar o organograma.
+   */
   comEquipeCompleta(CARLA_GERENTE_FILIAL);
 
   const nomes = servicoPonto.obterColaboradoresVisiveis().map((c) => c.nome).sort();
 
-  expect(nomes).toEqual(['Carla', 'João']);
-  expect(nomes).not.toContain('Maria');
+  expect(nomes).toEqual(['Carla']);
+  expect(nomes).not.toContain('João');
 });
 
 test('colaborador comum vê só o próprio ponto', () => {
@@ -481,13 +514,22 @@ const fecharJornada = async (quem: any, data: string, entrada: string, saida: st
   await servicoPonto.apurarDia(quem.id, data);
 };
 
+/**
+ * A CADEIA É MONTADA NO FIXTURE, e não deduzida de setor e loja.
+ *
+ * Antes bastava dividir o setor: a líder alcançava o Pedro por serem os
+ * dois do Balcão. Isso acabou — quem manda é o organograma, e por isso o
+ * `responsavelId` aparece aqui. É como a rede vai funcionar de verdade.
+ */
 const PEDRO = {
   ...ANA, id: 'colab-pedro', nome: 'Pedro', login: 'pedro',
   nivel: 1, setor: 'Balcão', loja: 'Pirassununga', cargo: 'Balconista',
+  responsavelId: 'colab-lider',
 };
 const LIDER_BALCAO = {
   ...ANA, id: 'colab-lider', nome: 'Sônia', login: 'sonia',
   nivel: 2, setor: 'Balcão', loja: 'Pirassununga', cargo: 'Líder de Balcão',
+  responsavelId: 'colab-gerente',
 };
 const GERENTE = {
   ...ANA, id: 'colab-gerente', nome: 'Carla', login: 'carla',
@@ -565,15 +607,25 @@ test('RECUSADO: não entra, e o motivo é obrigatório', async () => {
   expect(servicoPonto.obterSaldoAcumulado(PEDRO.id)).toBe(0);
 });
 
-test('NINGUÉM APROVA A PRÓPRIA HORA', async () => {
+/**
+ * QUEM LIDERA APROVA AS PRÓPRIAS HORAS.
+ *
+ * Era "ninguém decide sobre a própria hora, em hipótese alguma". Mudou por
+ * decisão do Elias.
+ *
+ * "Quem lidera" é quem tem gente pendurada abaixo no organograma — não é
+ * cargo nem nível. Um líder sem ninguém sob ele continua sendo subordinado
+ * como qualquer outro.
+ */
+test('QUEM LIDERA APROVA AS PROPRIAS HORAS', async () => {
   montarEquipe(LIDER_BALCAO);
   await fecharJornada(LIDER_BALCAO, '2026-09-16', '08:00', '18:00');
   const ajuste = servicoPonto.obterAjusteDoDia(LIDER_BALCAO.id, '2026-09-16')!;
 
-  // A líder tentando decidir sobre si mesma
+  // A líder tem o Pedro pendurado nela: decide sobre si mesma
   const res = await servicoPonto.decidirAjuste(ajuste.id, true);
-  expect(res.sucesso).toBe(false);
-  expect(servicoPonto.obterSaldoAcumulado(LIDER_BALCAO.id)).toBe(0);
+  expect(res.sucesso).toBe(true);
+  expect(servicoPonto.obterSaldoAcumulado(LIDER_BALCAO.id)).toBe(60);
 
   // Quem decide sobre a líder é a gerente
   colaboradorLogado = GERENTE;
@@ -600,10 +652,10 @@ test('a fila mostra só quem eu respondo', async () => {
   await fecharJornada(PEDRO, '2026-09-16', '08:00', '18:00');
   await fecharJornada(LIDER_BALCAO, '2026-09-16', '08:00', '18:00');
 
-  // A líder vê o Pedro (setor dela), mas não a si mesma
+  // A líder vê o Pedro (pendurado nela) E a si mesma, porque lidera
   colaboradorLogado = LIDER_BALCAO;
   const filaDaLider = servicoPonto.obterPendenciasParaDecidir();
-  expect(filaDaLider.map((p) => p.colaborador.nome)).toEqual(['Pedro']);
+  expect(filaDaLider.map((p) => p.colaborador.nome).sort()).toEqual(['Pedro', 'Sônia']);
 
   // A gerente vê os dois: responde pela loja inteira
   colaboradorLogado = GERENTE;
@@ -740,17 +792,33 @@ test('pendurar alguém no organograma TIRA a alçada de quem a regra dava', asyn
   expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(1);
 });
 
-test('quem NÃO está no organograma continua na regra de setor e loja', async () => {
-  // A rede de segurança: com 89 pessoas, o quadro é montado loja por loja e
-  // ninguém pode ficar com a hora parada esperando ser arrastado
+/**
+ * QUEM NÃO ESTÁ NO ORGANOGRAMA CAI PARA O RH — e não para o líder do setor.
+ *
+ * Havia uma rede de segurança: líder de setor alcançava todo o setor,
+ * gerente alcançava a loja. O efeito prático era a líder de Compras
+ * recebendo horas de gente que não é dela, só por dividirem o setor.
+ *
+ * Ninguém fica sem aprovador: RH, Diretoria e TI enxergam a rede inteira. E
+ * é melhor assim — a pessoa aparece como pendência de quem pode consertar o
+ * organograma, em vez de ser entregue a um líder que não responde por ela.
+ */
+test('quem NAO esta no organograma cai para o RH, e nao para o lider', async () => {
   const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência' };
   const LID = { ...ELIAS, id: 'l', nome: 'Lider', login: 'l', nivel: 2, setor: 'Balcão' };
   const SOLTO = { ...ELIAS, id: 's', nome: 'Solto', login: 's', nivel: 1, setor: 'Balcão' };
   equipe = [GER, LID, SOLTO];
 
+  // Dividir o setor não é responder por alguém
   colaboradorLogado = LID;
-  expect(servicoPonto.podeDecidirSobre(SOLTO as any)).toBe(true);
+  expect(servicoPonto.podeDecidirSobre(SOLTO as any)).toBe(false);
+
+  // Dividir a loja também não
   colaboradorLogado = GER;
+  expect(servicoPonto.podeDecidirSobre(SOLTO as any)).toBe(false);
+
+  // Mas o RH alcança: ninguém fica com a hora parada
+  colaboradorLogado = ELIAS;
   expect(servicoPonto.podeDecidirSobre(SOLTO as any)).toBe(true);
 });
 
@@ -770,22 +838,41 @@ test('a alçada sobe a cadeia inteira, não para no chefe direto', async () => {
   expect(servicoPonto.podeDecidirSobre(GER as any)).toBe(false);
 });
 
-test('o organograma NÃO deixa ninguém aprovar a própria hora', async () => {
-  // Quem está no topo não tem ninguém acima. Isso não pode virar
-  // auto-aprovação — a trava vem antes da cadeia.
+/**
+ * QUEM LIDERA APROVA A PRÓPRIA HORA; QUEM NÃO LIDERA, NÃO.
+ *
+ * A trava caiu para quem tem gente pendurada abaixo — decisão do Elias. Mas
+ * ela continua de pé para todos os outros: um colaborador comum não decide
+ * sobre a própria jornada, e "ser nível 3" não basta. O que conta é ter
+ * alguém sob a responsabilidade.
+ */
+test('quem NAO lidera continua sem aprovar a propria hora', async () => {
   const TOPO = { ...ELIAS, id: 't', nome: 'Topo', login: 't', nivel: 3, setor: 'Gerência' };
   const SUB = { ...ELIAS, id: 'sub', nome: 'Sub', login: 'sub', nivel: 1, setor: 'Balcão', responsavelId: 't' };
-  equipe = [TOPO, SUB];
+  const SOZINHO = { ...ELIAS, id: 'so', nome: 'Sozinho', login: 'so', nivel: 3, setor: 'Balcão' };
+  equipe = [TOPO, SUB, SOZINHO];
 
+  // O topo tem o Sub pendurado nele: aprova a própria
   colaboradorLogado = TOPO;
-  expect(servicoPonto.podeDecidirSobre(TOPO as any)).toBe(false);
+  expect(servicoPonto.podeDecidirSobre(TOPO as any)).toBe(true);
 
-  await fecharJornada(TOPO, '2026-09-16', '08:00', '18:00');
-  const ajuste = servicoPonto.obterAjusteDoDia(TOPO.id, '2026-09-16')!;
+  // O Sozinho é nível 3 e não lidera ninguém: NÃO aprova a própria
+  colaboradorLogado = SOZINHO;
+  expect(servicoPonto.podeDecidirSobre(SOZINHO as any)).toBe(false);
+
+  /**
+   * E a recusa vale na AÇÃO, não só na pergunta.
+   *
+   * Uma tela que esconde o botão mas deixa a ação passar não protege nada:
+   * basta a tela ficar aberta enquanto a permissão muda.
+   */
+  colaboradorLogado = SOZINHO;
+  await fecharJornada(SOZINHO, '2026-09-16', '08:00', '18:00');
+  const ajuste = servicoPonto.obterAjusteDoDia(SOZINHO.id, '2026-09-16')!;
   const res = await servicoPonto.decidirAjuste(ajuste.id, true);
 
   expect(res.sucesso).toBe(false);
-  expect(servicoPonto.obterSaldoAcumulado(TOPO.id)).toBe(0);
+  expect(servicoPonto.obterSaldoAcumulado(SOZINHO.id)).toBe(0);
 });
 
 test('gerente de OUTRA loja não entra na cadeia por acaso', async () => {
@@ -804,7 +891,11 @@ test('gerente de OUTRA loja não entra na cadeia por acaso', async () => {
 
 test('o gerente acompanha a equipe dele, e não a rede', async () => {
   const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência' };
-  const MEU = { ...ELIAS, id: 'meu', nome: 'Meu', login: 'meu', nivel: 1, setor: 'Balcão' };
+  // Pendurado nele: alcance vem da cadeia, e não de dividirem a loja
+  const MEU = {
+    ...ELIAS, id: 'meu', nome: 'Meu', login: 'meu', nivel: 1,
+    setor: 'Balcão', responsavelId: 'g',
+  };
   const DE_OUTRA = {
     ...ELIAS, id: 'outro', nome: 'Outro', login: 'outro', nivel: 1,
     setor: 'Balcão', loja: 'Descalvado',
@@ -843,7 +934,10 @@ test('GERENTE NÃO CORRIGE MARCAÇÃO — isso continua sendo do RH', async () =
   // Marcação é registro trabalhista. O gerente vê e aprova; alterar o que
   // ficou gravado é do RH, com justificativa e autoria.
   const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência' };
-  const PEDRO_EQ = { ...ELIAS, id: 'p', nome: 'Pedro', login: 'p', nivel: 1, setor: 'Balcão' };
+  const PEDRO_EQ = {
+    ...ELIAS, id: 'p', nome: 'Pedro', login: 'p', nivel: 1,
+    setor: 'Balcão', responsavelId: 'g',
+  };
   equipe = [GER, PEDRO_EQ];
   colaboradorLogado = GER;
 
@@ -1075,6 +1169,8 @@ test('o motivo do colaborador chega junto da pendência', async () => {
 const DO_TURNO_A = {
   ...ELIAS, id: 'ta', nome: 'Do turno A', login: 'ta', nivel: 1,
   setor: 'Balcão', turno: 'A', cargaHorariaDiariaMinutos: undefined,
+  // Pendurado no gestor: sem a cadeia montada, ninguem responde por ele
+  responsavelId: 'g',
 };
 const DO_TURNO_B = { ...DO_TURNO_A, id: 'tb', nome: 'Do turno B', login: 'tb', turno: 'B' };
 const GESTOR = {
@@ -1360,8 +1456,10 @@ test('o levantamento não repete o mesmo dia', async () => {
 });
 
 test('só levanta de quem eu aprovo', async () => {
+  // Não está pendurado no gestor: é isso que o mantém fora da fila dele
   const DE_OUTRA_LOJA = {
-    ...DO_TURNO_A, id: 'ol', login: 'ol', nome: 'De outra', loja: 'Descalvado',
+    ...DO_TURNO_A, id: 'ol', login: 'ol', nome: 'De outra',
+    loja: 'Descalvado', responsavelId: undefined,
   };
   equipe = [GESTOR, DO_TURNO_A, DE_OUTRA_LOJA];
   colaboradorLogado = GESTOR;

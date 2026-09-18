@@ -199,9 +199,13 @@ test('a relacao do ciclo e so da equipe de quem abre', async () => {
   const inicio = codigo.indexOf('relacaoSemanalDaEquipe');
   const corpo = codigo.slice(inicio, inicio + 3000);
 
-  // A relação da rede inteira não é do líder para olhar
+  /**
+   * A relação da rede inteira não é do líder para olhar — e a pergunta é a
+   * MESMA da fila de decisão. Se esta lista divergisse, apareceria
+   * pendência sem quem a decida, ou o contrário.
+   */
   expect(corpo).toContain('this.obterColaboradoresVisiveis()');
-  expect(corpo).toContain('c.id !== eu.id');
+  expect(corpo).toContain('this.podeDecidirSobre(c)');
 });
 
 test('a folga do sabado JA VEM DESCONTADA do previsto do ciclo', async () => {
@@ -408,4 +412,37 @@ test('falta de BATIDA e dita como batida, nao como debito de hora', async () => 
   expect(aba).toContain('com batida faltando');
   expect(aba).toContain('avise seu responsável');
   expect(aba).toContain('semana.diasComPendencia.length > 0');
+});
+
+/**
+ * O DIA "COMPLETO" DEPENDE DE QUEM É A PESSOA.
+ *
+ * `obterJornadaDoDia` perguntava só pela data, e por isso cobrava quatro
+ * batidas de quem faz seis horas direto: o dia dela nunca ficava completo, e
+ * a tela dizia jornada incompleta todo santo dia.
+ *
+ * Era o segundo lugar que faz a mesma pergunta — corrigi o primeiro e deixei
+ * este passar.
+ */
+test('o dia fecha conforme a jornada da pessoa, e nao do calendario', async () => {
+  const ponto = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+
+  expect(ponto).toContain('marcacoesEsperadas(data, colaborador).every(');
+  expect(ponto).not.toContain('marcacoesEsperadas(data).every(');
+});
+
+test('todo lugar que pergunta as batidas passa a PESSOA', async () => {
+  const ponto = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+
+  /**
+   * A chamada sem pessoa continua existindo de propósito — há trechos que
+   * só sabem a data. O que não pode é ela aparecer onde a pessoa ESTÁ
+   * disponível: foi assim que este defeito nasceu duas vezes.
+   */
+  const semPessoa = [...ponto.matchAll(/marcacoesEsperadas\(([^)]*)\)/g)]
+    .map((m) => m[1].trim())
+    .filter((args) => !args.includes(','));
+
+  // Só a definição da própria função
+  expect(semPessoa.length).toBeLessThanOrEqual(1);
 });
