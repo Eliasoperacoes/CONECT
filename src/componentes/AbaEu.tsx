@@ -29,6 +29,7 @@ import {
 import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
+import { versaoLegivel } from '../servicos/versao';
 import { MeusDocumentos } from './MeusDocumentos';
 
 interface PropsAbaEu {
@@ -422,6 +423,15 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
           <LogOut className="w-4 h-4" />
           Encerrar Sessão (Sair)
         </button>
+
+        {/*
+          A versão carregada NESTA aba.
+          Existe para "atualizei e não apareceu" virar uma pergunta com
+          resposta: basta comparar este carimbo com o da publicação.
+        */}
+        <p className="mt-3 text-center text-[10px] text-[var(--c-texto-3)]">
+          Versão {versaoLegivel()}
+        </p>
       </div>
 
       {/* Modal para alternar o colaborador atual */}

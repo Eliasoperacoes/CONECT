@@ -50,6 +50,7 @@ import { PainelRede } from './componentes/PainelRede';
 import { ModalNovaConversa } from './componentes/ModalNovaConversa';
 import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
+import { vigiarVersao } from './servicos/versao';
 import { IndicadorNuvem } from './componentes/IndicadorNuvem';
 import { TelaLogin } from './componentes/TelaLogin';
 import { TelaDefinirSenha } from './componentes/TelaDefinirSenha';
@@ -103,6 +104,8 @@ export default function App() {
   );
   const [verificandoSessao, setVerificandoSessao] = useState<boolean>(usandoNuvem());
   const [precisaTrocarSenha, setPrecisaTrocarSenha] = useState(false);
+  /** Saiu publicação nova enquanto esta aba estava aberta. */
+  const [saiuVersaoNova, setSaiuVersaoNova] = useState(false);
   const [painelAdminAberto, setPainelAdminAberto] = useState<boolean>(false);
   const [abaAtivaEscolhida, setAbaAtiva] = useState<AbaPrincipal>('conversas');
   /** O código do cartaz de ponto, quando a pessoa chegou por ele. */
@@ -322,6 +325,18 @@ export default function App() {
     const cancelar = bancoDados.assinarAlteracoes(recarregarDados);
     return () => cancelar();
   }, []);
+
+  /**
+   * Avisa quando sai versão nova.
+   *
+   * A aba que já estava aberta na hora da publicação continua com o pacote
+   * velho — e sem isto ninguém tinha como saber. "Atualizei e não
+   * apareceu" nasceu daí.
+   *
+   * Não recarrega sozinho: apagaria a mensagem pela metade de quem está
+   * digitando. Avisa, e quem decide é a pessoa.
+   */
+  useEffect(() => vigiarVersao(() => setSaiuVersaoNova(true)), []);
 
   /**
    * CIÊNCIA AUTOMÁTICA DA FILA.
@@ -729,6 +744,22 @@ export default function App() {
   return (
     <div className="w-full h-[100dvh] flex flex-col bg-[var(--c-canvas)] text-[var(--c-texto)] overflow-hidden">
       <IndicadorOffline />
+
+      {/*
+        VERSÃO NOVA NO AR.
+        Fica no topo, acima de tudo, porque a pessoa pode estar vendo uma
+        tela que já foi corrigida. Recarregar é escolha dela: fazer isso
+        sozinho apagaria a mensagem pela metade de quem está digitando.
+      */}
+      {saiuVersaoNova && (
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="w-full px-4 py-2 bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center justify-center gap-2 hover:brightness-110 transition-all flex-shrink-0"
+        >
+          Uma versão nova do CONECTA foi publicada — toque para atualizar
+        </button>
+      )}
 
       {/*
         A FAIXA DE TESTE, ligada pelo painel ADM.
