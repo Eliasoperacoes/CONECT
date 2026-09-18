@@ -7,8 +7,22 @@ import {
   Users,
   Building2,
   CheckCheck,
+  Share2,
+  Copy,
+  AlertTriangle,
+  ExternalLink,
 } from 'lucide-react';
 import { bancoDados } from '../servicos/bancoDados';
+import { podeUsar } from '../servicos/permissoes';
+import {
+  montarTextoDasMensagens,
+  arquivosDasMensagens,
+  compartilharNoWhatsApp,
+  copiarImagemParaAreaDeTransferencia,
+  primeiraImagem,
+  temBandejaDoAparelho,
+  nomeadorDe,
+} from '../servicos/compartilharExterno';
 import { Colaborador, Conversa } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
 
@@ -26,6 +40,9 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
   aoSucesso,
 }) => {
   const [busca, setBusca] = useState('');
+  const [avisoExterno, setAvisoExterno] = useState<string | null>(null);
+  const [imagemParaColar, setImagemParaColar] = useState<string | null>(null);
+  const [imagemCopiada, setImagemCopiada] = useState(false);
   const [destinosSelecionados, setDestinosSelecionados] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
 
@@ -69,7 +86,95 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
     );
   }, [colegas, termo]);
 
+  /**
+   * As mensagens de verdade, não só os ids.
+   *
+   * Vem do banco com o mesmo filtro do encaminhamento interno: id de
+   * mensagem é adivinhável, e o texto que sai da empresa não pode ser de
+   * uma conversa que esta pessoa não participa.
+   *
+   * ESTE `useMemo` PRECISA FICAR ACIMA DO `return null` LOGO ABAIXO.
+   * Hook declarado depois de saída condicional derruba a tela inteira, e
+   * já aconteceu aqui.
+   */
+  const mensagensEscolhidas = useMemo(
+    () => bancoDados.obterMensagensPorIds(mensagensIds),
+    [mensagensIds]
+  );
+
   if (!aberto || mensagensIds.length === 0) return null;
+
+  // Mandar para fora é informação saindo da empresa: passa pelo catálogo
+  // de permissões como qualquer outra ferramenta
+  const podeMandarParaFora = podeUsar('compartilhar_whatsapp', colaboradorAtual);
+
+  /**
+   * Chamada DIRETO do clique, sem nenhuma espera antes.
+   *
+   * O Safari só abre a bandeja do aparelho no mesmo gesto do toque. Um
+   * `await` aqui em cima — buscar anexo, consultar banco — gasta o gesto
+   * e no iPhone nada acontece.
+   */
+  const lidarCompartilharNoWhatsApp = async () => {
+    setAvisoExterno(null);
+    setImagemParaColar(null);
+    setImagemCopiada(false);
+
+    const texto = montarTextoDasMensagens(
+      mensagensEscolhidas,
+      nomeadorDe(todosColaboradores)
+    );
+    const { arquivos, deixadosParaTras } = arquivosDasMensagens(mensagensEscolhidas);
+
+    const res = await compartilharNoWhatsApp({ texto, arquivos, deixadosParaTras });
+
+    // Fechou a bandeja sem escolher contato: não saiu nada, não registra
+    // nada. Auditoria com envio que não houve é pior do que auditoria
+    // nenhuma.
+    if (res.cancelado) return;
+
+    if (res.erro) {
+      setAvisoExterno(res.erro);
+      return;
+    }
+
+    const conversaOrigem = todasConversas.find(
+      (c) => c.id === mensagensEscolhidas[0]?.conversaId
+    );
+
+    bancoDados.registrarCompartilhamentoExterno({
+      totalMensagens: mensagensEscolhidas.length,
+      conversaNome: conversaOrigem?.nome || 'conversa',
+      comArquivos: res.arquivosEnviados,
+    });
+
+    /**
+     * O aviso do que NÃO foi junto.
+     *
+     * Pelo link do WhatsApp Web só vai texto. Deixar a pessoa achar que a
+     * foto da peça seguiu é pior do que não ter o botão: ela só descobre
+     * quando o fornecedor responde "que peça?".
+     */
+    if (res.arquivosDeixadosParaTras > 0) {
+      const imagem = primeiraImagem(mensagensEscolhidas);
+      setImagemParaColar(imagem || null);
+      setAvisoExterno(
+        res.via === 'link'
+          ? `O texto foi. ${res.arquivosDeixadosParaTras} anexo(s) não vão pelo link do WhatsApp Web.`
+          : `${res.arquivosDeixadosParaTras} anexo(s) não puderam ir junto.`
+      );
+      return;
+    }
+
+    aoFechar();
+  };
+
+  const lidarCopiarImagem = async () => {
+    if (!imagemParaColar) return;
+    const res = await copiarImagemParaAreaDeTransferencia(imagemParaColar);
+    if (res.sucesso) setImagemCopiada(true);
+    else setAvisoExterno(res.erro || 'Não foi possível copiar a imagem.');
+  };
 
   const alternarDestino = (conversaOuColegaId: string, ehColega = false) => {
     let idFinal = conversaOuColegaId;
@@ -126,7 +231,9 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
                 Encaminhar {mensagensIds.length > 1 ? `${mensagensIds.length} mensagens` : 'mensagem'}
               </h2>
               <p className="text-[11px] text-[var(--c-texto-3)]">
-                Selecione os colaboradores ou canais para enviar
+                {podeMandarParaFora
+                  ? 'Para colegas e canais, ou para fora no WhatsApp'
+                  : 'Selecione os colaboradores ou canais para enviar'}
               </p>
             </div>
           </div>
@@ -155,6 +262,82 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
 
         {/* Lista com scroll de Canais e Colaboradores */}
         <div className="flex-1 overflow-y-auto divide-y divide-[var(--c-borda)] p-1">
+          {/*
+            FORA DO CONECTA.
+            Não é uma opção de seleção como as de baixo — é ação de um
+            toque só. Misturar as duas numa lista de caixinhas faria a
+            pessoa marcar o WhatsApp junto de três colegas e esperar que
+            "Encaminhar" desse conta dos quatro, o que não acontece: o
+            envio para fora é o aparelho dela que faz.
+          */}
+          {podeMandarParaFora && (
+            <div className="py-2">
+              <div className="px-3 py-1 text-[11px] font-bold text-[var(--c-texto-3)] uppercase tracking-wider flex items-center gap-1.5">
+                <ExternalLink className="w-3 h-3" />
+                Fora do CONECTA
+              </div>
+
+              <button
+                type="button"
+                id="botao-compartilhar-whatsapp"
+                onClick={lidarCompartilharNoWhatsApp}
+                className="mt-1 w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all"
+              >
+                <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
+                  <Share2 className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-xs font-semibold text-[var(--c-texto)] block truncate">
+                    Enviar no WhatsApp
+                  </span>
+                  <span className="text-[10px] text-[var(--c-texto-3)] block truncate">
+                    {temBandejaDoAparelho()
+                      ? 'Abre o WhatsApp para você escolher o contato'
+                      : 'Abre o WhatsApp Web com o texto pronto'}
+                  </span>
+                </div>
+              </button>
+
+              {avisoExterno && (
+                <div className="mx-3 mt-2 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                    <span className="text-[11px] text-amber-800 dark:text-amber-300 leading-snug">
+                      {avisoExterno}
+                    </span>
+                  </div>
+
+                  {/*
+                    O contorno do PC: o link não leva anexo, mas o
+                    WhatsApp Web aceita Ctrl+V. Botão separado porque a
+                    cópia precisa do próprio gesto — emendada na abertura
+                    da janela, uma das duas falha.
+                  */}
+                  {imagemParaColar && (
+                    <button
+                      type="button"
+                      onClick={lidarCopiarImagem}
+                      disabled={imagemCopiada}
+                      className="self-start px-2.5 py-1 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-[11px] font-bold flex items-center gap-1.5 hover:brightness-110 transition-all disabled:opacity-60"
+                    >
+                      {imagemCopiada ? (
+                        <>
+                          <Check className="w-3 h-3" />
+                          Copiada — cole com Ctrl+V no WhatsApp
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          Copiar imagem
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Seção 1: Grupos e Canais Operacionais */}
           {gruposFiltrados.length > 0 && (
             <div className="py-2">

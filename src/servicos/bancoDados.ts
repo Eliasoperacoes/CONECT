@@ -2672,6 +2672,52 @@ class BancoDadosConecta {
   }
 
   // Encaminha uma ou mais mensagens para conversas de destino selecionadas
+  /**
+   * As mensagens pedidas que esta pessoa realmente pode ler.
+   *
+   * O filtro é o mesmo para encaminhar por dentro e para compartilhar por
+   * fora, e por isso mora num lugar só: id de mensagem é adivinhável, e
+   * duas cópias desta regra divergindo deixaria um dos dois caminhos
+   * entregando conversa de quem não é da pessoa.
+   */
+  obterMensagensPorIds(mensagensIds: string[]): Mensagem[] {
+    if (mensagensIds.length === 0) return [];
+
+    const atual = this.obterColaboradorAtual();
+    const todasConversas = this.obterTodasConversas();
+    const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+    const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
+
+    return todas.filter((m) => {
+      if (!mensagensIds.includes(m.id)) return false;
+      const convOrigem = todasConversas.find((c) => c.id === m.conversaId);
+      return convOrigem ? convOrigem.participantesIds.includes(atual.id) : false;
+    });
+  }
+
+  /**
+   * Deixa registrado o que saiu da empresa.
+   *
+   * O envio acontece no WhatsApp da pessoa e o sistema não tem como
+   * acompanhá-lo. O que ele consegue afirmar — e é o que fica gravado — é
+   * QUEM pediu para sair, QUANTAS mensagens e DE QUAL conversa.
+   */
+  registrarCompartilhamentoExterno(dados: {
+    totalMensagens: number;
+    conversaNome: string;
+    comArquivos: number;
+  }): void {
+    const atual = this.obterColaboradorAtual();
+    const anexos =
+      dados.comArquivos > 0 ? ` com ${dados.comArquivos} anexo(s)` : ' (somente texto)';
+
+    this.registrarAuditoria(
+      'Compartilhado no WhatsApp',
+      'seguranca',
+      `${atual.nome} enviou ${dados.totalMensagens} mensagem(ns) da conversa "${dados.conversaNome}" para o WhatsApp${anexos}.`
+    );
+  }
+
   async encaminharMensagens(
     mensagensIds: string[],
     destinosConversasIds: string[]
@@ -2681,17 +2727,9 @@ class BancoDadosConecta {
     }
 
     try {
-      const atual = this.obterColaboradorAtual();
-      const todasConversas = this.obterTodasConversas();
-      const bruto = localStorage.getItem(CHAVE_MENSAGENS);
-      const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
-
-      // Filtra mensagens que o usuário realmente tem permissão de visualizar na conversa de origem
-      const msgsParaEncaminhar = todas.filter((m) => {
-        if (!mensagensIds.includes(m.id)) return false;
-        const convOrigem = todasConversas.find((c) => c.id === m.conversaId);
-        return convOrigem ? convOrigem.participantesIds.includes(atual.id) : false;
-      });
+      // O filtro de quem pode ler o quê é o mesmo do compartilhamento
+      // externo, e vive em `obterMensagensPorIds`
+      const msgsParaEncaminhar = this.obterMensagensPorIds(mensagensIds);
 
       if (msgsParaEncaminhar.length === 0) {
         return { sucesso: false, totalEncaminhadas: 0, erro: 'Mensagens não encontradas ou sem permissão.' };

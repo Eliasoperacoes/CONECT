@@ -142,6 +142,43 @@ chamado numa conversa invisível e nunca saberia.
 
 ---
 
+## Sair para o WhatsApp
+
+O atendimento a cliente e a negociação com fornecedor acontecem no
+WhatsApp. `compartilharExterno.ts` deixa o conteúdo daqui sair para lá.
+
+**Não há integração, e isso é escolha.** Nada fala com a API do WhatsApp.
+O sistema monta o conteúdo e entrega ao aparelho; quem escolhe o contato e
+aperta enviar é a pessoa. A API oficial exige número dedicado, aprovação da
+Meta e mensalidade — e as bibliotecas não oficiais fazem o número da loja
+ser banido.
+
+Dois caminhos, um caindo no outro:
+
+| Caminho | Onde | Leva anexo |
+|---|---|---|
+| `navigator.share` | Android e iPhone | Sim |
+| `wa.me` | PC | Não — limite do WhatsApp |
+
+**Nenhum `await` antes do `navigator.share`.** O Safari só abre a bandeja
+no mesmo gesto do toque; qualquer espera antes gasta o gesto e no iPhone
+nada acontece. É por isso que os anexos são convertidos de forma síncrona
+com `atob`, e que anexo que mora só no balde fica de fora — buscá-lo
+exigiria esperar.
+
+O que não foi junto é **contado e dito na tela**. Mandar só o texto
+deixando a pessoa achar que a foto da peça seguiu é pior do que não ter o
+botão: ela só descobre quando o fornecedor responde "que peça?".
+
+Cancelar a bandeja **não é enviar**. Sem essa distinção a Auditoria
+registra saída que não houve.
+
+O envio acontece fora e o sistema não o acompanha. O que ele afirma — e
+grava — é **quem** pediu para sair, **quantas** mensagens e **de qual**
+conversa.
+
+---
+
 ## Travas que não podem cair
 
 | Trava | Onde | Sem ela |

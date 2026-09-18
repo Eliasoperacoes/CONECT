@@ -86,6 +86,18 @@ export const FERRAMENTAS: Ferramenta[] = [
     nivelPadrao: NIVEL_COLABORADOR,
   },
   {
+    chave: 'compartilhar_whatsapp',
+    nome: 'Compartilhar no WhatsApp',
+    descricao:
+      'Mandar mensagens do chat para fora, pelo WhatsApp do próprio aparelho.',
+    area: 'principal',
+    // O balconista é quem atende o cliente e fala com o fornecedor. Travar
+    // no nível 2 tiraria a função justamente de quem precisa dela.
+    nivelPadrao: NIVEL_COLABORADOR,
+    cuidado:
+      'É informação saindo da empresa. Fica registrado na Auditoria quem mandou e o quê, mas o envio em si acontece no WhatsApp da pessoa e não volta para cá.',
+  },
+  {
     chave: 'ponto',
     nome: 'Meu ponto',
     descricao:
