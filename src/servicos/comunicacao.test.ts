@@ -814,7 +814,7 @@ test('no modo local os resets continuam funcionando', () => {
 test('CNPJ DA PLANILHA CHEGA NA FICHA DO COLABORADOR', async () => {
   // O CNPJ era lido da planilha e descartado na importação em lote: a
   // função não conhecia o campo, então ele sumia sem erro nenhum
-  const res = bancoDados.importarColaboradoresEmLote(
+  const res = await bancoDados.importarColaboradoresEmLote(
     [
       {
         nome: 'Joana Ribeiro',

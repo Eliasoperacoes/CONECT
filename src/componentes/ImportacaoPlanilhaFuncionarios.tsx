@@ -93,7 +93,7 @@ export const ImportacaoPlanilhaFuncionarios: React.FC<PropsImportacaoPlanilhaFun
   };
 
   // Confirmar importação das linhas válidas
-  const confirmarImportacao = () => {
+  const confirmarImportacao = async () => {
     if (!resultado) return;
 
     const linhasValidas = resultado.linhas.filter((l) => l.valida);
@@ -105,7 +105,10 @@ export const ImportacaoPlanilhaFuncionarios: React.FC<PropsImportacaoPlanilhaFun
     setImportandoBanco(true);
     try {
       const dadosParaGravar = linhasValidas.map((l) => l.dados);
-      const res = bancoDados.importarColaboradoresEmLote(dadosParaGravar, atualizarExistentes);
+      const res = await bancoDados.importarColaboradoresEmLote(
+        dadosParaGravar,
+        atualizarExistentes
+      );
 
       if (res.sucesso) {
         setSucessoImportacao({

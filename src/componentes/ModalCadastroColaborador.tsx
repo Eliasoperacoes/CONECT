@@ -77,7 +77,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
 
   if (!colaborador) return null;
 
-  const submeter = (e: React.FormEvent) => {
+  const submeter = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro(null);
 
@@ -87,7 +87,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
     }
 
     setSalvando(true);
-    const res = bancoDados.atualizarColaborador(colaborador.id, {
+    const res = await bancoDados.atualizarColaborador(colaborador.id, {
       nome: form.nome.trim(),
       cargo: form.cargo.trim() || 'Colaborador',
       setor: form.setor,

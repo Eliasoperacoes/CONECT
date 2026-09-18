@@ -94,8 +94,8 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
     setTimeout(() => setAviso(null), 5000);
   };
 
-  const mover = (quem: Colaborador, novoResponsavelId: string | null) => {
-    const res = bancoDados.definirResponsavel(quem.id, novoResponsavelId);
+  const mover = async (quem: Colaborador, novoResponsavelId: string | null) => {
+    const res = await bancoDados.definirResponsavel(quem.id, novoResponsavelId);
     setVersao((v) => v + 1);
 
     if (!res.sucesso) {

@@ -124,8 +124,8 @@ export const ModalAlterarFoto: React.FC<PropsModalAlterarFoto> = ({
     setMensagemStatus('URL aplicada na prévia. Clique em "Salvar Foto" para confirmar.');
   };
 
-  const salvarNovaFoto = () => {
-    const res = bancoDados.atualizarColaborador(colaborador.id, {
+  const salvarNovaFoto = async () => {
+    const res = await bancoDados.atualizarColaborador(colaborador.id, {
       foto: fotoPrevia.trim() || FOTO_PADRAO_LOGO_EMPRESA,
     });
 

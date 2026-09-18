@@ -1031,7 +1031,7 @@ class BancoDadosConecta {
   }
 
   // Importação em lote a partir de planilha Excel
-  importarColaboradoresEmLote(
+  async importarColaboradoresEmLote(
     linhasParaImportar: Array<{
       nome: string;
       login: string;
@@ -1049,7 +1049,13 @@ class BancoDadosConecta {
       observacoes?: string;
     }>,
     atualizarExistentes: boolean = true
-  ): { sucesso: boolean; criados: number; atualizados: number; ignorados: number; erros: string[] } {
+  ): Promise<{
+    sucesso: boolean;
+    criados: number;
+    atualizados: number;
+    ignorados: number;
+    erros: string[];
+  }> {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel < NIVEL_TI) {
       return {
@@ -1164,11 +1170,30 @@ class BancoDadosConecta {
           (l) => l.login.trim().toLowerCase() === (c.login || '').toLowerCase()
         )
       );
-      nuvem.salvarColaboradoresEmLote(enviados).then((res) => {
-        if (!res.sucesso) {
-          console.error('Importação não chegou ao banco:', res.erro);
-        }
-      });
+      /**
+       * A PLANILHA É O CAMINHO DAS 88 PESSOAS. Ela não pode falhar em
+       * silêncio.
+       *
+       * Antes a gravação subia sem ninguém esperar e o erro ia só para o
+       * console: a tela dizia "88 colaboradores criados" e o banco podia
+       * não ter recebido nenhum. Isso só apareceria no dia em que as
+       * pessoas tentassem entrar — o mesmo estrago do cadastro individual,
+       * multiplicado por 88.
+       */
+      const res = await nuvem.salvarColaboradoresEmLote(enviados);
+      if (!res.sucesso) {
+        return {
+          sucesso: false,
+          criados: 0,
+          atualizados: 0,
+          ignorados: 0,
+          erros: [
+            `A importação não chegou ao banco: ${
+              res.erro || 'motivo não informado'
+            }. Ninguém conseguiria entrar — corrija e importe de novo.`,
+          ],
+        };
+      }
     }
 
     this.registrarAuditoria(
@@ -1198,10 +1223,10 @@ class BancoDadosConecta {
     return alvo.nivel >= NIVEL_TI || alvo.setor === 'RH';
   }
 
-  atualizarColaborador(
+  async atualizarColaborador(
     id: string,
     dados: Partial<Colaborador>
-  ): { sucesso: boolean; erro?: string } {
+  ): Promise<{ sucesso: boolean; erro?: string }> {
     const atual = this.obterColaboradorAtual();
     const ehAdmin = atual.nivel >= NIVEL_TI;
     const ehRh = !ehAdmin && atual.setor === 'RH';
@@ -1302,8 +1327,29 @@ class BancoDadosConecta {
       ...dadosParaAplicar,
     };
 
+    /**
+     * O BANCO PRIMEIRO, como no cadastro e na remoção.
+     *
+     * Editar a ficha ia para o banco sem ninguém esperar a resposta: o
+     * painel dizia "atualizado" e a alteração podia ter ficado só naquele
+     * navegador. Aqui dentro se mexe em nível, loja, responsável e agora na
+     * JORNADA — carga semanal, sábado, intervalo. Uma jornada que não sobe
+     * deixa a pessoa sendo cobrada pela errada, e ninguém desconfia porque a
+     * tela mostrou o valor certo.
+     */
+    if (usandoNuvem()) {
+      const res = await nuvem.salvarColaborador(colaboradores[indice]);
+      if (!res.sucesso) {
+        return {
+          sucesso: false,
+          erro: `A alteração não foi gravada no banco: ${
+            res.erro || 'motivo não informado'
+          }. Ela valeria só neste aparelho.`,
+        };
+      }
+    }
+
     localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));
-    if (usandoNuvem()) nuvem.salvarColaborador(colaboradores[indice]);
 
     this.registrarAuditoria(
       'Atualização de Colaborador',
@@ -1323,10 +1369,10 @@ class BancoDadosConecta {
    * o chefe debaixo do próprio subordinado deixaria os dois sem ninguém
    * acima — e, pela regra nova, sem aprovador.
    */
-  definirResponsavel(
+  async definirResponsavel(
     colaboradorId: string,
     responsavelId: string | null
-  ): { sucesso: boolean; erro?: string } {
+  ): Promise<{ sucesso: boolean; erro?: string }> {
     if (!this.podeGerenciarPessoas()) {
       return {
         sucesso: false,
@@ -1348,7 +1394,7 @@ class BancoDadosConecta {
 
     // `undefined` sai do objeto ao serializar e a pessoa continuaria
     // pendurada; a soltura tem que gravar o campo vazio de propósito
-    const resultado = this.atualizarColaborador(colaboradorId, {
+    const resultado = await this.atualizarColaborador(colaboradorId, {
       responsavelId: responsavelId || undefined,
     });
     if (!resultado.sucesso) return resultado;
@@ -1358,8 +1404,23 @@ class BancoDadosConecta {
       const indice = colaboradores.findIndex((c) => c.id === colaboradorId);
       if (indice !== -1) {
         delete colaboradores[indice].responsavelId;
+
+        // O organograma decide QUEM APROVA hora. Uma mudança que fica só
+        // neste navegador põe a fila de aprovação de duas pessoas diferentes
+        // em dois aparelhos diferentes.
+        if (usandoNuvem()) {
+          const res = await nuvem.salvarColaborador(colaboradores[indice]);
+          if (!res.sucesso) {
+            return {
+              sucesso: false,
+              erro: `A alteração não foi gravada no banco: ${
+                res.erro || 'motivo não informado'
+              }.`,
+            };
+          }
+        }
+
         localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));
-        if (usandoNuvem()) nuvem.salvarColaborador(colaboradores[indice]);
         this.notificar();
       }
     }
@@ -1379,7 +1440,10 @@ class BancoDadosConecta {
   }
 
   // Atualiza especificamente a foto de um colaborador (usado na edição de perfil, quadro ou ADM)
-  atualizarFotoColaborador(id: string, novaFoto: string): { sucesso: boolean; erro?: string } {
+  async atualizarFotoColaborador(
+    id: string,
+    novaFoto: string
+  ): Promise<{ sucesso: boolean; erro?: string }> {
     const fotoFinal = novaFoto.trim() || FOTO_PADRAO_LOGO_EMPRESA;
     return this.atualizarColaborador(id, { foto: fotoFinal });
   }

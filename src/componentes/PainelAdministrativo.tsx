@@ -338,7 +338,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     }
 
     if (colabEditando) {
-      const res = bancoDados.atualizarColaborador(colabEditando.id, {
+      const res = await bancoDados.atualizarColaborador(colabEditando.id, {
         nome: formColab.nome.trim(),
         login: formColab.login.trim(),
         senha: formColab.senha.trim(),
