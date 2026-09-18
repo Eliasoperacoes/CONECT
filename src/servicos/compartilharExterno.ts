@@ -24,19 +24,24 @@
  *      limite do WhatsApp, não nosso.
  *
  * ===================================================================
- * POR QUE NÃO HÁ `await` ANTES DO `navigator.share`
+ * O ANEXO É PREPARADO ANTES DO CLIQUE
  * ===================================================================
  *
  * O Safari só aceita a bandeja quando ela é aberta no mesmo gesto do
  * toque. Qualquer espera antes — baixar o anexo, consultar o banco —
  * gasta o gesto, e no iPhone a bandeja simplesmente não abre.
  *
- * Por isso os anexos são convertidos de forma SÍNCRONA, com `atob`, a
- * partir do data URL que já está na memória. É também o motivo de
- * anexo que mora só no balde ficar de fora: buscá-lo exigiria esperar.
+ * A saída NÃO é recusar anexo que precise ser baixado. A primeira versão
+ * fez isso, exigindo data URL, e na prática nenhuma foto ia: com a nuvem
+ * ligada, `imagemUrl` é endereço assinado do balde, não data URL. O
+ * botão prometia anexo e mandava só texto.
+ *
+ * Então a preparação acontece QUANDO O MODAL ABRE, com a pessoa ainda
+ * escolhendo o contato. Na hora do clique os arquivos já estão prontos
+ * na memória, e `compartilharNoWhatsApp` não espera por nada.
  */
 
-import { Mensagem, Colaborador } from '../tipos';
+import { Mensagem } from '../tipos';
 
 /** O que de fato aconteceu, para a tela não prometer o que não houve. */
 export interface ResultadoCompartilhamento {
@@ -68,48 +73,25 @@ export interface ResultadoCompartilhamento {
  */
 const LIMITE_TEXTO_NO_LINK = 1500;
 
-const HORA_DESCONHECIDA = '--:--';
-
 /**
- * A descrição de uma mensagem sem texto.
+ * O texto que vai para o WhatsApp: SÓ A MENSAGEM.
  *
- * Linha vazia num compartilhamento faz o destinatário achar que faltou
- * conteúdo. Dizer "(imagem)" é pouco, mas é verdade.
+ * Sem hora, sem nome de quem falou, sem "(imagem)". A primeira versão
+ * carimbava `[15:45] Fulano:` na frente de tudo, e do outro lado isso é
+ * ruído — o fornecedor não precisa do organograma da loja, precisa saber
+ * qual peça é. Quem manda escreve o contexto melhor do que um carimbo.
+ *
+ * Mensagem sem texto não vira linha nenhuma: a foto vai como arquivo, e
+ * anunciar "(imagem)" ao lado da imagem é dizer o óbvio.
  */
-const descreverSemTexto = (m: Mensagem): string => {
-  if (m.tipo === 'imagem') return '(imagem)';
-  if (m.tipo === 'recado_voz') {
-    const s = m.audioDuracao;
-    if (!s) return '(áudio)';
-    const minutos = Math.floor(s / 60);
-    const segundos = String(Math.floor(s % 60)).padStart(2, '0');
-    return `(áudio ${minutos}:${segundos})`;
-  }
-  if (m.tipo === 'arquivo') return `(arquivo: ${m.arquivoNome || 'sem nome'})`;
-  return '';
-};
-
-/**
- * O texto que vai para o WhatsApp.
- *
- * Leva QUEM e QUANDO. Sem isso o fornecedor recebe frases soltas e não
- * sabe quem prometeu o quê — que é justamente o motivo de a conversa
- * estar saindo daqui.
- *
- * NÃO leva cabeçalho da empresa. Seria uma linha a mais em todo envio,
- * inclusive nos de uma mensagem só, e quem manda escreve o contexto
- * melhor do que um carimbo automático.
- */
-export const montarTextoDasMensagens = (
-  mensagens: Mensagem[],
-  nomePorId: (id: string) => string
-): string =>
+export const montarTextoDasMensagens = (mensagens: Mensagem[]): string =>
   mensagens
     .map((m) => {
-      const corpo = (m.texto || '').trim() || descreverSemTexto(m);
-      const legenda = m.tipo === 'imagem' && m.legenda ? ` ${m.legenda.trim()}` : '';
-      return `[${m.horaFormatada || HORA_DESCONHECIDA}] ${nomePorId(m.remetenteId)}: ${corpo}${legenda}`;
+      const corpo = (m.texto || '').trim();
+      const legenda = (m.legenda || '').trim();
+      return [corpo, legenda].filter(Boolean).join(' ');
     })
+    .filter(Boolean)
     .join('\n');
 
 /** Corta no limite do link, avisando que cortou. */
@@ -153,45 +135,109 @@ const extensaoDe = (tipo: string): string => {
   return depois.split(';')[0];
 };
 
+/** O conteúdo do anexo, seja ele qual for o campo que o carrega. */
+const conteudoDoAnexo = (m: Mensagem): string | undefined => {
+  if (m.tipo === 'imagem') return m.imagemUrl;
+  if (m.tipo === 'recado_voz') return m.audioUrl;
+  if (m.tipo === 'arquivo') return m.arquivoUrl;
+  return undefined;
+};
+
 /**
- * Os anexos que conseguem ir junto.
+ * Baixa o anexo que mora no balde.
  *
- * Só o que está em data URL na memória. Anexo que mora apenas no balde
- * tem `anexoCaminho` e nenhum conteúdo local: buscá-lo exigiria
- * esperar, e a espera custa a bandeja no iPhone. Ele entra na conta de
- * "deixados para trás" e a tela avisa.
+ * Com a nuvem ligada é ESTE o caso comum — `imagemUrl` vem como endereço
+ * assinado, e não como data URL. Recusá-lo, como a primeira versão fazia,
+ * era recusar praticamente toda foto.
+ *
+ * Roda na abertura do modal, nunca no clique.
  */
-export const arquivosDasMensagens = (
+const baixarComoArquivo = async (url: string, nome: string): Promise<File | null> => {
+  try {
+    const resposta = await fetch(url);
+    if (!resposta.ok) return null;
+    const conteudo = await resposta.blob();
+    return new File([conteudo], nome, {
+      type: conteudo.type || 'application/octet-stream',
+    });
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Os anexos da seleção, prontos para a bandeja.
+ *
+ * ASSÍNCRONA DE PROPÓSITO, e chamada na ABERTURA do modal. Na hora do
+ * clique os arquivos já estão na memória e o envio não espera por nada —
+ * que é o que mantém a bandeja funcionando no iPhone.
+ *
+ * O que não vier é contado. A tela precisa do número para avisar em vez
+ * de deixar a pessoa achar que a foto foi junto.
+ */
+export const prepararArquivos = async (
   mensagens: Mensagem[]
-): { arquivos: File[]; deixadosParaTras: number } => {
+): Promise<{ arquivos: File[]; deixadosParaTras: number }> => {
   const arquivos: File[] = [];
   let deixadosParaTras = 0;
 
-  mensagens.forEach((m, indice) => {
-    const temAnexo = m.tipo === 'imagem' || m.tipo === 'arquivo' || m.tipo === 'recado_voz';
-    if (!temAnexo) return;
+  for (const [indice, m] of mensagens.entries()) {
+    const conteudo = conteudoDoAnexo(m);
+    if (!conteudo) continue;
 
-    const conteudo = m.imagemUrl || m.arquivoUrl || m.audioUrl;
-    if (!conteudo || !conteudo.startsWith('data:')) {
-      deixadosParaTras++;
-      return;
+    const padrao = `conecta-${indice + 1}`;
+
+    if (conteudo.startsWith('data:')) {
+      const tipo = conteudo.slice(5).split(';')[0];
+      const arquivo = dataUrlParaArquivo(
+        conteudo,
+        m.arquivoNome || `${padrao}.${extensaoDe(tipo)}`
+      );
+      if (arquivo) arquivos.push(arquivo);
+      else deixadosParaTras++;
+      continue;
     }
 
-    const arquivo = dataUrlParaArquivo(
-      conteudo,
-      m.arquivoNome || `conecta-${indice + 1}.${extensaoDe(conteudo.slice(5).split(';')[0])}`
-    );
+    const baixado = await baixarComoArquivo(conteudo, m.arquivoNome || padrao);
+    if (!baixado) {
+      deixadosParaTras++;
+      continue;
+    }
 
-    if (arquivo) arquivos.push(arquivo);
-    else deixadosParaTras++;
-  });
+    /**
+     * O nome do arquivo precisa da extensão certa.
+     *
+     * O balde guarda o caminho, não o nome original, e arquivo sem
+     * extensão chega do outro lado como "documento desconhecido" — o
+     * WhatsApp nem mostra a prévia da foto.
+     */
+    const temExtensao = /\.[a-z0-9]{2,5}$/i.test(baixado.name);
+    arquivos.push(
+      temExtensao
+        ? baixado
+        : new File([baixado], `${baixado.name}.${extensaoDe(baixado.type)}`, {
+            type: baixado.type,
+          })
+    );
+  }
 
   return { arquivos, deixadosParaTras };
 };
 
-/** O endereço que abre o WhatsApp com o texto pronto. */
-export const montarLinkWhatsApp = (texto: string): string =>
-  `https://wa.me/?text=${encodeURIComponent(encurtarParaLink(texto))}`;
+/**
+ * O endereço que abre o WhatsApp com o texto pronto.
+ *
+ * Seleção só de foto não tem texto nenhum. Aí o link vai sem `text`: o
+ * WhatsApp abre na escolha de contato do mesmo jeito, e a imagem segue
+ * pela área de transferência. Mandar `text=` vazio deixaria a caixa de
+ * mensagem com um espaço em branco digitado.
+ */
+export const montarLinkWhatsApp = (texto: string): string => {
+  const limpo = texto.trim();
+  return limpo
+    ? `https://wa.me/?text=${encodeURIComponent(encurtarParaLink(limpo))}`
+    : 'https://wa.me/';
+};
 
 /**
  * Manda para o WhatsApp.
@@ -213,6 +259,10 @@ export const compartilharNoWhatsApp = async (dados: {
     arquivosDeixadosParaTras: deixadosParaTras,
   };
 
+  if (!dados.texto.trim() && arquivos.length === 0) {
+    return { ...base, via: 'nenhum', erro: 'Não há nada para compartilhar.' };
+  }
+
   if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
     /**
      * `canShare` pergunta ao aparelho se ELE aceita estes arquivos.
@@ -226,9 +276,18 @@ export const compartilharNoWhatsApp = async (dados: {
       navigator.canShare({ files: arquivos });
 
     try {
-      await navigator.share(
-        aceitaArquivos ? { text: dados.texto, files: arquivos } : { text: dados.texto }
-      );
+      /**
+       * Campo vazio não vai.
+       *
+       * `share({ text: '' })` com arquivo faz alguns aparelhos abrirem a
+       * bandeja com uma legenda em branco já digitada — e no iPhone chega
+       * a recusar o compartilhamento inteiro.
+       */
+      const carga: ShareData = {};
+      if (dados.texto.trim()) carga.text = dados.texto;
+      if (aceitaArquivos) carga.files = arquivos;
+
+      await navigator.share(carga);
       return {
         ...base,
         via: 'bandeja',
@@ -280,15 +339,24 @@ export const compartilharNoWhatsApp = async (dados: {
  * aceita PNG de forma confiável; JPEG é recusado calado no Chrome.
  */
 export const copiarImagemParaAreaDeTransferencia = async (
-  dataUrl: string
+  arquivo: File
 ): Promise<{ sucesso: boolean; erro?: string }> => {
   if (typeof navigator === 'undefined' || !navigator.clipboard?.write) {
     return { sucesso: false, erro: 'Este navegador não deixa copiar imagem.' };
   }
 
+  /**
+   * Endereço local, não o do balde.
+   *
+   * Desenhar no `canvas` uma imagem vinda de outro endereço o contamina, e
+   * o navegador passa a recusar a leitura — a cópia falharia justamente
+   * com a foto que veio da nuvem, que é o caso comum.
+   */
+  const endereco = URL.createObjectURL(arquivo);
+
   try {
     const imagem = new Image();
-    imagem.src = dataUrl;
+    imagem.src = endereco;
     await imagem.decode();
 
     const tela = document.createElement('canvas');
@@ -305,12 +373,14 @@ export const copiarImagemParaAreaDeTransferencia = async (
     return { sucesso: true };
   } catch {
     return { sucesso: false, erro: 'O navegador recusou a cópia da imagem.' };
+  } finally {
+    URL.revokeObjectURL(endereco);
   }
 };
 
-/** A primeira imagem da seleção, que é a que o botão de copiar oferece. */
-export const primeiraImagem = (mensagens: Mensagem[]): string | undefined =>
-  mensagens.find((m) => m.tipo === 'imagem' && m.imagemUrl?.startsWith('data:'))?.imagemUrl;
+/** A primeira imagem já preparada — é a que o botão de copiar oferece. */
+export const primeiraImagem = (arquivos: File[]): File | undefined =>
+  arquivos.find((a) => a.type.startsWith('image/'));
 
 /**
  * Há bandeja neste aparelho?
@@ -320,7 +390,3 @@ export const primeiraImagem = (mensagens: Mensagem[]): string | undefined =>
  */
 export const temBandejaDoAparelho = (): boolean =>
   typeof navigator !== 'undefined' && typeof navigator.share === 'function';
-
-/** O nome de quem mandou, para montar o texto sem depender da tela. */
-export const nomeadorDe = (colaboradores: Colaborador[]) => (id: string): string =>
-  colaboradores.find((c) => c.id === id)?.nome || 'Colaborador';

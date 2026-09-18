@@ -162,9 +162,16 @@ Dois caminhos, um caindo no outro:
 
 **Nenhum `await` antes do `navigator.share`.** O Safari só abre a bandeja
 no mesmo gesto do toque; qualquer espera antes gasta o gesto e no iPhone
-nada acontece. É por isso que os anexos são convertidos de forma síncrona
-com `atob`, e que anexo que mora só no balde fica de fora — buscá-lo
-exigiria esperar.
+nada acontece.
+
+Por isso os anexos são preparados **na abertura do modal**, não no clique.
+A primeira versão fez o contrário — exigiu data URL para não esperar — e
+com a nuvem ligada `imagemUrl` é endereço assinado do balde, então nenhuma
+foto ia: o botão prometia anexo e mandava só texto.
+
+**Vai só a mensagem.** Sem hora, sem nome de quem falou, sem "(imagem)".
+Do outro lado está um fornecedor, não a equipe; carimbo interno ali é
+ruído, e a foto já vai como arquivo.
 
 O que não foi junto é **contado e dito na tela**. Mandar só o texto
 deixando a pessoa achar que a foto da peça seguiu é pior do que não ter o

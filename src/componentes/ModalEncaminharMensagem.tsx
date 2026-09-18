@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   X,
   Search,
@@ -16,12 +16,11 @@ import { bancoDados } from '../servicos/bancoDados';
 import { podeUsar } from '../servicos/permissoes';
 import {
   montarTextoDasMensagens,
-  arquivosDasMensagens,
+  prepararArquivos,
   compartilharNoWhatsApp,
   copiarImagemParaAreaDeTransferencia,
   primeiraImagem,
   temBandejaDoAparelho,
-  nomeadorDe,
 } from '../servicos/compartilharExterno';
 import { Colaborador, Conversa } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
@@ -41,8 +40,19 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
 }) => {
   const [busca, setBusca] = useState('');
   const [avisoExterno, setAvisoExterno] = useState<string | null>(null);
-  const [imagemParaColar, setImagemParaColar] = useState<string | null>(null);
+  const [imagemParaColar, setImagemParaColar] = useState<File | null>(null);
   const [imagemCopiada, setImagemCopiada] = useState(false);
+  /**
+   * Os anexos já convertidos em arquivo, prontos antes do clique.
+   *
+   * `null` enquanto ainda estão sendo buscados. A foto costuma morar no
+   * balde, e baixá-la leva um instante — que acontece enquanto a pessoa
+   * ainda está escolhendo o destino, nunca no gesto do toque.
+   */
+  const [anexosProntos, setAnexosProntos] = useState<{
+    arquivos: File[];
+    deixadosParaTras: number;
+  } | null>(null);
   const [destinosSelecionados, setDestinosSelecionados] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
 
@@ -102,6 +112,33 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
     [mensagensIds]
   );
 
+  /**
+   * Baixa os anexos ASSIM QUE O MODAL ABRE.
+   *
+   * É o ponto que a primeira versão errou. Ela preparava no clique e só
+   * aceitava data URL — e com a nuvem ligada `imagemUrl` é endereço
+   * assinado do balde, então nenhuma foto ia. Buscar no clique também não
+   * serviria: a espera gasta o gesto do toque e o iPhone não abre a
+   * bandeja. Preparar aqui resolve os dois.
+   *
+   * Também precisa ficar ACIMA do `return null` logo abaixo: hook depois
+   * de saída condicional derruba a tela.
+   */
+  useEffect(() => {
+    if (!aberto) return;
+
+    let cancelado = false;
+    setAnexosProntos(null);
+
+    prepararArquivos(mensagensEscolhidas).then((pronto) => {
+      if (!cancelado) setAnexosProntos(pronto);
+    });
+
+    return () => {
+      cancelado = true;
+    };
+  }, [aberto, mensagensEscolhidas]);
+
   if (!aberto || mensagensIds.length === 0) return null;
 
   // Mandar para fora é informação saindo da empresa: passa pelo catálogo
@@ -111,20 +148,19 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
   /**
    * Chamada DIRETO do clique, sem nenhuma espera antes.
    *
-   * O Safari só abre a bandeja do aparelho no mesmo gesto do toque. Um
-   * `await` aqui em cima — buscar anexo, consultar banco — gasta o gesto
-   * e no iPhone nada acontece.
+   * O Safari só abre a bandeja do aparelho no mesmo gesto do toque, e um
+   * `await` aqui em cima gastaria o gesto. Por isso os anexos já chegam
+   * prontos de `anexosProntos` — nada é buscado a partir daqui.
    */
   const lidarCompartilharNoWhatsApp = async () => {
+    if (!anexosProntos) return;
+
     setAvisoExterno(null);
     setImagemParaColar(null);
     setImagemCopiada(false);
 
-    const texto = montarTextoDasMensagens(
-      mensagensEscolhidas,
-      nomeadorDe(todosColaboradores)
-    );
-    const { arquivos, deixadosParaTras } = arquivosDasMensagens(mensagensEscolhidas);
+    const texto = montarTextoDasMensagens(mensagensEscolhidas);
+    const { arquivos, deixadosParaTras } = anexosProntos;
 
     const res = await compartilharNoWhatsApp({ texto, arquivos, deixadosParaTras });
 
@@ -156,8 +192,7 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
      * quando o fornecedor responde "que peça?".
      */
     if (res.arquivosDeixadosParaTras > 0) {
-      const imagem = primeiraImagem(mensagensEscolhidas);
-      setImagemParaColar(imagem || null);
+      setImagemParaColar(primeiraImagem(anexosProntos.arquivos) || null);
       setAvisoExterno(
         res.via === 'link'
           ? `O texto foi. ${res.arquivosDeixadosParaTras} anexo(s) não vão pelo link do WhatsApp Web.`
@@ -281,7 +316,8 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
                 type="button"
                 id="botao-compartilhar-whatsapp"
                 onClick={lidarCompartilharNoWhatsApp}
-                className="mt-1 w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all"
+                disabled={!anexosProntos}
+                className="mt-1 w-full px-3 py-2.5 rounded-xl flex items-center gap-3 text-left hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all disabled:opacity-60 disabled:hover:bg-transparent"
               >
                 <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center flex-shrink-0">
                   <Share2 className="w-4 h-4" />
@@ -290,10 +326,19 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
                   <span className="text-xs font-semibold text-[var(--c-texto)] block truncate">
                     Enviar no WhatsApp
                   </span>
+                  {/*
+                    O anexo é baixado enquanto a pessoa escolhe o destino.
+                    Dizer que está preparando evita o clique que não faz
+                    nada — e é o preço de não gastar o gesto do toque.
+                  */}
                   <span className="text-[10px] text-[var(--c-texto-3)] block truncate">
-                    {temBandejaDoAparelho()
-                      ? 'Abre o WhatsApp para você escolher o contato'
-                      : 'Abre o WhatsApp Web com o texto pronto'}
+                    {!anexosProntos
+                      ? 'Preparando os anexos...'
+                      : anexosProntos.arquivos.length > 0
+                        ? `${anexosProntos.arquivos.length} anexo(s) prontos para ir junto`
+                        : temBandejaDoAparelho()
+                          ? 'Abre o WhatsApp para você escolher o contato'
+                          : 'Abre o WhatsApp Web com o texto pronto'}
                   </span>
                 </div>
               </button>
