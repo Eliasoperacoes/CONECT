@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { podeUsar } from '../servicos/permissoes';
 import {
   NIVEL_TI,
   NIVEL_GERENTE,
@@ -98,13 +99,53 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   aoFechar,
   aoAbrirConversa,
 }) => {
-  const [abaAtiva, setAbaAtiva] = useState<AbaAdmin>('colaboradores');
+  const [abaEscolhida, setAbaAtiva] = useState<AbaAdmin>('colaboradores');
+
+
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [configuracoes, setConfiguracoes] = useState<ConfiguracaoSistema>(
     bancoDados.obterConfiguracoes()
   );
   const [auditoria, setAuditoria] = useState<RegistroAuditoria[]>([]);
   const [avisos, setAvisos] = useState<AvisoRede[]>([]);
+
+  /**
+   * AS ABAS DO ADM PASSAM PELO PAINEL DE PERMISSÕES.
+   *
+   * Eram dez abas fixas no meio do JSX. O catálogo listava `adm_*`, o
+   * painel de Permissões deixava ligar e desligar cada uma — e nenhuma tela
+   * consultava. Quem mexesse ali não mudava nada, e só descobriria isso
+   * testando.
+   *
+   * Com a permissão valendo, dá para entregar "Colaboradores & Acessos" ao
+   * RH sem entregar junto o banco de dados e o backup, que é o que uma rede
+   * de 88 pessoas precisa.
+   */
+  const abasPermitidas = useMemo(
+    () =>
+      [
+        { id: 'colaboradores' as const, rotulo: 'Colaboradores & Acessos', icone: Users, contador: colaboradores.length },
+        { id: 'planilha' as const, rotulo: 'Subir Planilha Excel', icone: FileSpreadsheet },
+        { id: 'lojas' as const, rotulo: 'Lojas & Unidades', icone: Building2, contador: 5 },
+        { id: 'canais' as const, rotulo: 'Canais & Grupos', icone: MessageSquare },
+        { id: 'avisos' as const, rotulo: 'Comunicados Oficiais', icone: Megaphone, contador: avisos.length },
+        { id: 'parametros' as const, rotulo: 'Parâmetros & Rádio PTT', icone: Sliders },
+        { id: 'permissoes' as const, rotulo: 'Permissões de Tela', icone: ShieldCheck },
+        { id: 'auditoria' as const, rotulo: 'Auditoria & Logs', icone: FileText, contador: auditoria.length },
+        { id: 'banco' as const, rotulo: 'Banco de Dados', icone: Database },
+        { id: 'backup' as const, rotulo: 'Backup & Dados', icone: Download },
+      ].filter((tab) => podeUsar(`adm_${tab.id}`, colaboradorAtual)),
+    [colaboradorAtual, colaboradores.length, avisos.length, auditoria.length]
+  );
+
+  /**
+   * A aba que vale. Nunca uma que a pessoa não tenha — nem por estado
+   * antigo, nem por permissão retirada com a tela aberta.
+   */
+  const abaAtiva: AbaAdmin =
+    abasPermitidas.some((a) => a.id === abaEscolhida)
+      ? abaEscolhida
+      : abasPermitidas[0]?.id ?? 'colaboradores';
 
   // Aba Banco de Dados
   const [usoBanco, setUsoBanco] = useState<UsoDoBanco | null>(null);
@@ -599,18 +640,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
 
       {/* Menu Superior de Ferramentas / Abas ADM */}
       <div className="bg-[var(--c-superficie)] border-b border-[var(--c-borda)] px-4 sm:px-6 flex items-center gap-1 overflow-x-auto scrollbar-none flex-shrink-0">
-        {[
-          { id: 'colaboradores', rotulo: 'Colaboradores & Acessos', icone: Users, contador: colaboradores.length },
-          { id: 'planilha', rotulo: 'Subir Planilha Excel', icone: FileSpreadsheet },
-          { id: 'lojas', rotulo: 'Lojas & Unidades', icone: Building2, contador: 5 },
-          { id: 'canais', rotulo: 'Canais & Grupos', icone: MessageSquare },
-          { id: 'avisos', rotulo: 'Comunicados Oficiais', icone: Megaphone, contador: avisos.length },
-          { id: 'parametros', rotulo: 'Parâmetros & Rádio PTT', icone: Sliders },
-          { id: 'permissoes', rotulo: 'Permissões de Tela', icone: ShieldCheck },
-          { id: 'auditoria', rotulo: 'Auditoria & Logs', icone: FileText, contador: auditoria.length },
-          { id: 'banco', rotulo: 'Banco de Dados', icone: Database },
-          { id: 'backup', rotulo: 'Backup & Dados', icone: Download },
-        ].map((tab) => {
+        {abasPermitidas.map((tab) => {
           const Icone = tab.icone;
           const ativo = abaAtiva === tab.id;
           return (

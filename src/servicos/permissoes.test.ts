@@ -569,3 +569,63 @@ test('um gerente sem equipe abre numa vista que ele tem', async () => {
   expect(gestao).toContain('temEquipe: boolean;');
   expect(gestao).not.toContain('resumoDaEquipeDe');
 });
+
+/**
+ * AS ABAS DO ADM PASSAM PELO PAINEL DE PERMISSÕES.
+ *
+ * Achado no pente fino: eram dez abas fixas no meio do JSX. O catálogo
+ * listava `adm_*`, o painel de Permissões deixava ligar e desligar cada uma
+ * — e nenhuma tela consultava. Quem mexesse ali não mudava nada, e só
+ * descobriria testando.
+ *
+ * É o mesmo defeito que já tinha sido relatado uma vez, sobrevivendo na
+ * área ADM.
+ */
+test('cada aba do ADM consulta a permissao dela', async () => {
+  const painel = await Bun.file(
+    new URL('../componentes/PainelAdministrativo.tsx', import.meta.url)
+  ).text();
+
+  expect(painel).toContain('podeUsar(`adm_${tab.id}`, colaboradorAtual)');
+  expect(painel).toContain('abasPermitidas.map((tab)');
+
+  // A lista fixa no meio do JSX não pode voltar
+  expect(painel).not.toContain("{[\n          { id: 'colaboradores'");
+});
+
+test('a aba que vale nunca e uma que a pessoa nao tem', async () => {
+  const painel = await Bun.file(
+    new URL('../componentes/PainelAdministrativo.tsx', import.meta.url)
+  ).text();
+
+  /**
+   * Nem por estado antigo, nem por permissão retirada com a tela aberta. É
+   * a mesma proteção que o painel de RH já tinha — e que faltava aqui.
+   */
+  expect(painel).toContain('abasPermitidas.some((a) => a.id === abaEscolhida)');
+  expect(painel).toContain("abasPermitidas[0]?.id ?? 'colaboradores'");
+});
+
+test('toda aba do ADM tem ferramenta no catalogo, e vice-versa', async () => {
+  const painel = await Bun.file(
+    new URL('../componentes/PainelAdministrativo.tsx', import.meta.url)
+  ).text();
+  const catalogo = await Bun.file(
+    new URL('./ferramentas.ts', import.meta.url)
+  ).text();
+
+  /**
+   * Uma aba sem ferramenta no catálogo some para todo mundo (a permissão
+   * nunca é concedida); uma ferramenta sem aba é uma chave que o painel de
+   * Permissões oferece e que não liga nada. Os dois erros são silenciosos.
+   */
+  const inicio = painel.indexOf('const abasPermitidas');
+  const fim = painel.indexOf('const abaAtiva', inicio);
+  const lista = painel.slice(inicio, fim);
+
+  const naTela = [...lista.matchAll(/\{ id: '([a-z]+)' as const/g)].map((m) => m[1]).sort();
+  const noCatalogo = [...catalogo.matchAll(/chave: 'adm_([a-z]+)'/g)].map((m) => m[1]).sort();
+
+  expect(naTela.length).toBeGreaterThan(0);
+  expect(naTela).toEqual(noCatalogo);
+});
