@@ -974,7 +974,6 @@ export default function App() {
                 <PainelRede
                   colaboradorAtual={colaboradorAtual}
                   aoAbrirConversa={(id) => abrirJanela(id)}
-                  aoConversarCom={(colegaId) => lidarSelecionarColega(colegaId)}
                   aoAlternarParaGestor={() => setPainelAdminAberto(true)}
                 />
               </div>
@@ -1144,7 +1143,6 @@ export default function App() {
               <PainelRede
                 colaboradorAtual={colaboradorAtual}
                 aoAbrirConversa={(id) => abrirJanela(id)}
-                aoConversarCom={(colegaId) => lidarSelecionarColega(colegaId)}
                 aoAlternarParaGestor={() => setPainelAdminAberto(true)}
               />
             </div>

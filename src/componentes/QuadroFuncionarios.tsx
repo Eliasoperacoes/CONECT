@@ -25,8 +25,6 @@ import { FichaColaborador } from './FichaColaborador';
 interface PropsQuadroFuncionarios {
   colaboradorAtual: Colaborador;
   aoIniciarConversa: (colegaId: string) => void;
-  /** Abre a conversa com o colega. */
-  aoConversarCom: (colegaId: string) => void;
 }
 
 // Os filtros saem das listas oficiais de tipos.ts, nunca de uma cópia escrita
@@ -42,7 +40,6 @@ const SETORES_LISTA: (Setor | 'Todos')[] = ['Todos', ...SETORES];
 export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
   colaboradorAtual,
   aoIniciarConversa,
-  aoConversarCom,
 }) => {
   const [busca, setBusca] = useState('');
   const [lojaSelecionada, setLojaSelecionada] = useState<Loja | 'Todas'>('Todas');
@@ -413,22 +410,27 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                         <span>Editar cadastro</span>
                       </button>
                     )}
-                    <button
-                      type="button"
-                      id={`botao-conversar-funcionario-${colaborador.id}`}
-                      onClick={() => aoConversarCom(colaborador.id)}
-                      className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs"
-                      title="Abrir conversa"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      <span>Conversar</span>
-                    </button>
+                    {/*
+                      UM BOTÃO DE CONVERSAR, e não dois.
 
+                      Havia dois aqui, lado a lado, com o mesmo texto e o
+                      mesmo ícone — e os dois abriam a mesma conversa. O
+                      verde era o antigo "Chamar Rádio": quando o rádio saiu
+                      do sistema eu o renomeei para o que ele de fato fazia,
+                      e ele virou cópia do que já existia ao lado.
+
+                      Renomear mostrou a duplicata que o nome escondia. Ela
+                      estava ali desde antes — só que, chamando-se "Rádio",
+                      parecia outra coisa.
+
+                      Fica a largura inteira, como o "Editar cadastro": é a
+                      ação principal do cartão para quem não edita ficha.
+                    */}
                     <button
                       type="button"
                       id={`botao-conversa-funcionario-${colaborador.id}`}
                       onClick={() => aoIniciarConversa(colaborador.id)}
-                      className="px-2.5 py-1.5 rounded-lg bg-[var(--c-acento)] hover:brightness-110 text-[var(--c-sobre-acento)] font-semibold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs"
+                      className="col-span-2 px-2.5 py-1.5 rounded-lg bg-[var(--c-acento)] hover:brightness-110 text-[var(--c-sobre-acento)] font-semibold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs"
                       title="Abrir conversa por mensagem"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
@@ -487,25 +489,20 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                     {obterBadgePresenca(colaborador.presenca)}
                   </div>
 
+                  {/*
+                    Um botão só. Eram dois ícones idênticos, lado a lado,
+                    abrindo a mesma conversa — o da esquerda era o antigo
+                    rádio, e o nome escondia a duplicata.
+                  */}
                   {!ehProprio && (
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => aoConversarCom(colaborador.id)}
-                        className="p-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-xs"
-                        title="Abrir conversa"
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => aoIniciarConversa(colaborador.id)}
-                        className="p-2 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] hover:brightness-110 transition-colors shadow-xs"
-                        title="Abrir Conversa"
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => aoIniciarConversa(colaborador.id)}
+                      className="p-2 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] hover:brightness-110 transition-colors shadow-xs"
+                      title="Abrir conversa"
+                    >
+                      <MessageSquare className="w-4 h-4" />
+                    </button>
                   )}
                 </div>
               </div>
@@ -593,20 +590,12 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                 <span>Última atividade: {colaboradorModal.vistoPorUltimo}</span>
               </div>
 
+              {/*
+                "Conversar" e "Mensagem" eram a MESMA coisa, em dois botões do
+                mesmo tamanho. Ficou um, na largura inteira.
+              */}
               {colaboradorModal.id !== colaboradorAtual.id && (
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const id = colaboradorModal.id;
-                      setColaboradorModal(null);
-                      aoConversarCom(id);
-                    }}
-                    className="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
-                  >
-                    <MessageSquare className="w-4 h-4" /> Conversar
-                  </button>
-
+                <div className="grid grid-cols-1 gap-3 pt-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -616,7 +605,7 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                     }}
                     className="py-2.5 rounded-xl bg-[var(--c-acento)] hover:brightness-110 text-[var(--c-sobre-acento)] font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
                   >
-                    <MessageSquare className="w-4 h-4" /> Mensagem
+                    <MessageSquare className="w-4 h-4" /> Conversar
                   </button>
                 </div>
               )}

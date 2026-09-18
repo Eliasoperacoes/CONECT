@@ -42,8 +42,6 @@ import { PainelGestao } from './PainelGestao';
 interface PropsPainelRede {
   colaboradorAtual: Colaborador;
   aoAbrirConversa: (conversaId: string) => void;
-  /** Abre a conversa com o colega. */
-  aoConversarCom: (colegaId: string) => void;
   aoAlternarParaGestor?: () => void;
 }
 
@@ -59,7 +57,6 @@ type SubAbaPainel =
 export const PainelRede: React.FC<PropsPainelRede> = ({
   colaboradorAtual,
   aoAbrirConversa,
-  aoConversarCom,
   aoAlternarParaGestor,
 }) => {
   const [subAbaEscolhida, setSubAbaAtiva] = useState<SubAbaPainel>('visao_geral');
@@ -678,7 +675,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
           <QuadroFuncionarios
             colaboradorAtual={colaboradorAtual}
             aoIniciarConversa={lidarIniciarConversaColega}
-            aoConversarCom={aoConversarCom}
           />
         )}
 
