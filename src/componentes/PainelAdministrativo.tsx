@@ -234,6 +234,28 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     if (abaAtiva === 'banco' && usandoNuvem()) carregarUsoDoBanco();
   }, [abaAtiva]);
 
+  /**
+   * Liga e desliga a faixa de teste para a rede inteira.
+   *
+   * Grava no banco, e não no aparelho: a faixa precisa aparecer para as 88
+   * pessoas, não só para quem clicou no interruptor.
+   */
+  const alternarPeriodoDeTeste = async (ligado: boolean) => {
+    const atualizada = { ...configuracoes, emPeriodoDeTeste: ligado };
+    setConfiguracoes(atualizada);
+
+    const res = await bancoDados.salvarConfiguracoes(atualizada);
+    exibirToast(
+      res.sucesso
+        ? ligado
+          ? 'Período de teste ligado. A faixa aparece para toda a rede.'
+          : 'Período de teste desligado.'
+        : res.erro || 'Falha ao salvar.',
+      !res.sucesso
+    );
+    if (!res.sucesso) setConfiguracoes(bancoDados.obterConfiguracoes());
+  };
+
   const salvarRegraDeLimpeza = async (meses: number) => {
     const atualizada = { ...configuracoes, mesesHistoricoConversas: meses };
     setConfiguracoes(atualizada);
@@ -1486,6 +1508,50 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
               </div>
 
               {/* A regra de guarda */}
+              {/*
+                O PERÍODO DE TESTE fica junto da guarda do histórico porque
+                as duas são regras da REDE INTEIRA, ligadas aqui e valendo
+                para as 88 pessoas. Uma tela própria para um interruptor
+                seria mais um lugar para procurar.
+              */}
+              <div className="bg-[var(--c-superficie)] p-5 rounded-2xl border border-[var(--c-borda)] shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-bold text-[var(--c-texto)]">
+                      Período de teste
+                    </h2>
+                    <p className="text-xs text-[var(--c-texto-3)] leading-relaxed">
+                      Mostra uma faixa no alto da tela de todo mundo dizendo que o sistema está
+                      em teste, com um botão para avisar você. Quem encontra um defeito e não
+                      sabe que é teste conclui que é assim mesmo — e o defeito nunca chega até
+                      aqui. Desligue quando os testes terminarem.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    id="botao-periodo-de-teste"
+                    onClick={() => alternarPeriodoDeTeste(!configuracoes.emPeriodoDeTeste)}
+                    className={`flex-shrink-0 w-12 h-7 rounded-full p-1 transition-colors cursor-pointer ${
+                      configuracoes.emPeriodoDeTeste
+                        ? 'bg-amber-500'
+                        : 'bg-[var(--c-borda-forte)]'
+                    }`}
+                    aria-label={
+                      configuracoes.emPeriodoDeTeste
+                        ? 'Desligar o período de teste'
+                        : 'Ligar o período de teste'
+                    }
+                  >
+                    <span
+                      className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                        configuracoes.emPeriodoDeTeste ? 'translate-x-5' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
               <div className="bg-[var(--c-superficie)] p-5 rounded-2xl border border-[var(--c-borda)] shadow-sm space-y-4">
                 <div>
                   <h2 className="text-sm font-bold text-[var(--c-texto)]">

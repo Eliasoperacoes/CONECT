@@ -58,6 +58,7 @@ import { PainelAdministrativo } from './componentes/PainelAdministrativo';
 import { AbaPonto } from './componentes/AbaPonto';
 import { JanelaChat } from './componentes/JanelaChat';
 import { ConversasEmEspera } from './componentes/ConversasEmEspera';
+import { FaixaDeTeste } from './componentes/FaixaDeTeste';
 import { PainelConversas } from './componentes/PainelConversas';
 import { podeUsar } from './servicos/permissoes';
 import {
@@ -729,6 +730,24 @@ export default function App() {
   return (
     <div className="w-full h-[100dvh] flex flex-col bg-[var(--c-canvas)] text-[var(--c-texto)] overflow-hidden">
       <IndicadorOffline />
+
+      {/*
+        A FAIXA DE TESTE, ligada pelo painel ADM.
+        
+        "Avisar" abre a conversa com quem cuida do sistema. Aviso sem
+        caminho de volta é só um aviso: a pessoa lê, concorda, e não sabe
+        para onde levar o defeito que acabou de encontrar.
+      */}
+      {bancoDados.obterConfiguracoes().emPeriodoDeTeste && (
+        <FaixaDeTeste
+          aoAvisarProblema={() => {
+            const cuidador = bancoDados
+              .obterColaboradores()
+              .find((c) => c.nivel >= NIVEL_TI && c.id !== colaboradorAtual.id);
+            if (cuidador) lidarSelecionarColega(cuidador.id);
+          }}
+        />
+      )}
 
       {/* Topo Geral da Aplicação Principal */}
       <header className="px-4 py-2.5 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] flex items-center justify-between flex-shrink-0 z-10">

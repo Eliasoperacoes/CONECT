@@ -479,6 +479,14 @@ export interface ConfiguracaoSistema {
   mesesHistoricoConversas: number;
   /** Quando a limpeza rodou pela ultima vez. */
   ultimaLimpezaConversas?: string;
+  /**
+   * Periodo de teste: a rede esta experimentando o sistema.
+   *
+   * Existe para quem usa saber que pode reclamar. Sem o aviso, a pessoa
+   * encontra um defeito, conclui que o sistema e assim mesmo e volta para o
+   * grupo do WhatsApp — e ninguem fica sabendo do defeito.
+   */
+  emPeriodoDeTeste?: boolean;
   modoManutencao: boolean;
   permitirCriacaoGruposPorOperadores: boolean;
 }
