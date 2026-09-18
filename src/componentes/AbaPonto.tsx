@@ -102,6 +102,18 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
     [colaboradorAtual.id, hoje, versaoDados]
   );
 
+  /**
+   * O CICLO DA SEMANA, que é a unidade do banco de horas.
+   *
+   * Sem isto a pessoa batia o ponto e não sabia como estava: via o dia
+   * (que não decide nada) e o acumulado do mês (que não diz o que fazer
+   * hoje). A pergunta dela é "estou em dia nesta semana?".
+   */
+  const semana = useMemo(
+    () => servicoPonto.apurarSemana(colaboradorAtual.id, dataDeHoje()),
+    [colaboradorAtual.id, versaoDados]
+  );
+
   const saldoAcumulado = useMemo(
     () => servicoPonto.obterSaldoAcumulado(colaboradorAtual.id),
     [colaboradorAtual.id, versaoDados]
@@ -231,15 +243,23 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
                 {formatarMinutos(jornadaHoje.minutosTrabalhados)}
               </strong>
             </span>
-            {jornadaHoje.minutosTrabalhados > 0 && (
-              <span
-                className={`font-bold tabular-nums ${
-                  jornadaHoje.saldoMinutos >= 0 ? 'text-emerald-600' : 'text-red-600'
-                }`}
-              >
-                {formatarSaldo(jornadaHoje.saldoMinutos)}
-              </span>
-            )}
+            {/*
+              O SALDO DO DIA SAIU DAQUI.
+              
+              Ele ficava vermelho a manhã inteira — a pessoa tinha trabalhado
+              duas horas de oito, e a tela dizia "-6h00" como se fosse
+              dívida. Não é: o dia só fecha à tarde, e o que decide é a
+              SEMANA. Mostrar um número que não decide nada, em vermelho, só
+              ensina a desconfiar do sistema.
+              
+              O saldo que importa está logo abaixo, no cartão do ciclo.
+            */}
+            <span className="text-[var(--c-texto-3)] font-medium">
+              Previsto hoje:{' '}
+              <strong className="text-[var(--c-texto)] tabular-nums">
+                {formatarMinutos(jornadaHoje.minutosPrevistos)}
+              </strong>
+            </span>
           </div>
         </div>
 
@@ -306,6 +326,65 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
               {formatarSaldo(saldoAcumulado)}
             </span>
           </div>
+        </div>
+
+        {/*
+          A SEMANA, DENTRO DO MESMO CARTÃO.
+
+          Um segundo cartão diria a mesma coisa em dois lugares — o acumulado
+          é a soma das semanas. Aqui é uma linha a mais no cartão que já
+          existe: o total em cima, e como vai a semana corrente embaixo.
+
+          É a pergunta que a pessoa faz ao bater o ponto: "estou em dia
+          nesta semana?". O acumulado do mês não responde isso.
+        */}
+        <div className="mt-2 px-1">
+          <div className="flex items-baseline justify-between gap-2 mb-1.5">
+            <span className="text-[11px] font-bold text-[var(--c-texto-3)] uppercase tracking-wider">
+              Nesta semana
+            </span>
+            <span className="text-xs text-[var(--c-texto-2)] tabular-nums">
+              <strong className="text-[var(--c-texto)]">
+                {formatarMinutos(semana.minutosTrabalhados)}
+              </strong>{' '}
+              de {formatarMinutos(semana.minutosPrevistos)}
+            </span>
+          </div>
+
+          <div className="h-2 rounded-full bg-[var(--c-superficie-2)] overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                semana.saldoMinutos >= 0 ? 'bg-emerald-500' : 'bg-[var(--c-acento)]'
+              }`}
+              style={{
+                width: `${
+                  semana.minutosPrevistos > 0
+                    ? Math.min(
+                        Math.round(
+                          (semana.minutosTrabalhados / semana.minutosPrevistos) * 100
+                        ),
+                        100
+                      )
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+
+          {/*
+            Falta de BATIDA é diferente de falta de hora: a primeira a pessoa
+            resolve sozinha, avisando o responsável; a segunda se resolve
+            trabalhando. Dizer as duas como "débito" faria ela tentar
+            compensar uma hora que na verdade ela trabalhou e esqueceu de
+            registrar.
+          */}
+          {semana.diasComPendencia.length > 0 && (
+            <span className="block mt-1.5 text-[11px] text-amber-600 font-semibold">
+              {semana.diasComPendencia.length}{' '}
+              {semana.diasComPendencia.length === 1 ? 'dia' : 'dias'} com batida faltando
+              — avise seu responsável
+            </span>
+          )}
         </div>
       </div>
 

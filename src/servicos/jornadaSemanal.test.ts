@@ -339,3 +339,73 @@ test('a ficha deixa marcar o estagiario que VEM ao sabado', async () => {
   expect(modal).toContain('trabalhaSabado: form.trabalhaSabado');
   expect(modal).toContain('temIntervalo: form.temIntervalo');
 });
+
+/**
+ * O AVISO DE PENDÊNCIA JÁ EXISTIA — E NUNCA DISPARAVA.
+ *
+ * Dois bugs se protegendo:
+ *
+ *  - `levantarDiasIncompletos` só rodava DENTRO da aba "Aprovar jornadas".
+ *    A pendência só nascia se o responsável abrisse exatamente a tela que a
+ *    lista — e o aviso que deveria chamá-lo até lá depende dela existir;
+ *  - o aviso ficava calado na primeira passada, para não dar susto com
+ *    coisa antiga. Só que quem abre o sistema de manhã com cinco jornadas
+ *    paradas não era avisado de nenhuma.
+ *
+ * Na prática, o aviso existia para quem já estava com a tela aberta quando
+ * a pendência nascesse. Ou seja: ninguém.
+ */
+test('o levantamento nao depende de alguem abrir a aba certa', async () => {
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+  expect(app).toContain('servicoPonto.levantarDiasIncompletos().catch(() => {})');
+
+  // E a tela continua levantando: quem abre a fila quer o quadro do momento
+  const tela = await Bun.file(
+    new URL('../componentes/AprovacaoJornada.tsx', import.meta.url)
+  ).text();
+  expect(tela).toContain('void servicoPonto.levantarDiasIncompletos()');
+});
+
+test('o aviso fala na abertura quando ha o que decidir', async () => {
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+
+  expect(app).toContain('const primeiraPassada = antes === null');
+  expect(app).toContain('if (primeiraPassada && total === 0) return');
+  expect(app).toContain('if (!primeiraPassada && total <= antes) return');
+
+  // Uma vez na abertura, e depois só quando aumenta: o mínimo para saber,
+  // e pouco o bastante para não virar barulho
+  expect(app).toContain('const novas = primeiraPassada ? total : total - antes');
+});
+
+/**
+ * O SALDO DO DIA SAIU DA TELA DO COLABORADOR.
+ *
+ * Ele ficava vermelho a manhã inteira: a pessoa tinha trabalhado duas horas
+ * de oito e a tela dizia "-6h00" como se fosse dívida. Não é — o dia só
+ * fecha à tarde, e quem decide é a SEMANA.
+ */
+test('a tela do colaborador mostra a SEMANA, e nao o debito do dia', async () => {
+  const aba = await Bun.file(
+    new URL('../componentes/AbaPonto.tsx', import.meta.url)
+  ).text();
+
+  expect(aba).toContain('servicoPonto.apurarSemana(colaboradorAtual.id, dataDeHoje())');
+  expect(aba).toContain('Nesta semana');
+  expect(aba).not.toContain('formatarSaldo(jornadaHoje.saldoMinutos)');
+});
+
+test('falta de BATIDA e dita como batida, nao como debito de hora', async () => {
+  const aba = await Bun.file(
+    new URL('../componentes/AbaPonto.tsx', import.meta.url)
+  ).text();
+
+  /**
+   * A primeira a pessoa resolve avisando o responsável; a segunda se
+   * resolve trabalhando. Dizer as duas como "débito" faria ela tentar
+   * compensar uma hora que na verdade trabalhou e esqueceu de registrar.
+   */
+  expect(aba).toContain('com batida faltando');
+  expect(aba).toContain('avise seu responsável');
+  expect(aba).toContain('semana.diasComPendencia.length > 0');
+});

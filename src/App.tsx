@@ -344,17 +344,30 @@ export default function App() {
       const antes = refPendenciasVistas.current;
       refPendenciasVistas.current = total;
 
-      // Primeira passada só registra o ponto de partida: avisar na abertura
-      // sobre coisa antiga seria dar susto por nada
-      if (antes === null || total <= antes) return;
+      /**
+       * A PRIMEIRA PASSADA TAMBÉM AVISA, quando há o que decidir.
+       *
+       * Ela ficava calada de propósito, para não dar susto com coisa
+       * antiga. Só que o efeito prático era outro: quem abria o sistema de
+       * manhã com cinco jornadas paradas não era avisado de nenhuma — o
+       * aviso só existia para quem já estava com a tela aberta quando a
+       * sexta chegasse. Na prática, ninguém.
+       *
+       * Uma vez na abertura, e depois só quando aumenta. É o mínimo para o
+       * responsável saber que há algo esperando por ele, e pouco o bastante
+       * para não virar barulho.
+       */
+      const primeiraPassada = antes === null;
+      if (primeiraPassada && total === 0) return;
+      if (!primeiraPassada && total <= antes) return;
 
-      const novas = total - antes;
+      const novas = primeiraPassada ? total : total - antes;
       mostrarAvisoDeMensagem({
         titulo:
           novas === 1
             ? 'Uma jornada aguarda sua decisão'
             : `${novas} jornadas aguardam você`,
-        corpo: 'Abra Gerenciar e decida em Aprovar Jornadas.',
+        corpo: 'Abra Equipe & Ponto e decida em Aprovar jornadas.',
         conversaId: 'fila-de-aprovacao',
       });
       tocarAvisoDeMensagem();
@@ -474,6 +487,20 @@ export default function App() {
          * ela seria segurar a abertura do sistema por manutenção.
          */
         bancoDados.aplicarRegraDeLimpeza().catch(() => {});
+
+        /**
+         * O DIA INCOMPLETO PRECISA EXISTIR ANTES DE ALGUÉM PROCURAR POR ELE.
+         *
+         * Este levantamento só rodava DENTRO da aba "Aprovar jornadas". Ou
+         * seja: a pendência só nascia se o responsável abrisse exatamente a
+         * tela que a lista — e o aviso que deveria chamá-lo até lá depende
+         * dela existir. Um esperava o outro, e nenhum acontecia.
+         *
+         * Aqui ele roda na abertura, para quem tem gente sob a
+         * responsabilidade. A tela continua levantando também: quem abre a
+         * fila quer o quadro do momento, não o de quando o sistema abriu.
+         */
+        servicoPonto.levantarDiasIncompletos().catch(() => {});
       }
       setVerificandoSessao(false);
     })();
