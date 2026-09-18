@@ -345,7 +345,9 @@ test('colaborador comum não ajusta nem remove marcação', async () => {
     hora: '08:00', justificativa: 'tentativa',
   });
   expect(r1.sucesso).toBe(false);
-  expect(r1.erro).toContain('Apenas RH');
+  // Ana não responde por ninguém — nem por si mesma. Corrigir o próprio
+  // ponto seria o fim do controle.
+  expect(r1.erro).toContain('quem responde por esta pessoa');
 
   const r2 = await servicoPonto.removerMarcacao('r1', 'tentativa');
   expect(r2.sucesso).toBe(false);
@@ -930,9 +932,18 @@ test('VER segue a mesma regra de APROVAR — inclusive quando o organograma muda
   expect(servicoPonto.obterColaboradoresVisiveis().map((c) => c.id)).toContain('a');
 });
 
-test('GERENTE NÃO CORRIGE MARCAÇÃO — isso continua sendo do RH', async () => {
-  // Marcação é registro trabalhista. O gerente vê e aprova; alterar o que
-  // ficou gravado é do RH, com justificativa e autoria.
+test('O RESPONSÁVEL CORRIGE A MARCAÇÃO DE QUEM RESPONDE POR ELE', async () => {
+  /**
+   * A regra MUDOU, e de propósito.
+   *
+   * Antes corrigir era só do RH, e isso deixava a fila de aprovação sem
+   * saída: o responsável via o dia fechado errado, sabia o horário certo,
+   * e só podia aprovar o errado ou recusar — e recusar não conserta o
+   * espelho de ninguém.
+   *
+   * O que segura no lugar da trava antiga está nos dois testes abaixo: o
+   * alcance é o da cadeia, e a correção nasce com autor e motivo.
+   */
   const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência' };
   const PEDRO_EQ = {
     ...ELIAS, id: 'p', nome: 'Pedro', login: 'p', nivel: 1,
@@ -941,20 +952,51 @@ test('GERENTE NÃO CORRIGE MARCAÇÃO — isso continua sendo do RH', async () =
   equipe = [GER, PEDRO_EQ];
   colaboradorLogado = GER;
 
-  // Ele responde pela pessoa...
   expect(servicoPonto.podeDecidirSobre(PEDRO_EQ as any)).toBe(true);
 
-  // ...e mesmo assim não altera a marcação dela
   const res = await servicoPonto.ajustarMarcacao({
     colaboradorId: PEDRO_EQ.id,
     data: '2026-09-16',
     tipo: 'saida',
     hora: '18:00',
-    justificativa: 'esqueceu de bater',
+    justificativa: 'saiu para entrega em Leme e não bateu na volta',
+  });
+
+  expect(res.sucesso).toBe(true);
+  expect(bancoRegistros).toHaveLength(1);
+
+  // A correção do responsável NÃO se disfarça de batida, e nem de correção
+  // do RH: o espelho precisa poder dizer quem escreveu aquilo
+  expect(bancoRegistros[0].metodo).toBe('ajuste_lider');
+  expect(bancoRegistros[0].ajustadoPorNome).toBe('Gerente');
+  expect(bancoRegistros[0].justificativa).toContain('entrega em Leme');
+});
+
+test('CORRIGIR SEGUE A CADEIA — fora dela, não corrige', async () => {
+  /**
+   * É o que substitui a trava antiga. Sem isto, soltar a correção para
+   * "líder e gerente" viraria qualquer líder mexendo no ponto de qualquer
+   * pessoa da rede.
+   */
+  const GER = { ...ELIAS, id: 'g', nome: 'Gerente', login: 'g', nivel: 3, setor: 'Gerência', loja: 'Pirassununga' };
+  const DE_OUTRA = {
+    ...ELIAS, id: 'x', nome: 'Outra Loja', login: 'x', nivel: 1,
+    setor: 'Balcão', loja: 'Leme', responsavelId: 'chefe-de-leme',
+  };
+  equipe = [GER, DE_OUTRA];
+  colaboradorLogado = GER;
+
+  expect(servicoPonto.podeDecidirSobre(DE_OUTRA as any)).toBe(false);
+
+  const res = await servicoPonto.ajustarMarcacao({
+    colaboradorId: DE_OUTRA.id,
+    data: '2026-09-16',
+    tipo: 'saida',
+    hora: '18:00',
+    justificativa: 'nem é da minha equipe',
   });
 
   expect(res.sucesso).toBe(false);
-  expect(res.erro).toContain('RH');
   expect(bancoRegistros).toHaveLength(0);
 });
 
@@ -1544,4 +1586,25 @@ test('ausência PENDENTE não zera nada', async () => {
   ).toBe(240);
 
   armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('O ESPELHO MARCA AS DUAS CORREÇÕES, NÃO SÓ A DO RH', async () => {
+  /**
+   * O destaque de "corrigido" no espelho é o que denuncia marcação escrita
+   * por alguém em vez de batida pela pessoa. Ele é a contrapartida de ter
+   * soltado a correção para o responsável.
+   *
+   * Se `ehMarcacaoCorrigida` voltar a olhar só `ajuste_rh`, a correção do
+   * líder passa a aparecer no documento como batida normal — a perda é
+   * silenciosa, que é o pior tipo.
+   */
+  const { ehMarcacaoCorrigida } = await import('../tipos');
+
+  expect(ehMarcacaoCorrigida('ajuste_rh')).toBe(true);
+  expect(ehMarcacaoCorrigida('ajuste_lider')).toBe(true);
+
+  // Batida de verdade não pode ser marcada como corrigida
+  expect(ehMarcacaoCorrigida('qrcode')).toBe(false);
+  expect(ehMarcacaoCorrigida('codigo_manual')).toBe(false);
+  expect(ehMarcacaoCorrigida(undefined)).toBe(false);
 });

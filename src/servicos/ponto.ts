@@ -1535,13 +1535,29 @@ class ServicoPonto {
     justificativa: string;
   }): Promise<{ sucesso: boolean; registro?: RegistroPonto; erro?: string }> {
     const atual = bancoDados.obterColaboradorAtual();
-    if (!this.podeAcessarPainelRH(atual)) {
-      return { sucesso: false, erro: 'Apenas RH e Administrador podem ajustar marcações.' };
-    }
 
     const colaborador = bancoDados.obterColaboradorPorId(dados.colaboradorId);
     if (!colaborador) {
       return { sucesso: false, erro: 'Colaborador não encontrado.' };
+    }
+
+    /**
+     * QUEM CORRIGE: o RH, e quem responde pela pessoa.
+     *
+     * Era só do RH. Passou a valer também para o líder e o gerente porque a
+     * fila de aprovação ficava sem saída: o responsável via o dia fechado
+     * errado, sabia o horário certo, e só podia aprovar o errado ou recusar.
+     *
+     * O alcance é o MESMO do aprovar — `podeDecidirSobre`, que é a cadeia do
+     * organograma. Uma segunda regra aqui divergiria da fila, e alguém
+     * acabaria podendo corrigir o dia de quem não aprova.
+     */
+    const ehDaCadeia = this.podeDecidirSobre(colaborador);
+    if (!this.podeAcessarPainelRH(atual) && !ehDaCadeia) {
+      return {
+        sucesso: false,
+        erro: 'Corrigir marcação é de quem responde por esta pessoa, ou do RH.',
+      };
     }
     if (!dados.justificativa.trim()) {
       return { sucesso: false, erro: 'Informe a justificativa do ajuste.' };
@@ -1569,6 +1585,19 @@ class ServicoPonto {
       (r) => r.colaboradorId === dados.colaboradorId && r.data === dados.data && r.tipo === dados.tipo
     );
 
+    /**
+     * O horário que estava lá antes.
+     *
+     * A correção SOBRESCREVE a batida — foi a forma escolhida, e o espelho
+     * passa a mostrar o horário certo. Só que aí o que a pessoa bateu não
+     * fica em lugar nenhum, e ponto é registro trabalhista.
+     *
+     * Guardar na Auditoria não muda o documento e deixa o original
+     * recuperável. Precisa ser lido AGORA: daqui a três linhas a posição já
+     * foi reescrita.
+     */
+    const horaAnterior = indice !== -1 ? registros[indice].horaFormatada : null;
+
     const registroAjustado: RegistroPonto = {
       id: indice !== -1 ? registros[indice].id : `ponto-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       colaboradorId: dados.colaboradorId,
@@ -1576,7 +1605,10 @@ class ServicoPonto {
       tipo: dados.tipo,
       horario: horario.toISOString(),
       horaFormatada: `${String(horas).padStart(2, '0')}:${String(minutos).padStart(2, '0')}`,
-      metodo: 'ajuste_rh',
+      // O espelho precisa dizer a verdade sobre quem escreveu a marcação:
+      // "corrigido pelo RH" e "corrigido pelo responsável" não são a mesma
+      // coisa na hora de conferir o documento
+      metodo: this.podeAcessarPainelRH(atual) ? 'ajuste_rh' : 'ajuste_lider',
       loja: indice !== -1 ? registros[indice].loja : colaborador.loja,
       criadoEm: indice !== -1 ? registros[indice].criadoEm : new Date().toISOString(),
       ajustadoPorId: atual.id,
@@ -1608,7 +1640,9 @@ class ServicoPonto {
     bancoDados.registrarAuditoria(
       indice !== -1 ? 'Correção de Ponto' : 'Lançamento Manual de Ponto',
       'seguranca',
-      `${atual.nome} ${indice !== -1 ? 'corrigiu' : 'lançou'} ${ROTULO_MARCACAO[dados.tipo].toLowerCase()} de ${colaborador.nome} em ${formatarDataBR(dados.data)} para ${registroAjustado.horaFormatada}. Motivo: ${registroAjustado.justificativa}`
+      `${atual.nome} ${indice !== -1 ? 'corrigiu' : 'lançou'} ${ROTULO_MARCACAO[dados.tipo].toLowerCase()} de ${colaborador.nome} em ${formatarDataBR(dados.data)}${
+        horaAnterior ? ` de ${horaAnterior}` : ''
+      } para ${registroAjustado.horaFormatada}. Motivo: ${registroAjustado.justificativa}`
     );
     this.notificar();
     return { sucesso: true, registro: registroAjustado };

@@ -567,7 +567,19 @@ export const ROTULO_MARCACAO: Record<TipoMarcacao, string> = {
 };
 
 /** Como a marcação foi comprovada. */
-export type MetodoMarcacao = 'qrcode' | 'codigo_manual' | 'ajuste_rh';
+export type MetodoMarcacao = 'qrcode' | 'codigo_manual' | 'ajuste_rh' | 'ajuste_lider';
+
+/**
+ * A marcação foi escrita por alguém, e não batida pela pessoa?
+ *
+ * Existe porque agora há DOIS tipos de correção — a do RH e a do
+ * líder/gerente na fila de aprovação. Toda tela que destaca marcação
+ * corrigida pergunta aqui; comparar com `'ajuste_rh'` na mão faria a
+ * correção do líder passar despercebida no espelho, que é exatamente o
+ * que o destaque existe para evitar.
+ */
+export const ehMarcacaoCorrigida = (metodo?: MetodoMarcacao): boolean =>
+  metodo === 'ajuste_rh' || metodo === 'ajuste_lider';
 
 export interface RegistroPonto {
   id: string;

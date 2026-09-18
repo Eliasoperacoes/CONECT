@@ -43,6 +43,7 @@ import {
   ROTULO_MARCACAO,
   CARGA_HORARIA_PADRAO_MINUTOS,
   INFORMACOES_LOJAS,
+  ehMarcacaoCorrigida,
 } from '../tipos';
 import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
@@ -998,15 +999,15 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                                       })
                                     }
                                     title={
-                                      reg?.metodo === 'ajuste_rh'
-                                        ? `Ajustado por ${reg.ajustadoPorNome}: ${reg.justificativa}`
+                                      reg && ehMarcacaoCorrigida(reg.metodo)
+                                        ? `Corrigido por ${reg.ajustadoPorNome}: ${reg.justificativa}`
                                         : podeCorrigirMarcacao
                                         ? 'Clique para lançar ou corrigir'
-                                        : 'Corrigir marcação é do RH. Avise o RH pelo chat.'
+                                        : 'Corrigir marcação é de quem responde por esta pessoa, ou do RH.'
                                     }
                                     className={`font-mono tabular-nums px-1.5 py-0.5 rounded hover:bg-[var(--c-acento-suave)] transition-colors ${
                                       reg
-                                        ? reg.metodo === 'ajuste_rh'
+                                        ? ehMarcacaoCorrigida(reg.metodo)
                                           ? 'text-amber-600 font-bold'
                                           : 'text-[var(--c-texto)]'
                                         : 'text-[var(--c-texto-3)]'
@@ -1051,7 +1052,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                                 {ORDEM_MARCACOES.map((tipo) => {
                                   const reg = jornada.marcacoes[tipo];
                                   if (!reg) return null;
-                                  const ehAjuste = reg.metodo === 'ajuste_rh';
+                                  const ehAjuste = ehMarcacaoCorrigida(reg.metodo);
                                   return (
                                     <span
                                       key={tipo}

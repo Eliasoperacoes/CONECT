@@ -6,15 +6,19 @@
  *   colaborador bate o ponto → LÍDER OU GERENTE DECIDE → banco de horas
  *
  * A fila traz só quem a pessoa responde: o líder vê o setor dele, o gerente
- * vê a loja dele, o RH vê a rede. Ninguém aparece na própria fila — quem
- * decide sobre a hora do líder é o gerente.
+ * vê a loja dele, o RH vê a rede. Quem responde por alguém vê também os
+ * próprios dias — quem não responde por ninguém depende do responsável.
  *
  * Aprovar é um clique; recusar exige motivo. A diferença é proposital: a
  * recusa tira horas de alguém e a pessoa vai querer saber por quê.
+ *
+ * E há o terceiro caminho, que é o que faz a fila não ter beco sem saída:
+ * CORRIGIR. Antes dele, o responsável que via o dia fechado errado só
+ * podia aprovar o errado ou recusar — e recusar não conserta o espelho.
  */
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, Clock, AlertCircle, Inbox, Paperclip } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, AlertCircle, Inbox, Paperclip, Pencil } from 'lucide-react';
 import {
   AjusteJornada,
   Colaborador,
@@ -31,6 +35,7 @@ import { servicoPonto, formatarMinutos, formatarDataBR, formatarDiaCurto } from 
 import { FotoPresenca } from './FotoPresenca';
 import { resolverCaminho } from '../servicos/anexos';
 import { resumoDaFicha } from '../servicos/fichaColaborador';
+import { ModalCorrigirJornada } from './ModalCorrigirJornada';
 
 interface PropsAprovacaoJornada {
   colaboradorAtual: Colaborador;
@@ -39,6 +44,11 @@ interface PropsAprovacaoJornada {
 export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorAtual }) => {
   const [versao, setVersao] = useState(0);
   const [recusando, setRecusando] = useState<AjusteJornada | null>(null);
+  /** Quem e qual dia estão sendo corrigidos antes da decisão. */
+  const [corrigindo, setCorrigindo] = useState<{
+    colaborador: Colaborador;
+    data: string;
+  } | null>(null);
   const [motivo, setMotivo] = useState('');
   const [emAndamento, setEmAndamento] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; erro: boolean } | null>(null);
@@ -267,6 +277,22 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
 
                 {!ehDiaSemFechar && (
                 <div className="flex items-center gap-2 flex-shrink-0">
+                  {/*
+                    Corrigir antes de decidir.
+                    Sem isto o responsável via o dia fechado errado, sabia o
+                    horário certo, e só podia aprovar o errado ou recusar —
+                    e recusar não conserta o espelho.
+                  */}
+                  <button
+                    type="button"
+                    disabled={emAndamento === ajuste.id}
+                    onClick={() => setCorrigindo({ colaborador, data: ajuste.data })}
+                    className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-[var(--c-acento)] hover:border-[var(--c-acento)]/30 disabled:opacity-50 transition-colors cursor-pointer flex items-center gap-1.5"
+                    title="Corrigir o horário batido e reapurar o dia"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    Editar
+                  </button>
                   <button
                     type="button"
                     disabled={emAndamento === ajuste.id}
@@ -495,6 +521,19 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
         Quem responde por alguém decide também a própria jornada — por isso os seus dias
         aparecem aqui junto com os da equipe.
       </p>
+
+      {corrigindo && (
+        <ModalCorrigirJornada
+          colaborador={corrigindo.colaborador}
+          data={corrigindo.data}
+          aoFechar={() => setCorrigindo(null)}
+          aoSalvar={(texto, ehErro) => {
+            mostrar(texto, ehErro);
+            // O dia foi reapurado: a fila precisa refletir o número novo
+            setVersao((v) => v + 1);
+          }}
+        />
+      )}
     </div>
   );
 };

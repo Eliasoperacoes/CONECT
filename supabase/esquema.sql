@@ -182,7 +182,7 @@ create table if not exists public.registros_ponto (
   tipo                text not null check (tipo in ('entrada', 'saida_almoco', 'retorno_almoco', 'saida')),
   horario             timestamptz not null,
   hora_formatada      text not null,
-  metodo              text not null check (metodo in ('qrcode', 'codigo_manual', 'ajuste_rh')),
+  metodo              text not null check (metodo in ('qrcode', 'codigo_manual', 'ajuste_rh', 'ajuste_lider')),
   loja                text not null,
   ajustado_por_id     text references public.colaboradores(id) on delete set null,
   ajustado_por_nome   text,
@@ -260,6 +260,116 @@ returns boolean language sql stable security definer set search_path = public as
     select 1 from public.participantes
     where conversa_id = alvo and colaborador_id = public.meu_colaborador_id()
   );
+$$;
+
+-- As duas funções abaixo moram AQUI, e não junto da tabela de jornada,
+-- porque as regras de registros_ponto — bem acima no arquivo — passaram a
+-- citá-las. Função citada antes de existir faz o create policy falhar, e
+-- só numa base nova, que é o pior lugar para descobrir.
+/**
+ * Posso decidir sobre a jornada desta pessoa?
+ *
+ * A regra da casa: ninguém aprova a própria hora, e a decisão sobe um
+ * degrau. O líder responde pelo SETOR dele — inclusive em outras lojas,
+ * porque a liderança de Compras atua nas cinco. O gerente responde pela
+ * LOJA dele, de ponta a ponta, e é ele quem decide sobre os líderes.
+ * RH, Diretoria e TI decidem em qualquer caso, porque é deles o controle do
+ * banco de horas.
+ */
+/**
+ * Subo a cadeia do organograma a partir de `alvo` até o topo e digo se
+ * estou nela.
+ *
+ * A alçada vale para a cadeia INTEIRA, não só para o responsável direto: se
+ * o balconista responde ao líder e o líder responde ao gerente, o gerente
+ * também responde pelo balconista.
+ *
+ * O `depth < 20` é trava contra ciclo. A tela impede criar um (A responde a
+ * B que responde a A), mas se um aparecer no dado, a recursão sem limite
+ * travaria a consulta — e com ela o banco de horas da rede inteira.
+ */
+create or replace function public.estou_na_cadeia_de(alvo text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with recursive acima as (
+    select c.responsavel_id as id, 1 as depth
+      from public.colaboradores c
+     where c.id = alvo
+       and c.responsavel_id is not null
+    union all
+    select c.responsavel_id, a.depth + 1
+      from acima a
+      join public.colaboradores c on c.id = a.id
+     where c.responsavel_id is not null
+       and a.depth < 20
+  )
+  select exists (
+    select 1 from acima where id = public.meu_colaborador_id()
+  );
+$$;
+
+create or replace function public.posso_decidir_jornada(alvo text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    -- O LÍDER DECIDE A PRÓPRIA JORNADA.
+    -- Condicionado a responder por alguém: sem isso, qualquer pessoa
+    -- aprovaria as próprias horas e a fila deixaria de existir.
+    (
+      alvo = public.meu_colaborador_id()
+      and exists (
+        select 1 from public.colaboradores
+         where responsavel_id = public.meu_colaborador_id()
+      )
+    )
+
+    or (
+    -- Quem não responde por ninguém não decide sobre a própria hora
+    alvo is distinct from public.meu_colaborador_id()
+    and (
+      -- RH, Diretoria e TI seguem por fora da cadeia: o controle é deles
+      public.cuido_de_pessoas()
+
+      -- POSICIONADO NO ORGANOGRAMA: só a cadeia dele decide. O alcance
+      -- automático por setor e por loja deixa de valer para esta pessoa —
+      -- é isto que faz o organograma ser regra, e não desenho.
+      or (
+        exists (
+          select 1 from public.colaboradores
+           where id = alvo and responsavel_id is not null
+        )
+        and public.estou_na_cadeia_de(alvo)
+      )
+
+      -- AINDA NÃO POSICIONADO: a regra automática de antes, que impede as
+      -- horas de quem falta posicionar de ficarem paradas na fila
+      or exists (
+        select 1
+          from public.colaboradores solicitante,
+               public.colaboradores eu
+         where solicitante.id = alvo
+           and solicitante.responsavel_id is null
+           and eu.id = public.meu_colaborador_id()
+           -- A decisão sobe: quem está no mesmo degrau não aprova o colega
+           and eu.nivel > solicitante.nivel
+           and (
+             -- Gerente responde pela loja inteira
+             (eu.nivel >= 3 and eu.loja = solicitante.loja)
+             -- O alcance por setor é do líder, e só dele: se valesse acima,
+             -- um gerente de outra loja decidiria sobre quem não é dele só
+             -- por partilharem o setor
+             or (eu.nivel = 2 and eu.setor = solicitante.setor)
+           )
+      )
+    ));
 $$;
 
 -- ------------------------------------------------------------
@@ -570,13 +680,30 @@ drop policy if exists ponto_batida on public.registros_ponto;
 create policy ponto_batida on public.registros_ponto
   for insert to authenticated
   with check (
-    (colaborador_id = public.meu_colaborador_id() and metodo <> 'ajuste_rh')
+    (
+      colaborador_id = public.meu_colaborador_id()
+      and metodo not in ('ajuste_rh', 'ajuste_lider')
+    )
     or public.cuido_de_pessoas()
+    -- O responsável lança a batida que faltou, na fila de aprovação. Sem
+    -- isto ele só podia aprovar o dia errado ou recusar — e recusar não
+    -- conserta o espelho de ninguém.
+    or (public.posso_decidir_jornada(colaborador_id) and metodo = 'ajuste_lider')
   );
 
 drop policy if exists ponto_ajuste on public.registros_ponto;
 create policy ponto_ajuste on public.registros_ponto
-  for update to authenticated using (public.cuido_de_pessoas()) with check (public.cuido_de_pessoas());
+  for update to authenticated
+  using (
+    public.cuido_de_pessoas()
+    or public.posso_decidir_jornada(colaborador_id)
+  )
+  with check (
+    public.cuido_de_pessoas()
+    -- O responsável só grava marcação carimbada como correção dele: é o
+    -- que impede a correção de se passar por batida da própria pessoa
+    or (public.posso_decidir_jornada(colaborador_id) and metodo = 'ajuste_lider')
+  );
 
 drop policy if exists ponto_remocao on public.registros_ponto;
 create policy ponto_remocao on public.registros_ponto
@@ -1144,111 +1271,6 @@ create index if not exists ajustes_por_estado
 
 alter table public.ajustes_jornada enable row level security;
 
-/**
- * Posso decidir sobre a jornada desta pessoa?
- *
- * A regra da casa: ninguém aprova a própria hora, e a decisão sobe um
- * degrau. O líder responde pelo SETOR dele — inclusive em outras lojas,
- * porque a liderança de Compras atua nas cinco. O gerente responde pela
- * LOJA dele, de ponta a ponta, e é ele quem decide sobre os líderes.
- * RH, Diretoria e TI decidem em qualquer caso, porque é deles o controle do
- * banco de horas.
- */
-/**
- * Subo a cadeia do organograma a partir de `alvo` até o topo e digo se
- * estou nela.
- *
- * A alçada vale para a cadeia INTEIRA, não só para o responsável direto: se
- * o balconista responde ao líder e o líder responde ao gerente, o gerente
- * também responde pelo balconista.
- *
- * O `depth < 20` é trava contra ciclo. A tela impede criar um (A responde a
- * B que responde a A), mas se um aparecer no dado, a recursão sem limite
- * travaria a consulta — e com ela o banco de horas da rede inteira.
- */
-create or replace function public.estou_na_cadeia_de(alvo text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  with recursive acima as (
-    select c.responsavel_id as id, 1 as depth
-      from public.colaboradores c
-     where c.id = alvo
-       and c.responsavel_id is not null
-    union all
-    select c.responsavel_id, a.depth + 1
-      from acima a
-      join public.colaboradores c on c.id = a.id
-     where c.responsavel_id is not null
-       and a.depth < 20
-  )
-  select exists (
-    select 1 from acima where id = public.meu_colaborador_id()
-  );
-$$;
-
-create or replace function public.posso_decidir_jornada(alvo text)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select
-    -- O LÍDER DECIDE A PRÓPRIA JORNADA.
-    -- Condicionado a responder por alguém: sem isso, qualquer pessoa
-    -- aprovaria as próprias horas e a fila deixaria de existir.
-    (
-      alvo = public.meu_colaborador_id()
-      and exists (
-        select 1 from public.colaboradores
-         where responsavel_id = public.meu_colaborador_id()
-      )
-    )
-
-    or (
-    -- Quem não responde por ninguém não decide sobre a própria hora
-    alvo is distinct from public.meu_colaborador_id()
-    and (
-      -- RH, Diretoria e TI seguem por fora da cadeia: o controle é deles
-      public.cuido_de_pessoas()
-
-      -- POSICIONADO NO ORGANOGRAMA: só a cadeia dele decide. O alcance
-      -- automático por setor e por loja deixa de valer para esta pessoa —
-      -- é isto que faz o organograma ser regra, e não desenho.
-      or (
-        exists (
-          select 1 from public.colaboradores
-           where id = alvo and responsavel_id is not null
-        )
-        and public.estou_na_cadeia_de(alvo)
-      )
-
-      -- AINDA NÃO POSICIONADO: a regra automática de antes, que impede as
-      -- horas de quem falta posicionar de ficarem paradas na fila
-      or exists (
-        select 1
-          from public.colaboradores solicitante,
-               public.colaboradores eu
-         where solicitante.id = alvo
-           and solicitante.responsavel_id is null
-           and eu.id = public.meu_colaborador_id()
-           -- A decisão sobe: quem está no mesmo degrau não aprova o colega
-           and eu.nivel > solicitante.nivel
-           and (
-             -- Gerente responde pela loja inteira
-             (eu.nivel >= 3 and eu.loja = solicitante.loja)
-             -- O alcance por setor é do líder, e só dele: se valesse acima,
-             -- um gerente de outra loja decidiria sobre quem não é dele só
-             -- por partilharem o setor
-             or (eu.nivel = 2 and eu.setor = solicitante.setor)
-           )
-      )
-    ));
-$$;
 
 -- LEITURA: cada um vê a própria apuração; quem decide vê a de quem responde
 drop policy if exists ajustes_leitura on public.ajustes_jornada;

@@ -27,6 +27,7 @@ import {
   TipoMarcacao,
   ORDEM_MARCACOES,
   ROTULO_MARCACAO,
+  ehMarcacaoCorrigida,
 } from '../tipos';
 import {
   servicoPonto,
@@ -222,12 +223,17 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
                   <span className="text-[9px] leading-tight text-[var(--c-texto-3)] font-medium">
                     {ROTULO_MARCACAO[tipo].replace(' para almoço', ' almoço').replace(' do almoço', ' almoço')}
                   </span>
-                  {registro?.metodo === 'ajuste_rh' && (
+                  {registro && ehMarcacaoCorrigida(registro.metodo) && (
                     <span
                       className="inline-flex items-center gap-0.5 text-[8px] font-bold text-amber-600"
-                      title={registro.justificativa}
+                      title={`Corrigido por ${registro.ajustadoPorNome}: ${registro.justificativa}`}
                     >
-                      <Pencil className="w-2.5 h-2.5" /> RH
+                      {/*
+                        Dizia sempre "RH". Agora o líder também corrige, e o
+                        selo tem de dizer a verdade — quem corrigiu está no
+                        próprio registro.
+                      */}
+                      <Pencil className="w-2.5 h-2.5" /> Corrigido
                     </span>
                   )}
                 </div>
