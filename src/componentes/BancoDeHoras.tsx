@@ -107,6 +107,19 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
 
   const [qrcodes, setQrcodes] = useState<Array<{ loja: Loja; codigo: string; imagem: string }>>([]);
 
+  /**
+   * O endereço quando ele só existe nesta máquina.
+   *
+   * O QR leva o endereço de onde o cartaz foi gerado. Gerado em
+   * desenvolvimento, ele aponta para "localhost" — e o erro só apareceria
+   * no dia em que a loja tentasse bater ponto, com o papel já na parede.
+   */
+  const enderecoLocal =
+    typeof window !== 'undefined' &&
+    /^(localhost|127\.|192\.168\.|10\.)/.test(window.location.hostname)
+      ? window.location.origin
+      : null;
+
   useEffect(() => {
     const cancelar = servicoPonto.assinarAlteracoes(() => setVersaoDados((v) => v + 1));
     return () => cancelar();
@@ -1093,12 +1106,33 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                 Cartazes de ponto das lojas
               </h2>
               <p className="text-xs text-[var(--c-texto-3)] leading-relaxed">
-                Imprima o QR da loja e afixe no ponto de entrada. O funcionário aponta a câmera e a
-                marcação é registrada. O código de 6 caracteres serve quando a câmera falha — deixe
-                ele visível no cartaz. Se o cartaz for fotografado ou copiado, gere um código novo:
-                o anterior deixa de funcionar na hora.
+                Imprima o QR da loja e afixe no ponto de entrada. O funcionário aponta a câmera
+                do próprio celular: o CONECTA abre já na batida, sem ele precisar procurar nada. O
+                código de 6 caracteres serve quando a câmera falha — deixe ele visível no cartaz.
+                Se o cartaz for fotografado ou copiado, gere um código novo: o anterior deixa de
+                funcionar na hora.
               </p>
             </div>
+
+            {/*
+              O CARTAZ CARREGA O ENDEREÇO DE ONDE ELE FOI GERADO.
+              
+              Gerar o cartaz com o sistema rodando na própria máquina produz
+              um QR apontando para "localhost", que não existe no celular de
+              ninguém — e o erro só apareceria no dia em que a loja tentasse
+              bater ponto, com o papel já pregado na parede.
+            */}
+            {enderecoLocal && (
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3.5 flex gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-[var(--c-texto-2)] leading-relaxed">
+                  <strong className="text-[var(--c-texto)]">Não imprima daqui.</strong> Este
+                  sistema está rodando em <code>{enderecoLocal}</code>, um endereço que só existe
+                  nesta máquina. O QR gerado agora não abriria no celular de ninguém — gere os
+                  cartazes pelo endereço que a rede usa.
+                </p>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {qrcodes.map((item) => (

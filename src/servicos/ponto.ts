@@ -368,10 +368,31 @@ class ServicoPonto {
   }
 
   /** Conteúdo gravado no QR impresso da loja; null se ainda não há código. */
+  /**
+   * O conteúdo do cartaz: um ENDEREÇO, e não um texto solto.
+   *
+   * Antes o QR trazia "CONECTA-PONTO:Loja:ABC123". A câmera do celular lia
+   * aquilo, mostrava o texto na tela e parava ali — a pessoa ainda tinha de
+   * abrir o CONECTA na mão e procurar a aba de ponto.
+   *
+   * Agora é o endereço do próprio sistema com o código embutido. A câmera
+   * oferece abrir; quem tem o aplicativo instalado cai direto nele, já
+   * conectado, na aba de ponto. Quem não tem, cai no navegador — que é o
+   * mesmo sistema.
+   *
+   * O endereço sai de onde o cartaz foi GERADO. Gerar o cartaz rodando o
+   * sistema na própria máquina produziria um QR apontando para "localhost",
+   * que não existe no celular de ninguém: por isso a tela do cartaz avisa
+   * quando é esse o caso.
+   */
   montarConteudoQr(loja: Loja): string | null {
     const codigo = this.obterCodigoDaLoja(loja);
     if (!codigo) return null;
-    return `${PREFIXO_QR}:${loja}:${codigo.codigo}`;
+
+    const carga = `${PREFIXO_QR}:${loja}:${codigo.codigo}`;
+
+    if (typeof window === 'undefined') return carga;
+    return `${window.location.origin}/?ponto=${encodeURIComponent(carga)}`;
   }
 
   /**
@@ -381,8 +402,26 @@ class ServicoPonto {
   private resolverLojaDoCodigo(
     conteudo: string
   ): { loja: Loja; metodo: MetodoMarcacao } | null {
-    const limpo = conteudo.trim();
+    let limpo = conteudo.trim();
     if (!limpo) return null;
+
+    /**
+     * ENDEREÇO TAMBÉM VALE, e o texto antigo continua valendo.
+     *
+     * Os cartazes já impressos e pregados nas cinco lojas trazem o texto
+     * solto. Trocar o formato sem aceitar o antigo faria todos eles pararem
+     * de funcionar no dia da publicação, e ninguém bateria ponto até
+     * reimprimir tudo.
+     */
+    if (/^https?:\/\//i.test(limpo)) {
+      try {
+        const endereco = new URL(limpo);
+        const doParametro = endereco.searchParams.get('ponto');
+        if (doParametro) limpo = doParametro.trim();
+      } catch {
+        // Endereço ilegível: segue como se fosse código digitado
+      }
+    }
 
     if (limpo.toUpperCase().startsWith(`${PREFIXO_QR}:`)) {
       const partes = limpo.split(':');

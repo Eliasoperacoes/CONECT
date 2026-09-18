@@ -26,6 +26,15 @@ import { CardJustificarBatida } from './CardJustificarBatida';
 
 interface PropsModalBaterPonto {
   aberto: boolean;
+  /**
+   * O código que já veio lido, quando a pessoa chegou pelo link do cartaz.
+   *
+   * Com ele a câmera nem precisa abrir: o QR já foi lido — pela câmera do
+   * próprio sistema operacional, que foi o que trouxe a pessoa até aqui.
+   * Abrir a câmera de novo seria pedir que ela lesse o mesmo cartaz duas
+   * vezes.
+   */
+  codigoInicial?: string;
   rotuloProximaMarcacao: string | null;
   aoFechar: () => void;
   aoRegistrar: (registro: RegistroPonto) => void;
@@ -35,6 +44,7 @@ type EstadoLeitura = 'iniciando' | 'lendo' | 'registrando' | 'sucesso' | 'sem_ca
 
 export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
   aberto,
+  codigoInicial,
   rotuloProximaMarcacao,
   aoFechar,
   aoRegistrar,
@@ -213,6 +223,19 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
       setModoDigitar(false);
       setCodigoDigitado('');
       setRegistroFeito(null);
+      return;
+    }
+
+    /**
+     * Veio pelo cartaz: registra direto, sem abrir a câmera.
+     *
+     * A leitura já aconteceu — foi a câmera do celular que trouxe a pessoa
+     * até aqui. Abrir a nossa em cima disso pediria o mesmo cartaz de novo,
+     * e no aplicativo instalado ainda dispararia a permissão de câmera sem
+     * necessidade.
+     */
+    if (codigoInicial) {
+      void confirmarCodigo(codigoInicial);
       return;
     }
 

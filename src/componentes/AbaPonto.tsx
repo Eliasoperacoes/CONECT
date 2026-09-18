@@ -40,6 +40,17 @@ import { AbaJustificar } from './AbaJustificar';
 
 interface PropsAbaPonto {
   colaboradorAtual: Colaborador;
+  /**
+   * O código que veio no endereço, quando a pessoa chegou aqui pelo QR.
+   *
+   * Existe para o caminho ser um toque só: a câmera lê o cartaz, o sistema
+   * abre e a batida já está pronta para confirmar. Antes o QR mostrava um
+   * texto na tela da câmera e a pessoa ainda tinha de abrir o CONECTA na
+   * mão e procurar esta aba.
+   */
+  codigoDoEndereco?: string | null;
+  /** Avisa que o código já foi usado, para ele não valer de novo ao voltar. */
+  aoConsumirCodigo?: () => void;
 }
 
 const ICONE_MARCACAO: Record<TipoMarcacao, React.ComponentType<{ className?: string }>> = {
@@ -49,10 +60,28 @@ const ICONE_MARCACAO: Record<TipoMarcacao, React.ComponentType<{ className?: str
   saida: LogOut,
 };
 
-export const AbaPonto: React.FC<PropsAbaPonto> = ({ colaboradorAtual }) => {
+export const AbaPonto: React.FC<PropsAbaPonto> = ({
+  colaboradorAtual,
+  codigoDoEndereco,
+  aoConsumirCodigo,
+}) => {
   const [secao, setSecao] = useState<'bater' | 'justificar'>('bater');
   const [modalAberto, setModalAberto] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  /**
+   * Chegou pelo QR: abre a batida na hora.
+   *
+   * O código é consumido no mesmo instante em que abre a caixa. Sem isso,
+   * sair do modal e voltar para esta aba reabriria a batida sozinho, para
+   * sempre.
+   */
+  useEffect(() => {
+    if (!codigoDoEndereco) return;
+    setSecao('bater');
+    setModalAberto(true);
+    aoConsumirCodigo?.();
+  }, [codigoDoEndereco]);
   // Muda a cada alteração no ponto, forçando o recálculo dos dados derivados
   const [versaoDados, setVersaoDados] = useState(0);
 
@@ -340,6 +369,7 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({ colaboradorAtual }) => {
 
       <ModalBaterPonto
         aberto={modalAberto}
+        codigoInicial={codigoDoEndereco || undefined}
         rotuloProximaMarcacao={proximaMarcacao ? ROTULO_MARCACAO[proximaMarcacao] : null}
         aoFechar={() => setModalAberto(false)}
         aoRegistrar={aoRegistrar}

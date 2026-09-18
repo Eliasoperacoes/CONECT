@@ -105,6 +105,8 @@ export default function App() {
   const [precisaTrocarSenha, setPrecisaTrocarSenha] = useState(false);
   const [painelAdminAberto, setPainelAdminAberto] = useState<boolean>(false);
   const [abaAtivaEscolhida, setAbaAtiva] = useState<AbaPrincipal>('conversas');
+  /** O código do cartaz de ponto, quando a pessoa chegou por ele. */
+  const [codigoDoCartaz, setCodigoDoCartaz] = useState<string | null>(null);
   const [colaboradorAtual, setColaboradorAtual] = useState<Colaborador>(
     bancoDados.obterColaboradorAtual()
   );
@@ -217,6 +219,25 @@ export default function App() {
         endereco.searchParams.delete('conversa');
         window.history.replaceState({}, '', endereco.toString());
         abrirSeExistir(pedida);
+      }
+
+      /**
+       * CHEGOU PELO CARTAZ DE PONTO.
+       *
+       * O QR da loja é o endereço do sistema com o código embutido. A
+       * câmera do celular abre o aplicativo instalado — onde a pessoa já
+       * está conectada — e é aqui que o código é recolhido para a aba de
+       * ponto abrir com a batida pronta.
+       *
+       * Sai da barra de endereços na mesma hora: recarregar a página com o
+       * código ainda lá bateria o ponto de novo.
+       */
+      const doCartaz = endereco.searchParams.get('ponto');
+      if (doCartaz) {
+        endereco.searchParams.delete('ponto');
+        window.history.replaceState({}, '', endereco.toString());
+        setCodigoDoCartaz(doCartaz);
+        setAbaAtiva('ponto');
       }
     } catch {
       // Endereço estranho: não vale derrubar a abertura do sistema por isso
@@ -970,7 +991,11 @@ export default function App() {
                 o banco de horas em 340px deixava metade da tela vazia. */}
             {abaAtiva === 'ponto' && (
               <div className="block md:hidden h-full">
-                <AbaPonto colaboradorAtual={colaboradorAtual} />
+                <AbaPonto
+                  colaboradorAtual={colaboradorAtual}
+                  codigoDoEndereco={codigoDoCartaz}
+                  aoConsumirCodigo={() => setCodigoDoCartaz(null)}
+                />
               </div>
             )}
 
@@ -1080,7 +1105,11 @@ export default function App() {
             </div>
           ) : abaDesktop === 'ponto' ? (
             <div className="w-full max-w-[900px] h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
-              <AbaPonto colaboradorAtual={colaboradorAtual} />
+              <AbaPonto
+                  colaboradorAtual={colaboradorAtual}
+                  codigoDoEndereco={codigoDoCartaz}
+                  aoConsumirCodigo={() => setCodigoDoCartaz(null)}
+                />
             </div>
           ) : abaDesktop === 'eu' ? (
             <div className="w-full max-w-[900px] h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
