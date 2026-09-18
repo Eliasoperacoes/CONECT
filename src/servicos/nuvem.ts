@@ -78,6 +78,9 @@ interface LinhaColaborador {
   observacoes: string | null;
   carga_horaria_diaria_minutos: number;
   turno: string | null;
+  carga_semanal_minutos: number | null;
+  trabalha_sabado: boolean | null;
+  tem_intervalo: boolean | null;
   ativo: boolean;
   criado_em: string;
 }
@@ -104,6 +107,14 @@ const paraColaborador = (linha: LinhaColaborador): Colaborador => ({
   observacoes: linha.observacoes || undefined,
   cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos,
   turno: linha.turno || undefined,
+  /**
+   * A jornada da pessoa. Vazio no banco quer dizer "vale o padrão do
+   * setor" — e não zero: uma carga semanal de zero minutos faria a pessoa
+   * fechar todo ciclo com crédito da semana inteira.
+   */
+  cargaSemanalMinutos: linha.carga_semanal_minutos ?? undefined,
+  trabalhaSabado: linha.trabalha_sabado ?? undefined,
+  temIntervalo: linha.tem_intervalo ?? undefined,
   // Não volta do banco: é segredo de entrega, e a tela do RH mostra a
   // partir do que ela própria guardou
   senhaAtivacao: undefined,
@@ -150,6 +161,14 @@ const paraLinha = (c: Colaborador) => ({
    * painel dizia "cadastrado com sucesso" e a pessoa nao existia no banco.
    */
   turno: c.turno || TURNO_PADRAO,
+  /**
+   * Null quando não foi definido: é o que diz "siga o padrão do setor".
+   * Gravar um número inventado aqui congelaria a pessoa numa jornada que
+   * ninguém escolheu, e mudar o padrão depois não a alcançaria mais.
+   */
+  carga_semanal_minutos: c.cargaSemanalMinutos ?? null,
+  trabalha_sabado: c.trabalhaSabado ?? null,
+  tem_intervalo: c.temIntervalo ?? null,
   /**
    * A senha de primeiro acesso só viaja quando foi informada.
    *

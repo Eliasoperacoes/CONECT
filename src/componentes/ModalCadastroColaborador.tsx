@@ -46,6 +46,9 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
     turno: TURNO_PADRAO,
     dataAdmissao: '',
     cargaHorariaDiariaMinutos: CARGA_HORARIA_PADRAO_MINUTOS,
+    cargaSemanalMinutos: undefined as number | undefined,
+    trabalhaSabado: undefined as boolean | undefined,
+    temIntervalo: undefined as boolean | undefined,
     observacoes: '',
     ativo: true,
   });
@@ -70,6 +73,9 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       dataAdmissao: colaborador.dataAdmissao || '',
       cargaHorariaDiariaMinutos:
         colaborador.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS,
+      cargaSemanalMinutos: colaborador.cargaSemanalMinutos,
+      trabalhaSabado: colaborador.trabalhaSabado,
+      temIntervalo: colaborador.temIntervalo,
       observacoes: colaborador.observacoes || '',
       ativo: colaborador.ativo,
     });
@@ -100,6 +106,9 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       turno: form.turno,
       dataAdmissao: form.dataAdmissao.trim(),
       cargaHorariaDiariaMinutos: form.cargaHorariaDiariaMinutos,
+      cargaSemanalMinutos: form.cargaSemanalMinutos,
+      trabalhaSabado: form.trabalhaSabado,
+      temIntervalo: form.temIntervalo,
       observacoes: form.observacoes.trim(),
       ativo: form.ativo,
     });
@@ -374,10 +383,106 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                 <option value={360}>6h00</option>
                 <option value={396}>6h36</option>
                 <option value={440}>7h20</option>
-                <option value={480}>8h00 (padrão)</option>
+                <option value={490}>8h10 (turno da rede)</option>
+                <option value={480}>8h00</option>
                 <option value={528}>8h48</option>
               </select>
             </div>
+          </div>
+
+          {/*
+            A JORNADA QUE MANDA NO BANCO DE HORAS.
+
+            O saldo é apurado por SEMANA, não por dia: o estagiário que faz
+            menos de segunda a sexta e vem no sábado completar fecha as 30h
+            dele, e cobrar por dia o reprovaria cinco vezes por semana sem
+            que nada estivesse errado.
+
+            Os três campos começam em "padrão do setor" de propósito. Quem
+            não tem contrato diferente não precisa escolher nada, e mudar o
+            padrão depois alcança essa pessoa — o que não aconteceria se a
+            ficha guardasse um número copiado do padrão.
+          */}
+          <div className="rounded-xl border border-[var(--c-borda)] bg-[var(--c-canvas)] p-3">
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-[var(--c-texto-2)] mb-2">
+              Banco de horas · jornada da semana
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label htmlFor="cad-semanal" className={rotuloCampo}>
+                  Carga semanal
+                </label>
+                <select
+                  id="cad-semanal"
+                  value={form.cargaSemanalMinutos ?? ''}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      cargaSemanalMinutos: e.target.value ? Number(e.target.value) : undefined,
+                    })
+                  }
+                  className={campo}
+                >
+                  <option value="">Padrão do setor</option>
+                  <option value={1200}>20h</option>
+                  <option value={1500}>25h</option>
+                  <option value={1800}>30h (estágio)</option>
+                  <option value={2400}>40h</option>
+                  <option value={2640}>44h</option>
+                  <option value={2690}>44h50 (turno + sábado)</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="cad-sabado" className={rotuloCampo}>
+                  Trabalha aos sábados
+                </label>
+                <select
+                  id="cad-sabado"
+                  value={form.trabalhaSabado === undefined ? '' : String(form.trabalhaSabado)}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      trabalhaSabado: e.target.value === '' ? undefined : e.target.value === 'true',
+                    })
+                  }
+                  className={campo}
+                >
+                  <option value="">Padrão do setor</option>
+                  <option value="true">Sim</option>
+                  <option value="false">Não</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="cad-intervalo" className={rotuloCampo}>
+                  Tem intervalo
+                </label>
+                <select
+                  id="cad-intervalo"
+                  value={form.temIntervalo === undefined ? '' : String(form.temIntervalo)}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      temIntervalo: e.target.value === '' ? undefined : e.target.value === 'true',
+                    })
+                  }
+                  className={campo}
+                >
+                  <option value="">Padrão do setor</option>
+                  <option value="true">Sim · 4 batidas</option>
+                  <option value="false">Não · 2 batidas</option>
+                </select>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[var(--c-texto-3)] leading-snug mt-2">
+              O padrão do setor: <strong>Estágio</strong> fecha 30h na semana, sem sábado e sem
+              intervalo. Os demais fecham 44h50, com sábado e com intervalo. Só preencha aqui
+              quando o contrato desta pessoa for diferente disso — por exemplo, o estagiário que
+              vem ao sábado completar a carga.
+            </p>
           </div>
 
           <div>

@@ -279,3 +279,63 @@ test('o painel do ciclo mostra so quem precisa de decisao', async () => {
   expect(tela).toContain('const precisamDeVoce = [...totais.comPendencia, ...totais.devendo]');
   expect(tela).toContain('aoEscolherPeriodo(relacao.inicio, relacao.fim)');
 });
+
+/**
+ * A JORNADA PRECISA TER ONDE SER EDITADA E TEM QUE CHEGAR AO BANCO.
+ *
+ * Achado no pente fino: os três campos existiam no tipo e na regra, mas não
+ * tinham tela nem coluna. Na prática só o padrão do setor funcionava — e o
+ * estagiário que VEM ao sábado, que é justamente a exceção, não tinha como
+ * ser marcado.
+ */
+test('a jornada da semana chega ao banco nos dois sentidos', async () => {
+  const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+
+  // Sobe
+  expect(ponte).toContain('carga_semanal_minutos: c.cargaSemanalMinutos ?? null');
+  expect(ponte).toContain('trabalha_sabado: c.trabalhaSabado ?? null');
+  expect(ponte).toContain('tem_intervalo: c.temIntervalo ?? null');
+
+  // E desce
+  expect(ponte).toContain('cargaSemanalMinutos: linha.carga_semanal_minutos ?? undefined');
+  expect(ponte).toContain('trabalhaSabado: linha.trabalha_sabado ?? undefined');
+  expect(ponte).toContain('temIntervalo: linha.tem_intervalo ?? undefined');
+});
+
+test('VAZIO quer dizer "padrao do setor", e nunca zero', async () => {
+  const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+
+  /**
+   * Uma carga semanal de ZERO faria a pessoa fechar todo ciclo com crédito
+   * da semana inteira. E um número copiado do padrão congelaria a pessoa
+   * numa jornada que ninguém escolheu — mudar o padrão depois não a
+   * alcançaria mais.
+   */
+  expect(ponte).not.toContain('carga_semanal_minutos: c.cargaSemanalMinutos ?? 0');
+  expect(ponte).not.toContain('cargaSemanalMinutos: linha.carga_semanal_minutos ?? 0');
+
+  const sql = await Bun.file(
+    new URL('../../supabase/jornada-por-pessoa.sql', import.meta.url)
+  ).text();
+  // Sem `not null` e sem default: é o nulo que guarda o sentido de "padrão"
+  expect(sql).toContain('add column if not exists carga_semanal_minutos integer');
+  expect(sql).not.toContain('not null');
+  expect(sql).toContain("notify pgrst, 'reload schema'");
+});
+
+test('a ficha deixa marcar o estagiario que VEM ao sabado', async () => {
+  const modal = await Bun.file(
+    new URL('../componentes/ModalCadastroColaborador.tsx', import.meta.url)
+  ).text();
+
+  // Os três campos, e todos com a opção de seguir o padrão
+  expect(modal).toContain('id="cad-semanal"');
+  expect(modal).toContain('id="cad-sabado"');
+  expect(modal).toContain('id="cad-intervalo"');
+  expect((modal.match(/Padrão do setor/g) || []).length).toBe(3);
+
+  // E o que for escolhido tem de sair do formulário para a ficha
+  expect(modal).toContain('cargaSemanalMinutos: form.cargaSemanalMinutos');
+  expect(modal).toContain('trabalhaSabado: form.trabalhaSabado');
+  expect(modal).toContain('temIntervalo: form.temIntervalo');
+});
