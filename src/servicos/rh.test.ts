@@ -161,3 +161,69 @@ test('a tela de RH e de quem cuida de pessoas, e nao de um nivel', async () => {
   expect(painel).toContain("podeUsar('rh_pessoal', colaboradorAtual) && cuidaDeRh");
   expect(painel).toContain("pode('rh_pessoal') && cuidaDeRh");
 });
+
+/**
+ * O ARQUIVO TAMBÉM PRECISA SER PROTEGIDO, e não só a linha.
+ *
+ * A regra do balde era `bucket_id = 'anexos'` e nada mais: qualquer pessoa
+ * autenticada lia qualquer arquivo. Para anexo de conversa isso passava — o
+ * caminho leva o id aleatório da mensagem e ninguém adivinha.
+ *
+ * Para holerite NÃO passava: o caminho é
+ * `holerites/<id-do-colaborador>/2026-09.pdf`, e os ids dos colegas
+ * aparecem na lista de equipe. Bastava montar o endereço.
+ *
+ * A proteção da tabela vale para a LINHA; esta vale para o ARQUIVO. Sem as
+ * duas, a primeira não protege nada.
+ */
+test('o BALDE separa documento pessoal de anexo de conversa', async () => {
+  const esquema = await Bun.file(
+    new URL('../../supabase/esquema.sql', import.meta.url)
+  ).text();
+
+  const inicio = esquema.indexOf('create policy anexos_leitura');
+  expect(inicio).toBeGreaterThan(-1);
+  const leitura = esquema.slice(inicio, inicio + 600);
+
+  // A regra aberta não pode voltar
+  expect(leitura).not.toContain("using (bucket_id = 'anexos');");
+
+  // O caminho diz de quem o documento é
+  expect(leitura).toContain("split_part(name, '/', 1) in ('holerites', 'advertencias')");
+  expect(leitura).toContain("split_part(name, '/', 2) = public.meu_colaborador_id()");
+  expect(leitura).toContain('public.cuido_de_pessoas()');
+});
+
+test('so o RH sobe arquivo na pasta de documento pessoal', async () => {
+  const esquema = await Bun.file(
+    new URL('../../supabase/esquema.sql', import.meta.url)
+  ).text();
+
+  /**
+   * Sem isto, qualquer pessoa poderia subir um arquivo na pasta de outra —
+   * e o holerite que a vítima abrisse seria o que o invasor pôs lá.
+   */
+  const inicio = esquema.indexOf('create policy anexos_envio');
+  const envio = esquema.slice(inicio, inicio + 500);
+
+  expect(envio).not.toContain("with check (bucket_id = 'anexos');");
+  expect(envio).toContain('public.cuido_de_pessoas()');
+});
+
+test('o RH consegue apagar o arquivo que ele mesmo publicou', async () => {
+  const esquema = await Bun.file(
+    new URL('../../supabase/esquema.sql', import.meta.url)
+  ).text();
+
+  /**
+   * Antes só a administração apagava. A linha sumia da tabela e o arquivo
+   * ficava órfão no balde para sempre — ocupando espaço que ninguém mais
+   * consegue nem achar.
+   */
+  const inicio = esquema.indexOf('create policy anexos_remocao');
+  const remocao = esquema.slice(inicio, inicio + 500);
+
+  expect(remocao).toContain('public.cuido_de_pessoas()');
+  // E o expurgo de histórico continua sendo da administração
+  expect(remocao).toContain('public.sou_admin()');
+});

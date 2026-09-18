@@ -942,16 +942,56 @@ begin
   end loop;
 end $$;
 
+-- DOCUMENTO PESSOAL: so o dono e quem cuida de pessoas.
+--
+-- A regra era so `bucket_id`, e isso deixava QUALQUER autenticado ler
+-- QUALQUER arquivo. Para anexo de conversa passava, porque o caminho leva
+-- o id aleatorio da mensagem. Para holerite nao: o caminho e
+-- `holerites/<id-do-colaborador>/2026-09.pdf`, e os ids aparecem na lista
+-- de equipe. Bastava montar o endereco.
 create policy anexos_leitura on storage.objects
-  for select to authenticated using (bucket_id = 'anexos');
+  for select to authenticated
+  using (
+    bucket_id = 'anexos'
+    and (
+      case
+        when split_part(name, '/', 1) in ('holerites', 'advertencias') then
+          split_part(name, '/', 2) = public.meu_colaborador_id()
+          or public.cuido_de_pessoas()
+        else true
+      end
+    )
+  );
 
+-- Documento pessoal so e publicado por quem cuida de pessoas: senao
+-- qualquer um poderia subir um arquivo na pasta de outra pessoa, e o
+-- holerite que ela abrisse seria o que o invasor pos la.
 create policy anexos_envio on storage.objects
-  for insert to authenticated with check (bucket_id = 'anexos');
+  for insert to authenticated
+  with check (
+    bucket_id = 'anexos'
+    and (
+      case
+        when split_part(name, '/', 1) in ('holerites', 'advertencias')
+          then public.cuido_de_pessoas()
+        else true
+      end
+    )
+  );
 
 -- Apagar é parte do expurgo de histórico, e isso é decisão da administração
 create policy anexos_remocao on storage.objects
   for delete to authenticated
-  using (bucket_id = 'anexos' and public.sou_admin());
+  using (
+    bucket_id = 'anexos'
+    and (
+      case
+        when split_part(name, '/', 1) in ('holerites', 'advertencias')
+          then public.cuido_de_pessoas()
+        else public.sou_admin()
+      end
+    )
+  );
 
 -- ============================================================
 -- LIMPEZA DO HISTÓRICO DE CONVERSAS

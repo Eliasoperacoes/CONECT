@@ -40,6 +40,7 @@ Numa base nova, nesta ordem:
 | 13 | `participantes-atualizacao.sql` | **A regra de UPDATE que faltava.** Sem ela, fixar, arquivar e excluir conversa não gravam — e falham em silêncio |
 | 14 | `periodo-de-teste.sql` | A faixa de "sistema em teste". Nasce desligada; liga no painel ADM |
 | 15 | `rh-holerite-advertencia.sql` | Holerites e advertências. **Leitura apertada:** a pessoa vê só os dela, o RH vê todos, mais ninguém vê nada |
+| 16 | `documentos-pessoais-no-balde.sql` | **Protege o ARQUIVO**, não só a linha. Sem ele, o caminho do holerite de um colega era adivinhável |
 
 Todos são idempotentes: rodar de novo não quebra nada.
 
