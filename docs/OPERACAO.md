@@ -11,12 +11,47 @@ Todos ficam em `supabase/` e **podem ser rodados mais de uma vez**.
 
 | Arquivo | Quando usar |
 |---|---|
-| `esquema.sql` | Banco novo do zero, ou desconfiança de que algo se perdeu. ~1200 linhas |
+## Banco novo do zero — A ORDEM IMPORTA
+
+> ⚠️ **`esquema.sql` sozinho NÃO monta o sistema inteiro.**
+>
+> Ele tem a base, mas as funções que vieram depois moram em arquivos
+> próprios. Rodar só ele produz um sistema onde folga, resposta de mensagem
+> e jornada da semana ficam **mudas** — sem erro na tela, simplesmente não
+> gravam. Descobrimos isso numa varredura, não num incidente; mas seria um
+> incidente caro.
+
+Numa base nova, nesta ordem:
+
+| # | Arquivo | O que acrescenta |
+|---|---|---|
+| 1 | `esquema.sql` | A base: tabelas, regras de segurança, gatilhos de login |
+| 2 | `organograma.sql` | Quem responde por quem |
+| 3 | `permissoes.sql` | A coluna de permissões por ferramenta |
+| 4 | `qr-por-loja.sql` | Os códigos de ponto de cada loja |
+| 5 | `escala-turnos.sql` | Os turnos A e B |
+| 6 | `ponto-tolerancia-justificativas.sql` | Tolerância e a tabela de **ausências** |
+| 7 | `folga-sabado.sql` | A folga de sábado como tipo de ausência |
+| 8 | `jornada-por-pessoa.sql` | Carga semanal, sábado e intervalo por pessoa |
+| 9 | `mensagem-fixada.sql` | Fixar mensagem |
+| 10 | `preferencias-conversa.sql` | Fixar e arquivar conversa |
+| 11 | `responder-mensagem.sql` | Responder mensagem |
+| 12 | `conversa-removida.sql` | Excluir conversa da lista |
+| 13 | `participantes-atualizacao.sql` | **A regra de UPDATE que faltava.** Sem ela, fixar, arquivar e excluir conversa não gravam — e falham em silêncio |
+
+Todos são idempotentes: rodar de novo não quebra nada.
+
+## Quando algo dá errado
+
+| Arquivo | Quando usar |
+|---|---|
 | `resetar-acesso.sql` | **O mais usado.** Pessoa não entra e não lembra a senha |
-| `conserto-login.sql` | Só se o cadastro duplicado voltar. Já aplicado |
 | `liberar-acesso.sql` | Contas de autenticação órfãs (sem ficha do outro lado) |
-| `permissoes.sql` | Só a coluna de permissões. Já aplicado |
-| `organograma.sql` | Só a parte do organograma. Já aplicado |
+| `conserto-login.sql` | Só se o cadastro duplicado voltar. Já aplicado |
+| `conferir-exclusao.sql` | Conversa excluída que volta sozinha |
+| `medir-chat.sql` | Chat lento: mede o custo de uma sincronização |
+| `testar-cadastro.sql` | Cadastro recusado sem motivo claro |
+| `diagnostico-*.sql`, `verificar-*.sql` | Investigações pontuais, já resolvidas. Servem de modelo |
 | `acessos.sql` | **Não rode.** Está vazio de propósito — leia o cabeçalho dele |
 
 ### Como entregar um SQL para o Elias
