@@ -19,7 +19,14 @@ import {
   MessageSquare,
   Briefcase,
 } from 'lucide-react';
-import { Colaborador, Loja, Setor, INFORMACOES_LOJAS, cuidaDePessoas } from '../tipos';
+import {
+  Colaborador,
+  Loja,
+  Setor,
+  INFORMACOES_LOJAS,
+  cuidaDePessoas,
+  ehDoRh,
+} from '../tipos';
 import { podeUsar } from '../servicos/permissoes';
 import { pendenciasParaDecidir as pendenciasDeAusencia } from '../servicos/justificativas';
 import { pendenciasDeFolga } from '../servicos/justificativas';
@@ -127,34 +134,56 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    */
   const cuidaDeRh = cuidaDePessoas(colaboradorAtual);
 
+  /**
+   * Quem é do RH tem TRÊS abas: a dele, Visão & Lojas e Avisos.
+   *
+   * Organograma e Equipe & Ponto não são trabalho dele — e a tela de RH já
+   * reúne o que ele abre todo dia. Repare que isto NÃO usa
+   * `cuidaDePessoas`: essa função também vale para Diretoria e TI, e
+   * amarrar aqui tiraria o organograma do Administrador, que é justamente
+   * quem posiciona as pessoas nele.
+   */
+  const souDoRh = ehDoRh(colaboradorAtual);
+
+  /**
+   * O PAINEL DO RH TEM TRÊS ABAS, E A DELE VEM PRIMEIRO.
+   *
+   * Quem é do RH não monta organograma nem acompanha equipe — o trabalho
+   * dele está reunido na tela de RH, e as duas outras abas seriam ruído
+   * ocupando o lugar do que ele abre todo dia.
+   *
+   * É pelo SETOR, e não por `cuidaDePessoas`: essa função também vale para
+   * Diretoria e TI, e amarrar aqui tiraria o organograma do Administrador
+   * — que é justamente quem posiciona as pessoas nele.
+   */
   const abasPermitidas = useMemo(() => {
     const lista: SubAbaPainel[] = [];
+    const temRh = podeUsar('rh_pessoal', colaboradorAtual) && cuidaDeRh;
+
+    if (temRh) lista.push('rh');
     if (podeUsar('visao_lojas', colaboradorAtual)) lista.push('visao_geral');
-    if (podeUsar('quadro_equipe', colaboradorAtual)) lista.push('quadro');
-    /**
-     * "Gerenciar" reúne a equipe, o banco de horas da rede e o cartaz de QR.
-     *
-     * A condição é a mesma da barra, e precisa ser: uma aba que aparece e
-     * não está nesta lista é escolhida e cai fora no clique seguinte.
-     */
-    if (
-      ((podeUsar('painel_gestao', colaboradorAtual) ||
-        podeUsar('aprovar_jornadas', colaboradorAtual)) &&
-        temEquipe) ||
-      podeUsar('banco_horas_rh', colaboradorAtual) ||
-      podeUsar('qr_ponto', colaboradorAtual)
-    )
-      lista.push('gestao');
-    /**
-     * A tela de RH é de quem CUIDA DE PESSOAS, e não de um nível.
-     *
-     * A permissão abre a porta; `cuidaDePessoas` diz de quem ela é. Um
-     * líder de setor com a permissão ligada mas sem o papel de RH veria
-     * holerite e advertência da rede inteira — que é exatamente o que a
-     * regra do banco recusa, e a tela não pode prometer o que o banco nega.
-     */
-    if (podeUsar('rh_pessoal', colaboradorAtual) && cuidaDeRh) lista.push('rh');
-    if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
+
+    if (!ehDoRh(colaboradorAtual)) {
+      if (podeUsar('quadro_equipe', colaboradorAtual)) lista.push('quadro');
+
+      /**
+       * "Equipe & Ponto" reúne a equipe, o banco de horas da rede e o
+       * cartaz de QR. A condição é a mesma da barra, e precisa ser: uma aba
+       * que aparece e não está nesta lista é escolhida e cai fora no clique
+       * seguinte.
+       */
+      if (
+        ((podeUsar('painel_gestao', colaboradorAtual) ||
+          podeUsar('aprovar_jornadas', colaboradorAtual)) &&
+          temEquipe) ||
+        podeUsar('banco_horas_rh', colaboradorAtual) ||
+        podeUsar('qr_ponto', colaboradorAtual)
+      )
+        lista.push('gestao');
+
+      if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
+    }
+
     if (podeUsar('avisos_direcao', colaboradorAtual)) lista.push('avisos');
     return lista;
   }, [colaboradorAtual, temEquipe, podeVerBancoDeHoras, cuidaDeRh]);
@@ -236,6 +265,27 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
 
           {/* Seletor de Sub-Abas do Painel */}
           <div className="flex items-center bg-[var(--c-canvas)] border border-[var(--c-borda)] p-1 rounded-xl gap-1 self-start sm:self-auto max-w-full overflow-x-auto">
+            {/*
+              O RH VEM PRIMEIRO. É a tela que essa pessoa abre todo dia, e a
+              ordem da barra é a ordem de importância de quem está olhando —
+              não a ordem em que as abas foram escritas.
+            */}
+            {pode('rh_pessoal') && cuidaDeRh && (
+              <button
+                type="button"
+                id="subaba-rh"
+                onClick={() => setSubAbaAtiva('rh')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                  subAbaAtiva === 'rh'
+                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+                }`}
+              >
+                <Briefcase className="w-3.5 h-3.5" />
+                <span>RH</span>
+              </button>
+            )}
+
             {pode('visao_lojas') && (
             <button
               type="button"
@@ -252,7 +302,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             </button>
             )}
 
-            {pode('quadro_equipe') && (
+            {pode('quadro_equipe') && !souDoRh && (
             <button
               type="button"
               id="subaba-quadro-funcionarios"
@@ -269,7 +319,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             )}
 
             {/* Minha equipe: o dia a dia de quem responde por alguém */}
-            {podeVerGestao && (
+            {podeVerGestao && !souDoRh && (
               <button
                 type="button"
                 id="subaba-gestao"
@@ -298,23 +348,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               </button>
             )}
 
-            {pode('rh_pessoal') && cuidaDeRh && (
-              <button
-                type="button"
-                id="subaba-rh"
-                onClick={() => setSubAbaAtiva('rh')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-                  subAbaAtiva === 'rh'
-                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-                }`}
-              >
-                <Briefcase className="w-3.5 h-3.5" />
-                <span>RH</span>
-              </button>
-            )}
-
-            {pode('organograma') && (
+            {pode('organograma') && !souDoRh && (
             <>
             {/* Organograma: quem responde por quem. Fica ao lado do quadro
                 porque é a mesma equipe vista pela cadeia de responsabilidade

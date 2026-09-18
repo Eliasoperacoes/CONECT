@@ -108,7 +108,20 @@ export const CARGOS_SUGERIDOS: string[] = [
  * cadastro de colaborador e o ajuste de ponto dos outros.
  */
 export const cuidaDePessoas = (c: { nivel: number; setor: string }): boolean =>
-  c.nivel >= NIVEL_DIRETORIA || c.setor === 'RH';
+  c.nivel >= NIVEL_DIRETORIA || ehDoRh(c);
+
+/**
+ * É do RH?
+ *
+ * Diferente de `cuidaDePessoas`, que também abrange Diretoria e TI. A
+ * distinção importa: quem é do RH tem uma TELA própria, com o trabalho dele
+ * reunido, e não precisa do organograma nem do painel de equipe. Já o TI
+ * precisa do organograma — é ele quem posiciona as pessoas.
+ *
+ * Amarrar a tela de RH em `cuidaDePessoas` tiraria o organograma do
+ * Administrador junto, e ninguém mais poderia montar a cadeia.
+ */
+export const ehDoRh = (c: { setor: string }): boolean => c.setor === 'RH';
 
 /** Administra o sistema: só o TI. */
 export const ehAdministrador = (c: { nivel: number }): boolean => c.nivel >= NIVEL_TI;

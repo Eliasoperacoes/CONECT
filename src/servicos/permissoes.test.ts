@@ -673,3 +673,85 @@ test('a aba de avisos e a regra de publicar comecam no mesmo nivel', async () =>
     'export const publicaComunicado = (c: { nivel: number }): boolean =>\n  c.nivel >= NIVEL_LIDER_SETOR;'
   );
 });
+
+/**
+ * O PAINEL DO RH TEM TRÊS ABAS, E A DELE VEM PRIMEIRO.
+ *
+ * Quem é do RH não monta organograma nem acompanha equipe — o trabalho dele
+ * está reunido na tela de RH, e as outras abas seriam ruído ocupando o
+ * lugar do que ele abre todo dia.
+ */
+test('quem e do RH ve RH, Visao & Lojas e Avisos — e nada mais', async () => {
+  const painel = await Bun.file(
+    new URL('../componentes/PainelRede.tsx', import.meta.url)
+  ).text();
+
+  const inicio = painel.indexOf('const abasPermitidas');
+  const fim = painel.indexOf('const subAbaAtiva', inicio);
+  const lista = painel.slice(inicio, fim);
+
+  // As três de quem é do RH ficam FORA da guarda
+  expect(lista).toContain("if (temRh) lista.push('rh');");
+  expect(lista).toContain("lista.push('visao_geral')");
+  expect(lista).toContain("lista.push('avisos')");
+
+  // E as outras três ficam DENTRO dela
+  const dentroDaGuarda = lista.slice(lista.indexOf('if (!ehDoRh(colaboradorAtual))'));
+  expect(dentroDaGuarda).toContain("lista.push('quadro')");
+  expect(dentroDaGuarda).toContain("lista.push('gestao')");
+  expect(dentroDaGuarda).toContain("lista.push('organograma')");
+});
+
+test('a aba do RH e a PRIMEIRA da lista', async () => {
+  const painel = await Bun.file(
+    new URL('../componentes/PainelRede.tsx', import.meta.url)
+  ).text();
+
+  const inicio = painel.indexOf('const abasPermitidas');
+  const lista = painel.slice(inicio, painel.indexOf('const subAbaAtiva', inicio));
+
+  /**
+   * A ordem da lista é a ordem da barra E a aba que abre por padrão —
+   * `subAbaAtiva` cai na primeira permitida. Pôr o RH depois faria a Dani
+   * abrir o painel em Visão & Lojas todo dia.
+   */
+  expect(lista.indexOf("lista.push('rh')")).toBeLessThan(
+    lista.indexOf("lista.push('visao_geral')")
+  );
+});
+
+test('a BARRA diz o mesmo que a lista', async () => {
+  const painel = await Bun.file(
+    new URL('../componentes/PainelRede.tsx', import.meta.url)
+  ).text();
+
+  /**
+   * Se as duas discordarem, o botão aparece, a pessoa clica, e a aba cai
+   * fora no render seguinte — porque `subAbaAtiva` só aceita o que está na
+   * lista. Um botão que pisca e não leva a lugar nenhum.
+   */
+  expect(painel).toContain("{pode('quadro_equipe') && !souDoRh && (");
+  expect(painel).toContain('{podeVerGestao && !souDoRh && (');
+  expect(painel).toContain("{pode('organograma') && !souDoRh && (");
+});
+
+/**
+ * A TELA DE RH É PELO SETOR, E NÃO POR `cuidaDePessoas`.
+ *
+ * Essa função também vale para Diretoria e TI. Amarrar a restrição nela
+ * tiraria o ORGANOGRAMA do Administrador — que é justamente quem posiciona
+ * as pessoas nele.
+ */
+test('o Administrador NAO perde o organograma', async () => {
+  const tipos = await Bun.file(new URL('../tipos.ts', import.meta.url)).text();
+  const painel = await Bun.file(
+    new URL('../componentes/PainelRede.tsx', import.meta.url)
+  ).text();
+
+  // Um nome só para o papel, e ele é de setor
+  expect(tipos).toContain("export const ehDoRh = (c: { setor: string }): boolean => c.setor === 'RH';");
+
+  // A restrição usa ehDoRh, nunca cuidaDePessoas
+  expect(painel).toContain('const souDoRh = ehDoRh(colaboradorAtual)');
+  expect(painel).not.toContain('!cuidaDeRh && (');
+});
