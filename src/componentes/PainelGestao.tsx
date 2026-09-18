@@ -38,6 +38,7 @@ import {
 } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 import { podeUsar } from '../servicos/permissoes';
+import { cuidaDePessoas } from '../tipos';
 import { BancoDeHoras } from './BancoDeHoras';
 import { CicloSemanal } from './CicloSemanal';
 import { resumoDaFicha } from '../servicos/fichaColaborador';
@@ -95,8 +96,23 @@ export const PainelGestao: React.FC<Props> = ({
   aoAbrirConversa,
   temEquipe,
 }) => {
-  const veRede = podeUsar('banco_horas_rh', colaboradorAtual);
+  /**
+   * ESCALA E REDE MUDARAM DE LUGAR PARA QUEM CUIDA DE PESSOAS.
+   *
+   * As duas agora moram na tela de RH, que é de onde elas são. Mantê-las
+   * aqui TAMBÉM criaria duas portas para a mesma sala — e o tempo que se
+   * perde não é achando a porta, é descobrindo se as duas levam ao mesmo
+   * lugar.
+   *
+   * Para o líder que NÃO cuida de pessoas nada muda: ele não tem a tela de
+   * RH, e continua alcançando as duas por aqui.
+   */
+  const temTelaDeRh =
+    cuidaDePessoas(colaboradorAtual) && podeUsar('rh_pessoal', colaboradorAtual);
+
+  const veRede = podeUsar('banco_horas_rh', colaboradorAtual) && !temTelaDeRh;
   const veQr = podeUsar('qr_ponto', colaboradorAtual);
+  const veEscala = !temTelaDeRh;
 
   /**
    * Quem NÃO tem equipe ainda pode entrar aqui — um gerente sem ninguém
@@ -312,6 +328,7 @@ export const PainelGestao: React.FC<Props> = ({
                 </span>
               </button>
             )}
+            {veEscala && (
             <button
               type="button"
               onClick={() => setAba('folgas')}
@@ -323,6 +340,7 @@ export const PainelGestao: React.FC<Props> = ({
             >
               Escala de folgas
             </button>
+            )}
             <button
               type="button"
               onClick={() => setAba('aprovacoes')}

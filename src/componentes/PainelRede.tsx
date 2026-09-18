@@ -17,6 +17,7 @@ import {
   ClipboardList,
   QrCode,
   MessageSquare,
+  Briefcase,
 } from 'lucide-react';
 import { Colaborador, Loja, Setor, INFORMACOES_LOJAS, cuidaDePessoas } from '../tipos';
 import { podeUsar } from '../servicos/permissoes';
@@ -26,6 +27,7 @@ import { bancoDados } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
 import { QuadroFuncionarios } from './QuadroFuncionarios';
 import { CentralAvisos } from './CentralAvisos';
+import { PainelRH } from './PainelRH';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { Organograma } from './Organograma';
 import { PainelGestao } from './PainelGestao';
@@ -42,6 +44,7 @@ type SubAbaPainel =
   | 'visao_geral'
   | 'quadro'
   | 'gestao'
+  | 'rh'
   | 'organograma'
   | 'aprovacoes'
   | 'avisos';
@@ -132,6 +135,15 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
       podeUsar('qr_ponto', colaboradorAtual)
     )
       lista.push('gestao');
+    /**
+     * A tela de RH é de quem CUIDA DE PESSOAS, e não de um nível.
+     *
+     * A permissão abre a porta; `cuidaDePessoas` diz de quem ela é. Um
+     * líder de setor com a permissão ligada mas sem o papel de RH veria
+     * holerite e advertência da rede inteira — que é exatamente o que a
+     * regra do banco recusa, e a tela não pode prometer o que o banco nega.
+     */
+    if (podeUsar('rh_pessoal', colaboradorAtual) && cuidaDeRh) lista.push('rh');
     if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
     if (podeUsar('avisos_direcao', colaboradorAtual)) lista.push('avisos');
     return lista;
@@ -274,6 +286,22 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                     {pendenciasParaDecidir}
                   </span>
                 )}
+              </button>
+            )}
+
+            {pode('rh_pessoal') && cuidaDeRh && (
+              <button
+                type="button"
+                id="subaba-rh"
+                onClick={() => setSubAbaAtiva('rh')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
+                  subAbaAtiva === 'rh'
+                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
+                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+                }`}
+              >
+                <Briefcase className="w-3.5 h-3.5" />
+                <span>RH</span>
               </button>
             )}
 
@@ -622,6 +650,8 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
         )}
 
         {/* SUB-ABA: CADEIA DE RESPONSABILIDADE (decide quem aprova hora) */}
+        {subAbaAtiva === 'rh' && <PainelRH colaboradorAtual={colaboradorAtual} />}
+
         {subAbaAtiva === 'organograma' && (
           <Organograma colaboradorAtual={colaboradorAtual} />
         )}

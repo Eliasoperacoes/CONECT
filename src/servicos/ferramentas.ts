@@ -166,6 +166,15 @@ export const FERRAMENTAS: Ferramenta[] = [
       'Gerar um código novo invalida o cartaz antigo na hora — quem estiver com a foto dele não bate mais.',
   },
   {
+    chave: 'rh_pessoal',
+    nome: 'RH · Pessoas e documentos',
+    descricao: 'Indicadores, holerite, atestado, advertência, escala e espelho.',
+    area: 'gestao',
+    // Quem cuida de pessoas. O padrão é o líder de setor porque é o nível da
+    // Dani; quem realmente entra é quem cuida de pessoas.
+    nivelPadrao: NIVEL_LIDER_SETOR,
+  },
+  {
     chave: 'avisos_direcao',
     nome: 'Avisos & Direção',
     descricao: 'Central de comunicados oficiais da rede.',

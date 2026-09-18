@@ -29,6 +29,7 @@ import {
 import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
+import { MeusDocumentos } from './MeusDocumentos';
 
 interface PropsAbaEu {
   colaboradorAtual: Colaborador;
@@ -189,6 +190,13 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
           </button>
         </div>
       )}
+
+      {/*
+        Os documentos da pessoa vêm ANTES de presença e preferências: quando
+        chega um holerite ou uma advertência, é a primeira coisa que ela
+        abre o aplicativo para ver. A seção some inteira quando não há nada.
+      */}
+      <MeusDocumentos colaboradorAtual={colaboradorAtual} />
 
       {/* 2. Presença */}
       <div className="mt-4 bg-[var(--c-superficie)] border-y border-[var(--c-borda)]">

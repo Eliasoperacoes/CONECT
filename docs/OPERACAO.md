@@ -39,6 +39,7 @@ Numa base nova, nesta ordem:
 | 12 | `conversa-removida.sql` | Excluir conversa da lista |
 | 13 | `participantes-atualizacao.sql` | **A regra de UPDATE que faltava.** Sem ela, fixar, arquivar e excluir conversa não gravam — e falham em silêncio |
 | 14 | `periodo-de-teste.sql` | A faixa de "sistema em teste". Nasce desligada; liga no painel ADM |
+| 15 | `rh-holerite-advertencia.sql` | Holerites e advertências. **Leitura apertada:** a pessoa vê só os dela, o RH vê todos, mais ninguém vê nada |
 
 Todos são idempotentes: rodar de novo não quebra nada.
 

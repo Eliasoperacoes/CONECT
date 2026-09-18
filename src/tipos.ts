@@ -717,6 +717,58 @@ export interface JustificativaAusencia {
  * aprovada — senao o espelho de ponto sai com um buraco e ninguem sabe se
  * foi falta, atestado ou esquecimento.
  */
+/**
+ * HOLERITE: o demonstrativo de pagamento de um mês.
+ *
+ * Guardamos o CAMINHO do arquivo, nunca o conteúdo. Holerite em base64
+ * dentro da tabela incha o banco e faz cada abertura da tela baixar tudo de
+ * novo — e o que a pessoa quer é abrir o dela, não os oitenta.
+ */
+export interface Holerite {
+  id: string;
+  colaboradorId: string;
+  /** AAAA-MM. É de um MÊS, não de um dia. */
+  competencia: string;
+  arquivoCaminho: string;
+  arquivoNome: string;
+  enviadoPorId?: string;
+  enviadoPorNome?: string;
+  criadoEm: string;
+}
+
+/** Os três degraus da advertência, na ordem em que a CLT os usa. */
+export type TipoAdvertencia = 'verbal' | 'escrita' | 'suspensao';
+
+export const ROTULO_ADVERTENCIA: Record<TipoAdvertencia, string> = {
+  verbal: 'Verbal',
+  escrita: 'Escrita',
+  suspensao: 'Suspensão',
+};
+
+/**
+ * ADVERTÊNCIA: um registro disciplinar.
+ *
+ * A CIÊNCIA é do colaborador, e não de quem aplicou. Uma advertência que o
+ * RH marca como "ele leu" não é ciência de ninguém — por isso o campo só é
+ * preenchido pela própria pessoa, na tela dela.
+ */
+export interface Advertencia {
+  id: string;
+  colaboradorId: string;
+  tipo: TipoAdvertencia;
+  data: string;
+  motivo: string;
+  /** Dias parados, quando for suspensão. */
+  diasSuspensao?: number;
+  arquivoCaminho?: string;
+  arquivoNome?: string;
+  /** Quando o colaborador confirmou que leu. */
+  cienciaEm?: string;
+  aplicadaPorId?: string;
+  aplicadaPorNome?: string;
+  criadoEm: string;
+}
+
 export type SituacaoDoDia =
   | 'normal'
   | 'abonado_atestado'

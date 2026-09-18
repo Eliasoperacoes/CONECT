@@ -84,6 +84,44 @@ export const enviarAnexo = async (
 };
 
 /** Endereço assinado de um arquivo. */
+/**
+ * Sobe um documento para um caminho ESCOLHIDO por quem chama.
+ *
+ * Existe ao lado de `enviarAnexo` porque holerite e advertência não são
+ * mensagem: não têm conversa nem id de mensagem para montar o caminho, e
+ * forçá-los a fingir que têm produziria pastas como
+ * "undefined/undefined.pdf" — que é o tipo de coisa que só aparece quando
+ * alguém vai procurar um documento e não acha.
+ *
+ * O caminho é responsabilidade de quem chama, e é ele que garante que o
+ * documento de uma pessoa não caia na pasta de outra.
+ */
+export const enviarDocumento = async (
+  conteudo: string,
+  caminho: string
+): Promise<{ caminho: string; url: string } | null> => {
+  if (!supabase || !conteudo.startsWith('data:')) return null;
+
+  try {
+    const { blob, tipo } = deDataUrlParaBlob(conteudo);
+
+    const { error } = await supabase.storage.from(BALDE).upload(caminho, blob, {
+      contentType: tipo,
+      upsert: true,
+    });
+    if (error) {
+      console.error('Falha ao subir o documento:', error.message);
+      return null;
+    }
+
+    const url = await resolverCaminho(caminho);
+    return { caminho, url: url || '' };
+  } catch (erro) {
+    console.error('Falha ao preparar o documento:', erro);
+    return null;
+  }
+};
+
 export const resolverCaminho = async (caminho: string): Promise<string | null> => {
   if (!supabase) return null;
 
