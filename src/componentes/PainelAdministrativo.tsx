@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   Users,
   Building2,
-  Radio,
   MessageSquare,
   Megaphone,
   Settings,
@@ -129,7 +128,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
         { id: 'lojas' as const, rotulo: 'Lojas & Unidades', icone: Building2, contador: 5 },
         { id: 'canais' as const, rotulo: 'Canais & Grupos', icone: MessageSquare },
         { id: 'avisos' as const, rotulo: 'Comunicados Oficiais', icone: Megaphone, contador: avisos.length },
-        { id: 'parametros' as const, rotulo: 'Parâmetros & Rádio PTT', icone: Sliders },
+        { id: 'parametros' as const, rotulo: 'Parâmetros da Rede', icone: Sliders },
         { id: 'permissoes' as const, rotulo: 'Permissões de Tela', icone: ShieldCheck },
         { id: 'auditoria' as const, rotulo: 'Auditoria & Logs', icone: FileText, contador: auditoria.length },
         { id: 'banco' as const, rotulo: 'Banco de Dados', icone: Database },
@@ -978,7 +977,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                   Rede de Lojas Malachias Autopeças (5 Unidades)
                 </h2>
                 <p className="text-xs text-[var(--c-texto-3)]">
-                  Estrutura operacional física interligada via canal de dados central e rádio comunicador.
+                  Estrutura operacional física interligada pelo canal de dados central.
                 </p>
               </div>
 
@@ -1086,7 +1085,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                           }}
                           className="w-full py-2 rounded-xl bg-[var(--c-superficie-2)] hover:bg-[var(--c-acento)] hover:text-[var(--c-sobre-acento)] text-xs font-bold text-[var(--c-texto)] border border-[var(--c-borda)] transition-all flex items-center justify-center gap-1.5"
                         >
-                          <Radio className="w-3.5 h-3.5" />
+                          <MessageSquare className="w-3.5 h-3.5" />
                           <span>Abrir Canal da Loja</span>
                         </button>
                       </div>
@@ -1282,7 +1281,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     Parâmetros Globais do CONECTA
                   </h2>
                   <p className="text-xs text-[var(--c-texto-3)]">
-                    Ajuste o comportamento do rádio PTT, permissões de grupo e políticas da rede.
+                    Ajuste as permissões de grupo e as políticas da rede.
                   </p>
                 </div>
 
@@ -1302,47 +1301,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     />
                   </div>
 
-                  {/* Bipe do Rádio Walkie-Talkie */}
-                  <div className="flex items-center justify-between max-w-md p-3 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)]">
-                    <div>
-                      <span className="font-bold text-[var(--c-texto)] block">
-                        Bipes Sonoros do Rádio (PTT)
-                      </span>
-                      <span className="text-[11px] text-[var(--c-texto-3)]">
-                        Emite sinal sonoro clássico de rádio ao iniciar e soltar o botão de transmissão.
-                      </span>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={configuracoes.bipeRadioAtivo}
-                      onChange={(e) =>
-                        setConfiguracoes({ ...configuracoes, bipeRadioAtivo: e.target.checked })
-                      }
-                      className="w-5 h-5 rounded text-[var(--c-acento)]"
-                    />
-                  </div>
 
-                  {/* Tempo Máximo de Transmissão */}
-                  <div>
-                    <label className="block font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1.5">
-                      Tempo Limite por Transmissão de Voz (Rádio)
-                    </label>
-                    <select
-                      value={configuracoes.tempoMaximoRadioSegundos}
-                      onChange={(e) =>
-                        setConfiguracoes({
-                          ...configuracoes,
-                          tempoMaximoRadioSegundos: Number(e.target.value),
-                        })
-                      }
-                      className="w-full max-w-md px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-xs text-[var(--c-texto)]"
-                    >
-                      <option value={30}>30 Segundos (Foco operacional rápido)</option>
-                      <option value={45}>45 Segundos (Recomendado)</option>
-                      <option value={60}>60 Segundos (1 Minuto)</option>
-                      <option value={120}>120 Segundos (2 Minutos)</option>
-                    </select>
-                  </div>
 
                   {/* Criação de Grupos por Operadores */}
                   <div className="flex items-center justify-between max-w-md p-3 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)]">

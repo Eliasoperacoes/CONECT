@@ -13,7 +13,6 @@ import {
   Download,
   Search,
   X,
-  Radio,
   Building2,
   Shield,
   Smile,
@@ -30,12 +29,12 @@ import {
   ImageOff,
   Pencil,
   Reply,
+  Mic,
 } from 'lucide-react';
 import {
   Conversa,
   Colaborador,
   Mensagem,
-  EstadoTransmissaoRadio,
 } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
 import {
@@ -45,12 +44,11 @@ import {
   comprimirImagem,
 } from '../servicos/imagens';
 import { bancoDados } from '../servicos/bancoDados';
-import { servicoAudioRadio } from '../servicos/audioRadio';
-import { TelaRadioAoVivo } from './TelaRadioAoVivo';
 import { ModalCamera } from './ModalCamera';
 import { ModalVisualizadorImagem } from './ModalVisualizadorImagem';
 import { ModalEncaminharMensagem } from './ModalEncaminharMensagem';
 import { montarPreviaDaMensagem } from '../servicos/nuvemComunicacao';
+import { gravadorVoz, gravacaoDisponivel } from '../servicos/gravadorVoz';
 
 interface PropsTelaConversa {
   conversa: Conversa;
@@ -135,10 +133,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 }) => {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [textoMensagem, setTextoMensagem] = useState('');
-  const [estadoRadio, setEstadoRadio] = useState<EstadoTransmissaoRadio>('ocioso');
-  const [volumeVoz, setVolumeVoz] = useState(0);
-  const [outroFalandoNome, setOutroFalandoNome] = useState<string | null>(null);
-  const [avisoRecadoTexto, setAvisoRecadoTexto] = useState<string | null>(null);
   const [audioTocandoId, setAudioTocandoId] = useState<string | null>(null);
   const [menuAberto, setMenuAberto] = useState(false);
   const [tempoAudioAtual, setTempoAudioAtual] = useState<Record<string, number>>({});
@@ -182,6 +176,18 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   const fecharMenuMensagem = () => setMenuMensagem(null);
   /** A mensagem que está sendo respondida, enquanto a resposta é escrita. */
   const [respondendoId, setRespondendoId] = useState<string | null>(null);
+
+  /**
+   * A gravação de voz do chat.
+   *
+   * Antes isto morava dentro do Rádio: a pessoa abria a transmissão ao
+   * vivo, falava, e se ninguém estivesse ouvindo o sistema salvava como
+   * recado. O áudio era um efeito colateral de uma chamada — e quem só
+   * queria mandar um áudio tinha de entender a diferença entre as duas
+   * coisas.
+   */
+  const [gravandoVoz, setGravandoVoz] = useState(false);
+  const [segundosGravados, setSegundosGravados] = useState(0);
   const [modalEncaminharAberto, setModalEncaminharAberto] = useState(false);
   const [mensagensParaEncaminhar, setMensagensParaEncaminhar] = useState<string[]>([]);
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
@@ -250,13 +256,19 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     carregar();
     const cancelarAssinatura = bancoDados.assinarAlteracoes(carregar);
 
-    // Meta: Conexão em < 1 segundo em Wi-Fi -> prepara o microfone quando a conversa abre!
-    servicoAudioRadio.prepararMicrofone();
-
+    /**
+     * O MICROFONE NÃO FICA MAIS ABERTO O TEMPO TODO.
+     *
+     * O rádio o preparava ao abrir a conversa, para a chamada sair em menos
+     * de um segundo. Sem rádio, isso vira o sistema pedindo microfone e
+     * segurando o aparelho ocupado por nada — e no celular aparece como
+     * "gravando" o dia inteiro.
+     *
+     * A gravação de voz abre o microfone na hora em que a pessoa toca no
+     * botão, e o fecha ao terminar.
+     */
     return () => {
       cancelarAssinatura();
-      // Desliga o microfone ao sair da conversa, senão ele fica aberto
-      servicoAudioRadio.liberarMicrofone();
     };
   }, [conversa.id]);
 
@@ -313,28 +325,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     return () => lista.removeEventListener('load', aoCarregarAlgo, true);
   }, [conversa.id]);
 
-  // Ouve transmissões ao vivo de rádio de colegas (WebRTC / BroadcastChannel)
-  useEffect(() => {
-    const cancelarRadio = servicoAudioRadio.assinarSinaisRadio((evento) => {
-      if (evento.conversaId === conversa.id || evento.paraId === colaboradorAtual.id) {
-        if (evento.tipo === 'iniciar_transmissao' && evento.deId !== colaboradorAtual.id) {
-          // Chegou transmissão ao vivo do colega!
-          servicoAudioRadio.tocarBipeInicio();
-          setOutroFalandoNome(evento.nomeFalante);
-          setEstadoRadio('ouvindo');
-        } else if (evento.tipo === 'finalizar_transmissao' && evento.deId !== colaboradorAtual.id) {
-          servicoAudioRadio.tocarBipeFim();
-          setEstadoRadio('ocioso');
-          setOutroFalandoNome(null);
-        }
-      }
-    });
-
-    return () => {
-      cancelarRadio();
-    };
-  }, [conversa.id, colaboradorAtual.id]);
-
   // Envio de mensagem de texto normal
   const lidarEnvioTexto = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -368,6 +358,70 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
    * Sem ele a pessoa toca em "Responder", a citação aparece e ela ainda
    * precisa de um segundo toque para começar a escrever.
    */
+  /**
+   * O relógio da gravação.
+   *
+   * Sem ele a pessoa não sabe se o microfone pegou — fala trinta segundos
+   * para um botão parado e só descobre que não gravou ao soltar.
+   */
+  useEffect(() => {
+    if (!gravandoVoz) return;
+    const relogio = setInterval(() => setSegundosGravados((s) => s + 1), 1000);
+    return () => clearInterval(relogio);
+  }, [gravandoVoz]);
+
+  const comecarAGravar = async () => {
+    if (!gravacaoDisponivel()) {
+      exibirToast('Este aparelho não grava áudio.');
+      return;
+    }
+    const foi = await gravadorVoz.iniciar();
+    if (!foi) {
+      exibirToast('Libere o microfone para gravar um áudio.');
+      return;
+    }
+    setSegundosGravados(0);
+    setGravandoVoz(true);
+  };
+
+  /** Desiste e joga fora: cancelar não pode devolver áudio nenhum. */
+  const desistirDaGravacao = () => {
+    gravadorVoz.cancelar();
+    setGravandoVoz(false);
+    setSegundosGravados(0);
+  };
+
+  const enviarGravacao = async () => {
+    const audio = await gravadorVoz.parar();
+    setGravandoVoz(false);
+    setSegundosGravados(0);
+
+    if (!audio) {
+      exibirToast('Não deu para gravar. Tente de novo.');
+      return;
+    }
+
+    /**
+     * Vai em data URL: um endereço `blob:` morre ao recarregar a página, e
+     * o áudio ficaria mudo para sempre na conversa de todo mundo.
+     */
+    const url = await blobParaDataUrl(audio.blob);
+    if (!url) {
+      exibirToast('Não deu para preparar o áudio.');
+      return;
+    }
+
+    const enviado = await bancoDados.enviarMensagem(conversa.id, {
+      tipo: 'recado_voz',
+      audioUrl: url,
+      audioDuracao: audio.duracaoSegundos,
+      respondendoA: respondendoId || undefined,
+    });
+
+    if (enviado.sucesso) setRespondendoId(null);
+    else exibirToast(enviado.erro || 'Não foi possível enviar o áudio.');
+  };
+
   const responderMensagem = (msg: Mensagem) => {
     setRespondendoId(msg.id);
     fecharMenuMensagem();
@@ -468,112 +522,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   };
 
   // Ação de segurar a BARRA DO RÁDIO
-  const lidarInicioPressioneRadio = async () => {
-    if (outroFalandoNome) {
-      // Bloqueio de concorrência: se o outro já está falando, trava
-      return;
-    }
-
-    // Verifica se o destinatário está ocupado, desconectado ou ausente
-    const destinatarioIndisponivel =
-      conversa.tipo === 'individual' &&
-      colegaDestinatario &&
-      (colegaDestinatario.presenca === 'ocupado' ||
-        colegaDestinatario.presenca === 'desconectado' ||
-        colegaDestinatario.presenca === 'ausente');
-
-    // Toca o bipe imediato de walkie-talkie
-    servicoAudioRadio.tocarBipeInicio();
-
-    if (destinatarioIndisponivel) {
-      // Vira recado de voz automaticamente
-      setEstadoRadio('recado_automatico');
-    } else {
-      setEstadoRadio('chamando');
-      // Em menos de 200ms vira FALANDO
-      refTemporizadorPressione.current = setTimeout(() => {
-        setEstadoRadio('falando');
-      }, 150);
-
-      // Notifica canal ao vivo
-      servicoAudioRadio.enviarSinalRadio({
-        tipo: 'iniciar_transmissao',
-        deId: colaboradorAtual.id,
-        paraId: colegaDestinatario?.id,
-        conversaId: conversa.id,
-        nomeFalante: colaboradorAtual.nome,
-        fotoFalante: colaboradorAtual.foto,
-      });
-    }
-
-    // Inicia captura de voz e onda de áudio
-    refInicioGravacao.current = Date.now();
-    await servicoAudioRadio.iniciarCapturaVoz((vol) => {
-      setVolumeVoz(vol);
-    });
-  };
-
-  // Ação de soltar a BARRA DO RÁDIO
-  const lidarSolturaRadio = async () => {
-    if (refTemporizadorPressione.current) {
-      clearTimeout(refTemporizadorPressione.current);
-    }
-
-    const estadoAntesDeSoltar = estadoRadio;
-    if (estadoAntesDeSoltar === 'ocioso') return;
-
-    // Para captura e recupera áudio se foi gravado
-    const resultadoAudio = await servicoAudioRadio.pararCapturaVoz();
-    servicoAudioRadio.tocarBipeFim();
-
-    // Se estava transmitindo ao vivo, avisa aos peers que soltou
-    if (estadoAntesDeSoltar === 'falando' || estadoAntesDeSoltar === 'chamando') {
-      servicoAudioRadio.enviarSinalRadio({
-        tipo: 'finalizar_transmissao',
-        deId: colaboradorAtual.id,
-        paraId: colegaDestinatario?.id,
-        conversaId: conversa.id,
-        nomeFalante: colaboradorAtual.nome,
-        fotoFalante: colaboradorAtual.foto,
-      });
-    }
-
-    // Se virou recado automático porque o destinatário estava ocupado/offline
-    if (estadoAntesDeSoltar === 'recado_automatico') {
-      const nomeDest = colegaDestinatario?.nome || 'O destinatário';
-      setAvisoRecadoTexto(`${nomeDest} não está disponível — virou recado`);
-
-      // Duração real da gravação, em vez de um valor fixo
-      const segundosGravados = refInicioGravacao.current
-        ? Math.max(1, Math.round((Date.now() - refInicioGravacao.current) / 1000))
-        : 1;
-      refInicioGravacao.current = null;
-
-      // O áudio vai em data URL: um blob: URL morre ao recarregar a página e o
-      // recado ficaria mudo para sempre.
-      let urlAudio: string | undefined = undefined;
-      if (resultadoAudio?.blob) {
-        urlAudio = await blobParaDataUrl(resultadoAudio.blob);
-      }
-
-      const enviado = await bancoDados.enviarMensagem(conversa.id, {
-        tipo: 'recado_voz',
-        audioUrl: urlAudio,
-        audioDuracao: segundosGravados,
-      });
-      if (!enviado.sucesso) {
-        exibirToast(enviado.erro || 'Não foi possível salvar o recado de voz.');
-      }
-
-      setTimeout(() => {
-        setAvisoRecadoTexto(null);
-      }, 4000);
-    }
-
-    setEstadoRadio('ocioso');
-    setVolumeVoz(0);
-  };
-
   // Tocar / pausar mensagem de recado de voz
   const alternarReproducaoAudio = (mensagem: Mensagem) => {
     if (audioTocandoId === mensagem.id) {
@@ -613,12 +561,14 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
           }));
         };
       } else {
-        // Áudio sintético / simulação sonora caso o dispositivo não tenha gerado blob
-        servicoAudioRadio.tocarBipeInicio();
-        setAudioTocandoId(mensagem.id);
-        setTimeout(() => {
-          setAudioTocandoId(null);
-        }, (mensagem.audioDuracao || 3) * 1000);
+        /**
+         * Áudio sem conteúdo: a mensagem existe e o som não.
+         *
+         * Acontecia com recado gravado numa versão antiga. Dizer isso é
+         * melhor do que fingir que está tocando por três segundos — a
+         * pessoa esperava o áudio e ficava achando que o fone estava mudo.
+         */
+        exibirToast('Este áudio não está mais disponível.');
       }
     }
   };
@@ -779,7 +729,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
         if (m.tipo === 'texto') return m.texto;
         if (m.tipo === 'arquivo') return `[Arquivo: ${m.arquivoNome}]`;
         if (m.tipo === 'imagem') return `[Foto${m.legenda ? `: ${m.legenda}` : ''}]`;
-        if (m.tipo === 'recado_voz') return '[Recado de voz gravado no Rádio CONECTA]';
+        if (m.tipo === 'recado_voz') return '[Áudio]';
         return '';
       })
       .filter(Boolean)
@@ -804,7 +754,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       id="tela-conversa-ativa"
       className="flex flex-col w-full h-[100dvh] bg-[var(--c-canvas)] overflow-hidden"
     >
-      {/* 1. Cabeçalho: Alterna entre Barra Normal (com rádio menor próximo à lupa) e Barra de Seleção */}
+      {/* 1. Cabeçalho: alterna entre a barra normal e a barra de seleção */}
       {mensagensSelecionadasIds.length > 0 ? (
         <header
           id="cabecalho-selecao-mensagens"
@@ -893,42 +843,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
           {/* Ações da direita: Botão Chamar Rádio Menor Deslocado à Esquerda da Lupa, Botão Busca e Menu ⋮ */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            {/* BOTÃO CHAMAR RÁDIO — Menor, aba superior, à esquerda da lupa com espaçamento equilibrado */}
-            <button
-              type="button"
-              id="botao-chamar-radio-topo"
-              onMouseDown={lidarInicioPressioneRadio}
-              onMouseUp={lidarSolturaRadio}
-              onMouseLeave={lidarSolturaRadio}
-              onTouchStart={lidarInicioPressioneRadio}
-              onTouchEnd={lidarSolturaRadio}
-              onTouchCancel={lidarSolturaRadio}
-              disabled={!!outroFalandoNome}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full font-semibold text-xs transition-all select-none mr-1.5 shadow-2xs ${
-                outroFalandoNome
-                  ? 'bg-[var(--c-superficie-2)] text-amber-600 dark:text-amber-400 border border-amber-500/30 cursor-not-allowed'
-                  : estadoRadio === 'falando' || estadoRadio === 'chamando'
-                  ? 'bg-red-600 text-white animate-pulse ring-2 ring-red-400'
-                  : 'bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95'
-              }`}
-              title={
-                outroFalandoNome
-                  ? `${outroFalandoNome} está falando no rádio`
-                  : 'Segure para falar no Rádio PTT'
-              }
-              aria-label="Chamar no rádio"
-            >
-              <Radio className={`w-3.5 h-3.5 ${estadoRadio !== 'ocioso' ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">
-                {outroFalandoNome ? 'Ocupado' : estadoRadio !== 'ocioso' ? 'Ao vivo' : 'Rádio'}
-              </span>
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  outroFalandoNome ? 'bg-amber-400' : 'bg-emerald-200'
-                } animate-pulse`}
-              />
-            </button>
-
             {/* Lupa de busca */}
             <button
               type="button"
@@ -1019,16 +933,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
           >
             <X className="w-4 h-4" />
           </button>
-        </div>
-      )}
-
-      {/* Notificação toast quando chamada vira recado automático */}
-      {avisoRecadoTexto && (
-        <div
-          id="toast-aviso-recado"
-          className="w-full bg-[var(--c-atencao)] text-[var(--c-sobre-acento)] text-xs font-medium px-4 py-2 text-center animate-in slide-in-from-top duration-200"
-        >
-          {avisoRecadoTexto}
         </div>
       )}
 
@@ -1926,7 +1830,49 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
             );
           })()}
 
-          {/* Linha de digitação de texto com câmera à esquerda, texto no meio e anexo no outro lado */}
+          {/*
+            GRAVANDO, A BARRA INTEIRA VIRA A GRAVAÇÃO.
+
+            Não é enfeite: enquanto o microfone está aberto, câmera, clipe e
+            caixa de texto não fazem sentido — e deixá-los ali convida a
+            pessoa a tocar num deles no meio da frase. Três coisas à vista:
+            quanto tempo já gravou, desistir, e enviar.
+          */}
+          {gravandoVoz ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={desistirDaGravacao}
+                className="w-11 h-11 flex items-center justify-center text-[var(--c-texto-2)] hover:text-red-600 rounded-full hover:bg-[var(--c-superficie-2)] flex-shrink-0 transition-colors"
+                title="Descartar o áudio"
+                aria-label="Descartar áudio"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+
+              <div className="flex-1 min-w-0 flex items-center gap-2 px-4 py-2.5 rounded-full bg-red-500/10 border border-red-500/25">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                <span className="text-sm font-bold tabular-nums text-[var(--c-texto)]">
+                  {formatarSegundos(segundosGravados)}
+                </span>
+                <span className="text-xs text-[var(--c-texto-3)] truncate">
+                  gravando…
+                </span>
+              </div>
+
+              <button
+                type="button"
+                id="botao-enviar-audio"
+                onClick={enviarGravacao}
+                className="w-11 h-11 flex items-center justify-center bg-[var(--c-acento)] text-[var(--c-sobre-acento)] rounded-full flex-shrink-0 hover:brightness-110 active:scale-95 transition-all"
+                title="Enviar o áudio"
+                aria-label="Enviar áudio"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+          /* Linha de digitação de texto com câmera à esquerda, texto no meio e anexo no outro lado */
           <div className="flex items-center gap-2">
             {/* Lado Esquerdo: Botão de Tirar Foto com a Câmera */}
             <button
@@ -1983,6 +1929,26 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               <Paperclip className="w-5 h-5" />
             </button>
 
+            {/*
+              O MICROFONE SÓ APARECE COM A CAIXA VAZIA.
+
+              Com texto digitado, o lugar é do botão de enviar: dois botões
+              disputando o mesmo canto é como se manda um áudio no meio de
+              uma frase escrita — e perde as duas coisas.
+            */}
+            {!textoMensagem.trim() && (
+              <button
+                type="button"
+                id="botao-gravar-audio"
+                onClick={comecarAGravar}
+                className="w-11 h-11 flex items-center justify-center text-[var(--c-texto-2)] hover:text-[var(--c-acento)] rounded-full hover:bg-[var(--c-superficie-2)] flex-shrink-0 transition-colors"
+                title="Gravar um áudio"
+                aria-label="Gravar áudio"
+              >
+                <Mic className="w-5 h-5" />
+              </button>
+            )}
+
             {/* Botão de Enviar (visível quando há texto digitado) */}
             {textoMensagem.trim() && (
               <button
@@ -1996,6 +1962,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               </button>
             )}
           </div>
+          )}
         </footer>
       ) : (
         /* Se não pode publicar (ex: Avisos da Rede para operador), respeita: sem cadeado, sem aviso */
@@ -2003,16 +1970,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
           Somente a gestão pode publicar avisos.
         </footer>
       )}
-
-      {/* Overlay do Rádio ao Vivo em tela cheia ao segurar o botão */}
-      <TelaRadioAoVivo
-        estado={estadoRadio}
-        colaboradorAlvo={colegaDestinatario}
-        nomeConversa={conversa.nome}
-        fotoConversa={conversa.foto}
-        volumeVoz={volumeVoz}
-        nomeQuemFala={outroFalandoNome || undefined}
-      />
 
       {/* Modal de Detalhes da Conversa / Grupo / Contato */}
       {modalDetalhesAberto && (

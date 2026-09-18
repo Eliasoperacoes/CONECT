@@ -120,8 +120,22 @@ export const ehAdministrador = (c: { nivel: number }): boolean => c.nivel >= NIV
 export const vePainelDeRede = (c: { nivel: number; setor: string }): boolean =>
   c.nivel >= NIVEL_LIDER_SETOR || c.setor === 'RH';
 
-/** Publica comunicado oficial da rede: Diretoria e TI. */
-export const publicaComunicado = (c: { nivel: number }): boolean => c.nivel >= NIVEL_DIRETORIA;
+/**
+ * PUBLICA COMUNICADO OFICIAL DA REDE: do líder de setor para cima.
+ *
+ * Havia TRÊS números para a mesma pergunta, e nenhum deles conversava com
+ * os outros: o catálogo de ferramentas liberava a tela no nível 2, esta
+ * função exigia 4, e a Central de Avisos exigia 5.
+ *
+ * O resultado na tela era o pior possível: o líder via a aba "Avisos &
+ * Direção", abria, e não conseguia fazer nada. A permissão dizia que sim e
+ * a tela dizia que não.
+ *
+ * Agora é uma só, e ela vale para a tela E para o canal — quem pode
+ * publicar aqui é quem pode publicar no grupo Avisos da Rede.
+ */
+export const publicaComunicado = (c: { nivel: number }): boolean =>
+  c.nivel >= NIVEL_LIDER_SETOR;
 
 export type EstadoPresenca = 'disponivel' | 'ocupado' | 'ausente' | 'desconectado';
 
@@ -450,8 +464,6 @@ export interface RegistroAuditoria {
 
 export interface ConfiguracaoSistema {
   nomeEmpresa: string;
-  bipeRadioAtivo: boolean;
-  tempoMaximoRadioSegundos: number;
   /**
    * Quais ferramentas cada nivel enxerga. Chave da ferramenta -> niveis.
    *
@@ -509,14 +521,6 @@ export interface AvisoRede {
   lidoPorIds: string[];
   confirmacoesIds: string[];
 }
-
-export type EstadoTransmissaoRadio =
-  | 'ocioso'
-  | 'chamando'
-  | 'falando'
-  | 'ouvindo'
-  | 'recado_automatico'
-  | 'ocupado_outro';
 
 export interface SolicitacaoRadioAoVivo {
   deId: string;

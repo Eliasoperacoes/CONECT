@@ -3,7 +3,6 @@ import {
   Building2,
   Users,
   Megaphone,
-  Radio,
   Layers,
   ArrowRight,
   TrendingUp,
@@ -17,6 +16,7 @@ import {
   Network,
   ClipboardList,
   QrCode,
+  MessageSquare,
 } from 'lucide-react';
 import { Colaborador, Loja, Setor, INFORMACOES_LOJAS, cuidaDePessoas } from '../tipos';
 import { podeUsar } from '../servicos/permissoes';
@@ -33,7 +33,8 @@ import { PainelGestao } from './PainelGestao';
 interface PropsPainelRede {
   colaboradorAtual: Colaborador;
   aoAbrirConversa: (conversaId: string) => void;
-  aoChamarRadio: (colegaId: string) => void;
+  /** Abre a conversa com o colega. */
+  aoConversarCom: (colegaId: string) => void;
   aoAlternarParaGestor?: () => void;
 }
 
@@ -48,7 +49,7 @@ type SubAbaPainel =
 export const PainelRede: React.FC<PropsPainelRede> = ({
   colaboradorAtual,
   aoAbrirConversa,
-  aoChamarRadio,
+  aoConversarCom,
   aoAlternarParaGestor,
 }) => {
   const [subAbaEscolhida, setSubAbaAtiva] = useState<SubAbaPainel>('visao_geral');
@@ -185,7 +186,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
         estatisticas.totalColaboradores === 1 ? 'colaborador' : 'colaboradores'
       } em ${estatisticas.totalLojasComEquipe} ${
         estatisticas.totalLojasComEquipe === 1 ? 'unidade' : 'unidades'
-      } · Rádio PTT & Mensageria`
+      } · Mensagens e voz`
     : `${colaboradorAtual.loja} · ${Math.max(equipeDeQuemAbre - 1, 0)} ${
         equipeDeQuemAbre - 1 === 1 ? 'pessoa' : 'pessoas'
       } sob sua responsabilidade`;
@@ -409,7 +410,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               <div className="bg-[var(--c-superficie)] p-4 rounded-xl border border-[var(--c-borda)] shadow-xs flex flex-col justify-between gap-2">
                 <div className="flex items-center justify-between text-[var(--c-texto-3)]">
                   <span className="text-xs font-medium">Movimento de Hoje</span>
-                  <Radio className="w-4 h-4 text-emerald-500" />
+                  <MessageSquare className="w-4 h-4 text-emerald-500" />
                 </div>
                 <div>
                   <div className="text-2xl font-black text-[var(--c-texto)] tracking-tight">
@@ -420,7 +421,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                   </div>
                   <p className="text-xs text-[var(--c-texto-3)] mt-1">
                     {estatisticas.chamadasHoje}{' '}
-                    {estatisticas.chamadasHoje === 1 ? 'recado' : 'recados'} de voz no rádio PTT
+                    {estatisticas.chamadasHoje === 1 ? 'áudio' : 'áudios'} gravados hoje
                   </p>
                 </div>
               </div>
@@ -606,7 +607,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
           <QuadroFuncionarios
             colaboradorAtual={colaboradorAtual}
             aoIniciarConversa={lidarIniciarConversaColega}
-            aoChamarRadio={aoChamarRadio}
+            aoConversarCom={aoConversarCom}
           />
         )}
 

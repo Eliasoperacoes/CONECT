@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
   Search,
-  Radio,
   MessageSquare,
   Building2,
   Phone,
@@ -26,7 +25,8 @@ import { FichaColaborador } from './FichaColaborador';
 interface PropsQuadroFuncionarios {
   colaboradorAtual: Colaborador;
   aoIniciarConversa: (colegaId: string) => void;
-  aoChamarRadio: (colegaId: string) => void;
+  /** Abre a conversa com o colega. */
+  aoConversarCom: (colegaId: string) => void;
 }
 
 // Os filtros saem das listas oficiais de tipos.ts, nunca de uma cópia escrita
@@ -42,7 +42,7 @@ const SETORES_LISTA: (Setor | 'Todos')[] = ['Todos', ...SETORES];
 export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
   colaboradorAtual,
   aoIniciarConversa,
-  aoChamarRadio,
+  aoConversarCom,
 }) => {
   const [busca, setBusca] = useState('');
   const [lojaSelecionada, setLojaSelecionada] = useState<Loja | 'Todas'>('Todas');
@@ -415,13 +415,13 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                     )}
                     <button
                       type="button"
-                      id={`botao-radio-funcionario-${colaborador.id}`}
-                      onClick={() => aoChamarRadio(colaborador.id)}
+                      id={`botao-conversar-funcionario-${colaborador.id}`}
+                      onClick={() => aoConversarCom(colaborador.id)}
                       className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs"
-                      title="Chamar no rádio walkie-talkie ao vivo"
+                      title="Abrir conversa"
                     >
-                      <Radio className="w-3.5 h-3.5" />
-                      <span>Rádio</span>
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>Conversar</span>
                     </button>
 
                     <button
@@ -491,11 +491,11 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => aoChamarRadio(colaborador.id)}
+                        onClick={() => aoConversarCom(colaborador.id)}
                         className="p-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-xs"
-                        title="Chamar no Rádio"
+                        title="Abrir conversa"
                       >
-                        <Radio className="w-4 h-4" />
+                        <MessageSquare className="w-4 h-4" />
                       </button>
                       <button
                         type="button"
@@ -600,11 +600,11 @@ export const QuadroFuncionarios: React.FC<PropsQuadroFuncionarios> = ({
                     onClick={() => {
                       const id = colaboradorModal.id;
                       setColaboradorModal(null);
-                      aoChamarRadio(id);
+                      aoConversarCom(id);
                     }}
                     className="py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center justify-center gap-2 transition-all shadow-sm"
                   >
-                    <Radio className="w-4 h-4" /> Chamar Rádio
+                    <MessageSquare className="w-4 h-4" /> Conversar
                   </button>
 
                   <button

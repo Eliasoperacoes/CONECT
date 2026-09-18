@@ -1,6 +1,6 @@
 /**
  * CONECTA — Comunicador Interno da Malachias Autopeças
- * Estrutura: 3 abas (Conversas | Grupos | Eu), rádio ao vivo com WebRTC,
+ * Estrutura: 3 abas (Conversas | Grupos | Eu), mensagens com voz gravada,
  * hierarquia Setor x Loja x Nível e responsividade rigorosa (360px até 1920px).
  */
 
@@ -13,7 +13,6 @@ import {
   Plus,
   LayoutDashboard,
   ShieldCheck,
-  Radio,
   Building2,
   LogOut,
   Clock,
@@ -594,7 +593,7 @@ export default function App() {
     .filter((c) => c.id !== colaboradorAtual.id);
 
   // Ação ao selecionar um colega na lista de nova conversa
-  // Toda conversa aberta a partir de um atalho (nova conversa, radio, RH)
+  // Toda conversa aberta a partir de um atalho (nova conversa, quadro, RH)
   // sobe como janela: quem pediu estava no meio de outra coisa.
   const lidarSelecionarColega = (colegaId: string) => {
     const conversa = bancoDados.obterOuCriarConversaIndividual(colegaId);
@@ -753,7 +752,7 @@ export default function App() {
       <header className="px-4 py-2.5 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] flex items-center justify-between flex-shrink-0 z-10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shadow-xs">
-            <Radio className="w-4 h-4" />
+            <MessageSquare className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
@@ -975,7 +974,7 @@ export default function App() {
                 <PainelRede
                   colaboradorAtual={colaboradorAtual}
                   aoAbrirConversa={(id) => abrirJanela(id)}
-                  aoChamarRadio={(colegaId) => lidarSelecionarColega(colegaId)}
+                  aoConversarCom={(colegaId) => lidarSelecionarColega(colegaId)}
                   aoAlternarParaGestor={() => setPainelAdminAberto(true)}
                 />
               </div>
@@ -1145,7 +1144,7 @@ export default function App() {
               <PainelRede
                 colaboradorAtual={colaboradorAtual}
                 aoAbrirConversa={(id) => abrirJanela(id)}
-                aoChamarRadio={(colegaId) => lidarSelecionarColega(colegaId)}
+                aoConversarCom={(colegaId) => lidarSelecionarColega(colegaId)}
                 aoAlternarParaGestor={() => setPainelAdminAberto(true)}
               />
             </div>
@@ -1175,7 +1174,7 @@ export default function App() {
                 CONECTA Malachias
               </h2>
               <p className="text-sm max-w-sm mb-4">
-                Comunicação em tempo real, rádio walkie-talkie PTT e gestão integrada das 5 filiais da rede.
+                Comunicação em tempo real e gestão integrada das 5 filiais da rede.
               </p>
               {ehAdmin && (
                 <button

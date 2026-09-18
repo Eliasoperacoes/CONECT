@@ -892,8 +892,6 @@ class PonteComunicacao {
 
     const config: ConfiguracaoSistema = {
       nomeEmpresa: data.nome_empresa,
-      bipeRadioAtivo: data.bipe_radio_ativo,
-      tempoMaximoRadioSegundos: data.tempo_maximo_radio_segundos,
       mesesHistoricoConversas: data.meses_historico_conversas ?? 2,
       ultimaLimpezaConversas: data.ultima_limpeza_conversas ?? undefined,
       emPeriodoDeTeste: data.em_periodo_de_teste ?? false,
@@ -939,8 +937,6 @@ class PonteComunicacao {
       .from('configuracoes')
       .update({
         nome_empresa: config.nomeEmpresa,
-        bipe_radio_ativo: config.bipeRadioAtivo,
-        tempo_maximo_radio_segundos: config.tempoMaximoRadioSegundos,
         meses_historico_conversas: config.mesesHistoricoConversas,
         ultima_limpeza_conversas: config.ultimaLimpezaConversas ?? null,
         em_periodo_de_teste: config.emPeriodoDeTeste ?? false,

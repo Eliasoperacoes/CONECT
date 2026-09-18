@@ -233,12 +233,12 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
           <div className="flex items-center gap-3">
             <Bell className="w-5 h-5 text-[var(--c-texto-2)]" />
             <div>
-              <p className="text-sm font-medium text-[var(--c-texto)]">Sons do rádio e mensagens</p>
+              <p className="text-sm font-medium text-[var(--c-texto)]">Sons das mensagens</p>
               <p className="text-xs text-[var(--c-texto-3)]">Bipes de transmissão ao vivo</p>
             </div>
           </div>
           <input
-            id="chave-som-radio"
+            id="chave-som-mensagens"
             type="checkbox"
             checked={somAtivo}
             onChange={(e) => setSomAtivo(e.target.checked)}

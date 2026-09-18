@@ -11,7 +11,12 @@
  */
 
 import { usandoNuvem, temSessaoViva } from './supabase';
-import { NIVEL_TI, NIVEL_DIRETORIA, NIVEL_GERENTE } from '../tipos';
+import {
+  NIVEL_TI,
+  NIVEL_DIRETORIA,
+  NIVEL_GERENTE,
+  publicaComunicado,
+} from '../tipos';
 import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
 import {
@@ -101,8 +106,6 @@ export const COLABORADOR_ADMIN_ELIAS: Colaborador = {
 
 const CONFIGURACAO_PADRAO: ConfiguracaoSistema = {
   nomeEmpresa: 'Malachias Autopeças',
-  bipeRadioAtivo: true,
-  tempoMaximoRadioSegundos: 45,
   mesesHistoricoConversas: 2,
   modoManutencao: false,
   permitirCriacaoGruposPorOperadores: false,
@@ -2127,9 +2130,14 @@ class BancoDadosConecta {
       return conversa.participantesIds.includes(atual.id);
     }
 
-    // Avisos da Rede: somente Administrador (N4) tem liberação para publicar comunicados
+    /**
+     * Avisos da Rede: quem publica aqui é quem publica na Central.
+     *
+     * Eram dois números diferentes para a mesma pergunta — o líder podia
+     * publicar num lugar e não no outro, para o mesmo canal.
+     */
     if (conversaId === 'grupo-avisos-da-rede') {
-      return atual.nivel >= NIVEL_TI;
+      return publicaComunicado(atual);
     }
 
     // Grupos restritos a gestores/admin

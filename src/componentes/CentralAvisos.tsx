@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NIVEL_TI, NIVEL_GERENTE } from '../tipos';
+import { NIVEL_TI, NIVEL_GERENTE, publicaComunicado } from '../tipos';
 import {
   Megaphone,
   Plus,
@@ -63,7 +63,9 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
     return () => cancelar();
   }, []);
 
-  const podePublicar = colaboradorAtual.nivel >= NIVEL_TI;
+  // A regra vem de um lugar só: três cópias dela já produziram uma aba que
+  // aparecia e não deixava fazer nada
+  const podePublicar = publicaComunicado(colaboradorAtual);
 
   const lidarEnviarAviso = async (e: React.FormEvent) => {
     e.preventDefault();

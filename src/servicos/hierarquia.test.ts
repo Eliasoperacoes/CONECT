@@ -62,11 +62,24 @@ test('cuidar de pessoas: RH, Diretoria e TI — gerente não mexe em ficha', () 
   expect(cuidaDePessoas(pessoa(NIVEL_COLABORADOR, 'RH'))).toBe(true);
 });
 
-test('comunicado oficial da rede: Diretoria e TI', () => {
+/**
+ * COMUNICADO OFICIAL: do líder de setor para cima.
+ *
+ * Era só Diretoria e TI. Mudou por decisão do Elias — e no caminho
+ * consertou uma divergência: havia TRÊS números para a mesma pergunta. O
+ * catálogo liberava a tela no nível 2, esta função exigia 4 e a Central de
+ * Avisos exigia 5. O líder via a aba "Avisos & Direção", abria, e não
+ * conseguia fazer nada.
+ */
+test('comunicado oficial: do lider de setor para cima', () => {
   expect(publicaComunicado(pessoa(NIVEL_TI))).toBe(true);
   expect(publicaComunicado(pessoa(NIVEL_DIRETORIA))).toBe(true);
-  expect(publicaComunicado(pessoa(NIVEL_GERENTE))).toBe(false);
-  expect(publicaComunicado(pessoa(NIVEL_LIDER_SETOR))).toBe(false);
+  expect(publicaComunicado(pessoa(NIVEL_GERENTE))).toBe(true);
+  expect(publicaComunicado(pessoa(NIVEL_LIDER_SETOR))).toBe(true);
+
+  // Nível 1 não publica, e não vê a aba
+  expect(publicaComunicado(pessoa(NIVEL_COLABORADOR))).toBe(false);
+  expect(vePainelDeRede(pessoa(NIVEL_COLABORADOR))).toBe(false);
 });
 
 test('painel de RH: do líder de setor para cima, mais o setor RH', () => {
@@ -86,5 +99,7 @@ test('o líder de setor NÃO administra nem mexe em ficha', () => {
   expect(vePainelDeRede(lider)).toBe(true);
   expect(cuidaDePessoas(lider)).toBe(false);
   expect(ehAdministrador(lider)).toBe(false);
-  expect(publicaComunicado(lider)).toBe(false);
+
+  // Publicar comunicado ele PODE — é a única das quatro que subiu para ele
+  expect(publicaComunicado(lider)).toBe(true);
 });

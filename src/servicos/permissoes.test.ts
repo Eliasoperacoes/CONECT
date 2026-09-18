@@ -629,3 +629,47 @@ test('toda aba do ADM tem ferramenta no catalogo, e vice-versa', async () => {
   expect(naTela.length).toBeGreaterThan(0);
   expect(naTela).toEqual(noCatalogo);
 });
+
+/**
+ * UMA REGRA SÓ PARA QUEM PUBLICA COMUNICADO.
+ *
+ * Havia TRÊS números para a mesma pergunta: o catálogo liberava a tela no
+ * nível 2, `publicaComunicado` exigia 4, e a Central de Avisos exigia 5.
+ *
+ * O resultado na tela era o pior possível — o líder via a aba "Avisos &
+ * Direção", abria, e não conseguia fazer nada. A permissão dizia que sim e
+ * a tela dizia que não.
+ */
+test('a Central de Avisos e o canal usam a MESMA regra', async () => {
+  const central = await Bun.file(
+    new URL('../componentes/CentralAvisos.tsx', import.meta.url)
+  ).text();
+  const servico = await Bun.file(
+    new URL('./bancoDados.ts', import.meta.url)
+  ).text();
+
+  // Nenhum dos dois pode ter o próprio número
+  expect(central).toContain('publicaComunicado(colaboradorAtual)');
+  expect(central).not.toContain('colaboradorAtual.nivel >= NIVEL_TI');
+
+  expect(servico).toContain('return publicaComunicado(atual);');
+  expect(servico).not.toContain("if (conversaId === 'grupo-avisos-da-rede') {\n      return atual.nivel >= NIVEL_TI;");
+});
+
+test('a aba de avisos e a regra de publicar comecam no mesmo nivel', async () => {
+  const catalogo = await Bun.file(
+    new URL('./ferramentas.ts', import.meta.url)
+  ).text();
+  const tipos = await Bun.file(new URL('../tipos.ts', import.meta.url)).text();
+
+  /**
+   * Se a aba abrir num nível e a publicação começar em outro, volta a
+   * existir gente que vê a tela e não pode usá-la.
+   */
+  const inicio = catalogo.indexOf("chave: 'avisos_direcao'");
+  expect(catalogo.slice(inicio, inicio + 300)).toContain('nivelPadrao: NIVEL_LIDER_SETOR');
+
+  expect(tipos).toContain(
+    'export const publicaComunicado = (c: { nivel: number }): boolean =>\n  c.nivel >= NIVEL_LIDER_SETOR;'
+  );
+});

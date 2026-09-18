@@ -488,15 +488,13 @@ test('confirmação de ciência é registrada em nome de quem confirmou', async 
 test('diretriz do sistema vale para a rede, não para o aparelho', async () => {
   const res = await bancoDados.salvarConfiguracoes({
     nomeEmpresa: 'Malachias Autopeças',
-    bipeRadioAtivo: false,
-    tempoMaximoRadioSegundos: 30,
-    mesesHistoricoConversas: 2,
+    mesesHistoricoConversas: 3,
     modoManutencao: false,
     permitirCriacaoGruposPorOperadores: true,
   });
 
   expect(res.sucesso).toBe(true);
-  expect(bancoConfig.tempoMaximoRadioSegundos).toBe(30);
+  expect(bancoConfig.meses_historico_conversas ?? bancoConfig.mesesHistoricoConversas).toBe(3);
   expect(bancoConfig.permitirCriacaoGruposPorOperadores).toBe(true);
 });
 
@@ -504,16 +502,14 @@ test('diretriz recusada pelo banco não fica valendo só aqui', async () => {
   recusarEscrita = true;
   const res = await bancoDados.salvarConfiguracoes({
     nomeEmpresa: 'Outra',
-    bipeRadioAtivo: true,
-    tempoMaximoRadioSegundos: 999,
-    mesesHistoricoConversas: 2,
+    mesesHistoricoConversas: 99,
     modoManutencao: true,
     permitirCriacaoGruposPorOperadores: false,
   });
 
   expect(res.sucesso).toBe(false);
   expect(bancoConfig).toBeNull();
-  expect(bancoDados.obterConfiguracoes().tempoMaximoRadioSegundos).not.toBe(999);
+  expect(bancoDados.obterConfiguracoes().mesesHistoricoConversas).not.toBe(99);
 });
 
 test('só o Administrador altera as diretrizes', async () => {
