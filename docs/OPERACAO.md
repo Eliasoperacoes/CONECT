@@ -50,6 +50,8 @@ Numa base nova, nesta ordem:
 > `conferir-ponto-do-lider.sql` não altera nada: só responde se as regras acima estão valendo. **Uma consulta só, de propósito** — o SQL Editor mostra apenas o resultado da última consulta do arquivo, então conferência em vários `select` entrega respostas invisíveis.
 >
 > `conferir-equipe-da-fernanda.sql` também não altera nada: mostra quem responde a um líder, o setor inteiro e nomes parecidos. Serve quando o banco está correto e a correção ainda falha — aí a causa costuma ser o Organograma, não SQL.
+>
+> `conferir-carga-horaria.sql` mostra a carga cadastrada de cada pessoa — diária, semanal, sábado e intervalo. Serve quando o saldo do dia não bate com o que a pessoa cumpriu: o cálculo do dia é simples, quem costuma estar errado é o **previsto**, que sai da ficha.
 
 Todos são idempotentes: rodar de novo não quebra nada.
 
