@@ -1621,3 +1621,55 @@ test('O ESPELHO MARCA AS DUAS CORREÇÕES, NÃO SÓ A DO RH', async () => {
   expect(ehMarcacaoCorrigida('codigo_manual')).toBe(false);
   expect(ehMarcacaoCorrigida(undefined)).toBe(false);
 });
+
+test('ESTAGIÁRIA BATE DUAS VEZES, NÃO QUATRO', async () => {
+  /**
+   * A Lyvia é estagiária e responde à líder de Garantia. Jornada de
+   * estágio não tem intervalo: entra e sai, e pronto.
+   *
+   * `obterProximaMarcacao` recebia o id da pessoa e perguntava as
+   * marcações esperadas SÓ PELA DATA. Resultado: depois da entrada, o
+   * sistema pedia a saída para almoço — um almoço que ela não tem — e o
+   * dia dela nunca fechava.
+   *
+   * Terceira vez que esta mesma linha esquece o segundo argumento neste
+   * projeto. Por isso agora tem teste.
+   */
+  const LYVIA = {
+    ...ELIAS,
+    id: 'colab-lyvia',
+    nome: 'Lyvia',
+    login: 'lyvia',
+    nivel: 1,
+    setor: 'Estágio',
+    cargo: 'Estagiária',
+  };
+  equipe = [ELIAS, LYVIA];
+
+  // O cartaz é publicado por quem pode publicar; só depois a estagiária entra
+  const codigo = await publicarCodigos();
+  colaboradorLogado = LYVIA;
+
+  const entrada = await servicoPonto.registrarMarcacaoPorCodigo(codigo);
+  expect(entrada.registro!.tipo).toBe('entrada');
+
+  // A próxima é a SAÍDA. Se vier 'saida_almoco', o dia não fecha nunca.
+  expect(servicoPonto.obterProximaMarcacao(LYVIA.id)).toBe('saida');
+
+  const saida = await servicoPonto.registrarMarcacaoPorCodigo(codigo);
+  expect(saida.registro!.tipo).toBe('saida');
+
+  // E aí a jornada dela acabou
+  expect(servicoPonto.obterProximaMarcacao(LYVIA.id)).toBeNull();
+});
+
+test('quem tem intervalo continua batendo as quatro', async () => {
+  // O outro lado: a correção acima não pode ter tirado o almoço de todo mundo
+  equipe = [ELIAS, ANA];
+
+  const codigo = await publicarCodigos();
+  colaboradorLogado = ANA;
+  await servicoPonto.registrarMarcacaoPorCodigo(codigo);
+
+  expect(servicoPonto.obterProximaMarcacao(ANA.id)).toBe('saida_almoco');
+});

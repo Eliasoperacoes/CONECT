@@ -30,11 +30,10 @@ import { X, Pencil, AlertTriangle } from 'lucide-react';
 import {
   Colaborador,
   TipoMarcacao,
-  ORDEM_MARCACOES,
   ROTULO_MARCACAO,
   ehMarcacaoCorrigida,
 } from '../tipos';
-import { servicoPonto, formatarDataBR } from '../servicos/ponto';
+import { servicoPonto, formatarDataBR, marcacoesEsperadas } from '../servicos/ponto';
 
 interface Props {
   colaborador: Colaborador;
@@ -54,21 +53,36 @@ export const ModalCorrigirJornada: React.FC<Props> = ({
     [colaborador.id, data]
   );
 
+  /**
+   * AS MARCAÇÕES QUE ESTE DIA, DESTA PESSOA, ESPERA.
+   *
+   * Não são sempre quatro. Sábado tem duas; quem não tem intervalo —
+   * estágio — tem duas em qualquer dia.
+   *
+   * Oferecer os quatro campos a quem bate dois é convite para o
+   * responsável preencher um almoço que não existe, e a apuração passa a
+   * contar um intervalo que a pessoa nunca teve.
+   */
+  const esperadas = useMemo(
+    () => marcacoesEsperadas(data, colaborador),
+    [data, colaborador]
+  );
+
   /** O que está gravado hoje, por marcação. Vazio = não bateu. */
   const original = useMemo(() => {
     const mapa = {} as Record<TipoMarcacao, string>;
-    for (const tipo of ORDEM_MARCACOES) {
+    for (const tipo of esperadas) {
       mapa[tipo] = jornada.marcacoes[tipo]?.horaFormatada || '';
     }
     return mapa;
-  }, [jornada]);
+  }, [jornada, esperadas]);
 
   const [horas, setHoras] = useState<Record<TipoMarcacao, string>>(original);
   const [motivo, setMotivo] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const alteradas = ORDEM_MARCACOES.filter(
+  const alteradas = esperadas.filter(
     (tipo) => horas[tipo].trim() !== original[tipo]
   );
 
@@ -156,7 +170,7 @@ export const ModalCorrigirJornada: React.FC<Props> = ({
 
         <div className="p-4 flex flex-col gap-3 overflow-y-auto">
           <div className="grid grid-cols-2 gap-2.5">
-            {ORDEM_MARCACOES.map((tipo) => {
+            {esperadas.map((tipo) => {
               const registro = jornada.marcacoes[tipo];
               const mudou = horas[tipo].trim() !== original[tipo];
 

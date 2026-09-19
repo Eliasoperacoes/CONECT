@@ -477,7 +477,20 @@ class ServicoPonto {
    */
   obterProximaMarcacao(colaboradorId: string, data: string = dataDeHoje()): TipoMarcacao | null {
     const registradas = this.obterMarcacoesDoDia(colaboradorId, data).map((r) => r.tipo);
-    return marcacoesEsperadas(data).find((tipo) => !registradas.includes(tipo)) || null;
+
+    /**
+     * COM A PESSOA, e não só com a data. Terceira vez que esta linha
+     * esquece o segundo argumento.
+     *
+     * O comentário acima fala de sábado, mas a regra é maior: quem não tem
+     * intervalo — estágio — também bate duas vezes, em qualquer dia. Sem
+     * passar a pessoa, o sistema pedia à estagiária que batesse uma saída
+     * para almoço que ela não tem, e o dia dela nunca fechava.
+     */
+    const colaborador = bancoDados.obterColaboradorPorId(colaboradorId);
+    return (
+      marcacoesEsperadas(data, colaborador).find((tipo) => !registradas.includes(tipo)) || null
+    );
   }
 
   /** Rótulo do próximo passo, pronto para o botão da tela. */

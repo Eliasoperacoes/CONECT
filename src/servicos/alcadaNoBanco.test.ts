@@ -250,3 +250,21 @@ test('A FERRAMENTA DO ESPELHO EXISTE NO CATÁLOGO', async () => {
   expect(banco).toContain("'espelho_equipe'");
   expect(gestao).toContain("'espelho_equipe'");
 });
+
+test('O MODAL DE CORREÇÃO SEGUE A JORNADA DA PESSOA', async () => {
+  /**
+   * Não são sempre quatro marcações. Sábado tem duas; estágio tem duas em
+   * qualquer dia.
+   *
+   * Oferecer quatro campos a quem bate dois é convite para o responsável
+   * preencher um almoço que não existe — e a apuração passa a contar um
+   * intervalo que a pessoa nunca teve, escrito por alguém que agiu de boa
+   * fé porque a tela ofereceu o campo.
+   */
+  const modal = await Bun.file('src/componentes/ModalCorrigirJornada.tsx').text();
+  const codigo = modal.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  expect(codigo).toContain('marcacoesEsperadas(data, colaborador)');
+  // As quatro fixas não podem voltar a comandar a tela
+  expect(codigo).not.toContain('ORDEM_MARCACOES');
+});
