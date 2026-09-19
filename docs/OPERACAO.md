@@ -53,6 +53,27 @@ Numa base nova, nesta ordem:
 
 Todos são idempotentes: rodar de novo não quebra nada.
 
+## A publicação chegou ao ar?
+
+```bash
+bun scripts/conferir-deploy.ts
+```
+
+**`git push` não é publicação.** Sete commits seguidos já foram escritos,
+testados e empurrados sem nenhum chegar ao ar: o `vercel.json` tinha uma
+chave `"//"` usada como comentário, e a Vercel valida esse arquivo
+estritamente — propriedade desconhecida derruba o deploy **antes de
+compilar**.
+
+Nada acusou. Os testes passavam, o `build` passava, o `push` passava. O
+sintoma chegou dias depois como "não atualizou".
+
+JSON não tem comentário: o porquê de cada regra do `vercel.json` está em
+[ARQUITETURA.md](ARQUITETURA.md), e há teste recusando chave fora do
+esquema.
+
+---
+
 ## Quando algo dá errado
 
 | Arquivo | Quando usar |

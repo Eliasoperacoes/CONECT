@@ -186,6 +186,28 @@ conversa.
 
 ---
 
+## Cache e publicação
+
+O que o `vercel.json` decide, e por quê:
+
+| Endereço | Regra | Motivo |
+|---|---|---|
+| `/assets/*` | guardar para sempre | o nome traz o resumo do conteúdo: nome igual, conteúdo igual |
+| `/index.html` e `/` | revalidar sempre | é ele que aponta para os pacotes novos — guardado, o navegador serve a versão velha por tempo indeterminado |
+| `/versao.json` | nunca guardar | é a comparação que dispara o aviso de versão nova |
+| `/manifest.json`, `/sw-avisos.js` | revalidar sempre | mesma razão do index |
+
+**JSON não tem comentário, e a Vercel recusa chave desconhecida.** Uma
+chave `"//"` usada como comentário derrubou o deploy de sete commits
+seguidos, sem nada acusar — os testes passavam, o `build` passava, o
+`push` passava. Por isso o porquê mora aqui, e há teste recusando chave
+fora do esquema.
+
+`git push` não é publicação: `bun scripts/conferir-deploy.ts` responde se
+o que está no repositório chegou ao ar.
+
+---
+
 ## Travas que não podem cair
 
 | Trava | Onde | Sem ela |
