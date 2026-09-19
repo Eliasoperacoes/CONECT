@@ -152,10 +152,21 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
    * RH. Enquanto era tudo uma coisa só, dar o cartaz a ele significava dar
    * junto a folha de ponto.
    */
-  const veBancoDeHoras = podeUsar('banco_horas_rh', colaboradorAtual);
+  /**
+   * Duas portas para a MESMA tela, e é de propósito.
+   *
+   *   banco_horas_rh  -> a rede inteira (RH, Diretoria, TI)
+   *   espelho_equipe  -> só a equipe de quem abre (líder, gerente)
+   *
+   * O CONTEÚDO não muda entre as duas: `obterResumoDoPeriodo` já devolve
+   * apenas quem a pessoa alcança pela cadeia. Uma tela separada para o
+   * líder seria uma segunda cópia do espelho para manter em dia.
+   */
+  const veBancoDeHoras =
+    podeUsar('banco_horas_rh', colaboradorAtual) ||
+    podeUsar('espelho_equipe', colaboradorAtual);
   const veQr = podeUsar('qr_ponto', colaboradorAtual);
   const temAcesso = veBancoDeHoras || veQr;
-  const podeCorrigirMarcacao = servicoPonto.podeAcessarPainelRH(colaboradorAtual);
 
   /** As lojas cujo cartaz esta pessoa cuida. O gerente tem uma; o RH, cinco. */
   const lojasDoQr = servicoPonto.lojasComQrQuePosso(colaboradorAtual);
@@ -269,6 +280,25 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
     () => resumos.find((r) => r.colaborador.id === detalheId) || null,
     [resumos, detalheId]
   );
+
+  /**
+   * QUEM CORRIGE, PESSOA A PESSOA.
+   *
+   * Era `podeAcessarPainelRH` — uma resposta só para a tela inteira, que
+   * ficou para trás quando o responsável passou a corrigir a marcação da
+   * equipe. O serviço e o banco já deixavam; só esta tela continuava
+   * barrando, e o líder via o espelho com as células mortas.
+   *
+   * A pergunta certa é sobre a PESSOA aberta, não sobre a tela: o RH
+   * corrige qualquer um, o líder corrige quem responde a ele. É a mesma
+   * regra do aprovar jornada, e ela decide célula por célula.
+   *
+   * Precisa ficar DEPOIS de `detalhe`: é dele que sai a pessoa.
+   */
+  const podeCorrigirMarcacao = detalhe
+    ? servicoPonto.podeAcessarPainelRH(colaboradorAtual) ||
+      servicoPonto.podeDecidirSobre(detalhe.colaborador)
+    : false;
 
   /** Em que nível a aba está: lojas, equipe de uma loja ou espelho individual. */
   const nivelVisao: 'unidades' | 'equipe' | 'espelho' = detalhe

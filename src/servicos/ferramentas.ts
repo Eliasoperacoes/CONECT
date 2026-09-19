@@ -128,6 +128,16 @@ export const FERRAMENTAS: Ferramenta[] = [
     nivelPadrao: NIVEL_LIDER_SETOR,
   },
   {
+    chave: 'espelho_equipe',
+    nome: 'Espelho de ponto da equipe',
+    descricao:
+      'O espelho dia a dia de quem responde à pessoa, com correção de horário. Mostra apenas a equipe dela.',
+    area: 'gestao',
+    nivelPadrao: NIVEL_LIDER_SETOR,
+    cuidado:
+      'Quem tem isto corrige marcação da própria equipe — registro trabalhista, com autoria e motivo obrigatórios. Apagar batida continua só do RH.',
+  },
+  {
     chave: 'aprovar_jornadas',
     nome: 'Aprovar jornadas',
     descricao: 'A fila de horas extras e saídas antecipadas aguardando decisão.',
@@ -165,7 +175,8 @@ export const FERRAMENTAS: Ferramenta[] = [
       'O painel de RH: espelho de ponto, correção de marcação e QR das lojas.',
     area: 'gestao',
     nivelPadrao: NIVEL_DIRETORIA,
-    cuidado: 'Corrigir marcação é registro trabalhista — segue restrito ao RH.',
+    cuidado:
+      'Espelho da REDE INTEIRA. Para o líder ver só a equipe dele, use "Espelho de ponto da equipe".',
   },
   {
     chave: 'qr_ponto',

@@ -10,9 +10,16 @@
  * alguém sobre quem não se decide nada não serve para nada, e expõe dado de
  * jornada sem motivo.
  *
- * O que o gestor NÃO faz aqui: corrigir marcação. Marcação é registro
- * trabalhista; alterar continua sendo do RH, com justificativa e autoria.
- * Daqui ele sinaliza o erro pelo chat.
+ * O ESPELHO DE PONTO mora aqui também, e com correção.
+ *
+ * Antes não: corrigir marcação era só do RH, e daqui o gestor apenas
+ * sinalizava o erro pelo chat. Ficou insustentável porque a fila de
+ * aprovação só mostra os dias que fecharam FORA da carga — dia que precisa
+ * ser preenchido do zero nunca aparecia lá, e o responsável não tinha por
+ * onde lançar.
+ *
+ * Marcação continua sendo registro trabalhista: a correção exige motivo,
+ * fica com o nome de quem fez, e APAGAR batida segue só do RH.
  */
 import React, { useMemo, useState } from 'react';
 import {
@@ -110,7 +117,20 @@ export const PainelGestao: React.FC<Props> = ({
   const temTelaDeRh =
     cuidaDePessoas(colaboradorAtual) && podeUsar('rh_pessoal', colaboradorAtual);
 
-  const veRede = podeUsar('banco_horas_rh', colaboradorAtual) && !temTelaDeRh;
+  /**
+   * O espelho de ponto, com duas portas para a mesma tela.
+   *
+   * `banco_horas_rh` traz a rede inteira; `espelho_equipe`, só a equipe de
+   * quem abre. O conteúdo já vem filtrado pela cadeia, então não há duas
+   * telas — há dois alcances, e o rótulo diz qual é.
+   *
+   * Existe porque a fila de aprovação só mostra os dias que caíram fora da
+   * carga. Dia que precisa ser preenchido do zero não aparece lá, e o
+   * líder não tinha por onde lançar.
+   */
+  const veEspelhoDaRede = podeUsar('banco_horas_rh', colaboradorAtual);
+  const veRede =
+    (veEspelhoDaRede || podeUsar('espelho_equipe', colaboradorAtual)) && !temTelaDeRh;
   const veQr = podeUsar('qr_ponto', colaboradorAtual);
   const veEscala = !temTelaDeRh;
 
@@ -380,7 +400,9 @@ export const PainelGestao: React.FC<Props> = ({
                     : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
                 }`}
               >
-                Rede
+                {/* O rótulo diz o alcance: quem vê a rede lê "Rede", quem
+                    vê só a equipe lê "Espelho de ponto" */}
+                {veEspelhoDaRede ? 'Rede' : 'Espelho de ponto'}
               </button>
             )}
 

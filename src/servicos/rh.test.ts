@@ -136,7 +136,9 @@ test('quem tem a tela de RH nao ve escala e rede em Equipe & Ponto', async () =>
   ).text();
 
   expect(gestao).toContain('const temTelaDeRh =');
-  expect(gestao).toContain("podeUsar('banco_horas_rh', colaboradorAtual) && !temTelaDeRh");
+  // O `!temTelaDeRh` continua valendo para as duas portas do espelho: quem
+  // tem a tela de RH não vê a mesma coisa repetida em Equipe & Ponto
+  expect(gestao).toContain("podeUsar('espelho_equipe', colaboradorAtual)) && !temTelaDeRh");
   expect(gestao).toContain('const veEscala = !temTelaDeRh');
 
   // E a tela de RH usa os MESMOS componentes, não cópias

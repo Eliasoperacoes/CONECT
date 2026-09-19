@@ -183,3 +183,70 @@ test('a tela não inventa a causa do erro do banco', async () => {
   // O motivo do banco é repassado, em vez de trocado por um palpite
   expect(codigo).toContain('${res.erro}');
 });
+
+test('O ESPELHO É A MESMA TELA, COM DOIS ALCANCES', async () => {
+  /**
+   * O líder precisava do espelho para lançar o dia que a fila não mostra:
+   * ela só traz o que fechou FORA da carga, e dia para preencher do zero
+   * nunca cai lá.
+   *
+   * A tentação era uma tela nova "espelho do líder". Seria a segunda cópia
+   * do espelho para manter em dia — e este projeto já foi mordido quatro
+   * vezes pela mesma decisão escrita em dois lugares.
+   *
+   * O conteúdo já se filtra sozinho: `obterResumoDoPeriodo` devolve só
+   * quem a pessoa alcança pela cadeia. Então são duas PORTAS para a mesma
+   * sala, e o que muda é o rótulo.
+   */
+  const banco = await Bun.file('src/componentes/BancoDeHoras.tsx').text();
+
+  expect(banco).toContain("podeUsar('banco_horas_rh', colaboradorAtual)");
+  expect(banco).toContain("podeUsar('espelho_equipe', colaboradorAtual)");
+
+  // O alcance vem da cadeia, não de um filtro escrito à mão na tela
+  const ponto = await Bun.file('src/servicos/ponto.ts').text();
+  expect(ponto).toContain('obterResumoDoPeriodo(dataInicio: string, dataFim: string)');
+  expect(ponto).toContain('return this.obterColaboradoresVisiveis()');
+});
+
+test('CORRIGIR NO ESPELHO PERGUNTA SOBRE A PESSOA, NÃO SOBRE A TELA', async () => {
+  /**
+   * Era uma resposta só para a tela inteira (`podeAcessarPainelRH`), e
+   * ficou para trás quando o responsável passou a corrigir a marcação da
+   * equipe: o banco deixava, o serviço deixava, e só a tela barrava — o
+   * líder abria o espelho e via as células mortas.
+   *
+   * A pergunta certa é sobre a PESSOA aberta. Sem isso, ou o líder não
+   * corrige ninguém, ou corrige todo mundo.
+   */
+  const banco = await Bun.file('src/componentes/BancoDeHoras.tsx').text();
+  const codigo = banco.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+
+  expect(codigo).toContain('servicoPonto.podeDecidirSobre(detalhe.colaborador)');
+  // E não pode ter voltado a ser uma resposta global
+  expect(codigo).not.toContain(
+    'const podeCorrigirMarcacao = servicoPonto.podeAcessarPainelRH(colaboradorAtual);'
+  );
+});
+
+test('A FERRAMENTA DO ESPELHO EXISTE NO CATÁLOGO', async () => {
+  /**
+   * Nasceu de uma sabotagem que PASSOU: renomear a chave no catálogo não
+   * quebrava nada, e `podeUsar` de chave desconhecida devolve `false` — o
+   * líder simplesmente perderia o espelho, sem erro em lugar nenhum.
+   *
+   * É o pior tipo de defeito: a tela some e ninguém é avisado.
+   */
+  const { FERRAMENTAS } = await import('./ferramentas');
+  const { NIVEL_LIDER_SETOR } = await import('../tipos');
+
+  const espelho = FERRAMENTAS.find((f) => f.chave === 'espelho_equipe');
+  expect(espelho).toBeDefined();
+  expect(espelho!.nivelPadrao).toBe(NIVEL_LIDER_SETOR);
+
+  // E quem pergunta por ela usa exatamente esta chave
+  const banco = await Bun.file('src/componentes/BancoDeHoras.tsx').text();
+  const gestao = await Bun.file('src/componentes/PainelGestao.tsx').text();
+  expect(banco).toContain("'espelho_equipe'");
+  expect(gestao).toContain("'espelho_equipe'");
+});

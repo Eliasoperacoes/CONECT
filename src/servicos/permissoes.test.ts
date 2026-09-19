@@ -531,8 +531,15 @@ test('as vistas do RH continuam com as permissoes delas', async () => {
   /**
    * A fusão não pode virar promoção: quem não tinha banco de horas da rede
    * continua sem, e o botão nem aparece.
+   *
+   * Agora há DUAS portas para a mesma tela — a da rede e a da equipe — e é
+   * justamente por isso que o teste aperta aqui: `espelho_equipe` não pode
+   * virar atalho para o alcance de rede. O que separa as duas é o
+   * conteúdo, que já vem filtrado pela cadeia, e o rótulo, que diz qual é.
    */
-  expect(gestao).toContain("const veRede = podeUsar('banco_horas_rh', colaboradorAtual)");
+  expect(gestao).toContain("const veEspelhoDaRede = podeUsar('banco_horas_rh', colaboradorAtual)");
+  expect(gestao).toContain("podeUsar('espelho_equipe', colaboradorAtual)");
+  expect(gestao).toContain("veEspelhoDaRede ? 'Rede' : 'Espelho de ponto'");
   expect(gestao).toContain("const veQr = podeUsar('qr_ponto', colaboradorAtual)");
   expect(gestao).toContain('{veRede && (');
   expect(gestao).toContain('{veQr && (');
