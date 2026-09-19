@@ -705,6 +705,7 @@ export type TipoAusencia =
   | 'falta_justificada'
   | 'comparecimento'
   | 'folga_sabado'
+  | 'ferias'
   | 'outro';
 
 export const ROTULO_TIPO_AUSENCIA: Record<TipoAusencia, string> = {
@@ -712,6 +713,7 @@ export const ROTULO_TIPO_AUSENCIA: Record<TipoAusencia, string> = {
   falta_justificada: 'Falta justificada',
   comparecimento: 'Comparecimento (declaração)',
   folga_sabado: 'Folga de sábado',
+  ferias: 'Férias',
   outro: 'Outro',
 };
 
@@ -800,6 +802,7 @@ export type SituacaoDoDia =
   | 'falta_justificada'
   | 'comparecimento'
   | 'folga'
+  | 'ferias'
   | 'abonado_outro';
 
 export const SITUACAO_POR_TIPO: Record<TipoAusencia, SituacaoDoDia> = {
@@ -807,6 +810,10 @@ export const SITUACAO_POR_TIPO: Record<TipoAusencia, SituacaoDoDia> = {
   falta_justificada: 'falta_justificada',
   comparecimento: 'comparecimento',
   folga_sabado: 'folga',
+  // Férias tem situação própria, e não "folga": o espelho precisa dizer
+  // qual das duas foi, e uma contagem de férias não pode varrer as folgas
+  // de sábado junto
+  ferias: 'ferias',
   outro: 'abonado_outro',
 };
 
@@ -827,6 +834,7 @@ export const ROTULO_SITUACAO: Record<SituacaoDoDia, string> = {
   falta_justificada: 'Falta justificada',
   comparecimento: 'Comparecimento',
   folga: 'Folga',
+  ferias: 'Férias',
   abonado_outro: 'Abonado',
 };
 

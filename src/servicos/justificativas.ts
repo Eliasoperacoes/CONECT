@@ -150,6 +150,103 @@ export const solicitarAusencia = async (dados: {
   return { sucesso: true, justificativa };
 };
 
+/**
+ * A LIDERANÇA LANÇA A AUSÊNCIA DA EQUIPE, sem esperar pedido.
+ *
+ * `solicitarAusencia` cobre o que parte da pessoa — atestado, folga. Não
+ * cobre PLANEJAR: montar a escala de férias do semestre ou fechar os
+ * sábados do mês é trabalho de quem organiza a equipe, e não existe
+ * pedido do colaborador para responder.
+ *
+ * NASCE APROVADA, e é de propósito: quem lança é quem aprovaria de
+ * qualquer jeito. Criar pendente para aprovar em seguida seria teatro,
+ * e deixaria a escala cheia de linhas amarelas que ninguém precisa
+ * decidir.
+ *
+ * O limite de uma folga de sábado por mês vale aqui também. Ele existe
+ * para o direito ser igual para todos, e não para conter quem pede
+ * demais — afrouxá-lo para a liderança desfaria justamente isso.
+ */
+export const lancarAusenciaPelaLideranca = async (dados: {
+  colaboradorId: string;
+  dataInicio: string;
+  dataFim: string;
+  tipo: TipoAusencia;
+  observacao?: string;
+}): Promise<{ sucesso: boolean; justificativa?: JustificativaAusencia; erro?: string }> => {
+  const eu = bancoDados.obterColaboradorAtual();
+  const pessoa = bancoDados.obterColaboradorPorId(dados.colaboradorId);
+
+  if (!pessoa) return { sucesso: false, erro: 'Colaborador não encontrado.' };
+
+  // A MESMA regra do aprovar. Uma segunda aqui divergiria, e a liderança
+  // acabaria lançando folga de quem não é da equipe dela.
+  if (!servicoPonto.podeDecidirSobre(pessoa)) {
+    return {
+      sucesso: false,
+      erro: 'Você não responde por esta pessoa. A escala dela é de quem responde por ela.',
+    };
+  }
+
+  if (!dados.dataInicio || !dados.dataFim) {
+    return { sucesso: false, erro: 'Informe o período.' };
+  }
+  if (dados.dataFim < dados.dataInicio) {
+    return { sucesso: false, erro: 'O fim não pode ser antes do início.' };
+  }
+
+  if (dados.tipo === 'folga_sabado') {
+    if (dados.dataInicio !== dados.dataFim) {
+      return { sucesso: false, erro: 'A folga é de um sábado só.' };
+    }
+    if (!ehSabado(dados.dataInicio)) {
+      return { sucesso: false, erro: 'A folga é sempre num sábado.' };
+    }
+    const jaTem = folgaDoMes(pessoa.id, dados.dataInicio);
+    if (jaTem) {
+      return {
+        sucesso: false,
+        erro: `${pessoa.nome} já tem folga ${
+          jaTem.estado === 'pendente' ? 'solicitada' : 'marcada'
+        } em ${jaTem.dataInicio.split('-').reverse().join('/')} neste mês.`,
+      };
+    }
+  }
+
+  const agora = new Date().toISOString();
+  const justificativa: JustificativaAusencia = {
+    id: `just-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    colaboradorId: pessoa.id,
+    dataInicio: dados.dataInicio,
+    dataFim: dados.dataFim,
+    tipo: dados.tipo,
+    observacao: dados.observacao?.trim() || undefined,
+    estado: 'aprovada',
+    aprovadorId: eu.id,
+    aprovadorNome: eu.nome,
+    decididoEm: agora,
+    criadoEm: agora,
+  };
+
+  // O banco primeiro: escala que não subiu só existiria no aparelho de
+  // quem montou, e a pessoa escalada nunca saberia
+  if (usandoNuvem()) {
+    const res = await nuvem.salvarJustificativa(justificativa);
+    if (!res.sucesso) {
+      return { sucesso: false, erro: res.erro || 'Falha ao gravar na escala.' };
+    }
+  }
+
+  gravar([...ler(), justificativa]);
+  bancoDados.registrarAuditoria(
+    'Escala lançada pela liderança',
+    'usuario',
+    `${eu.nome} lançou ${dados.tipo} para ${pessoa.nome} de ${dados.dataInicio} a ${dados.dataFim}.`
+  );
+
+  return { sucesso: true, justificativa };
+};
+
 /** O dia da semana, sem depender de fuso: a data já vem como AAAA-MM-DD. */
 const ehSabado = (data: string): boolean => {
   const [ano, mes, dia] = data.split('-').map(Number);

@@ -20,12 +20,23 @@ import {
   Clock,
   AlertTriangle,
   ChevronDown,
+  CalendarPlus,
+  Palmtree,
 } from 'lucide-react';
 import { Colaborador, JustificativaAusencia } from '../tipos';
 import { servicoPonto, formatarDataBR } from '../servicos/ponto';
 import { lerJustificativas } from '../servicos/justificativasCache';
 import { decidirAusencia, assinarJustificativas } from '../servicos/justificativas';
 import { bancoDados } from '../servicos/bancoDados';
+import { ModalLancarEscala } from './ModalLancarEscala';
+import {
+  montarDocumento,
+  cabecalho,
+  rodape,
+  assinaturas,
+  imprimirDocumento,
+  emitidoHoje,
+} from '../servicos/documento';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -103,6 +114,8 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
 
   /** A lista de quem não marcou começa fechada: são 23 nomes. */
   const [semFolgaAberta, setSemFolgaAberta] = useState(false);
+  /** O formulário de lançamento da liderança. */
+  const [lancando, setLancando] = useState(false);
 
   const sabados = useMemo(() => sabadosDoMes(ano, mes), [ano, mes]);
 
@@ -124,6 +137,34 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
     return mapa;
   }, [equipe, sabados, versao]);
 
+  /**
+   * As FÉRIAS que tocam o mês aberto.
+   *
+   * Férias é um período, não um sábado, então não cabe na tabela acima —
+   * mas precisa aparecer na mesma tela: quem monta a escala do mês decide
+   * olhando quem vai estar fora, e férias é a maior ausência que existe.
+   *
+   * Basta ENCOSTAR no mês: um período que começa em 28/12 e termina em
+   * 10/01 importa para os dois meses.
+   */
+  const feriasDoMes = useMemo(() => {
+    void versao;
+    const idsDaEquipe = new Set(equipe.map((c) => c.id));
+    const primeiro = `${ano}-${String(mes + 1).padStart(2, '0')}-01`;
+    const ultimo = `${ano}-${String(mes + 1).padStart(2, '0')}-31`;
+
+    return lerJustificativas()
+      .filter(
+        (j) =>
+          j.tipo === 'ferias' &&
+          j.estado !== 'recusada' &&
+          idsDaEquipe.has(j.colaboradorId) &&
+          j.dataInicio <= ultimo &&
+          j.dataFim >= primeiro
+      )
+      .sort((a, b) => a.dataInicio.localeCompare(b.dataInicio));
+  }, [equipe, ano, mes, versao]);
+
   /** Quem ainda não marcou folga no mês — é a cobrança que o gestor faz. */
   const semFolga = useMemo(() => {
     const comFolga = new Set(
@@ -141,177 +182,111 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
   };
 
   /**
-   * O documento da escala.
+   * O DOCUMENTO DA ESCALA.
    *
-   * Sai em HTML numa janela à parte, pronto para imprimir ou salvar em PDF
-   * pelo próprio navegador: a loja imprime e prega no quadro, e quem não
-   * abre o sistema também fica sabendo.
+   * Sai com o mesmo desenho do espelho de ponto: mesma régua preta no
+   * cabeçalho, mesma grade, mesmas assinaturas. Antes tinha HTML e CSS
+   * próprios — título de 30px, cinzas claros, etiquetas arredondadas — e
+   * na mesa do RH os dois papéis não pareciam sair do mesmo sistema.
+   *
+   * O que é comum mora em `servicos/documento`. Aqui fica só o miolo.
    */
-  const montarDocumento = (): string => {
-    const linhas = sabados
-      .map((sabado, indice) => {
+  const montarEscala = (): string => {
+    const linhasDaTabela = sabados
+      .map((sabado) => {
         const folgas = (porSabado.get(sabado) || []).filter(
           (f) => f.estado !== 'recusada'
         );
 
-        /**
-         * Um nome por linha, em corpo grande.
-         *
-         * Este papel é lido em pé, a um metro do quadro de avisos, por quem
-         * está passando. Nome separado por vírgula economiza espaço e obriga
-         * a pessoa a caçar o dela no meio da frase.
-         */
         const pessoas = folgas.length
-          ? `<ul class="gente">${folgas
+          ? folgas
               .map(
                 (f) =>
-                  `<li>${nomeDe(f.colaboradorId)}${
-                    f.estado === 'pendente'
-                      ? ' <span class="aguardando">aguardando aprovação</span>'
-                      : ''
-                  }</li>`
+                  `${nomeDe(f.colaboradorId)}${
+                    f.estado === 'pendente' ? ' (aguardando aprovação)' : ''
+                  }`
               )
-              .join('')}</ul>`
-          : '<span class="vazio">Ninguém de folga · equipe completa</span>';
+              .join('<br>')
+          : '<span class="vazio">Equipe completa</span>';
 
-        const dia = sabado.slice(8, 10);
-        const mesDoDia = NOMES_DOS_MESES[Number(sabado.slice(5, 7)) - 1];
-
-        return `<tr class="${indice % 2 ? 'par' : ''}">
-          <td class="dia">
-            <span class="numero">${dia}</span>
-            <span class="mes">${mesDoDia}</span>
-          </td>
-          <td class="qtd"><span>${folgas.length}</span></td>
-          <td class="quem">${pessoas}</td>
+        return `<tr>
+          <td class="centro"><strong>${formatarDataBR(sabado)}</strong></td>
+          <td class="centro num">${folgas.length}</td>
+          <td>${pessoas}</td>
         </tr>`;
       })
       .join('');
+
+    /**
+     * As férias entram no mesmo papel, em tabela própria.
+     *
+     * Quem prega a escala no quadro precisa das duas informações: quem
+     * folga no sábado e quem está fora o mês inteiro.
+     */
+    const tabelaDeFerias = feriasDoMes.length
+      ? `<h2 class="secao">Férias no período</h2>
+         <table class="grade">
+           <thead><tr><th>Colaborador</th><th>Início</th><th>Fim</th></tr></thead>
+           <tbody>${feriasDoMes
+             .map(
+               (f) => `<tr>
+                 <td>${nomeDe(f.colaboradorId)}</td>
+                 <td class="centro hora">${formatarDataBR(f.dataInicio)}</td>
+                 <td class="centro hora">${formatarDataBR(f.dataFim)}</td>
+               </tr>`
+             )
+             .join('')}</tbody>
+         </table>`
+      : '';
 
     const pendentes = [...porSabado.values()]
       .flat()
       .filter((f) => f.estado === 'pendente').length;
 
-    const emitidaEm = formatarDataBR(
-      `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(
-        hoje.getDate()
-      ).padStart(2, '0')}`
-    );
+    const corpo = `<div class="folha">
+      ${cabecalho({
+        titulo: 'ESCALA DE FOLGAS',
+        subtitulo: colaboradorAtual.loja,
+        periodo: `${NOMES_DOS_MESES[mes]} de ${ano}<br>Equipe de ${colaboradorAtual.nome} · ${equipe.length} pessoas`,
+      })}
 
-    /**
-     * ESTE DOCUMENTO É UM CARTAZ, e não um relatório.
-     *
-     * Ele é impresso e pregado no quadro de avisos da loja. Quem lê está em
-     * pé, de passagem, procurando o próprio nome — por isso corpo grande,
-     * dia em destaque e uma pessoa por linha.
-     *
-     * A lista de "sem folga marcada" SAIU daqui de propósito: ela é cobrança
-     * interna do gestor, não informação de mural. Pregar no quadro os nomes
-     * de quem não marcou expõe as pessoas sem servir para nada — quem lê
-     * quer saber quem folga, não quem faltou marcar. Na tela ela continua.
-     */
-    return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
-<title>Escala de folgas · ${NOMES_DOS_MESES[mes]} de ${ano}</title>
-<style>
-  @page { size: A4 portrait; margin: 14mm; }
-  * { box-sizing: border-box; }
-  body {
-    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    margin: 0; color: #111827; -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
+      <table class="grade">
+        <thead>
+          <tr><th class="centro">Sábado</th><th class="centro">Folgas</th><th>Quem folga</th></tr>
+        </thead>
+        <tbody>${linhasDaTabela}</tbody>
+      </table>
 
-  header { border-bottom: 3px solid #111827; padding-bottom: 10px; margin-bottom: 18px; }
-  .chapeu {
-    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
-    color: #6b7280; font-weight: 700;
-  }
-  h1 { font-size: 30px; margin: 2px 0 6px; letter-spacing: -0.5px; }
-  .onde { font-size: 15px; font-weight: 600; color: #374151; }
-  .quando { font-size: 15px; color: #6b7280; }
+      ${tabelaDeFerias}
 
-  table { width: 100%; border-collapse: collapse; }
-  thead th {
-    font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
-    color: #6b7280; text-align: left; padding: 0 10px 6px; font-weight: 700;
-  }
-  tbody tr { border-top: 1px solid #d1d5db; }
-  tbody tr.par { background: #f9fafb; }
-  td { padding: 12px 10px; vertical-align: top; }
+      ${
+        pendentes > 0
+          ? `<p class="nota"><strong>${pendentes} folga(s) ainda aguardando aprovação.</strong> Só as aprovadas valem.</p>`
+          : ''
+      }
 
-  .dia { width: 110px; white-space: nowrap; }
-  .dia .numero { font-size: 30px; font-weight: 800; line-height: 1; display: block; }
-  .dia .mes {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-    color: #6b7280; font-weight: 700;
-  }
+      <p class="nota">
+        Cada colaborador tem direito a uma folga de sábado por mês.
+      </p>
 
-  .qtd { width: 72px; text-align: center; }
-  .qtd span {
-    display: inline-block; min-width: 34px; padding: 5px 0;
-    border: 2px solid #111827; border-radius: 8px;
-    font-size: 17px; font-weight: 800;
-  }
+      ${assinaturas(['Responsável pela escala', 'Ciência da equipe'])}
+      ${rodape(`Emitida em ${emitidoHoje()}`)}
+    </div>`;
 
-  .gente { margin: 0; padding: 0; list-style: none; columns: 2; column-gap: 24px; }
-  .gente li {
-    font-size: 15px; font-weight: 600; padding: 2px 0;
-    break-inside: avoid; -webkit-column-break-inside: avoid;
-  }
-  .aguardando {
-    font-size: 10px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.5px; color: #92400e; background: #fef3c7;
-    padding: 1px 5px; border-radius: 4px; white-space: nowrap;
-  }
-  .vazio { color: #9ca3af; font-style: italic; font-size: 14px; }
-
-  .aviso {
-    margin-top: 16px; font-size: 12px; color: #92400e;
-    background: #fffbeb; border: 1px solid #fde68a;
-    border-radius: 8px; padding: 8px 10px;
-  }
-
-  footer {
-    margin-top: 22px; padding-top: 8px; border-top: 1px solid #d1d5db;
-    font-size: 10px; color: #6b7280; display: flex;
-    justify-content: space-between; gap: 12px;
-  }
-</style></head><body>
-
-<header>
-  <div class="chapeu">Malachias Autopeças · Escala de sábado</div>
-  <h1>Folgas de ${NOMES_DOS_MESES[mes]}</h1>
-  <div class="onde">${colaboradorAtual.loja}</div>
-  <div class="quando">Equipe de ${colaboradorAtual.nome} · ${equipe.length} pessoas</div>
-</header>
-
-<table>
-  <thead>
-    <tr><th>Sábado</th><th style="text-align:center">Folgas</th><th>Quem folga</th></tr>
-  </thead>
-  <tbody>${linhas}</tbody>
-</table>
-
-${
-  pendentes > 0
-    ? `<div class="aviso"><strong>${pendentes} folga(s) ainda aguardando aprovação.</strong> Só as aprovadas valem — confirme com a liderança antes de se programar.</div>`
-    : ''
-}
-
-<footer>
-  <span>Emitida em ${emitidaEm} · cada colaborador tem direito a uma folga de sábado por mês</span>
-  <span>CONECTA</span>
-</footer>
-</body></html>`;
+    return montarDocumento({
+      titulo: `Escala de folgas · ${NOMES_DOS_MESES[mes]} de ${ano}`,
+      corpo,
+      orientacao: 'retrato',
+      estiloExtra: `
+        .secao { font-size: 13px; margin: 18px 0 6px; letter-spacing: 1px; text-transform: uppercase; }
+      `,
+    });
   };
 
   const imprimir = () => {
-    const janela = window.open('', '_blank');
-    if (!janela) return;
-    janela.document.write(montarDocumento());
-    janela.document.close();
-    janela.focus();
-    janela.print();
+    if (!imprimirDocumento(montarEscala())) {
+      mostrar('O navegador bloqueou a janela de impressão. Libere o pop-up.', true);
+    }
   };
 
   const exportarCsv = () => {
@@ -357,6 +332,19 @@ ${
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/*
+            MONTAR A ESCALA, e não só responder a pedidos.
+            Fechar os sábados do mês e planejar as férias é trabalho de
+            quem organiza a equipe — não há pedido nenhum a responder.
+          */}
+          <button
+            type="button"
+            onClick={() => setLancando(true)}
+            className="px-3 py-2 rounded-xl border border-[var(--c-acento)] text-xs font-bold text-[var(--c-acento)] hover:bg-[var(--c-acento-suave)] transition-colors flex items-center gap-1.5"
+          >
+            <CalendarPlus className="w-3.5 h-3.5" />
+            Lançar
+          </button>
           <button
             type="button"
             onClick={exportarCsv}
@@ -561,6 +549,44 @@ ${
         raramente lembra sozinha.
       */}
       {/*
+      {/*
+        FÉRIAS, em bloco próprio.
+
+        Não entra na tabela dos sábados porque não é um sábado: é um
+        período. Mas fica na mesma tela, logo abaixo, porque quem fecha a
+        escala do mês decide olhando quem vai estar fora — e férias é a
+        maior ausência que existe.
+      */}
+      {feriasDoMes.length > 0 && (
+        <div className="rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-[var(--c-borda)] flex items-center gap-2">
+            <Palmtree className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs font-bold text-[var(--c-texto)]">
+              Férias em {NOMES_DOS_MESES[mes]}
+            </span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
+              {feriasDoMes.length}
+            </span>
+          </div>
+          <div className="divide-y divide-[var(--c-borda)]">
+            {feriasDoMes.map((f) => (
+              <div
+                key={f.id}
+                className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap"
+              >
+                <span className="text-xs font-semibold text-[var(--c-texto)]">
+                  {nomeDe(f.colaboradorId)}
+                </span>
+                <span className="text-[11px] font-mono text-[var(--c-texto-2)]">
+                  {formatarDataBR(f.dataInicio)} a {formatarDataBR(f.dataFim)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/*
         RECOLHIDA POR PADRÃO.
 
         São 23 nomes numa loja como Pirassununga. Abertos, ocupam mais
@@ -651,6 +677,18 @@ ${
             </div>
           </div>
         </div>
+      )}
+
+      {lancando && (
+        <ModalLancarEscala
+          equipe={equipe}
+          sabados={sabados}
+          aoFechar={() => setLancando(false)}
+          aoLancar={(texto, ehErro) => {
+            mostrar(texto, ehErro);
+            setVersao((v) => v + 1);
+          }}
+        />
       )}
     </div>
   );

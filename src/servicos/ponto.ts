@@ -54,6 +54,7 @@ import { temAlcadaSobre, regraAutomaticaDeAlcada } from './organograma';
 // A FOLHA, nunca o serviço: importar `justificativas` daqui refecharia o
 // ciclo que já derrubou o aplicativo uma vez
 import { situacaoDoDia } from './justificativasCache';
+import { montarDocumento } from './documento';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
 
@@ -1948,45 +1949,31 @@ class ServicoPonto {
       })
       .join('');
 
-    return `<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8">
-<title>Espelho de Ponto — ${formatarDataBR(dataInicio)} a ${formatarDataBR(dataFim)}</title>
-<style>
-  * { box-sizing: border-box; }
-  body { font-family: system-ui, -apple-system, Segoe UI, Arial, sans-serif; color: #111; margin: 0; padding: 16px; background: #fff; }
-  .folha { page-break-after: always; max-width: 1000px; margin: 0 auto 32px; }
-  .folha:last-child { page-break-after: auto; }
-  .topo { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 12px; }
-  .topo h1 { font-size: 18px; margin: 0; letter-spacing: 1px; }
-  .empresa { margin: 2px 0 0; font-size: 12px; color: #444; }
-  .periodo { font-size: 12px; text-align: right; }
-  table { width: 100%; border-collapse: collapse; }
-  .ficha { margin-bottom: 12px; font-size: 12px; }
-  .ficha td { border: 1px solid #bbb; padding: 5px 8px; width: 50%; }
+    /**
+     * O ESTILO COMUM MORA EM `documento`.
+     *
+     * Aqui fica só o que é deste papel: a grade de marcações e o quadro de
+     * totais. Cabeçalho, bordas, assinaturas e fonte de número são os
+     * mesmos de qualquer documento da Malachias — e é por isso que a
+     * escala de folgas agora sai parecida com este.
+     */
+    return montarDocumento({
+      titulo: `Espelho de Ponto — ${formatarDataBR(dataInicio)} a ${formatarDataBR(dataFim)}`,
+      orientacao: 'paisagem',
+      estiloExtra: `
   .marcacoes { font-size: 11px; }
   .marcacoes th { background: #eee; border: 1px solid #999; padding: 5px 4px; font-size: 10px; text-transform: uppercase; }
   .marcacoes td { border: 1px solid #bbb; padding: 4px; text-align: center; }
   .marcacoes .dia { text-align: left; white-space: nowrap; font-weight: 600; }
   .semana { font-weight: 400; color: #666; text-transform: capitalize; }
-  .hora { font-family: ui-monospace, Consolas, monospace; }
-  .num { font-family: ui-monospace, Consolas, monospace; text-align: right; padding-right: 8px; }
-  .neg { color: #b00020; }
   .origem { text-align: left; font-size: 9px; color: #555; }
-  .vazio td { color: #999; background: #fafafa; }
+  .vazio td { background: #fafafa; }
   .totais { margin-top: 12px; width: 60%; font-size: 12px; }
   .totais td { border: 1px solid #bbb; padding: 5px 8px; }
   .totais .destaque td { font-weight: 700; background: #f2f2f2; }
-  .nota { font-size: 10px; color: #555; margin-top: 10px; }
-  .assinaturas { display: flex; gap: 48px; margin-top: 44px; font-size: 11px; text-align: center; }
-  .assinaturas div { flex: 1; }
-  .linha { display: block; border-top: 1px solid #111; margin-bottom: 4px; }
-  @media print {
-    body { padding: 0; }
-    @page { size: A4 landscape; margin: 12mm; }
-  }
-</style></head><body>${
-      folhas || '<p>Nenhum colaborador no período selecionado.</p>'
-    }</body></html>`;
+      `,
+      corpo: folhas || '<p>Nenhum colaborador no período selecionado.</p>',
+    });
   }
 }
 

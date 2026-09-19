@@ -65,6 +65,7 @@ const {
   minhasJustificativas,
   diasCobertos,
   pendenciasDeFolga,
+  lancarAusenciaPelaLideranca,
 } = await import('./justificativas');
 
 beforeEach(() => {
@@ -369,11 +370,156 @@ test('A LISTA DE TIPOS DO BANCO BATE COM A DO CÓDIGO', async () => {
     });
   }
 
-  // E a migração avulsa cobre o mesmo conjunto
-  const migracao = await Bun.file(
-    new URL('../../supabase/folga-sabado.sql', import.meta.url)
+  /**
+   * E O ESTADO FINAL, depois de rodar tudo na ordem do documento.
+   *
+   * Antes esta parte cobrava um arquivo fixo (`folga-sabado.sql`). Errado:
+   * arquivo de migração é histórico — o que ele aceitava na época dele não
+   * muda, e não deve mudar. Quando "férias" entrou por um arquivo novo, o
+   * teste acusou o arquivo velho por não adivinhar o futuro.
+   *
+   * O que importa de verdade é outra coisa: rodando os arquivos NA ORDEM
+   * DO DOCUMENTO, o último que redefine a restrição precisa aceitar todos
+   * os tipos do código. É esse o estado em que o banco do Elias termina.
+   */
+  const operacao = await Bun.file(
+    new URL('../../docs/OPERACAO.md', import.meta.url)
   ).text();
-  for (const tipo of noCodigo) {
-    expect(migracao).toContain(`'${tipo}'`);
+
+  // A ordem de execução sai da própria tabela do documento
+  const ordem = [...operacao.matchAll(/\|\s*\d+\s*\|\s*`([^`]+\.sql)`/g)].map((m) => m[1]);
+  expect(ordem.length).toBeGreaterThan(5);
+
+  let ultimaLista: string[] | null = null;
+  let ultimoArquivo = '';
+
+  for (const arquivo of ordem) {
+    const conteudo = await Bun.file(
+      new URL(`../../supabase/${arquivo}`, import.meta.url)
+    ).text();
+
+    /**
+     * A DEFINIÇÃO, e não a citação.
+     *
+     * O nome da restrição também aparece na consulta de conferência, no
+     * fim do arquivo. Procurar a última ocorrência do NOME achava a
+     * conferência e concluía que o arquivo não define nada.
+     */
+    const definicoes = [
+      ...conteudo.matchAll(
+        /add constraint\s+justificativas_ausencia_tipo_check[\s\S]{0,300}?tipo in \(([^)]*)\)/g
+      ),
+    ];
+    if (definicoes.length === 0) continue;
+
+    const lista = definicoes[definicoes.length - 1][1];
+    ultimaLista = [...lista.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    ultimoArquivo = arquivo;
   }
+
+  expect(ultimaLista).not.toBeNull();
+
+  for (const tipo of noCodigo) {
+    expect({ arquivo: ultimoArquivo, tipo, aceito: ultimaLista!.includes(tipo) }).toEqual({
+      arquivo: ultimoArquivo,
+      tipo,
+      aceito: true,
+    });
+  }
+});
+
+// ============================================================
+// A LIDERANÇA MONTA A ESCALA, SEM ESPERAR PEDIDO
+// ============================================================
+
+/** O próximo sábado a partir de uma data, em AAAA-MM-DD. */
+const proximoSabado = (base = new Date(2026, 8, 1)): string => {
+  const d = new Date(base);
+  while (d.getDay() !== 6) d.setDate(d.getDate() + 1);
+  const dois = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${dois(d.getMonth() + 1)}-${dois(d.getDate())}`;
+};
+
+test('O QUE A LIDERANÇA LANÇA JÁ NASCE APROVADO', async () => {
+  /**
+   * Fechar os sábados do mês e montar as férias do semestre é trabalho de
+   * quem organiza a equipe — não existe pedido do colaborador para
+   * responder. Criar pendente e aprovar em seguida seria teatro, e
+   * encheria a escala de linhas amarelas que ninguém precisa decidir.
+   */
+  logado = CHEFE;
+
+  const res = await lancarAusenciaPelaLideranca({
+    colaboradorId: ANA.id,
+    dataInicio: '2026-10-05',
+    dataFim: '2026-10-19',
+    tipo: 'ferias',
+  });
+
+  expect(res.sucesso).toBe(true);
+  expect(res.justificativa!.estado).toBe('aprovada');
+  // Com o nome de quem lançou: escala sem autoria não se cobra de ninguém
+  expect(res.justificativa!.aprovadorNome).toBe('Chefe');
+  expect(res.justificativa!.decididoEm).toBeTruthy();
+});
+
+test('A LIDERANÇA SÓ ESCALA QUEM RESPONDE A ELA', async () => {
+  /**
+   * A mesma regra do aprovar. Uma segunda aqui divergiria, e o gerente
+   * acabaria marcando férias de gente de outra loja.
+   */
+  logado = CHEFE;
+
+  const res = await lancarAusenciaPelaLideranca({
+    colaboradorId: OUTRO.id,
+    dataInicio: '2026-10-05',
+    dataFim: '2026-10-09',
+    tipo: 'ferias',
+  });
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('não responde por esta pessoa');
+});
+
+test('O LIMITE DE UMA FOLGA POR MÊS VALE TAMBÉM PARA A LIDERANÇA', async () => {
+  /**
+   * O limite existe para o direito ser igual para todos, e não para
+   * conter quem pede demais. Afrouxá-lo para quem escala desfaria
+   * justamente isso.
+   */
+  logado = CHEFE;
+  const sabado = proximoSabado();
+
+  const primeira = await lancarAusenciaPelaLideranca({
+    colaboradorId: ANA.id, dataInicio: sabado, dataFim: sabado, tipo: 'folga_sabado',
+  });
+  expect(primeira.sucesso).toBe(true);
+
+  // Outro sábado do MESMO mês
+  const [a, m, d] = sabado.split('-').map(Number);
+  const outro = new Date(a, m - 1, d + 7);
+  const dois = (n: number) => String(n).padStart(2, '0');
+  const sabadoSeguinte = `${outro.getFullYear()}-${dois(outro.getMonth() + 1)}-${dois(outro.getDate())}`;
+
+  if (sabadoSeguinte.slice(0, 7) === sabado.slice(0, 7)) {
+    const segunda = await lancarAusenciaPelaLideranca({
+      colaboradorId: ANA.id, dataInicio: sabadoSeguinte, dataFim: sabadoSeguinte, tipo: 'folga_sabado',
+    });
+    expect(segunda.sucesso).toBe(false);
+    expect(segunda.erro).toContain('já tem folga');
+  }
+});
+
+test('folga lançada pela liderança continua caindo só em sábado', async () => {
+  logado = CHEFE;
+
+  const res = await lancarAusenciaPelaLideranca({
+    colaboradorId: ANA.id,
+    dataInicio: '2026-10-07', // quarta-feira
+    dataFim: '2026-10-07',
+    tipo: 'folga_sabado',
+  });
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('sábado');
 });

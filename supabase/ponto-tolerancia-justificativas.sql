@@ -75,6 +75,7 @@ create table if not exists public.justificativas_ausencia (
                       'falta_justificada',
                       'comparecimento',
                       'folga_sabado',
+                      'ferias',
                       'outro'
                     )
                   ),
@@ -119,6 +120,9 @@ create policy justificativas_abertura on public.justificativas_ausencia
   with check (
     (colaborador_id = public.meu_colaborador_id() and estado = 'pendente')
     or public.cuido_de_pessoas()
+    -- A liderança monta a escala de quem responde a ela, já aprovada:
+    -- planejar férias e fechar sábados não parte de pedido de ninguém
+    or public.posso_decidir_jornada(colaborador_id)
   );
 
 -- DECISÃO — protege as invariantes 1 e 4: só quem responde pela pessoa
