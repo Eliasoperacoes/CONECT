@@ -47,6 +47,8 @@ Numa base nova, nesta ordem:
 | 20 | `ponto-do-lider-completo.sql` | **Reúne 17, 18 e 19 num arquivo só, na ordem certa** — e é o único que precisa ser rodado. Os três separados abortavam se rodados fora de ordem, e script que aborta deixa tudo como estava. Também TIRA o `meu_nivel() >= 3` da leitura do ponto: qualquer gerente lia o ponto de qualquer pessoa da rede, inclusive de outra loja |
 
 > `conferir-ponto-do-lider.sql` não altera nada: só responde se as regras acima estão valendo. **Uma consulta só, de propósito** — o SQL Editor mostra apenas o resultado da última consulta do arquivo, então conferência em vários `select` entrega respostas invisíveis.
+>
+> `conferir-equipe-da-fernanda.sql` também não altera nada: mostra quem responde a um líder, o setor inteiro e nomes parecidos. Serve quando o banco está correto e a correção ainda falha — aí a causa costuma ser o Organograma, não SQL.
 
 Todos são idempotentes: rodar de novo não quebra nada.
 
