@@ -1619,9 +1619,21 @@ class ServicoPonto {
     if (usandoNuvem()) {
       const res = await nuvem.salvarAjustePonto(registroAjustado);
       if (!res.sucesso) {
+        /**
+         * O MOTIVO DE VERDADE, e não "verifique a conexão".
+         *
+         * A mensagem antiga mandava a líder olhar o wi-fi enquanto o banco
+         * recusava por permissão. Ela conferiu a conexão, estava boa, e o
+         * defeito chegou aqui como "não funciona" — sem a única informação
+         * que resolveria.
+         *
+         * Tela que inventa a causa custa uma rodada inteira de diagnóstico.
+         */
         return {
           sucesso: false,
-          erro: 'Não foi possível gravar o ajuste no banco. Verifique a conexão.',
+          erro: res.erro
+            ? `Não foi possível gravar a correção: ${res.erro}`
+            : 'Não foi possível gravar a correção. Verifique a conexão.',
         };
       }
     }

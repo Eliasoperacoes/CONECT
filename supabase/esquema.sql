@@ -674,7 +674,15 @@ create policy codigos_escrita on public.codigos_ponto_loja
 drop policy if exists ponto_leitura on public.registros_ponto;
 create policy ponto_leitura on public.registros_ponto
   for select to authenticated
-  using (colaborador_id = public.meu_colaborador_id() or public.cuido_de_pessoas() or public.meu_nivel() >= 3);
+  using (
+    colaborador_id = public.meu_colaborador_id()
+    or public.cuido_de_pessoas()
+    or public.meu_nivel() >= 3
+    -- Quem responde pela pessoa enxerga o ponto dela. Sem isto o líder de
+    -- setor (nível 2) aprovava um dia cujas marcações não conseguia ver —
+    -- e a correção falhava com uma mensagem culpando a conexão.
+    or public.posso_decidir_jornada(colaborador_id)
+  );
 
 drop policy if exists ponto_batida on public.registros_ponto;
 create policy ponto_batida on public.registros_ponto

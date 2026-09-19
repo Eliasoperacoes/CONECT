@@ -5,7 +5,7 @@
  * horas pertence à PESSOA, não ao aparelho. Celular e computador têm que
  * chegar no mesmo lugar.
  */
-import { test, expect, mock, beforeEach } from 'bun:test';
+import { test, expect, mock, beforeEach, setSystemTime } from 'bun:test';
 
 // --- Armazenamento falso do navegador ---
 class ArmazenamentoFalso {
@@ -146,6 +146,19 @@ beforeEach(() => {
   colaboradorLogado = ELIAS;
   equipe = [ELIAS, ANA];
   toleranciaDoTeste = 10;
+
+  /**
+   * O RELÓGIO É FIXADO NUMA QUARTA-FEIRA.
+   *
+   * Sem isto a suíte mudava de resultado conforme o dia em que fosse
+   * rodada, e FALHAVA TODO SÁBADO: no sábado não há intervalo, então a
+   * segunda batida do dia é a saída, e não a saída para o almoço. Quatro
+   * testes quebravam sozinhos, sem nada ter mudado no código.
+   *
+   * Teste que depende do calendário não prova nada dois dias por semana —
+   * e, pior, faz duvidar do código quando o defeito é dele mesmo.
+   */
+  setSystemTime(new Date(2026, 8, 16, 9, 0, 0));
 });
 
 // ============================================================

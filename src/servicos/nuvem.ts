@@ -785,13 +785,37 @@ class PonteNuvem {
   ): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
 
-    const { error } = await supabase
-      .from('registros_ponto')
-      .upsert(paraLinhaPonto(registro), { onConflict: 'colaborador_id,data,tipo' });
+    /**
+     * NADA DE `upsert`. É a mesma razão explicada em `salvarAjuste`, e este
+     * era o segundo lugar onde a armadilha estava armada.
+     *
+     * `upsert` vira `ON CONFLICT DO UPDATE` no banco, e para resolver o
+     * conflito o Postgres precisa ENXERGAR a linha existente. Quem não
+     * pode lê-la pela segurança por linha não recebe "sem permissão": a
+     * gravação inteira falha, e a tela culpa a conexão.
+     *
+     * Foi exatamente o que aconteceu com a líder corrigindo a hora da
+     * equipe. Insert comum, e o 23505 (chave repetida) vira a atualização
+     * explícita.
+     */
+    const { error } = await supabase.from('registros_ponto').insert(paraLinhaPonto(registro));
+    if (!error) return { sucesso: true };
 
-    if (error) {
+    if (error.code !== '23505') {
       console.error('Falha ao ajustar a marcação no banco:', error.message);
       return { sucesso: false, erro: error.message };
+    }
+
+    const { error: erroUpdate } = await supabase
+      .from('registros_ponto')
+      .update(paraLinhaPonto(registro))
+      .eq('colaborador_id', registro.colaboradorId)
+      .eq('data', registro.data)
+      .eq('tipo', registro.tipo);
+
+    if (erroUpdate) {
+      console.error('Falha ao reescrever a marcação:', erroUpdate.message);
+      return { sucesso: false, erro: erroUpdate.message };
     }
     return { sucesso: true };
   }

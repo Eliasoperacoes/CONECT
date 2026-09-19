@@ -43,6 +43,7 @@ Numa base nova, nesta ordem:
 | 16 | `documentos-pessoais-no-balde.sql` | **Protege o ARQUIVO**, não só a linha. Sem ele, o caminho do holerite de um colega era adivinhável |
 | 17 | `aprovar-jornada-lider.sql` | **O líder consegue aprovar.** Sem ele a aba mostra "new row violates row-level security policy": a criação da pendência não conhecia líder, só a própria pessoa e o RH. Também deixa o líder decidir a própria jornada |
 | 18 | `corrigir-ponto-pelo-lider.sql` | O botão **Editar** na fila de aprovação. Quem responde pela pessoa corrige o horário e reapura o dia. **Apagar marcação continua só do RH.** Depende do 17 |
+| 19 | `lider-enxerga-o-ponto.sql` | **A outra metade do 18.** A leitura do ponto só conhecia nível 3+, então o líder de setor aprovava um dia cujas marcações não conseguia ver — e a correção falhava culpando a conexão. Depende do 17 |
 
 Todos são idempotentes: rodar de novo não quebra nada.
 
