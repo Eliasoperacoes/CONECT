@@ -132,7 +132,7 @@ mock.module('./nuvem', () => ({
   },
 }));
 
-const { servicoPonto, dataDeHoje } = await import(
+const { servicoPonto, dataDeHoje, marcacoesEsperadas } = await import(
   './ponto'
 );
 
@@ -1672,4 +1672,113 @@ test('quem tem intervalo continua batendo as quatro', async () => {
   await servicoPonto.registrarMarcacaoPorCodigo(codigo);
 
   expect(servicoPonto.obterProximaMarcacao(ANA.id)).toBe('saida_almoco');
+});
+
+// ============================================================
+// FERIADO NÃO COBRA JORNADA
+// ============================================================
+
+const CHAVE_FERIADOS_TESTE = 'conecta_v4_feriados';
+
+const comFeriados = <T,>(lista: any[], corpo: () => T): T => {
+  armazenamento.setItem(CHAVE_FERIADOS_TESTE, JSON.stringify(lista));
+  try {
+    return corpo();
+  } finally {
+    armazenamento.removeItem(CHAVE_FERIADOS_TESTE);
+  }
+};
+
+test('FERIADO NÃO VIRA DÉBITO NO BANCO DE HORAS', async () => {
+  /**
+   * Sem o calendário, todo 7 de setembro contava como dia inteiro de
+   * débito para a rede inteira — e o espelho mostrava um dia sem batida,
+   * que se lê como falta.
+   *
+   * O defeito é do tipo mais difícil de achar: a causa é a AUSÊNCIA de um
+   * registro, e ausência não aparece em lugar nenhum.
+   */
+  equipe = [ELIAS, ANA];
+  colaboradorLogado = ANA;
+
+  // 07/09/2026 é uma segunda-feira: dia útil cheio, se não fosse feriado
+  const semFeriado = servicoPonto.obterJornadaDoDia(ANA.id, '2026-09-07');
+  expect(semFeriado.minutosPrevistos).toBeGreaterThan(0);
+
+  comFeriados(
+    [
+      {
+        id: 'f1',
+        data: '2026-09-07',
+        nome: 'Independência do Brasil',
+        minutosPrevistos: 0,
+        criadoEm: '',
+      },
+    ],
+    () => {
+      const comFeriado = servicoPonto.obterJornadaDoDia(ANA.id, '2026-09-07');
+      expect(comFeriado.minutosPrevistos).toBe(0);
+    }
+  );
+});
+
+test('MEIO EXPEDIENTE PREVÊ O QUE FOI CADASTRADO', async () => {
+  /**
+   * 24 e 31 de dezembro a rede abre meio período. Tratar feriado como
+   * "fecha ou não fecha" obrigaria a escolher entre cobrar o dia inteiro
+   * e não cobrar nada — as duas erradas.
+   */
+  equipe = [ELIAS, ANA];
+  colaboradorLogado = ANA;
+
+  comFeriados(
+    [
+      {
+        id: 'f2',
+        data: '2026-12-24',
+        nome: 'Véspera de Natal',
+        minutosPrevistos: 240,
+        criadoEm: '',
+      },
+    ],
+    () => {
+      expect(servicoPonto.obterJornadaDoDia(ANA.id, '2026-12-24').minutosPrevistos).toBe(240);
+      // E o dia espera entrada e saída: a pessoa veio, só que menos tempo
+      expect(marcacoesEsperadas('2026-12-24', ANA as any)).toEqual(['entrada', 'saida']);
+    }
+  );
+});
+
+test('FERIADO FECHADO NÃO PEDE BATIDA NENHUMA', async () => {
+  /**
+   * Sem isto o dia entrava na conta de "dias sem fechar" e ia parar na
+   * fila do responsável, pedindo decisão sobre um dia em que a loja
+   * estava de portas fechadas.
+   */
+  comFeriados(
+    [{ id: 'f3', data: '2026-09-07', nome: 'Independência', minutosPrevistos: 0, criadoEm: '' }],
+    () => {
+      expect(marcacoesEsperadas('2026-09-07', ANA as any)).toEqual([]);
+    }
+  );
+});
+
+test('FERIADO QUE CAI NO SÁBADO FECHA A LOJA DO MESMO JEITO', async () => {
+  /**
+   * O sábado prevê 4 horas. Se o feriado fosse consultado depois da
+   * regra do sábado, o dia continuaria cobrando as 4 horas de uma loja
+   * fechada.
+   */
+  equipe = [ELIAS, ANA];
+  colaboradorLogado = ANA;
+
+  // 2026-09-05 é sábado
+  expect(servicoPonto.obterJornadaDoDia(ANA.id, '2026-09-05').minutosPrevistos).toBeGreaterThan(0);
+
+  comFeriados(
+    [{ id: 'f4', data: '2026-09-05', nome: 'Feriado no sábado', minutosPrevistos: 0, criadoEm: '' }],
+    () => {
+      expect(servicoPonto.obterJornadaDoDia(ANA.id, '2026-09-05').minutosPrevistos).toBe(0);
+    }
+  );
 });

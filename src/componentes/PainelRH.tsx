@@ -42,12 +42,20 @@ import {
   assinarJustificativas,
 } from '../servicos/justificativasCache';
 import { EscalaDeFolgas } from './EscalaDeFolgas';
+import { CalendarioFeriados } from './CalendarioFeriados';
 import { BancoDeHoras } from './BancoDeHoras';
 import { AbaHolerites } from './AbaHolerites';
 import { AbaAdvertencias } from './AbaAdvertencias';
 import { AbaAtestados } from './AbaAtestados';
 
-type Secao = 'painel' | 'holerites' | 'atestados' | 'advertencias' | 'escala' | 'espelhos';
+type Secao =
+  | 'painel'
+  | 'holerites'
+  | 'atestados'
+  | 'advertencias'
+  | 'escala'
+  | 'calendario'
+  | 'espelhos';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -160,6 +168,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
       icone: <AlertTriangle className="w-3.5 h-3.5" />,
     },
     { id: 'escala', rotulo: 'Escala de folgas', icone: <CalendarDays className="w-3.5 h-3.5" /> },
+    { id: 'calendario', rotulo: 'Feriados', icone: <CalendarDays className="w-3.5 h-3.5" /> },
     { id: 'espelhos', rotulo: 'Espelhos de ponto', icone: <FileText className="w-3.5 h-3.5" /> },
   ];
 
@@ -296,6 +305,15 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
         <div className="p-4 sm:p-6">
           <EscalaDeFolgas colaboradorAtual={colaboradorAtual} />
         </div>
+      )}
+
+      {/*
+        O CALENDÁRIO FICA NO RH, e não no ADM.
+        Feriado mexe no banco de horas de todo mundo — é assunto de quem
+        cuida de pessoas, e é aqui que essa pessoa trabalha.
+      */}
+      {secao === 'calendario' && (
+        <CalendarioFeriados colaboradorAtual={colaboradorAtual} />
       )}
 
       {secao === 'espelhos' && (

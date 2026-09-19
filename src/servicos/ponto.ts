@@ -34,6 +34,7 @@ import {
   ResumoPontoColaborador,
   TipoMarcacao,
   ORDEM_MARCACOES,
+  ehMarcacaoCorrigida,
   ROTULO_MARCACAO,
   CARGA_HORARIA_PADRAO_MINUTOS,
   NIVEL_TI,
@@ -54,6 +55,7 @@ import { temAlcadaSobre, regraAutomaticaDeAlcada } from './organograma';
 // A FOLHA, nunca o serviço: importar `justificativas` daqui refecharia o
 // ciclo que já derrubou o aplicativo uma vez
 import { situacaoDoDia } from './justificativasCache';
+import { feriadoEm } from './feriadosCache';
 import { montarDocumento } from './documento';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
@@ -147,6 +149,19 @@ export const marcacoesEsperadas = (
   data: string,
   colaborador?: Colaborador
 ): TipoMarcacao[] => {
+  /**
+   * FERIADO FECHADO NÃO ESPERA BATIDA NENHUMA.
+   *
+   * Sem isto o dia entrava na conta de "dias sem fechar" e ia parar na
+   * fila do responsável, pedindo decisão sobre um dia em que a loja
+   * estava de portas fechadas.
+   *
+   * Meio expediente continua esperando entrada e saída: a pessoa veio,
+   * só que menos tempo.
+   */
+  const feriado = feriadoEm(data, colaborador?.loja);
+  if (feriado) return feriado.minutosPrevistos > 0 ? ['entrada', 'saida'] : [];
+
   if (ehSabado(data)) {
     // Não trabalha aos sábados: não há batida a esperar, e o dia não é dela
     if (colaborador && !trabalhaNoSabado(colaborador)) return [];
@@ -629,6 +644,22 @@ class ServicoPonto {
      * cobra jornada.
      */
     if (colaborador && situacaoDoDia(colaborador.id, data) !== 'normal') return 0;
+
+    /**
+     * FERIADO NÃO COBRA JORNADA.
+     *
+     * Sem isto, todo feriado nacional virava um dia inteiro de débito para
+     * a rede inteira — e ninguém entendia de onde saiu, porque o espelho
+     * mostrava um dia sem batida nenhuma, igual a uma falta.
+     *
+     * Meio expediente é o mesmo caminho com outro número: 24 e 31 de
+     * dezembro preveem o que o RH cadastrar, e não o dia inteiro nem zero.
+     *
+     * Vem ANTES do sábado de propósito: feriado que cai num sábado fecha a
+     * loja do mesmo jeito.
+     */
+    const feriado = feriadoEm(data, colaborador?.loja);
+    if (feriado) return feriado.minutosPrevistos;
 
     /**
      * Sábado de quem não trabalha aos sábados não prevê nada.
@@ -1859,16 +1890,37 @@ class ServicoPonto {
               .map((r) => `${ROTULO_MARCACAO[r.tipo]}: ${this.descreverOrigem(r)}`)
               .join(' | ');
 
+            /**
+             * O QUE O DIA ESPERA, e não as quatro colunas sempre.
+             *
+             * No sábado não há almoço: a loja abre às 8 e fecha ao meio-dia,
+             * direto. O espelho imprimia `--:--` nas duas colunas do
+             * intervalo, e num documento de ponto isso se lê como batida
+             * esquecida — não como "não se aplica".
+             *
+             * Em feriado fechado não se espera nada, e as quatro colunas
+             * ficam traçadas.
+             */
+            const esperadas = marcacoesEsperadas(j.data, resumo.colaborador);
+
             const celulas = ORDEM_MARCACOES.map((t) => {
+              if (!esperadas.includes(t)) {
+                return `<td class="hora naoSeAplica">—</td>`;
+              }
               const reg = j.marcacoes[t];
-              const ajuste = reg?.metodo === 'ajuste_rh' ? ' *' : '';
+              const ajuste = reg && ehMarcacaoCorrigida(reg.metodo) ? ' *' : '';
               return `<td class="hora">${reg ? reg.horaFormatada + ajuste : '--:--'}</td>`;
             }).join('');
 
+            const feriadoDoDia = feriadoEm(j.data, resumo.colaborador.loja);
             const semMarcacao = Object.keys(j.marcacoes).length === 0;
 
             return `<tr class="${semMarcacao ? 'vazio' : ''}">
-              <td class="dia">${formatarDataBR(j.data)}<br><span class="semana">${formatarDiaCurto(j.data).split(',')[0]}</span></td>
+              <td class="dia">${formatarDataBR(j.data)}<br><span class="semana">${
+                feriadoDoDia
+                  ? escapar(feriadoDoDia.nome)
+                  : formatarDiaCurto(j.data).split(',')[0]
+              }</span></td>
               ${celulas}
               <td class="num">${formatarMinutos(j.minutosTrabalhados)}</td>
               <td class="num">${formatarMinutos(j.minutosPrevistos)}</td>
@@ -1967,6 +2019,7 @@ class ServicoPonto {
   .marcacoes .dia { text-align: left; white-space: nowrap; font-weight: 600; }
   .semana { font-weight: 400; color: #666; text-transform: capitalize; }
   .origem { text-align: left; font-size: 9px; color: #555; }
+  .naoSeAplica { color: #bbb; }
   .vazio td { background: #fafafa; }
   .totais { margin-top: 12px; width: 60%; font-size: 12px; }
   .totais td { border: 1px solid #bbb; padding: 5px 8px; }

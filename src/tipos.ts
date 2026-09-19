@@ -796,6 +796,28 @@ export interface Advertencia {
   criadoEm: string;
 }
 
+/**
+ * Um dia em que a rede não abre — ou abre menos.
+ *
+ * `loja` nula vale para a rede inteira. As cinco lojas ficam em cidades
+ * diferentes, e o aniversário de Pirassununga não fecha a de Leme: sem
+ * essa coluna, o feriado municipal de uma cidade cobraria falta de todo
+ * mundo ou perdoaria quem trabalhou.
+ *
+ * `minutosPrevistos` zero é dia fechado. Maior que zero é meio
+ * expediente — 24 e 31 de dezembro costumam ser assim, e sem isso a
+ * escolha seria entre cobrar o dia inteiro ou não cobrar nada.
+ */
+export interface Feriado {
+  id: string;
+  /** AAAA-MM-DD */
+  data: string;
+  nome: string;
+  loja?: Loja;
+  minutosPrevistos: number;
+  criadoEm: string;
+}
+
 export type SituacaoDoDia =
   | 'normal'
   | 'abonado_atestado'

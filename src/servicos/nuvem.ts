@@ -21,6 +21,7 @@ import {
   Setor,
   TipoMarcacao,
   AjusteJornada,
+  Feriado,
   JustificativaAusencia,
   TURNO_PADRAO,
   TipoAjuste,
@@ -34,6 +35,7 @@ import { nuvemComunicacao } from './nuvemComunicacao';
  * ("Cannot access 'nuvem' before initialization", tela branca).
  */
 import { aplicarJustificativasDaNuvem } from './justificativasCache';
+import { aplicarFeriadosDaNuvem } from './feriadosCache';
 
 /**
  * Enche o cache de conversa, aviso, configuração e auditoria. Fica aqui e não
@@ -521,6 +523,7 @@ class PonteNuvem {
     await this.sincronizarPonto();
     await this.sincronizarAjustes();
     await this.sincronizarJustificativas();
+    await this.sincronizarFeriados();
     await carregarComunicacao();
 
     return {
@@ -948,6 +951,76 @@ class PonteNuvem {
     return true;
   }
 
+  /**
+   * Os feriados da rede.
+   *
+   * Sem cuidado com quem lê: feriado não é dado de ninguém, é o
+   * calendário da empresa. Todo mundo precisa dele para o próprio
+   * espelho fechar.
+   */
+  async sincronizarFeriados(): Promise<boolean> {
+    if (!supabase) return false;
+
+    const { data, error } = await supabase.from('feriados').select('*').order('data');
+    if (error || !data) {
+      console.error('Falha ao sincronizar os feriados:', error?.message);
+      return false;
+    }
+
+    aplicarFeriadosDaNuvem(
+      (data as Record<string, unknown>[]).map((l) => ({
+        id: String(l.id),
+        data: String(l.data),
+        nome: String(l.nome),
+        loja: (l.loja as any) || undefined,
+        minutosPrevistos: Number(l.minutos_previstos) || 0,
+        criadoEm: String(l.criado_em),
+      }))
+    );
+    this.avisar();
+    return true;
+  }
+
+  /** Grava um ou vários de uma vez, sem upsert: ver salvarAjuste. */
+  async salvarFeriados(lista: Feriado[]): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+
+    for (const f of lista) {
+      const linha = {
+        id: f.id,
+        data: f.data,
+        nome: f.nome,
+        loja: f.loja ?? null,
+        minutos_previstos: f.minutosPrevistos,
+      };
+
+      const { error } = await supabase.from('feriados').insert(linha);
+      if (!error) continue;
+
+      if (error.code !== '23505') {
+        console.error('Falha ao gravar o feriado:', error.message);
+        return { sucesso: false, erro: error.message };
+      }
+
+      const { error: erroUpdate } = await supabase
+        .from('feriados')
+        .update(linha)
+        .eq('id', f.id);
+      if (erroUpdate) {
+        console.error('Falha ao reescrever o feriado:', erroUpdate.message);
+        return { sucesso: false, erro: erroUpdate.message };
+      }
+    }
+    return { sucesso: true };
+  }
+
+  async removerFeriado(id: string): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+    const { error } = await supabase.from('feriados').delete().eq('id', id);
+    if (error) return { sucesso: false, erro: error.message };
+    return { sucesso: true };
+  }
+
   async sincronizarAjustes(): Promise<boolean> {
     if (!supabase) return false;
 
@@ -1106,6 +1179,7 @@ export const iniciarNuvem = async (): Promise<void> => {
       await nuvem.sincronizarColaboradores();
       await nuvem.sincronizarPonto();
       await nuvem.sincronizarAjustes();
+      await nuvem.sincronizarFeriados();
       await carregarComunicacao();
     }
     nuvem.iniciarTempoReal();
