@@ -523,3 +523,46 @@ test('folga lançada pela liderança continua caindo só em sábado', async () =
   expect(res.sucesso).toBe(false);
   expect(res.erro).toContain('sábado');
 });
+
+test('QUEM LIDERA LANÇA AS PRÓPRIAS FÉRIAS', async () => {
+  /**
+   * A líder abria a escala e via só a subordinada, sem ter por onde
+   * marcar as férias dela mesma.
+   *
+   * A regra já existia: quem responde por alguém decide a própria
+   * jornada. A escala é que se excluía à mão, com um filtro escrito
+   * quando ninguém decidia sobre si — e que ficou para trás quando a
+   * regra mudou.
+   */
+  logado = CHEFE;
+
+  const res = await lancarAusenciaPelaLideranca({
+    colaboradorId: CHEFE.id,
+    dataInicio: '2026-11-03',
+    dataFim: '2026-11-17',
+    tipo: 'ferias',
+  });
+
+  expect(res.sucesso).toBe(true);
+  expect(res.justificativa!.colaboradorId).toBe(CHEFE.id);
+  expect(res.justificativa!.estado).toBe('aprovada');
+});
+
+test('QUEM NÃO RESPONDE POR NINGUÉM NÃO LANÇA AS PRÓPRIAS', async () => {
+  /**
+   * O outro lado, e é ele que impede a escala de virar autoatendimento:
+   * a Ana não tem ninguém pendurado nela, então as férias dela são
+   * decididas por quem responde por ela.
+   */
+  logado = ANA;
+
+  const res = await lancarAusenciaPelaLideranca({
+    colaboradorId: ANA.id,
+    dataInicio: '2026-11-03',
+    dataFim: '2026-11-17',
+    tipo: 'ferias',
+  });
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('não responde por esta pessoa');
+});

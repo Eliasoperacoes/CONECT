@@ -147,3 +147,21 @@ test('o estilo dos documentos mora num lugar só', async () => {
   expect(ponto).toContain('montarDocumento({');
   expect(ponto).not.toContain('<!doctype html>');
 });
+
+test('A ESCALA NÃO EXCLUI QUEM A ABRE', async () => {
+  /**
+   * A lista da escala vinha com um `filter` tirando o próprio da relação,
+   * escrito quando ninguém decidia sobre a própria jornada. A regra
+   * mudou, o filtro ficou — e a líder abria a escala, via só a
+   * subordinada e não tinha por onde marcar as férias dela.
+   *
+   * Quem decide isso é `podeDecidirSobre`, a MESMA função da fila de
+   * aprovação e da relação semanal. Escrever aqui um critério próprio é
+   * o que produziu o defeito da primeira vez.
+   */
+  const codigo = semComentarios(await lerTela());
+
+  expect(codigo).toContain('.filter((c) => servicoPonto.podeDecidirSobre(c))');
+  // O critério escrito à mão não pode voltar
+  expect(codigo).not.toContain('c.id !== colaboradorAtual.id');
+});

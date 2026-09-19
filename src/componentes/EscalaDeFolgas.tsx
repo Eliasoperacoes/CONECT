@@ -102,12 +102,24 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
    * A equipe é a mesma da alçada: quem o gestor aprova é quem ele escala.
    * Montar a escala com gente que ele não aprova seria planejar a folga de
    * quem responde a outro.
+   *
+   * E ELE MESMO ENTRA NA LISTA.
+   *
+   * Antes havia um `filter` tirando o próprio da relação — escrito quando
+   * ninguém decidia sobre a própria jornada. Essa regra mudou: quem
+   * responde por alguém aprova as próprias horas, e por isso também lança
+   * as próprias férias. A líder abria a escala e via só a subordinada,
+   * sem ter por onde marcar as dela.
+   *
+   * `podeDecidirSobre` é quem responde isso, igual à relação semanal e à
+   * fila de aprovação. Quem não responde por ninguém continua fora da
+   * própria lista, e depende de quem responde por ele.
    */
   const equipe = useMemo(
     () =>
       servicoPonto
         .obterColaboradoresVisiveis()
-        .filter((c) => c.id !== colaboradorAtual.id)
+        .filter((c) => servicoPonto.podeDecidirSobre(c))
         .sort((a, b) => a.nome.localeCompare(b.nome)),
     [colaboradorAtual.id]
   );
