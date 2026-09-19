@@ -677,10 +677,15 @@ create policy ponto_leitura on public.registros_ponto
   using (
     colaborador_id = public.meu_colaborador_id()
     or public.cuido_de_pessoas()
-    or public.meu_nivel() >= 3
-    -- Quem responde pela pessoa enxerga o ponto dela. Sem isto o líder de
-    -- setor (nível 2) aprovava um dia cujas marcações não conseguia ver —
-    -- e a correção falhava com uma mensagem culpando a conexão.
+    -- Quem responde pela pessoa enxerga o ponto dela.
+    --
+    -- Aqui havia `meu_nivel() >= 3`, que dava a QUALQUER gerente o ponto de
+    -- QUALQUER pessoa da rede, inclusive de outra loja. A tela filtrava; o
+    -- banco não. Trava que mora só na tela não é trava.
+    --
+    -- O gerente continua alcançando a loja dele: quem está posicionado no
+    -- organograma vem pela cadeia, e quem não está cai na regra automática
+    -- de loja, que é parte desta mesma função.
     or public.posso_decidir_jornada(colaborador_id)
   );
 

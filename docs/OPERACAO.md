@@ -43,7 +43,8 @@ Numa base nova, nesta ordem:
 | 16 | `documentos-pessoais-no-balde.sql` | **Protege o ARQUIVO**, não só a linha. Sem ele, o caminho do holerite de um colega era adivinhável |
 | 17 | `aprovar-jornada-lider.sql` | **O líder consegue aprovar.** Sem ele a aba mostra "new row violates row-level security policy": a criação da pendência não conhecia líder, só a própria pessoa e o RH. Também deixa o líder decidir a própria jornada |
 | 18 | `corrigir-ponto-pelo-lider.sql` | O botão **Editar** na fila de aprovação. Quem responde pela pessoa corrige o horário e reapura o dia. **Apagar marcação continua só do RH.** Depende do 17 |
-| 19 | `lider-enxerga-o-ponto.sql` | **A outra metade do 18.** A leitura do ponto só conhecia nível 3+, então o líder de setor aprovava um dia cujas marcações não conseguia ver — e a correção falhava culpando a conexão. Depende do 17 |
+| 19 | `lider-enxerga-o-ponto.sql` | **A outra metade do 18.** A leitura do ponto só conhecia nível 3+, então o líder de setor aprovava um dia cujas marcações não conseguia ver |
+| 20 | `ponto-do-lider-completo.sql` | **Reúne 17, 18 e 19 num arquivo só, na ordem certa** — e é o único que precisa ser rodado. Os três separados abortavam se rodados fora de ordem, e script que aborta deixa tudo como estava. Também TIRA o `meu_nivel() >= 3` da leitura do ponto: qualquer gerente lia o ponto de qualquer pessoa da rede, inclusive de outra loja |
 
 Todos são idempotentes: rodar de novo não quebra nada.
 
