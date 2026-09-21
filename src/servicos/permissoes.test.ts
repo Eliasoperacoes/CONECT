@@ -762,3 +762,32 @@ test('o Administrador NAO perde o organograma', async () => {
   expect(painel).toContain('const souDoRh = ehDoRh(colaboradorAtual)');
   expect(painel).not.toContain('!cuidaDeRh && (');
 });
+
+test('TODA ABA DO PAINEL DE GESTÃO PASSA PELO CATÁLOGO', async () => {
+  /**
+   * A Escala de folgas ficou de fora por meses: a visibilidade dela era
+   * `!temTelaDeRh` e mais nada. Não aparecia no painel de Permissões, e
+   * não dava para ligar nem desligar por nível — quem alcançava o painel
+   * de gestão, tinha. E é a tela onde a liderança LANÇA folga e férias.
+   *
+   * Tela fora do catálogo não é tela sem dono: é tela que ninguém
+   * consegue tirar de ninguém.
+   */
+  const gestao = await Bun.file('src/componentes/PainelGestao.tsx').text();
+  const { FERRAMENTAS } = await import('./ferramentas');
+
+  const chaves = new Set(FERRAMENTAS.map((f) => f.chave));
+  expect(chaves.has('escala_folgas')).toBe(true);
+
+  // Cada bandeira de visibilidade de aba consulta o catálogo
+  for (const bandeira of ['veEscala', 'veRede', 'veQr']) {
+    const linha = gestao
+      .split('\n')
+      .find((l) => l.includes(`const ${bandeira} =`) || l.includes(`const ${bandeira} =`));
+    expect({ bandeira, achou: !!linha }).toEqual({ bandeira, achou: true });
+  }
+
+  expect(gestao).toContain("podeUsar('escala_folgas'");
+  expect(gestao).toContain("podeUsar('qr_ponto'");
+  expect(gestao).toContain("podeUsar('banco_horas_rh'");
+});

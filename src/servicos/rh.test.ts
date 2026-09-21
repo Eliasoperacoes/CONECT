@@ -139,7 +139,16 @@ test('quem tem a tela de RH nao ve escala e rede em Equipe & Ponto', async () =>
   // O `!temTelaDeRh` continua valendo para as duas portas do espelho: quem
   // tem a tela de RH não vê a mesma coisa repetida em Equipe & Ponto
   expect(gestao).toContain("podeUsar('espelho_equipe', colaboradorAtual)) && !temTelaDeRh");
-  expect(gestao).toContain('const veEscala = !temTelaDeRh');
+  /**
+   * A escala passou a consultar o catálogo de permissões, que é o assunto
+   * de outra correção — ela não aparecia no painel de Permissões e não
+   * dava para ligar ou desligar por nível.
+   *
+   * O que ESTE teste protege continua igual: `!temTelaDeRh`. Não é
+   * permissão, é evitar duas portas para a mesma sala. Por isso a
+   * asserção mudou de forma, e não de intenção.
+   */
+  expect(gestao).toContain("podeUsar('escala_folgas', colaboradorAtual) && !temTelaDeRh");
 
   // E a tela de RH usa os MESMOS componentes, não cópias
   const rh = await Bun.file(

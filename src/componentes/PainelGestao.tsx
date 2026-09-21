@@ -132,7 +132,18 @@ export const PainelGestao: React.FC<Props> = ({
   const veRede =
     (veEspelhoDaRede || podeUsar('espelho_equipe', colaboradorAtual)) && !temTelaDeRh;
   const veQr = podeUsar('qr_ponto', colaboradorAtual);
-  const veEscala = !temTelaDeRh;
+  /**
+   * A ESCALA PASSA PELO CATÁLOGO, como as outras.
+   *
+   * Era só `!temTelaDeRh` — a tela onde a liderança lança folga e férias
+   * não aparecia no painel de Permissões, e não dava para ligar ou
+   * desligar por nível. Quem alcançava o painel de gestão, tinha.
+   *
+   * O `!temTelaDeRh` continua ao lado, e é outra coisa: não é permissão,
+   * é evitar duas portas para a mesma sala — quem tem a tela de RH acessa
+   * a escala por lá.
+   */
+  const veEscala = podeUsar('escala_folgas', colaboradorAtual) && !temTelaDeRh;
 
   /**
    * Quem NÃO tem equipe ainda pode entrar aqui — um gerente sem ninguém

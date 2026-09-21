@@ -138,6 +138,16 @@ export const FERRAMENTAS: Ferramenta[] = [
       'Quem tem isto corrige marcação da própria equipe — registro trabalhista, com autoria e motivo obrigatórios. Apagar batida continua só do RH.',
   },
   {
+    chave: 'escala_folgas',
+    nome: 'Escala de folgas',
+    descricao:
+      'O calendário de folgas de sábado e férias da equipe, com lançamento pela liderança.',
+    area: 'gestao',
+    nivelPadrao: NIVEL_LIDER_SETOR,
+    cuidado:
+      'Quem tem isto LANÇA folga e férias já aprovadas para a equipe. O limite de uma folga de sábado por mês continua valendo.',
+  },
+  {
     chave: 'aprovar_jornadas',
     nome: 'Aprovar jornadas',
     descricao: 'A fila de horas extras e saídas antecipadas aguardando decisão.',
