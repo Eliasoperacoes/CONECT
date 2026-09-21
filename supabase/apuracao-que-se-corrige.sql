@@ -135,12 +135,16 @@ with conferencia as (
     )
 
   union all
-  select 3, 'Remover pendência que deixou de existir',
+  select 3, 'Apagar apuração segue só do RH (tem de continuar assim)',
     coalesce(
-      (select case when qual like '%pendente%' then 'OK' else 'FALTA · ainda só o RH' end
+      (select case
+         when qual like '%posso_decidir_jornada%' or qual like '%meu_colaborador_id%'
+           then 'ATENÇÃO · alguém além do RH apaga apuração'
+         else 'OK · só o RH'
+       end
          from pg_policies
         where schemaname = 'public' and tablename = 'ajustes_jornada' and cmd = 'DELETE'),
-      'FALTA'
+      'FALTA · a regra não existe'
     )
 
   union all
