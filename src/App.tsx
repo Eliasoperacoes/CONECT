@@ -360,23 +360,27 @@ export default function App() {
       refPendenciasVistas.current = total;
 
       /**
-       * A PRIMEIRA PASSADA TAMBÉM AVISA, quando há o que decidir.
+       * A PRIMEIRA PASSADA VOLTOU A FICAR CALADA.
        *
-       * Ela ficava calada de propósito, para não dar susto com coisa
-       * antiga. Só que o efeito prático era outro: quem abria o sistema de
-       * manhã com cinco jornadas paradas não era avisado de nenhuma — o
-       * aviso só existia para quem já estava com a tela aberta quando a
-       * sexta chegasse. Na prática, ninguém.
+       * Ela avisava de propósito: quem abria o sistema de manhã com cinco
+       * jornadas paradas não ficava sabendo de nenhuma, porque o aviso só
+       * existia para quem já estava com a tela aberta quando a sexta
+       * chegasse.
        *
-       * Uma vez na abertura, e depois só quando aumenta. É o mínimo para o
-       * responsável saber que há algo esperando por ele, e pouco o bastante
-       * para não virar barulho.
+       * O remédio ficou pior que a doença. A cada login vinha a mesma
+       * notificação da mesma pendência de sempre — e aviso que repete
+       * coisa velha é aviso que a pessoa aprende a ignorar, inclusive os
+       * novos.
+       *
+       * O SINO resolve a necessidade original sem o barulho: ele mostra o
+       * que está esperando o tempo todo, sem precisar interromper. Aqui
+       * fica só o que é novidade de verdade.
        */
       const primeiraPassada = antes === null;
-      if (primeiraPassada && total === 0) return;
-      if (!primeiraPassada && total <= antes) return;
+      if (primeiraPassada) return;
+      if (total <= antes) return;
 
-      const novas = primeiraPassada ? total : total - antes;
+      const novas = total - antes;
       mostrarAvisoDeMensagem({
         titulo:
           novas === 1

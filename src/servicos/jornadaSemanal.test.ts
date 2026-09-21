@@ -370,16 +370,50 @@ test('o levantamento nao depende de alguem abrir a aba certa', async () => {
   expect(tela).toContain('void servicoPonto.levantarDiasIncompletos()');
 });
 
-test('o aviso fala na abertura quando ha o que decidir', async () => {
+test('O AVISO NAO REPETE COISA VELHA A CADA LOGIN', async () => {
+  /**
+   * A DECISÃO MUDOU, por relato de uso.
+   *
+   * Antes a primeira passada avisava de propósito: quem abria o sistema de
+   * manhã com cinco jornadas paradas não ficava sabendo de nenhuma, porque
+   * o aviso só existia para quem já estava com a tela aberta quando a
+   * sexta chegasse.
+   *
+   * Na prática virou pior: a cada login vinha a mesma notificação da mesma
+   * pendência de sempre. Aviso que repete coisa velha é aviso que a pessoa
+   * aprende a ignorar — inclusive os novos, que é o que ele existia para
+   * entregar.
+   *
+   * A necessidade original continua atendida, por outro caminho: o SINO
+   * mostra o que está esperando o tempo todo, sem interromper ninguém.
+   * Notificação do sistema fica para o que é novidade de verdade.
+   */
   const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
 
   expect(app).toContain('const primeiraPassada = antes === null');
-  expect(app).toContain('if (primeiraPassada && total === 0) return');
-  expect(app).toContain('if (!primeiraPassada && total <= antes) return');
+  expect(app).toContain('if (primeiraPassada) return');
+  expect(app).toContain('if (total <= antes) return');
+  expect(app).toContain('const novas = total - antes');
+});
 
-  // Uma vez na abertura, e depois só quando aumenta: o mínimo para saber,
-  // e pouco o bastante para não virar barulho
-  expect(app).toContain('const novas = primeiraPassada ? total : total - antes');
+test('AVISO DO SISTEMA SO QUANDO A TELA NAO ESTA A VISTA', async () => {
+  /**
+   * A verificação existia em UM dos chamadores — o de mensagem, e só para
+   * a conversa aberta. Quem estava no Ponto recebia uma janela do Windows
+   * por cima de um sistema que ele estava usando, avisando de algo que
+   * estava a um clique dali.
+   *
+   * A regra é do aviso, não de quem chama: no aviso, chamador novo não
+   * precisa lembrar dela.
+   */
+  const fonte = await Bun.file(
+    new URL('./notificacoes.ts', import.meta.url)
+  ).text();
+
+  const inicio = fonte.indexOf('export const mostrarAvisoDeMensagem');
+  const corpo = fonte.slice(inicio, inicio + 1200);
+
+  expect(corpo).toContain('if (janelaEstaVisivel()) return;');
 });
 
 /**

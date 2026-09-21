@@ -179,6 +179,22 @@ export const mostrarAvisoDeMensagem = async (dados: {
 }): Promise<void> => {
   if (permissaoDeAviso() !== 'concedida') return;
 
+  /**
+   * AVISO DO SISTEMA SÓ QUANDO A PESSOA NÃO ESTÁ OLHANDO.
+   *
+   * Era verificado em UM dos chamadores — o de mensagem, e só para a
+   * conversa aberta. Quem estava no Ponto recebia uma janela do Windows
+   * por cima de um sistema que ele estava usando, para avisar de algo que
+   * estava a um clique dali.
+   *
+   * A regra é do aviso, não de quem chama. Aqui ela vale para todos, e
+   * chamador novo não precisa lembrar dela.
+   *
+   * O sino dentro do sistema continua contando — é ele que mostra o que
+   * está esperando enquanto a tela está à vista.
+   */
+  if (janelaEstaVisivel()) return;
+
   const opcoes: NotificationOptions = {
     body: dados.corpo,
     tag: `conecta-${dados.conversaId}`,
