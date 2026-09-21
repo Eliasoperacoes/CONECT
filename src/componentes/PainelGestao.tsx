@@ -21,7 +21,7 @@
  * Marcação continua sendo registro trabalhista: a correção exige motivo,
  * fica com o nome de quem fez, e APAGAR batida segue só do RH.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Users,
   Clock,
@@ -53,6 +53,7 @@ import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { EscalaDeFolgas } from './EscalaDeFolgas';
+import type { SecaoDestino } from '../servicos/centralDeNotificacoes';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -64,6 +65,17 @@ interface Props {
    * ainda precisa entrar aqui pelo cartaz de QR da loja dele.
    */
   temEquipe: boolean;
+  /**
+   * A seção que o sino pediu para abrir.
+   *
+   * Chega de fora porque a aba mora aqui dentro: sem isto, tocar numa
+   * notificação de jornada só conseguia trazer a pessoa até a porta do
+   * painel — e ela ainda tinha de achar a aba na mão, depois de já ter
+   * dito onde queria ir.
+   */
+  secaoAlvo?: SecaoDestino | null;
+  /** Avisa quem mandou que o destino já foi alcançado. */
+  aoConsumirSecao?: () => void;
 }
 
 /**
@@ -102,6 +114,8 @@ export const PainelGestao: React.FC<Props> = ({
   colaboradorAtual,
   aoAbrirConversa,
   temEquipe,
+  secaoAlvo,
+  aoConsumirSecao,
 }) => {
   /**
    * ESCALA E REDE MUDARAM DE LUGAR PARA QUEM CUIDA DE PESSOAS.
@@ -157,6 +171,27 @@ export const PainelGestao: React.FC<Props> = ({
   const abaInicial: Aba = temEquipe ? 'equipe' : veRede ? 'rede' : 'qr';
 
   const [aba, setAba] = useState<Aba>(abaInicial);
+
+  /**
+   * O sino mandou abrir uma seção. Abre.
+   *
+   * A escala passa por `veEscala` de propósito: uma notificação NÃO é
+   * autorização. Se a pessoa perdeu a permissão entre o pedido de folga e
+   * o toque no sino, ela para na aba inicial — e não numa aba que a barra
+   * acima nem desenha, que é como se chega numa tela sem saída.
+   *
+   * O aviso é consumido de qualquer jeito, inclusive quando é recusado:
+   * alvo que não se limpa fica reabrindo a mesma aba a cada desenho e
+   * prende a pessoa ali.
+   */
+  useEffect(() => {
+    if (!secaoAlvo) return;
+
+    if (secaoAlvo === 'aprovar_jornadas') setAba('aprovacoes');
+    else if (secaoAlvo === 'escala_folgas' && veEscala) setAba('folgas');
+
+    aoConsumirSecao?.();
+  }, [secaoAlvo, veEscala, aoConsumirSecao]);
   const [dataInicio, setDataInicio] = useState(primeiroDiaDoMes());
   const [dataFim, setDataFim] = useState(dataDeHoje());
   const [busca, setBusca] = useState('');

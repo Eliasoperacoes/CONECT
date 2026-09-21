@@ -38,11 +38,19 @@ import { PainelRH } from './PainelRH';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { Organograma } from './Organograma';
 import { PainelGestao } from './PainelGestao';
+import type { SecaoDestino } from '../servicos/centralDeNotificacoes';
 
 interface PropsPainelRede {
   colaboradorAtual: Colaborador;
   aoAbrirConversa: (conversaId: string) => void;
   aoAlternarParaGestor?: () => void;
+  /**
+   * A seção que o sino pediu. Aqui ela só atravessa: as duas moram dentro
+   * de "Equipe & Ponto", então este painel abre a sub-aba e entrega o
+   * resto para quem sabe o que fazer com ela.
+   */
+  secaoAlvo?: SecaoDestino | null;
+  aoConsumirSecao?: () => void;
 }
 
 type SubAbaPainel =
@@ -58,6 +66,8 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
   colaboradorAtual,
   aoAbrirConversa,
   aoAlternarParaGestor,
+  secaoAlvo,
+  aoConsumirSecao,
 }) => {
   const [subAbaEscolhida, setSubAbaAtiva] = useState<SubAbaPainel>('visao_geral');
   const [estatisticas, setEstatisticas] = useState(bancoDados.obterEstatisticasRede());
@@ -191,6 +201,30 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    */
   const subAbaAtiva: SubAbaPainel =
     abasPermitidas.includes(subAbaEscolhida) ? subAbaEscolhida : abasPermitidas[0];
+
+  /**
+   * Leva o alvo do sino até "Equipe & Ponto".
+   *
+   * As duas seções que o sino aponta — aprovar jornadas e escala de
+   * folgas — são abas do `PainelGestao`, que só existe dentro desta
+   * sub-aba. Então aqui a conta é uma só: abrir a porta. Quem escolhe a
+   * aba lá dentro é ele, que é onde a permissão de cada uma é conhecida.
+   *
+   * Quem não alcança "Equipe & Ponto" consome o alvo aqui mesmo. Sem
+   * isso, o pedido ficaria pendurado no App para sempre, e a próxima
+   * notificação tocada não teria efeito nenhum — o estado nunca voltaria
+   * a mudar.
+   */
+  useEffect(() => {
+    if (!secaoAlvo) return;
+
+    if (abasPermitidas.includes('gestao')) {
+      setSubAbaAtiva('gestao');
+      return; // O PainelGestao consome quando chegar na aba
+    }
+
+    aoConsumirSecao?.();
+  }, [secaoAlvo, abasPermitidas, aoConsumirSecao]);
 
   /**
    * Painel de gestão: quem responde por alguém. Líder de setor e gerente
@@ -685,6 +719,8 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             colaboradorAtual={colaboradorAtual}
             aoAbrirConversa={lidarIniciarConversaColega}
             temEquipe={temEquipe}
+            secaoAlvo={secaoAlvo}
+            aoConsumirSecao={aoConsumirSecao}
           />
         )}
 

@@ -4,7 +4,7 @@
  * hierarquia Setor x Loja x Nível e responsividade rigorosa (360px até 1920px).
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { NIVEL_TI, NIVEL_GERENTE, vePainelDeRede } from './tipos';
 import {
   MessageSquare,
@@ -47,6 +47,11 @@ import { FaixaAvisoDirecao } from './componentes/FaixaAvisoDirecao';
 import { TelaConversa } from './componentes/TelaConversa';
 import { AbaEu } from './componentes/AbaEu';
 import { PainelRede } from './componentes/PainelRede';
+import { SinoNotificacoes } from './componentes/SinoNotificacoes';
+import type {
+  DestinoNotificacao,
+  SecaoDestino,
+} from './servicos/centralDeNotificacoes';
 import { ModalNovaConversa } from './componentes/ModalNovaConversa';
 import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
@@ -108,6 +113,29 @@ export default function App() {
   const [saiuVersaoNova, setSaiuVersaoNova] = useState(false);
   const [painelAdminAberto, setPainelAdminAberto] = useState<boolean>(false);
   const [abaAtivaEscolhida, setAbaAtiva] = useState<AbaPrincipal>('conversas');
+
+  /**
+   * A seção que o sino pediu, esperando o painel montar.
+   *
+   * Precisa de estado porque a troca de aba e a escolha da sub-aba
+   * acontecem em desenhos diferentes: quando o toque ocorre, o
+   * `PainelRede` sequer está na tela para receber o recado.
+   *
+   * Volta a `null` assim que o destino é alcançado — alvo que não se
+   * limpa reabre a mesma aba a cada desenho e prende a pessoa nela.
+   */
+  const [secaoAlvo, setSecaoAlvo] = useState<SecaoDestino | null>(null);
+
+  /**
+   * Estável de propósito.
+   *
+   * Esta função entra na lista de dependências dos efeitos que levam ao
+   * destino, lá embaixo. Escrita solta no JSX, ela nasceria diferente a
+   * cada desenho da tela e faria os efeitos correrem de novo sem que
+   * nada tivesse mudado — inclusive reabrindo a aba por cima da escolha
+   * de quem estava navegando.
+   */
+  const consumirSecaoAlvo = useCallback(() => setSecaoAlvo(null), []);
   /** O código do cartaz de ponto, quando a pessoa chegou por ele. */
   const [codigoDoCartaz, setCodigoDoCartaz] = useState<string | null>(null);
   const [colaboradorAtual, setColaboradorAtual] = useState<Colaborador>(
@@ -642,6 +670,29 @@ export default function App() {
     setConversaAtivaId(null);
   };
 
+  /**
+   * O toque numa notificação, virando navegação.
+   *
+   * Conversa abre a janela, como sempre abriu. Seção é o caminho novo: o
+   * alvo desce por `PainelRede` até `PainelGestao`, que é quem conhece as
+   * abas e as permissões de cada uma.
+   *
+   * O App não escolhe a aba de ninguém aqui de cima. Se escolhesse,
+   * passaria a existir uma segunda cópia da regra de quem enxerga a
+   * escala de folgas — e regra duplicada neste sistema já divergiu quatro
+   * vezes.
+   */
+  const irParaNotificacao = (destino: DestinoNotificacao) => {
+    if (destino.tipo === 'conversa') {
+      abrirJanela(destino.conversaId);
+      return;
+    }
+
+    setAbaAtiva('painel');
+    setConversaAtivaId(null);
+    setSecaoAlvo(destino.secao);
+  };
+
   // Abre conversa de avisos ao clicar na faixa
   const abrirAvisosDirecao = () => {
     setConversaAtivaId('grupo-avisos-da-rede');
@@ -864,6 +915,8 @@ export default function App() {
 
         {/* Ações Rápidas do Topo: Painel ADM e Perfil */}
         <div className="flex items-center gap-2">
+          <SinoNotificacoes aoIrPara={irParaNotificacao} />
+
           {ehAdmin && (
             <button
               type="button"
@@ -1010,6 +1063,8 @@ export default function App() {
                   colaboradorAtual={colaboradorAtual}
                   aoAbrirConversa={(id) => abrirJanela(id)}
                   aoAlternarParaGestor={() => setPainelAdminAberto(true)}
+                  secaoAlvo={secaoAlvo}
+                  aoConsumirSecao={consumirSecaoAlvo}
                 />
               </div>
             )}
@@ -1179,6 +1234,8 @@ export default function App() {
                 colaboradorAtual={colaboradorAtual}
                 aoAbrirConversa={(id) => abrirJanela(id)}
                 aoAlternarParaGestor={() => setPainelAdminAberto(true)}
+                secaoAlvo={secaoAlvo}
+                aoConsumirSecao={consumirSecaoAlvo}
               />
             </div>
           ) : abaDesktop === 'ponto' ? (
