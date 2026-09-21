@@ -15,12 +15,12 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, CheckCheck, MessageSquare, Clock, CalendarDays, FileText } from 'lucide-react';
+import { Bell, CheckCheck, MessageSquare, Clock, CalendarDays, FileText, X } from 'lucide-react';
 import {
   assinarNotificacoes,
   listarNotificacoes,
   limparNotificacoes,
-  marcarVista,
+  dispensarNotificacao,
   type ItemNotificacao,
   type DestinoNotificacao,
   type TipoNotificacao,
@@ -64,7 +64,7 @@ export const SinoNotificacoes: React.FC<Props> = ({ aoIrPara }) => {
    * notificação, em vez de esperar o próximo desenho da tela.
    */
   const itens = useMemo(() => listarNotificacoes(), [versao, aberto]);
-  const naoVistas = itens.filter((n) => !n.vista).length;
+  const quantas = itens.length;
 
   /**
    * Quatro assinaturas, porque são quatro donos do dado.
@@ -116,8 +116,15 @@ export const SinoNotificacoes: React.FC<Props> = ({ aoIrPara }) => {
     };
   }, [aberto]);
 
+  /**
+   * Tocar é ir até lá — e o aviso já cumpriu o papel dele.
+   *
+   * Dispensa junto de propósito: manter no sino algo que a pessoa acabou
+   * de abrir faz o contador contar duas vezes a mesma coisa, e é assim
+   * que um sino começa a ser ignorado.
+   */
   const tocar = (item: ItemNotificacao) => {
-    marcarVista(item.id);
+    dispensarNotificacao(item.id);
     setAberto(false);
     aoIrPara(item.destino);
   };
@@ -127,19 +134,17 @@ export const SinoNotificacoes: React.FC<Props> = ({ aoIrPara }) => {
       <button
         type="button"
         onClick={() => setAberto((a) => !a)}
-        aria-label={
-          naoVistas > 0 ? `Notificações: ${naoVistas} novas` : 'Notificações'
-        }
+        aria-label={quantas > 0 ? `Notificações: ${quantas}` : 'Notificações'}
         aria-expanded={aberto}
         className="relative p-2 rounded-lg text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:bg-[var(--c-canvas)] transition-colors"
       >
         <Bell size={20} />
-        {naoVistas > 0 && (
+        {quantas > 0 && (
           <span
             className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--c-erro)] text-[var(--c-sobre-acento)] text-[10px] font-bold flex items-center justify-center"
             aria-hidden="true"
           >
-            {naoVistas > 99 ? '99+' : naoVistas}
+            {quantas > 99 ? '99+' : quantas}
           </span>
         )}
       </button>
@@ -157,14 +162,14 @@ export const SinoNotificacoes: React.FC<Props> = ({ aoIrPara }) => {
         >
           <div className="px-3 py-2.5 border-b border-[var(--c-borda)] flex items-center justify-between gap-2 flex-shrink-0">
             <span className="text-sm font-semibold text-[var(--c-texto)]">Notificações</span>
-            {naoVistas > 0 && (
+            {quantas > 0 && (
               <button
                 type="button"
                 onClick={() => limparNotificacoes()}
                 className="text-xs font-semibold text-[var(--c-acento)] hover:underline flex items-center gap-1"
               >
                 <CheckCheck size={14} />
-                Limpar
+                Limpar todas
               </button>
             )}
           </div>
@@ -178,36 +183,54 @@ export const SinoNotificacoes: React.FC<Props> = ({ aoIrPara }) => {
               itens.map((item) => {
                 const Icone = ICONE[item.tipo];
                 return (
-                  <button
+                  /**
+                   * Dois botões lado a lado, e não um dentro do outro: ir
+                   * até a notificação e dispensá-la são ações diferentes, e
+                   * botão dentro de botão é HTML inválido — o navegador
+                   * desmonta e o clique passa a cair no lugar errado.
+                   */
+                  <div
                     key={item.id}
-                    type="button"
-                    onClick={() => tocar(item)}
-                    className={`w-full px-3 py-2.5 flex items-start gap-2.5 text-left border-b border-[var(--c-borda)] last:border-0 hover:bg-[var(--c-canvas)] transition-colors ${
-                      item.vista ? 'opacity-60' : ''
-                    }`}
+                    className="flex items-start border-b border-[var(--c-borda)] last:border-0 hover:bg-[var(--c-canvas)] transition-colors"
                   >
-                    <Icone
-                      size={16}
-                      className="mt-0.5 flex-shrink-0 text-[var(--c-texto-2)]"
-                    />
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-xs font-semibold text-[var(--c-texto)] truncate">
-                        {item.titulo}
-                      </span>
-                      <span className="block text-xs text-[var(--c-texto-2)] truncate">
-                        {item.detalhe}
-                      </span>
-                      <span className="block text-[10px] text-[var(--c-texto-2)] mt-0.5">
-                        {haQuantoTempo(item.quando)}
-                      </span>
-                    </span>
-                    {!item.vista && (
-                      <span
-                        className="mt-1.5 w-2 h-2 rounded-full bg-[var(--c-acento)] flex-shrink-0"
-                        aria-hidden="true"
+                    <button
+                      type="button"
+                      onClick={() => tocar(item)}
+                      className="flex-1 min-w-0 pl-3 py-2.5 flex items-start gap-2.5 text-left"
+                    >
+                      <Icone
+                        size={16}
+                        className="mt-0.5 flex-shrink-0 text-[var(--c-texto-2)]"
                       />
-                    )}
-                  </button>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-xs font-semibold text-[var(--c-texto)] truncate">
+                          {item.titulo}
+                        </span>
+                        <span className="block text-xs text-[var(--c-texto-2)] truncate">
+                          {item.detalhe}
+                        </span>
+                        <span className="block text-[10px] text-[var(--c-texto-2)] mt-0.5">
+                          {haQuantoTempo(item.quando)}
+                        </span>
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => dispensarNotificacao(item.id)}
+                      aria-label={`Dispensar: ${item.titulo}`}
+                      title="Dispensar este aviso"
+                      /**
+                       * Alvo de 32px porque isto é tocado com o polegar no
+                       * celular da loja, a um centímetro do botão que abre
+                       * a notificação. Menor do que isso, dispensar vira
+                       * uma loteria entre as duas ações.
+                       */
+                      className="flex-shrink-0 m-1 w-8 h-8 flex items-center justify-center rounded-lg text-[var(--c-texto-3)] hover:text-[var(--c-erro)] hover:bg-[var(--c-erro)]/10 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 );
               })
             )}

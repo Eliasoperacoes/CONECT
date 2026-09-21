@@ -18,16 +18,28 @@
  * está olhando.
  *
  * ===================================================================
- * "LIMPAR" NÃO APAGA TRABALHO
+ * DISPENSAR TIRA O AVISO, NUNCA O TRABALHO
  * ===================================================================
  *
- * Limpar marca como VISTO, e não como resolvido. Uma jornada aguardando
- * decisão continua na lista depois de limpa — ela some quando for
- * decidida, que é a única coisa que a resolve.
+ * Dispensar uma notificação — no "x" dela ou no "Limpar" de todas — a
+ * tira DAQUI, e só daqui. A jornada continua esperando decisão na tela
+ * de Aprovar jornadas, com o número dela na aba; o pedido de folga
+ * continua na Escala; a mensagem continua por ler na conversa.
  *
- * Se limpar apagasse, bastaria um toque errado para cinco jornadas
- * sumirem da vista de quem precisa decidi-las. O contador zera; o
- * trabalho continua.
+ * Esta é a distinção que faz o sino ser seguro: ele é o aviso, não a
+ * fila. Quem guarda o trabalho é a tela onde ele se resolve, e nenhum
+ * toque aqui apaga nada de lá.
+ *
+ * Mensagem dispensada volta a avisar quando chega OUTRA mensagem na
+ * conversa — o id acompanha a última mensagem, então a conversa que se
+ * mexeu de novo é uma novidade de novo.
+ *
+ * ===================================================================
+ * O AVISO É DE QUEM RESPONDE PELA PESSOA
+ * ===================================================================
+ *
+ * Não de todo mundo que teria autoridade para decidir. A diferença mora
+ * em `deveSerAvisadoSobre`, no organograma, com o porquê escrito lá.
  */
 
 import { bancoDados } from './bancoDados';
@@ -37,7 +49,8 @@ import {
   pendenciasDeFolga,
 } from './justificativas';
 import { montarPreviaDaMensagem } from './nuvemComunicacao';
-import { ROTULO_TIPO_AJUSTE, ROTULO_TIPO_AUSENCIA } from '../tipos';
+import { deveSerAvisadoSobre } from './organograma';
+import { ROTULO_TIPO_AJUSTE, ROTULO_TIPO_AUSENCIA, type Colaborador } from '../tipos';
 
 /**
  * Para onde o toque leva.
@@ -69,11 +82,9 @@ export interface ItemNotificacao {
   /** ISO. Ordena a lista: o mais recente em cima. */
   quando: string;
   destino: DestinoNotificacao;
-  /** Já foi vista por esta pessoa. */
-  vista: boolean;
 }
 
-const CHAVE_VISTAS = 'conecta_v4_notificacoes_vistas';
+const CHAVE_DISPENSADAS = 'conecta_v4_notificacoes_dispensadas';
 
 const ouvintes: Array<() => void> = [];
 
@@ -88,15 +99,15 @@ export const assinarNotificacoes = (ouvinte: () => void): (() => void) => {
 const avisar = (): void => ouvintes.forEach((o) => o());
 
 /**
- * O que já foi visto, POR PESSOA.
+ * O que já foi dispensado, POR PESSOA.
  *
  * Guardado por colaborador de propósito: o balcão tem aparelho
- * compartilhado, e o que um viu não pode calar o aviso do outro.
+ * compartilhado, e o que um dispensou não pode calar o aviso do outro.
  */
-const lerVistas = (): Set<string> => {
+const lerDispensadas = (): Set<string> => {
   try {
     const eu = bancoDados.obterColaboradorAtual().id;
-    const bruto = localStorage.getItem(`${CHAVE_VISTAS}_${eu}`);
+    const bruto = localStorage.getItem(`${CHAVE_DISPENSADAS}_${eu}`);
     const lido = bruto ? JSON.parse(bruto) : [];
     return new Set(Array.isArray(lido) ? (lido as string[]) : []);
   } catch {
@@ -104,23 +115,37 @@ const lerVistas = (): Set<string> => {
   }
 };
 
-const gravarVistas = (vistas: Set<string>): void => {
+const gravarDispensadas = (dispensadas: Set<string>): void => {
   try {
     const eu = bancoDados.obterColaboradorAtual().id;
     /**
      * Só as 300 mais recentes.
      *
      * A lista cresceria para sempre — e ninguém precisa lembrar de uma
-     * mensagem vista há seis meses, porque ela já saiu da contagem de
-     * não lidas há muito tempo.
+     * mensagem dispensada há seis meses, porque a conversa dela já se
+     * mexeu muitas vezes desde então.
      */
-    const recorte = [...vistas].slice(-300);
-    localStorage.setItem(`${CHAVE_VISTAS}_${eu}`, JSON.stringify(recorte));
+    const recorte = [...dispensadas].slice(-300);
+    localStorage.setItem(`${CHAVE_DISPENSADAS}_${eu}`, JSON.stringify(recorte));
   } catch {
     // Armazenamento cheio ou bloqueado: o sino ainda funciona, só volta a
-    // contar como nova a notificação já vista. Melhor do que quebrar.
+    // mostrar o que já foi dispensado. Melhor do que quebrar.
   }
 };
+
+/**
+ * Este pedido é meu para acompanhar?
+ *
+ * A regra mora no organograma, e não aqui: quem responde por quem é
+ * assunto dele, e uma segunda cópia desta conta é exatamente como as
+ * telas deste sistema já passaram a discordar sobre quem aprova quem.
+ */
+const meuParaAcompanhar = (solicitante: Colaborador): boolean =>
+  deveSerAvisadoSobre(
+    bancoDados.obterColaboradorAtual(),
+    solicitante,
+    bancoDados.obterColaboradores()
+  );
 
 /** As mensagens por ler, agrupadas por conversa — uma linha por conversa. */
 const deMensagens = (): ItemNotificacao[] => {
@@ -159,37 +184,41 @@ const deMensagens = (): ItemNotificacao[] => {
 };
 
 const deJornadas = (): ItemNotificacao[] =>
-  servicoPonto.obterPendenciasParaDecidir().map(({ ajuste, colaborador }) => ({
-    id: `jornada-${ajuste.id}`,
-    tipo: 'jornada' as const,
-    titulo: `${colaborador.nome} · aguarda sua decisão`,
-    detalhe: `${ROTULO_TIPO_AJUSTE[ajuste.tipo]} em ${formatarDataBR(ajuste.data)}`,
-    quando: ajuste.criadoEm,
-    destino: { tipo: 'secao' as const, secao: 'aprovar_jornadas' as const },
-    vista: false,
-  }));
+  servicoPonto
+    .obterPendenciasParaDecidir()
+    .filter(({ colaborador }) => meuParaAcompanhar(colaborador))
+    .map(({ ajuste, colaborador }) => ({
+      id: `jornada-${ajuste.id}`,
+      tipo: 'jornada' as const,
+      titulo: `${colaborador.nome} · aguarda sua decisão`,
+      detalhe: `${ROTULO_TIPO_AJUSTE[ajuste.tipo]} em ${formatarDataBR(ajuste.data)}`,
+      quando: ajuste.criadoEm,
+      destino: { tipo: 'secao' as const, secao: 'aprovar_jornadas' as const },
+    }));
 
 const deAusencias = (): ItemNotificacao[] =>
-  pendenciasDeAusencia().map(({ justificativa, colaborador }) => ({
-    id: `ausencia-${justificativa.id}`,
-    tipo: 'ausencia' as const,
-    titulo: `${colaborador.nome} · ${ROTULO_TIPO_AUSENCIA[justificativa.tipo]}`,
-    detalhe: `Aguardando sua decisão · ${formatarDataBR(justificativa.dataInicio)}`,
-    quando: justificativa.criadoEm,
-    destino: { tipo: 'secao' as const, secao: 'aprovar_jornadas' as const },
-    vista: false,
-  }));
+  pendenciasDeAusencia()
+    .filter(({ colaborador }) => meuParaAcompanhar(colaborador))
+    .map(({ justificativa, colaborador }) => ({
+      id: `ausencia-${justificativa.id}`,
+      tipo: 'ausencia' as const,
+      titulo: `${colaborador.nome} · ${ROTULO_TIPO_AUSENCIA[justificativa.tipo]}`,
+      detalhe: `Aguardando sua decisão · ${formatarDataBR(justificativa.dataInicio)}`,
+      quando: justificativa.criadoEm,
+      destino: { tipo: 'secao' as const, secao: 'aprovar_jornadas' as const },
+    }));
 
 const deFolgas = (): ItemNotificacao[] =>
-  pendenciasDeFolga().map(({ justificativa, colaborador }) => ({
-    id: `folga-${justificativa.id}`,
-    tipo: 'folga' as const,
-    titulo: `${colaborador.nome} · folga de sábado`,
-    detalhe: `Pedido para ${formatarDataBR(justificativa.dataInicio)}`,
-    quando: justificativa.criadoEm,
-    destino: { tipo: 'secao' as const, secao: 'escala_folgas' as const },
-    vista: false,
-  }));
+  pendenciasDeFolga()
+    .filter(({ colaborador }) => meuParaAcompanhar(colaborador))
+    .map(({ justificativa, colaborador }) => ({
+      id: `folga-${justificativa.id}`,
+      tipo: 'folga' as const,
+      titulo: `${colaborador.nome} · folga de sábado`,
+      detalhe: `Pedido para ${formatarDataBR(justificativa.dataInicio)}`,
+      quando: justificativa.criadoEm,
+      destino: { tipo: 'secao' as const, secao: 'escala_folgas' as const },
+    }));
 
 /**
  * ===================================================================
@@ -220,37 +249,38 @@ const deFolgas = (): ItemNotificacao[] =>
  * banco. O sino não pode custar uma consulta por vez que a tela pisca.
  */
 export const listarNotificacoes = (): ItemNotificacao[] => {
-  const vistas = lerVistas();
+  const dispensadas = lerDispensadas();
 
-  const tudo = [...deMensagens(), ...deJornadas(), ...deAusencias(), ...deFolgas()];
-
-  return tudo
-    .map((n) => ({ ...n, vista: vistas.has(n.id) }))
+  return [...deMensagens(), ...deJornadas(), ...deAusencias(), ...deFolgas()]
+    .filter((n) => !dispensadas.has(n.id))
     .sort((a, b) => (b.quando || '').localeCompare(a.quando || ''));
 };
 
-/** Quantas ainda não foram vistas. É o número do sino. */
-export const contarNaoVistas = (): number =>
-  listarNotificacoes().filter((n) => !n.vista).length;
+/** Quantas estão esperando. É o número do sino. */
+export const contarNotificacoes = (): number => listarNotificacoes().length;
 
-/** Marca uma como vista — ao tocar nela. */
-export const marcarVista = (id: string): void => {
-  const vistas = lerVistas();
-  if (vistas.has(id)) return;
-  vistas.add(id);
-  gravarVistas(vistas);
+/**
+ * Tira UMA do sino — o "x" de cada linha.
+ *
+ * Some o aviso, e só ele. A decisão continua esperando na tela dela.
+ */
+export const dispensarNotificacao = (id: string): void => {
+  const dispensadas = lerDispensadas();
+  if (dispensadas.has(id)) return;
+  dispensadas.add(id);
+  gravarDispensadas(dispensadas);
   avisar();
 };
 
 /**
- * Limpa o contador.
+ * Tira TODAS as que estão no sino agora.
  *
- * Marca todas as atuais como vistas. NÃO resolve nenhuma: a jornada
- * aguardando decisão continua na lista, porque continua aguardando.
+ * Só as de agora, de propósito: uma decisão que chegar depois volta a
+ * avisar. "Limpar" é esvaziar a caixa, não desligar o sino.
  */
 export const limparNotificacoes = (): void => {
-  const vistas = lerVistas();
-  for (const n of listarNotificacoes()) vistas.add(n.id);
-  gravarVistas(vistas);
+  const dispensadas = lerDispensadas();
+  for (const n of listarNotificacoes()) dispensadas.add(n.id);
+  gravarDispensadas(dispensadas);
   avisar();
 };

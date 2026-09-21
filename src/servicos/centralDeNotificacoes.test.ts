@@ -1,17 +1,15 @@
 /**
  * Verificação da central de notificações — CONECTA
  *
- * O que estes testes prendem são as três coisas que já deram errado aqui,
- * ou que dariam:
+ * O que estes testes prendem são as coisas que já deram errado aqui:
  *
- *  1. LIMPAR NÃO RESOLVE. Uma jornada esperando decisão continua na lista
- *     depois de limpa. Se limpar apagasse, um toque errado sumiria com
- *     cinco decisões pendentes da vista de quem precisa tomá-las.
- *  2. O "VISTO" É DE CADA PESSOA. O balcão tem aparelho compartilhado; o
- *     que um viu não pode calar o aviso do outro.
+ *  1. O AVISO É DE QUEM RESPONDE PELA PESSOA. O Elias, que é TI, recebeu
+ *     o pedido de folga da Dani — que tem responsável próprio. Com 89
+ *     pessoas em 5 lojas, cada administrador receberia a rede inteira.
+ *  2. DISPENSAR TIRA O AVISO, NÃO O TRABALHO. A decisão continua
+ *     esperando na tela dela; o sino é o aviso, não a fila.
  *  3. O ID É ESTÁVEL. Foi o id sorteado a cada leitura que fez a mesma
- *     notificação antiga voltar a cada login — o laço de que o Elias
- *     reclamou.
+ *     notificação antiga voltar a cada login — o laço original.
  */
 import { test, expect, mock, beforeEach } from 'bun:test';
 
@@ -25,14 +23,28 @@ class ArmazenamentoFalso {
 const armazenamento = new ArmazenamentoFalso();
 (globalThis as any).localStorage = armazenamento;
 
-const CHEFE = {
-  id: 'chefe', nome: 'Chefe', login: 'chefe', cargo: 'Gerente', setor: 'Gerência',
-  loja: 'Pirassununga', nivel: 3, foto: '', presenca: 'disponivel',
-  vistoPorUltimo: 'agora', ativo: true,
+/**
+ * A rede do teste, montada como a de verdade:
+ *
+ *   TI (Elias)        — cuida de pessoas, enxerga tudo, responde por ninguém
+ *   GERENTE           — responsável da LIDER
+ *     └ LIDER         — responsável da DANI
+ *         └ DANI      — quem faz os pedidos
+ *   SOLTO             — nunca foi posicionado na cadeia
+ */
+const BASE = {
+  cargo: 'Balconista', setor: 'Balcão', loja: 'Pirassununga', foto: '',
+  presenca: 'disponivel', vistoPorUltimo: 'agora', ativo: true,
 };
-const ANA = { ...CHEFE, id: 'ana', nome: 'Ana', login: 'ana', nivel: 1, responsavelId: 'chefe' };
+const TI = { ...BASE, id: 'ti', nome: 'Elias', login: 'elias', setor: 'TI', nivel: 5 };
+const GERENTE = { ...BASE, id: 'gerente', nome: 'Gerente', login: 'ger', nivel: 3 };
+const LIDER = { ...BASE, id: 'lider', nome: 'Líder', login: 'lid', nivel: 2, responsavelId: 'gerente' };
+const DANI = { ...BASE, id: 'dani', nome: 'Dani', login: 'dani', nivel: 1, responsavelId: 'lider' };
+const SOLTO = { ...BASE, id: 'solto', nome: 'Solto', login: 'solto', nivel: 1 };
 
-let logado: any = CHEFE;
+const REDE = [TI, GERENTE, LIDER, DANI, SOLTO];
+
+let logado: any = LIDER;
 let porLer: any[] = [];
 let jornadas: any[] = [];
 let ausencias: any[] = [];
@@ -41,7 +53,8 @@ let folgas: any[] = [];
 mock.module('./bancoDados', () => ({
   bancoDados: {
     obterColaboradorAtual: () => logado,
-    obterColaboradorPorId: (id: string) => [CHEFE, ANA].find((c) => c.id === id),
+    obterColaboradorPorId: (id: string) => REDE.find((c) => c.id === id),
+    obterColaboradores: () => REDE,
     obterMensagensPorLer: () => porLer,
     obterConversaPorId: (id: string) => ({ id, tipo: 'individual', nome: 'Conversa' }),
   },
@@ -60,24 +73,33 @@ mock.module('./nuvemComunicacao', () => ({
 
 const {
   listarNotificacoes,
-  contarNaoVistas,
+  contarNotificacoes,
   limparNotificacoes,
-  marcarVista,
+  dispensarNotificacao,
   assinarNotificacoes,
 } = await import('./centralDeNotificacoes');
 
-const umaJornada = (id = 'a1') => ({
-  ajuste: { id, tipo: 'hora_extra', data: '2026-09-21', criadoEm: '2026-09-21T10:00:00.000Z' },
-  colaborador: ANA,
+/**
+ * As filas chegam JÁ com a alçada aplicada — é assim na vida real, porque
+ * `pendenciasParaDecidir` filtra por `podeDecidirSobre`. Aqui elas vêm
+ * cheias de propósito: o que se testa é o filtro DO SINO, que é mais
+ * estreito que o da alçada.
+ */
+const folgaDe = (colaborador: any, id = 'f1') => ({
+  justificativa: { id, tipo: 'folga_sabado', dataInicio: '2026-09-26', criadoEm: '2026-09-21T08:00:00.000Z' },
+  colaborador,
 });
-
+const jornadaDe = (colaborador: any, id = 'a1') => ({
+  ajuste: { id, tipo: 'hora_extra', data: '2026-09-21', criadoEm: '2026-09-21T10:00:00.000Z' },
+  colaborador,
+});
 const umaMensagem = (id: string, conversaId = 'c1', criadoEm = '2026-09-21T09:00:00.000Z') => ({
-  id, conversaId, remetenteId: 'ana', texto: 'Oi', criadoEm,
+  id, conversaId, remetenteId: 'dani', texto: 'Oi', criadoEm,
 });
 
 beforeEach(() => {
   armazenamento.clear();
-  logado = CHEFE;
+  logado = LIDER;
   porLer = [];
   jornadas = [];
   ausencias = [];
@@ -85,55 +107,127 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------
-// 1. Limpar não resolve
+// 1. O aviso é de quem responde pela pessoa
 // ---------------------------------------------------------------
 
-test('limpar zera o contador mas NÃO tira a pendência da lista', () => {
-  jornadas = [umaJornada()];
-  expect(contarNaoVistas()).toBe(1);
+test('o TI NÃO é avisado do pedido de quem já tem responsável', () => {
+  folgas = [folgaDe(DANI)];
 
-  limparNotificacoes();
-
-  // O contador some...
-  expect(contarNaoVistas()).toBe(0);
-  // ...mas a jornada continua esperando decisão, porque continua pendente
-  expect(listarNotificacoes()).toHaveLength(1);
-  expect(listarNotificacoes()[0].vista).toBe(true);
+  // Foi exatamente isto que o Elias viu: o pedido da Dani chegando nele
+  logado = TI;
+  expect(contarNotificacoes()).toBe(0);
 });
 
-test('pendência decidida sai da lista sozinha, sem passar por limpar', () => {
-  jornadas = [umaJornada()];
-  expect(listarNotificacoes()).toHaveLength(1);
+test('o responsável direto É avisado', () => {
+  folgas = [folgaDe(DANI)];
 
-  // Quem resolve é a decisão, e não o sino
+  logado = LIDER;
+  expect(contarNotificacoes()).toBe(1);
+});
+
+test('quem está acima na cadeia também é avisado', () => {
+  folgas = [folgaDe(DANI)];
+
+  // O gerente responde pela líder, que responde pela Dani
+  logado = GERENTE;
+  expect(contarNotificacoes()).toBe(1);
+});
+
+test('quem não está na cadeia não é avisado, mesmo podendo decidir', () => {
+  folgas = [folgaDe(DANI)];
+
+  // A líder de outro ramo: a alçada pode até alcançar, o aviso não
+  logado = { ...LIDER, id: 'outra', responsavelId: 'gerente' };
+  expect(contarNotificacoes()).toBe(0);
+});
+
+test('pedido de quem NÃO tem ninguém acima cai para quem cuida de pessoas', () => {
+  folgas = [folgaDe(SOLTO)];
+
+  // Sem esta rede de segurança o pedido não seria avisado a NINGUÉM, e é
+  // justamente o TI quem pode consertar o organograma
+  logado = TI;
+  expect(contarNotificacoes()).toBe(1);
+
+  logado = LIDER;
+  expect(contarNotificacoes()).toBe(0);
+});
+
+test('a regra vale para jornada e ausência, não só para folga', () => {
+  jornadas = [jornadaDe(DANI)];
+  ausencias = [{
+    justificativa: { id: 'j1', tipo: 'atestado', dataInicio: '2026-09-21', criadoEm: '2026-09-21T07:00:00.000Z' },
+    colaborador: DANI,
+  }];
+
+  logado = TI;
+  expect(contarNotificacoes()).toBe(0);
+
+  logado = LIDER;
+  expect(contarNotificacoes()).toBe(2);
+});
+
+test('mensagem NÃO passa pelo filtro de cadeia', () => {
+  porLer = [umaMensagem('m1')];
+
+  // Mensagem já chega endereçada: filtrar por organograma calaria o chat
+  // de quem não é da equipe de ninguém
+  logado = TI;
+  expect(contarNotificacoes()).toBe(1);
+});
+
+// ---------------------------------------------------------------
+// 2. Dispensar tira o aviso, não o trabalho
+// ---------------------------------------------------------------
+
+test('dispensar UMA tira só ela, e as outras ficam', () => {
+  jornadas = [jornadaDe(DANI, 'a1'), jornadaDe(DANI, 'a2')];
+
+  const primeira = listarNotificacoes()[0];
+  dispensarNotificacao(primeira.id);
+
+  const sobrando = listarNotificacoes();
+  expect(sobrando).toHaveLength(1);
+  expect(sobrando[0].id).not.toBe(primeira.id);
+});
+
+test('dispensar não resolve a pendência: ela volta se o aviso for reposto', () => {
+  jornadas = [jornadaDe(DANI, 'a1')];
+  dispensarNotificacao(listarNotificacoes()[0].id);
+  expect(contarNotificacoes()).toBe(0);
+
+  // A fila de verdade continua com a jornada — o sino é o aviso, não ela
+  expect(jornadas).toHaveLength(1);
+});
+
+test('limpar todas esvazia o sino sem calar o que chegar depois', () => {
+  jornadas = [jornadaDe(DANI, 'a1')];
+  limparNotificacoes();
+  expect(contarNotificacoes()).toBe(0);
+
+  // Limpar é esvaziar a caixa, não desligar o sino
+  jornadas = [jornadaDe(DANI, 'a1'), jornadaDe(DANI, 'a2')];
+  expect(contarNotificacoes()).toBe(1);
+});
+
+test('pendência decidida some sozinha, sem passar por dispensar', () => {
+  jornadas = [jornadaDe(DANI)];
+  expect(contarNotificacoes()).toBe(1);
+
   jornadas = [];
-  expect(listarNotificacoes()).toHaveLength(0);
+  expect(contarNotificacoes()).toBe(0);
 });
 
-test('pendência NOVA volta a contar depois de limpar', () => {
-  jornadas = [umaJornada('a1')];
+test('o que uma pessoa dispensou não some da outra', () => {
+  folgas = [folgaDe(DANI)];
+
+  logado = LIDER;
   limparNotificacoes();
-  expect(contarNaoVistas()).toBe(0);
-
-  // Limpar não pode calar o que ainda nem existia
-  jornadas = [umaJornada('a1'), umaJornada('a2')];
-  expect(contarNaoVistas()).toBe(1);
-});
-
-// ---------------------------------------------------------------
-// 2. O "visto" é de cada pessoa
-// ---------------------------------------------------------------
-
-test('o que uma pessoa limpou não silencia a notificação da outra', () => {
-  jornadas = [umaJornada()];
-
-  logado = CHEFE;
-  limparNotificacoes();
-  expect(contarNaoVistas()).toBe(0);
+  expect(contarNotificacoes()).toBe(0);
 
   // Mesmo aparelho, outra conta: o aviso é dela e continua de pé
-  logado = ANA;
-  expect(contarNaoVistas()).toBe(1);
+  logado = GERENTE;
+  expect(contarNotificacoes()).toBe(1);
 });
 
 // ---------------------------------------------------------------
@@ -141,21 +235,25 @@ test('o que uma pessoa limpou não silencia a notificação da outra', () => {
 // ---------------------------------------------------------------
 
 test('o id da notificação não muda entre leituras', () => {
-  jornadas = [umaJornada()];
-
-  const primeira = listarNotificacoes()[0].id;
-  const segunda = listarNotificacoes()[0].id;
-
-  // Id sorteado a cada leitura faria tudo voltar a ser novidade a cada
-  // abertura do sistema: é o laço que o sino veio desfazer
-  expect(primeira).toBe(segunda);
+  jornadas = [jornadaDe(DANI)];
+  expect(listarNotificacoes()[0].id).toBe(listarNotificacoes()[0].id);
 });
 
-test('marcar vista sobrevive a uma releitura', () => {
-  jornadas = [umaJornada()];
-  marcarVista(listarNotificacoes()[0].id);
+test('dispensar sobrevive a uma releitura', () => {
+  jornadas = [jornadaDe(DANI)];
+  dispensarNotificacao(listarNotificacoes()[0].id);
+  expect(contarNotificacoes()).toBe(0);
+});
 
-  expect(contarNaoVistas()).toBe(0);
+test('mensagem dispensada volta a avisar quando chega outra na conversa', () => {
+  logado = TI;
+  porLer = [umaMensagem('m1', 'c1')];
+  dispensarNotificacao(listarNotificacoes()[0].id);
+  expect(contarNotificacoes()).toBe(0);
+
+  // A conversa se mexeu de novo: é novidade de novo
+  porLer = [umaMensagem('m1', 'c1'), umaMensagem('m2', 'c1', '2026-09-21T09:30:00.000Z')];
+  expect(contarNotificacoes()).toBe(1);
 });
 
 // ---------------------------------------------------------------
@@ -163,25 +261,23 @@ test('marcar vista sobrevive a uma releitura', () => {
 // ---------------------------------------------------------------
 
 test('mensagens da mesma conversa viram UMA linha, com a contagem', () => {
+  logado = TI;
   porLer = [umaMensagem('m1'), umaMensagem('m2'), umaMensagem('m3')];
 
   const itens = listarNotificacoes();
-  // Três linhas iguais empilhadas seriam três vezes o mesmo recado
   expect(itens).toHaveLength(1);
   expect(itens[0].detalhe).toBe('3 mensagens novas');
 });
 
 test('conversas diferentes não se misturam', () => {
+  logado = TI;
   porLer = [umaMensagem('m1', 'c1'), umaMensagem('m2', 'c2')];
   expect(listarNotificacoes()).toHaveLength(2);
 });
 
 test('cada fonte leva ao lugar onde ela se resolve', () => {
-  jornadas = [umaJornada()];
-  folgas = [{
-    justificativa: { id: 'f1', tipo: 'folga_sabado', dataInicio: '2026-09-26', criadoEm: '2026-09-21T08:00:00.000Z' },
-    colaborador: ANA,
-  }];
+  jornadas = [jornadaDe(DANI)];
+  folgas = [folgaDe(DANI)];
   porLer = [umaMensagem('m1', 'c9')];
 
   const porTipo = Object.fromEntries(listarNotificacoes().map((n) => [n.tipo, n.destino]));
@@ -195,13 +291,13 @@ test('cada fonte leva ao lugar onde ela se resolve', () => {
 
 test('a lista vem da mais recente para a mais antiga', () => {
   porLer = [umaMensagem('m1', 'c1', '2026-09-20T08:00:00.000Z')];
-  jornadas = [umaJornada()]; // 21/09, mais nova
+  jornadas = [jornadaDe(DANI)]; // 21/09, mais nova
 
   expect(listarNotificacoes().map((n) => n.tipo)).toEqual(['jornada', 'mensagem']);
 });
 
 test('quem assina é avisado quando algo muda', () => {
-  jornadas = [umaJornada()];
+  jornadas = [jornadaDe(DANI)];
   let avisos = 0;
   const parar = assinarNotificacoes(() => { avisos += 1; });
 

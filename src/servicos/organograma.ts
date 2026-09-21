@@ -186,6 +186,52 @@ export const temAlcadaSobre = (
 };
 
 /**
+ * `quem` deve ser AVISADO de um pedido de `alvo`?
+ *
+ * ===================================================================
+ * PODER DECIDIR NÃO É O MESMO QUE PRECISAR SER AVISADO
+ * ===================================================================
+ *
+ * `temAlcadaSobre` responde "posso decidir isto?", e ali RH, Diretoria e
+ * TI passam por cima da cadeia de propósito: é a rede de segurança que
+ * garante que ninguém fique sem aprovador.
+ *
+ * Usar a mesma resposta para notificar foi o que o Elias viu: ele, que é
+ * TI, recebeu o pedido de folga da Dani — que tem responsável próprio,
+ * numa loja que não é assunto dele. Com 89 pessoas em 5 lojas, cada
+ * administrador receberia TODOS os pedidos da rede. Notificação que chega
+ * para quem não vai agir é a que ensina a ignorar o sino, e aí a que
+ * importava passa batida junto.
+ *
+ * Aqui a pergunta é outra: "isto é meu?". E é meu quando a cadeia diz que
+ * é — não quando eu apenas teria autoridade para resolver.
+ *
+ * A REDE DE SEGURANÇA CONTINUA, só que estreita: quem NÃO tem ninguém
+ * acima na cadeia (nunca foi posicionado, ou o responsável foi desligado)
+ * cairia no vazio, e o pedido dessa pessoa não seria avisado a ninguém.
+ * Nesse caso, e só nesse, avisa quem cuida de pessoas — que é justamente
+ * quem pode consertar o organograma.
+ *
+ * Isto NÃO mexe em quem decide: a tela continua aceitando a decisão de
+ * quem tem alçada, inclusive de quem não foi avisado.
+ */
+export const deveSerAvisadoSobre = (
+  quem: Colaborador,
+  alvo: Colaborador,
+  todos: Colaborador[]
+): boolean => {
+  // O próprio pedido, de quem lidera e aprova as próprias horas
+  if (quem.id === alvo.id) return subordinadosDiretos(quem, todos).length > 0;
+
+  const acima = cadeiaAcimaDe(alvo, todos);
+
+  // Sem ninguém acima, o pedido não tem dono: vai para quem cuida de pessoas
+  if (acima.length === 0) return cuidaDePessoas(quem);
+
+  return acima.some((c) => c.id === quem.id);
+};
+
+/**
  * Pode-se pendurar `alvo` sob `candidato`?
  *
  * O que isto impede, e por quê:
