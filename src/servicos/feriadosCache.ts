@@ -16,8 +16,9 @@
  *
  * **Não acrescente import aqui.** Há teste conferindo.
  */
-import { Feriado, Loja } from '../tipos';
+import { Feriado, Loja, INFORMACOES_LOJAS } from '../tipos';
 import { feriadosNacionaisDe } from './feriadosNacionais';
+import { feriadosLocaisDe, cidadeDaLoja } from './feriadosMunicipais';
 
 export const CHAVE_FERIADOS = 'conecta_v4_feriados';
 
@@ -89,6 +90,30 @@ export const feriadoEm = (data: string, loja?: Loja): Feriado | undefined => {
    */
   const ano = Number(data.slice(0, 4));
   if (!Number.isFinite(ano)) return undefined;
+
+  /**
+   * O LOCAL VEM ANTES DO NACIONAL.
+   *
+   * Não por precedência de lei — os dois fecham o dia igual — mas porque
+   * o nome tem de ser o certo. Num 8 de setembro em Descalvado o espelho
+   * precisa dizer "Aniversário de Descalvado", e não procurar um feriado
+   * nacional que não existe nesse dia.
+   *
+   * A cidade sai de `INFORMACOES_LOJAS`, que já é o cadastro das
+   * unidades. Loja sem cidade mapeada ainda pega os estaduais.
+   */
+  const cidade = cidadeDaLoja(loja, INFORMACOES_LOJAS);
+  const local = feriadosLocaisDe(ano, cidade).find((f) => f.data === data);
+  if (local) {
+    return {
+      id: `${local.origem}-${local.data}`,
+      data: local.data,
+      nome: local.nome,
+      loja,
+      minutosPrevistos: local.minutosPrevistos,
+      criadoEm: '',
+    };
+  }
 
   const nacional = feriadosNacionaisDe(ano).find((f) => f.data === data);
   if (!nacional) return undefined;

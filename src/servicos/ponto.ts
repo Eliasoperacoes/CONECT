@@ -52,6 +52,14 @@ import {
 } from '../tipos';
 import { bancoDados } from './bancoDados';
 import { podeUsar } from './permissoes';
+/**
+ * Importado com outro nome porque `agora` já é usado como nome de
+ * variável local em vários pontos deste arquivo — e um `const agora`
+ * dentro de uma função esconderia silenciosamente a função importada,
+ * fazendo aquele trecho voltar a usar o relógio do aparelho sem que nada
+ * acusasse.
+ */
+import { agora as agoraSincronizado } from './relogio';
 import { linhasDeIdentificacao, contatoEmLinha } from './fichaColaborador';
 import { temAlcadaSobre, regraAutomaticaDeAlcada } from './organograma';
 // A FOLHA, nunca o serviço: importar `justificativas` daqui refecharia o
@@ -91,7 +99,18 @@ export const paraDataLocal = (data: Date): string => {
 };
 
 /** AAAA-MM-DD de hoje. */
-export const dataDeHoje = (): string => paraDataLocal(new Date());
+/**
+ * A DATA DE HOJE VEM DO RELÓGIO SINCRONIZADO, e não do aparelho.
+ *
+ * Antes saía de `new Date()`. Num celular de balcão — compartilhado, com
+ * bateria velha e o relógio a três toques de qualquer um — isso queria
+ * dizer que a batida valia o que o aparelho achasse que eram as horas.
+ *
+ * `agora()` devolve o relógio do aparelho corrigido pelo desvio medido
+ * contra o servidor. Sem rede ele cai no aparelho e AVISA que caiu, em
+ * vez de fingir precisão que não tem.
+ */
+export const dataDeHoje = (): string => paraDataLocal(agoraSincronizado());
 
 /** Converte AAAA-MM-DD em Date local ao meio-dia (evita viradas por fuso). */
 export const deDataLocal = (data: string): Date => {
@@ -610,8 +629,10 @@ class ServicoPonto {
       };
     }
 
-    const agora = new Date();
-    const data = paraDataLocal(agora);
+    // A hora da batida sai do relógio sincronizado: é O dado do registro
+    // de ponto, e o aparelho não é fonte confiável para ele
+    const momento = agoraSincronizado();
+    const data = paraDataLocal(momento);
     const proxima = this.obterProximaMarcacao(atual.id, data);
     if (!proxima) {
       return {
@@ -625,11 +646,14 @@ class ServicoPonto {
       colaboradorId: atual.id,
       data,
       tipo: proxima,
-      horario: agora.toISOString(),
-      horaFormatada: agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      horario: momento.toISOString(),
+      horaFormatada: momento.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
       metodo: resolvido.metodo,
       loja: resolvido.loja,
-      criadoEm: agora.toISOString(),
+      criadoEm: momento.toISOString(),
     };
 
     // No modo rede quem confirma a batida é o banco. A restrição de um
@@ -1247,7 +1271,8 @@ class ServicoPonto {
   avaliarMarcacao(
     colaboradorId: string,
     tipo: TipoMarcacao,
-    agora: Date = new Date()
+    // O padrão vem do relógio sincronizado; os testes passam a data deles
+    agora: Date = agoraSincronizado()
   ): { precisaMotivo: boolean; minutos: number; descricao: string } {
     const semMotivo = { precisaMotivo: false, minutos: 0, descricao: '' };
     const tolerancia = this.obterToleranciaMinutos();

@@ -77,6 +77,7 @@ import {
   assinarJustificativas,
 } from './servicos/justificativas';
 import { servicoPonto } from './servicos/ponto';
+import { vigiarRelogio } from './servicos/relogio';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
 import { montarPreviaDaMensagem } from './servicos/nuvemComunicacao';
@@ -447,6 +448,20 @@ export default function App() {
    * e a mensagem que chega não é gesto nenhum. Sem isto, o primeiro aviso sai
    * mudo, que foi o que aconteceu.
    */
+  /**
+   * ACERTA O RELÓGIO ANTES DE QUALQUER BATIDA.
+   *
+   * Todo o ponto saía de `new Date()` — a hora que o aparelho achava que
+   * era. Celular de balcão é compartilhado, tem bateria velha e o relógio
+   * a três toques de qualquer um; a batida era gravada com a hora errada
+   * e ninguém tinha como saber depois.
+   *
+   * Fica fora do bloco de autenticação de propósito: quem chega pelo QR
+   * do cartaz bate o ponto na tela de login, antes de qualquer sessão, e
+   * é justamente essa batida que não pode sair torta.
+   */
+  useEffect(() => vigiarRelogio(), []);
+
   useEffect(() => {
     prepararAvisos();
 

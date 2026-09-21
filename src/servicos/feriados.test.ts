@@ -158,9 +158,23 @@ test('O CACHE SÓ IMPORTA FOLHAS', async () => {
   const fonte = await Bun.file('src/servicos/feriadosCache.ts').text();
   const imports = [...fonte.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
 
-  expect(imports).toEqual(['../tipos', './feriadosNacionais']);
+  expect(imports).toEqual([
+    '../tipos',
+    './feriadosNacionais',
+    './feriadosMunicipais',
+  ]);
 
-  // E a folha tem de continuar folha, senão a proteção acima é decorativa
-  const folha = await Bun.file('src/servicos/feriadosNacionais.ts').text();
-  expect([...folha.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1])).toEqual([]);
+  /**
+   * E as folhas têm de continuar folhas, senão a proteção acima é
+   * decorativa. `../tipos` é permitido a elas: é declaração, não serviço,
+   * e não importa ninguém de volta.
+   */
+  for (const folha of ['feriadosNacionais', 'feriadosMunicipais']) {
+    const fonteDaFolha = await Bun.file(`src/servicos/${folha}.ts`).text();
+    const deQuemImporta = [...fonteDaFolha.matchAll(/from\s+'([^']+)'/g)].map(
+      (m) => m[1]
+    );
+
+    expect(deQuemImporta.filter((i) => i !== '../tipos')).toEqual([]);
+  }
 });
