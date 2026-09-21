@@ -378,6 +378,16 @@ export const temIntervaloNoDia = (colaborador?: {
  */
 export const TOLERANCIA_PONTO_PADRAO_MINUTOS = 10;
 
+/**
+ * O limite POR MARCACAO do art. 58 §1o da CLT.
+ *
+ * "variacoes de horario no registro de ponto nao excedentes de CINCO
+ * minutos, observado o limite maximo de DEZ minutos diarios."
+ *
+ * Sao dois limites, e vale o que for atingido primeiro.
+ */
+export const TOLERANCIA_POR_MARCACAO_PADRAO_MINUTOS = 5;
+
 /** Comeco da jornada, quando a rede nao configurou outro. */
 export const HORARIO_ENTRADA_PADRAO = '08:00';
 
@@ -496,6 +506,21 @@ export interface ConfiguracaoSistema {
    * mudar exigia deploy.
    */
   toleranciaPontoMinutos?: number;
+  /**
+   * Tolerancia por MARCACAO, o outro limite do art. 58 §1o da CLT.
+   *
+   * A lei traz dois numeros, e valem juntos: variacoes de ate 5 minutos em
+   * CADA marcacao, observado o maximo de 10 minutos no dia.
+   *
+   * O sistema tinha so o segundo, e por isso era mais permissivo que a lei
+   * num caso: uma unica variacao de 6 a 10 minutos passava batida. Quem
+   * saia 8 minutos mais cedo nao gerava nada; pela lei, esses 8 minutos
+   * contam.
+   *
+   * Nunca era mais rigido que a lei — entao nao houve cobranca indevida,
+   * so deixou de contar o que deveria.
+   */
+  toleranciaPorMarcacaoMinutos?: number;
   /** Horario em que a jornada comeca, para saber se a entrada atrasou. */
   horarioEntradaPadrao?: string;
   /** Intervalo de almoco contratado, para saber se o retorno atrasou. */

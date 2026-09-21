@@ -58,12 +58,17 @@ mock.module('./bancoDados', () => ({
      * A tolerância diária sai daqui. Cada teste pode trocá-la para provar
      * os dois lados da faixa sem depender do padrão da rede.
      */
-    obterConfiguracoes: () => ({ toleranciaPontoMinutos: toleranciaDoTeste }),
+    obterConfiguracoes: () => ({
+      toleranciaPontoMinutos: toleranciaDoTeste,
+      toleranciaPorMarcacaoMinutos: toleranciaPorMarcacaoDoTeste,
+    }),
   },
 }));
 
 /** Tolerância em vigor durante o teste. Reposta no beforeEach. */
 let toleranciaDoTeste = 10;
+/** O outro limite da CLT, em minutos por marcação. */
+let toleranciaPorMarcacaoDoTeste = 5;
 
 const CHAVE_REGISTROS = 'conecta_v4_registros_ponto';
 const CHAVE_CODIGOS = 'conecta_v4_codigos_ponto_loja';
@@ -150,6 +155,7 @@ beforeEach(() => {
   colaboradorLogado = ELIAS;
   equipe = [ELIAS, ANA];
   toleranciaDoTeste = 10;
+  toleranciaPorMarcacaoDoTeste = 5;
   bancoRecusaAjuste = false;
 
   /**
@@ -2064,4 +2070,142 @@ test('BANCO RECUSOU: A TELA NÃO PODE DIZER QUE CORRIGIU', async () => {
   const depois = servicoPonto.obterAjusteDoDia(ANA.id, DIA);
   expect(depois?.estado).toBe('pendente');
   expect(depois?.minutos).toBe(33);
+});
+
+// ============================================================
+// OS DOIS LIMITES DO ART. 58 §1º DA CLT
+// ============================================================
+
+/**
+ * Quem cumpre o TURNO A da rede: 07:30 · 12:30 · 14:00 · 17:10, 8h10.
+ *
+ * O limite por marcação só vale quando o sistema conhece o horário de
+ * cada batida — e ele só conhece quando a carga da ficha fecha com o
+ * turno. Por isso este colaborador existe separado do CARLOS, cuja
+ * ficha tem 8h00 e não corresponde a turno nenhum.
+ */
+const DO_TURNO = {
+  ...ELIAS,
+  id: 'turno-a',
+  nome: 'Do Turno A',
+  login: 'turnoa',
+  nivel: 1,
+  setor: 'Balcão',
+  cargaHorariaDiariaMinutos: 490,
+};
+
+const baterTurnoA = async (data: string, saida: string, entrada = '07:30') => {
+  const marcar = (tipo: string, hora: string) => ({
+    id: `t-${tipo}`, colaboradorId: DO_TURNO.id, data, tipo,
+    horario: new Date(`${data}T${hora}:00`).toISOString(), horaFormatada: hora,
+    metodo: 'qrcode', loja: DO_TURNO.loja, criadoEm: '',
+  });
+  armazenamento.setItem(
+    CHAVE_REGISTROS,
+    JSON.stringify([
+      marcar('entrada', entrada),
+      marcar('saida_almoco', '12:30'),
+      marcar('retorno_almoco', '14:00'),
+      marcar('saida', saida),
+    ])
+  );
+  await servicoPonto.apurarDia(DO_TURNO.id, data);
+};
+
+test('UMA VARIAÇÃO DE 8 MINUTOS NÃO É MAIS TOLERADA', async () => {
+  /**
+   * O art. 58 §1º traz DOIS limites: cinco minutos em CADA marcação,
+   * observado o máximo de dez no dia. O sistema conhecia só o segundo — e
+   * por isso era mais permissivo que a lei justamente aqui: quem saía 8
+   * minutos mais cedo não gerava nada, quando pela lei esses 8 minutos
+   * contam.
+   */
+  equipe = [CHEFE, DO_TURNO];
+  colaboradorLogado = DO_TURNO;
+
+  // Saída 17:02 em vez de 17:10: 8 minutos numa marcação só
+  await baterTurnoA('2026-09-16', '17:02');
+
+  const ajuste = servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16')!;
+  expect(ajuste.estado).toBe('pendente');
+  expect(ajuste.minutos).toBe(8);
+});
+
+test('DUAS VARIAÇÕES DE 4 MINUTOS CONTINUAM TOLERADAS', async () => {
+  /**
+   * O outro lado, e é ele que impede o aperto de virar exagero: 4 + 4
+   * cabe nos dois limites da lei — cinco em cada, oito no dia.
+   */
+  equipe = [CHEFE, DO_TURNO];
+  colaboradorLogado = DO_TURNO;
+
+  // Entra 4 min atrasado e sai 4 min atrasado: nada muda no total
+  await baterTurnoA('2026-09-16', '17:14', '07:34');
+
+  const ajuste = servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16');
+  // Diferença zero: o dia fecha exato, nem entra na conta
+  expect(ajuste?.estado ?? 'sem apuração').not.toBe('pendente');
+});
+
+test('QUATRO MINUTOS A MENOS NUMA MARCAÇÃO SÓ SEGUE TOLERADO', async () => {
+  equipe = [CHEFE, DO_TURNO];
+  colaboradorLogado = DO_TURNO;
+
+  // Saída 17:06: 4 minutos, dentro dos dois limites
+  await baterTurnoA('2026-09-16', '17:06');
+
+  const ajuste = servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16')!;
+  expect(ajuste.estado).toBe('aprovado');
+  expect(ajuste.origem).toBe('tolerancia_automatica');
+});
+
+test('QUEM NÃO CUMPRE TURNO DA REDE SÓ RESPONDE PELO LIMITE DO DIA', async () => {
+  /**
+   * A ficha pode ter carga própria — o estágio, ou alguém com horário
+   * combinado com a área. Aí os horários do turno NÃO são os dela, e
+   * comparar acusaria trinta minutos de variação todo dia.
+   *
+   * O sistema admite que não sabe, e vale só o limite do dia. O CARLOS
+   * tem 8h00 na ficha, que não fecha com nenhum turno.
+   */
+  equipe = [CHEFE, CARLOS];
+  colaboradorLogado = CARLOS;
+
+  // 8h07: sete minutos além, numa marcação só — pelo turno seria recusado
+  await fecharJornada(CARLOS, '2026-09-16', '08:00', '17:07');
+
+  const ajuste = servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!;
+  expect(ajuste.estado).toBe('aprovado');
+  expect(servicoPonto.maiorVariacaoDoDia(CARLOS.id, '2026-09-16')).toBeNull();
+});
+
+test('o limite por marcação é CONFIGURÁVEL, como o do dia', async () => {
+  equipe = [CHEFE, DO_TURNO];
+  colaboradorLogado = DO_TURNO;
+
+  // Com o limite frouxo em 9, a variação de 8 volta a caber
+  toleranciaPorMarcacaoDoTeste = 9;
+  await baterTurnoA('2026-09-16', '17:02');
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16')?.estado).toBe('aprovado');
+});
+
+test('O PADRÃO É O NÚMERO DA LEI: 5 minutos por marcação, 10 no dia', async () => {
+  /**
+   * Os dois números não são escolha nossa. Estão no art. 58 §1º da CLT:
+   *
+   *   "variações de horário no registro de ponto não excedentes de CINCO
+   *    minutos, observado o limite máximo de DEZ minutos diários"
+   *
+   * São configuráveis porque a rede pode querer ser mais generosa — mas
+   * o padrão tem de ser o da lei, senão o sistema nasce fora dela.
+   */
+  const { TOLERANCIA_PONTO_PADRAO_MINUTOS, TOLERANCIA_POR_MARCACAO_PADRAO_MINUTOS } =
+    await import('../tipos');
+
+  expect(TOLERANCIA_POR_MARCACAO_PADRAO_MINUTOS).toBe(5);
+  expect(TOLERANCIA_PONTO_PADRAO_MINUTOS).toBe(10);
+
+  // E é para ele que o serviço cai quando ninguém configurou
+  toleranciaPorMarcacaoDoTeste = undefined as any;
+  expect(servicoPonto.obterToleranciaPorMarcacaoMinutos()).toBe(5);
 });

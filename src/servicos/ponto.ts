@@ -19,6 +19,7 @@
 
 import {
   TOLERANCIA_PONTO_PADRAO_MINUTOS,
+  TOLERANCIA_POR_MARCACAO_PADRAO_MINUTOS,
   TURNO_SABADO,
   MINUTOS_SABADO,
   minutosDoTurno,
@@ -1061,6 +1062,111 @@ class ServicoPonto {
     return Math.floor(valor);
   }
 
+  /** O outro limite da CLT: minutos tolerados em CADA marcação. */
+  obterToleranciaPorMarcacaoMinutos(): number {
+    const valor = bancoDados.obterConfiguracoes().toleranciaPorMarcacaoMinutos;
+    if (typeof valor !== 'number' || Number.isNaN(valor) || valor < 0) {
+      return TOLERANCIA_POR_MARCACAO_PADRAO_MINUTOS;
+    }
+    return Math.floor(valor);
+  }
+
+  /**
+   * O horário que o contrato espera para CADA batida daquele dia.
+   *
+   * Devolve `null` quando o sistema não tem como saber — e aí o limite por
+   * marcação não se aplica, porque comparar com um horário inventado seria
+   * pior do que não comparar.
+   *
+   * É o caso do estágio: seis horas corridas não correspondem a nenhum
+   * turno da rede, e a pessoa combina o horário com a área. O limite do
+   * DIA continua valendo para ela.
+   */
+  private horariosEsperadosDoDia(
+    colaborador: Colaborador | undefined,
+    data: string
+  ): Partial<Record<TipoMarcacao, number>> | null {
+    const esperadas = marcacoesEsperadas(data, colaborador);
+    if (esperadas.length === 0) return null;
+
+    const emMinutos = (hora: string): number => {
+      const [h, m] = hora.split(':').map(Number);
+      return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
+    };
+
+    const turno = acharTurno(colaborador?.turno);
+
+    const horarios: Partial<Record<TipoMarcacao, number>> = ehSabado(data)
+      ? esperadas.length === 2
+        ? {
+            entrada: emMinutos(TURNO_SABADO.entrada),
+            saida: emMinutos(TURNO_SABADO.saida),
+          }
+        : {}
+      : esperadas.length === 4
+        ? {
+            entrada: emMinutos(turno.entrada),
+            saida_almoco: emMinutos(turno.saidaAlmoco),
+            retorno_almoco: emMinutos(turno.retornoAlmoco),
+            saida: emMinutos(turno.saida),
+          }
+        : {};
+
+    if (Object.keys(horarios).length === 0) return null;
+
+    /**
+     * OS HORÁRIOS PRECISAM FECHAR A CARGA DA PESSOA.
+     *
+     * A ficha pode ter carga própria — 8h00, por exemplo — enquanto o
+     * turno da rede fecha 8h10. Nesse caso os horários do turno NÃO são
+     * os dela: ela entra e sai em outro relógio, combinado com a área.
+     *
+     * Comparar a batida dela com o turno acusaria trinta minutos de
+     * variação todo santo dia, e o dia inteiro cairia na fila. Quando os
+     * dois não fecham, o sistema admite que não sabe o horário — e vale
+     * só o limite do dia.
+     */
+    const implicado = ehSabado(data)
+      ? (horarios.saida ?? 0) - (horarios.entrada ?? 0)
+      : (horarios.saida_almoco ?? 0) -
+        (horarios.entrada ?? 0) +
+        ((horarios.saida ?? 0) - (horarios.retorno_almoco ?? 0));
+
+    if (implicado !== this.cargaPrevistaEmMinutos(colaborador, data)) return null;
+
+    return horarios;
+  }
+
+  /**
+   * A MAIOR variação entre o batido e o esperado, marcação a marcação.
+   *
+   * Devolve `null` quando não há horário esperado conhecido.
+   *
+   * É o que faltava para o art. 58 §1º valer inteiro: a lei tem DOIS
+   * limites — cinco minutos em cada marcação e dez no dia — e o sistema só
+   * conhecia o segundo. Uma saída oito minutos adiantada passava batida,
+   * quando pela lei esses oito minutos contam.
+   */
+  maiorVariacaoDoDia(colaboradorId: string, data: string): number | null {
+    const colaborador = bancoDados.obterColaboradorPorId(colaboradorId);
+    const esperados = this.horariosEsperadosDoDia(colaborador, data);
+    if (!esperados) return null;
+
+    const jornada = this.obterJornadaDoDia(colaboradorId, data);
+    let maior = 0;
+
+    for (const [tipo, esperado] of Object.entries(esperados)) {
+      const reg = jornada.marcacoes[tipo as TipoMarcacao];
+      if (!reg || esperado === undefined) continue;
+
+      const quando = new Date(reg.horario);
+      const batido = quando.getHours() * 60 + quando.getMinutes();
+      maior = Math.max(maior, Math.abs(batido - esperado));
+    }
+
+    return maior;
+  }
+
   /**
    * Esta batida, agora, exige motivo do colaborador?
    *
@@ -1366,7 +1472,27 @@ class ServicoPonto {
      * rede de 85 pessoas que batem ponto. Fila desse tamanho vira carimbo, e
      * aprovação que vira carimbo não controla nada.
      */
-    const dentroDaTolerancia = Math.abs(diferenca) <= this.obterToleranciaMinutos();
+    /**
+     * OS DOIS LIMITES DA LEI, e vale o que for atingido primeiro.
+     *
+     * O art. 58 §1º diz "variações não excedentes de CINCO minutos,
+     * observado o limite máximo de DEZ minutos diários". O sistema
+     * conhecia só o segundo, e por isso era mais permissivo que a lei num
+     * caso: uma única variação de 6 a 10 minutos passava batida — quem
+     * saía 8 minutos mais cedo não gerava nada, quando pela lei esses 8
+     * minutos contam.
+     *
+     * A variação por marcação só entra quando o sistema SABE o horário
+     * esperado de cada batida. Para o estágio, que combina o horário com
+     * a área e não cumpre turno da rede, continua valendo só o limite do
+     * dia — comparar com um horário inventado seria pior.
+     */
+    const maiorVariacao = this.maiorVariacaoDoDia(colaboradorId, data);
+    const dentroDoDia = Math.abs(diferenca) <= this.obterToleranciaMinutos();
+    const dentroDaMarcacao =
+      maiorVariacao === null || maiorVariacao <= this.obterToleranciaPorMarcacaoMinutos();
+
+    const dentroDaTolerancia = dentroDoDia && dentroDaMarcacao;
     const guardada = this.lerJustificativaDoDia(colaboradorId, data);
     const agora = new Date().toISOString();
 

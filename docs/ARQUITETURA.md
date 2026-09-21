@@ -208,6 +208,37 @@ o que está no repositório chegou ao ar.
 
 ---
 
+## A tolerância do ponto
+
+O art. 58 §1º da CLT traz **dois** limites, e valem juntos:
+
+> variações de horário no registro de ponto não excedentes de **cinco
+> minutos**, observado o limite máximo de **dez minutos diários**
+
+O sistema conhecia só o segundo. Era mais permissivo que a lei num caso: uma
+única variação de 6 a 10 minutos passava batida — quem saía 8 minutos mais
+cedo não gerava nada. Nunca era mais rígido, então não houve cobrança
+indevida; deixou de contar o que deveria.
+
+Hoje os dois valem, e o que for atingido primeiro manda.
+
+**Quando o limite por marcação NÃO se aplica:** quando o sistema não sabe o
+horário esperado de cada batida. É o caso de quem tem carga própria na ficha
+que não fecha com nenhum turno da rede — estágio, ou horário combinado com a
+área. Comparar a batida dela com o turno acusaria trinta minutos de variação
+todo dia. A verificação é automática: os horários do turno têm de somar
+exatamente a carga prevista daquela pessoa, senão o sistema admite que não
+sabe e vale só o limite do dia.
+
+Fora da tolerância, o dia vira pendência com o **valor cheio** — não se
+desconta a tolerância do excedente (Súmula 366 do TST).
+
+> Os dois números são configuráveis (`toleranciaPontoMinutos` e
+> `toleranciaPorMarcacaoMinutos`), mas **não há tela para mudá-los**. O
+> padrão é o da lei.
+
+---
+
 ## Travas que não podem cair
 
 | Trava | Onde | Sem ela |
