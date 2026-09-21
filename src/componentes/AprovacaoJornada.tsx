@@ -119,8 +119,8 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
         <div
           className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
             aviso.erro
-              ? 'bg-red-500/10 border border-red-500/20 text-red-600'
-              : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-700'
+              ? 'bg-conecta-erro/10 border border-conecta-erro/20 text-conecta-erro'
+              : 'bg-conecta-ok/10 border border-conecta-ok/20 text-conecta-ok'
           }`}
         >
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
@@ -161,10 +161,10 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                     <span
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
                         ehDiaSemFechar
-                          ? 'bg-sky-500/10 text-sky-700 border-sky-500/20'
+                          ? 'bg-conecta-info/10 text-conecta-info border-conecta-info/20'
                           : ehExtra
-                          ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20'
-                          : 'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                          ? 'bg-conecta-ok/10 text-conecta-ok border-conecta-ok/20'
+                          : 'bg-conecta-atencao/10 text-conecta-atencao border-conecta-atencao/20'
                       }`}
                     >
                       {ehDiaSemFechar ? (
@@ -250,7 +250,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                           !res.sucesso
                         );
                       }}
-                      className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-amber-600 hover:border-amber-500/30 disabled:opacity-50 transition-colors cursor-pointer"
+                      className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-conecta-atencao hover:border-conecta-atencao/30 disabled:opacity-50 transition-colors cursor-pointer"
                     >
                       Marcar débito
                     </button>
@@ -268,7 +268,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                           !res.sucesso
                         );
                       }}
-                      className="py-2 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold transition-colors cursor-pointer"
+                      className="py-2 px-4 rounded-xl bg-conecta-acento hover:brightness-110 disabled:opacity-50 text-conecta-sobre-acento text-xs font-bold transition-colors cursor-pointer"
                     >
                       Abonar dia
                     </button>
@@ -297,7 +297,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                     type="button"
                     disabled={emAndamento === ajuste.id}
                     onClick={() => setRecusando(ajuste)}
-                    className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/30 disabled:opacity-50 transition-colors cursor-pointer flex items-center gap-1.5"
+                    className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-conecta-erro hover:border-conecta-erro/30 disabled:opacity-50 transition-colors cursor-pointer flex items-center gap-1.5"
                   >
                     <XCircle className="w-3.5 h-3.5" />
                     Recusar
@@ -306,7 +306,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                     type="button"
                     disabled={emAndamento === ajuste.id}
                     onClick={() => decidir(ajuste, true)}
-                    className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                    className="py-2 px-4 rounded-xl bg-conecta-ok hover:brightness-110 disabled:opacity-50 text-conecta-sobre-acento text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     {emAndamento === ajuste.id ? 'Registrando…' : 'Aprovar'}
@@ -349,7 +349,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                   <span className="text-sm font-bold text-[var(--c-texto)] truncate">
                     {colaborador.nome}
                   </span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-sky-500/10 text-sky-700 border-sky-500/20">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-conecta-info/10 text-conecta-info border-conecta-info/20">
                     {ROTULO_TIPO_AUSENCIA[justificativa.tipo]}
                   </span>
                 </div>
@@ -387,7 +387,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                 <button
                   type="button"
                   onClick={() => setRecusandoAusencia(justificativa)}
-                  className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/30 transition-colors cursor-pointer flex items-center gap-1.5"
+                  className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-conecta-erro hover:border-conecta-erro/30 transition-colors cursor-pointer flex items-center gap-1.5"
                 >
                   <XCircle className="w-3.5 h-3.5" />
                   Recusar
@@ -404,7 +404,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                       !res.sucesso
                     );
                   }}
-                  className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                  className="py-2 px-4 rounded-xl bg-conecta-ok hover:brightness-110 text-conecta-sobre-acento text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   Aprovar
@@ -459,7 +459,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                     mostrar(res.erro || 'Não foi possível recusar.', true);
                   }
                 }}
-                className="flex-1 py-2 rounded-xl bg-red-600 text-white text-xs font-bold"
+                className="flex-1 py-2 rounded-xl bg-conecta-erro text-conecta-sobre-acento text-xs font-bold"
               >
                 Recusar
               </button>
@@ -473,7 +473,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="bg-[var(--c-superficie)] rounded-2xl border border-[var(--c-borda)] shadow-xl max-w-sm w-full p-5 space-y-3">
             <h3 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-600" />
+              <Clock className="w-4 h-4 text-conecta-atencao" />
               Recusar {formatarMinutos(recusando.minutos)} de{' '}
               {ROTULO_TIPO_AJUSTE[recusando.tipo].toLowerCase()}
             </h3>
@@ -502,7 +502,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                 type="button"
                 disabled={!motivo.trim()}
                 onClick={() => decidir(recusando, false, motivo)}
-                className="py-2 px-4 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold cursor-pointer"
+                className="py-2 px-4 rounded-xl bg-conecta-erro hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed text-conecta-sobre-acento text-xs font-bold cursor-pointer"
               >
                 Confirmar recusa
               </button>
