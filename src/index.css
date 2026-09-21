@@ -103,6 +103,108 @@
   --c-info: #1D4ED8;
 }
 
+/*
+  ============================================================
+  OS TOKENS ACIMA, DISPONÍVEIS COMO CLASSES
+  ============================================================
+
+  Tudo o que o CONECTA decidiu sobre cor, tamanho, raio e sombra já estava
+  escrito acima — e quase nada era usado. As telas repetiam decisões à mão:
+  494 `text-xs`, 292 `rounded-xl`, 871 cores cruas do Tailwind. Não faltava
+  sistema; faltava a ponte entre ele e as classes.
+
+  ------------------------------------------------------------
+  POR QUE NOMES PRÓPRIOS, E NÃO OS NOMES DO TAILWIND
+  ------------------------------------------------------------
+
+  A tentação era mapear `--t-lg` em `text-lg` e pronto. As duas escalas
+  NÃO batem, e sobrescrever mudaria a tela sem ninguém ter pedido:
+
+      text-lg      18px -> 22px      (17 usos)
+      text-xl      20px -> 28px      (10 usos)
+      text-2xl     24px -> 36px      (10 usos)
+      rounded-md    6px -> 10px      (15 usos)
+      rounded-lg    8px -> 16px      (138 usos)
+
+  Cento e trinta e oito elementos mudando de raio de uma vez, misturados
+  com qualquer outra alteração — e sem como saber depois qual mudança
+  causou qual efeito.
+
+  Com `conecta-` no nome, as duas escalas convivem: o que já existe
+  continua exatamente como está, e a migração acontece classe a classe,
+  quando for a hora. `xs`, `sm` e `base` até coincidem nas duas — mas
+  ficam aqui mesmo assim, porque meia escala nomeada é pior do que
+  nenhuma: ninguém saberia quando usar qual.
+
+  ------------------------------------------------------------
+  O QUE NÃO ENTROU
+  ------------------------------------------------------------
+
+  A escala de ESPAÇAMENTO (`--e-*`). A do Tailwind já é a mesma régua de
+  4px — `--e-1` é `p-1`, `--e-4` é `p-4`, `--e-5` é `p-6`. Expor daria um
+  segundo jeito de dizer a mesma coisa, com números que não conversam, e o
+  objetivo aqui é o contrário.
+
+  A DURAÇÃO (`--m-rapido`, `--m-normal`). O Tailwind 4 não tem espaço de
+  nomes para duração, e `duration-200` já resolve. Só a curva entra, que é
+  o que não dá para escrever de memória.
+
+  ------------------------------------------------------------
+  COMO ISTO SE LIGA AO TEMA
+  ------------------------------------------------------------
+
+  Os valores apontam para os tokens com `var()`, em vez de copiar o
+  número. É o que mantém UMA fonte: mexer em `--c-acento` lá em cima muda
+  a classe aqui, e o tema escuro continua trocando a cor como sempre
+  trocou — a classe nem fica sabendo.
+*/
+@theme {
+  /* --- Cores. Nomes iguais aos dos tokens, para procurar dar no mesmo. --- */
+  --color-conecta-canvas: var(--c-canvas);
+  --color-conecta-superficie: var(--c-superficie);
+  --color-conecta-superficie-2: var(--c-superficie-2);
+  --color-conecta-borda: var(--c-borda);
+  --color-conecta-borda-forte: var(--c-borda-forte);
+  --color-conecta-texto: var(--c-texto);
+  --color-conecta-texto-2: var(--c-texto-2);
+  --color-conecta-texto-3: var(--c-texto-3);
+  --color-conecta-acento: var(--c-acento);
+  --color-conecta-acento-suave: var(--c-acento-suave);
+  --color-conecta-sobre-acento: var(--c-sobre-acento);
+  --color-conecta-ok: var(--c-ok);
+  --color-conecta-atencao: var(--c-atencao);
+  --color-conecta-erro: var(--c-erro);
+  --color-conecta-info: var(--c-info);
+
+  /* --- Tipografia --- */
+  --text-conecta-xs: var(--t-xs);
+  --text-conecta-sm: var(--t-sm);
+  --text-conecta-base: var(--t-base);
+  --text-conecta-md: var(--t-md);
+  --text-conecta-lg: var(--t-lg);
+  --text-conecta-xl: var(--t-xl);
+  --text-conecta-2xl: var(--t-2xl);
+  --text-conecta-3xl: var(--t-3xl);
+
+  /* --- Raios --- */
+  --radius-conecta-sm: var(--r-sm);
+  --radius-conecta-md: var(--r-md);
+  --radius-conecta-lg: var(--r-lg);
+  --radius-conecta-full: var(--r-full);
+
+  /* --- Sombras --- */
+  --shadow-conecta-1: var(--s-1);
+  --shadow-conecta-2: var(--s-2);
+  --shadow-conecta-3: var(--s-3);
+
+  /* --- A curva do movimento --- */
+  --ease-conecta: var(--m-curva);
+
+  /* --- As duas famílias --- */
+  --font-conecta: var(--fonte);
+  --font-conecta-num: var(--fonte-num);
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
