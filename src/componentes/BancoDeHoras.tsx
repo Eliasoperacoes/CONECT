@@ -54,6 +54,7 @@ import {
   dataDeHoje,
   formatarDataBR,
   formatarDiaCurto,
+  motivoSemMarcacao,
   formatarMinutos,
   formatarSaldo,
   primeiroDiaDoMes,
@@ -1013,6 +1014,24 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
 
                             {ORDEM_MARCACOES.map((tipo) => {
                               const reg = jornada.marcacoes[tipo];
+
+                              /**
+                               * POR QUE A CÉLULA ESTÁ VAZIA.
+                               *
+                               * `--:--` quer dizer "deveria ter batido e não
+                               * bateu". No sábado o almoço não existe, e no
+                               * feriado a loja está fechada — escrever
+                               * `--:--` ali acusa uma batida esquecida que
+                               * nunca foi esperada.
+                               *
+                               * A célula SEGUE CLICÁVEL: domingo e feriado
+                               * trabalhados existem, e é assim que a hora
+                               * extra entra.
+                               */
+                              const motivo = reg
+                                ? null
+                                : motivoSemMarcacao(jornada.data, tipo, detalhe.colaborador);
+
                               return (
                                 <td key={tipo} className="px-2 py-2 text-center">
                                   <button
@@ -1031,11 +1050,17 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                                     title={
                                       reg && ehMarcacaoCorrigida(reg.metodo)
                                         ? `Corrigido por ${reg.ajustadoPorNome}: ${reg.justificativa}`
+                                        : motivo && podeCorrigirMarcacao
+                                        ? `${motivo}: o dia não prevê esta marcação. Clique para lançar assim mesmo — é hora extra.`
                                         : podeCorrigirMarcacao
                                         ? 'Clique para lançar ou corrigir'
                                         : 'Corrigir marcação é de quem responde por esta pessoa, ou do RH.'
                                     }
-                                    className={`font-mono tabular-nums px-1.5 py-0.5 rounded hover:bg-[var(--c-acento-suave)] transition-colors ${
+                                    className={`px-1.5 py-0.5 rounded hover:bg-[var(--c-acento-suave)] transition-colors ${
+                                      motivo
+                                        ? 'text-[10px] italic text-[var(--c-texto-3)]'
+                                        : 'font-mono tabular-nums'
+                                    } ${
                                       reg
                                         ? ehMarcacaoCorrigida(reg.metodo)
                                           ? 'text-amber-600 font-bold'
@@ -1043,7 +1068,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                                         : 'text-[var(--c-texto-3)]'
                                     }`}
                                   >
-                                    {reg?.horaFormatada || '--:--'}
+                                    {reg?.horaFormatada || motivo || '--:--'}
                                   </button>
                                   {reg && (
                                     <button

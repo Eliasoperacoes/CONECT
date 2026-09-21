@@ -36,6 +36,7 @@ import { nuvemComunicacao } from './nuvemComunicacao';
  */
 import { aplicarJustificativasDaNuvem } from './justificativasCache';
 import { aplicarFeriadosDaNuvem } from './feriadosCache';
+import { buscarTodasAsLinhas } from './paginacao';
 
 /**
  * Enche o cache de conversa, aviso, configuração e auditoria. Fica aqui e não
@@ -737,18 +738,18 @@ class PonteNuvem {
     if (!supabase) return false;
 
     const [registros, codigos] = await Promise.all([
-      supabase.from('registros_ponto').select('*').order('horario'),
+      buscarTodasAsLinhas<LinhaRegistroPonto>(
+        () => supabase!.from('registros_ponto').select('*').order('horario'),
+        'as marcações de ponto'
+      ),
       supabase.from('codigos_ponto_loja').select('*'),
     ]);
 
-    if (registros.error || !registros.data) {
-      console.error('Falha ao sincronizar o ponto:', registros.error?.message);
-      return false;
-    }
+    if (!registros) return false;
 
     localStorage.setItem(
       CHAVE_REGISTROS_PONTO,
-      JSON.stringify((registros.data as LinhaRegistroPonto[]).map(paraRegistroPonto))
+      JSON.stringify(registros.map(paraRegistroPonto))
     );
 
     if (!codigos.error && codigos.data) {
@@ -935,19 +936,18 @@ class PonteNuvem {
     if (!supabase) return false;
 
     // A RLS já filtra: volta o que é meu e o de quem eu aprovo
-    const { data, error } = await supabase
-      .from('justificativas_ausencia')
-      .select('*')
-      .order('data_inicio', { ascending: false });
-
-    if (error || !data) {
-      console.error('Falha ao sincronizar as ausências:', error?.message);
-      return false;
-    }
-
-    aplicarJustificativasDaNuvem(
-      (data as Record<string, unknown>[]).map(paraJustificativa)
+    const data = await buscarTodasAsLinhas<Record<string, unknown>>(
+      () =>
+        supabase!
+          .from('justificativas_ausencia')
+          .select('*')
+          .order('data_inicio', { ascending: false }),
+      'as ausências'
     );
+
+    if (!data) return false;
+
+    aplicarJustificativasDaNuvem(data.map(paraJustificativa));
     return true;
   }
 
@@ -1024,20 +1024,14 @@ class PonteNuvem {
   async sincronizarAjustes(): Promise<boolean> {
     if (!supabase) return false;
 
-    const { data, error } = await supabase
-      .from('ajustes_jornada')
-      .select('*')
-      .order('data', { ascending: false });
-
-    if (error || !data) {
-      console.error('Falha ao sincronizar as apurações:', error?.message);
-      return false;
-    }
-
-    localStorage.setItem(
-      CHAVE_AJUSTES,
-      JSON.stringify((data as LinhaAjuste[]).map(paraAjuste))
+    const data = await buscarTodasAsLinhas<LinhaAjuste>(
+      () => supabase!.from('ajustes_jornada').select('*').order('data', { ascending: false }),
+      'as apurações'
     );
+
+    if (!data) return false;
+
+    localStorage.setItem(CHAVE_AJUSTES, JSON.stringify(data.map(paraAjuste)));
     this.avisar();
     return true;
   }

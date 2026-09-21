@@ -1782,3 +1782,113 @@ test('FERIADO QUE CAI NO SÁBADO FECHA A LOJA DO MESMO JEITO', async () => {
     }
   );
 });
+
+test('DOMINGO NÃO ESPERA BATIDA NENHUMA', async () => {
+  /**
+   * Estava devolvendo as quatro, e o efeito era silencioso: todo domingo
+   * passado entrava na lista de dias com pendência da semana, como se a
+   * pessoa tivesse esquecido de bater num dia em que a loja nem abre.
+   */
+  // 2026-09-20 é domingo
+  expect(marcacoesEsperadas('2026-09-20', ANA as any)).toEqual([]);
+
+  // E o sábado continua com duas, que é o que a loja abre
+  expect(marcacoesEsperadas('2026-09-19', ANA as any)).toEqual(['entrada', 'saida']);
+
+  // Dia útil segue com as quatro
+  expect(marcacoesEsperadas('2026-09-21', ANA as any)).toHaveLength(4);
+});
+
+test('DOMINGO TRABALHADO AINDA PODE SER BATIDO', async () => {
+  /**
+   * O contrato não prevê jornada no domingo, mas a pessoa pode estar
+   * ali — e isso se chama hora extra. Sem a saída, quem foi trabalhar no
+   * domingo não conseguia nem registrar que esteve lá.
+   */
+  equipe = [ELIAS, ANA];
+  colaboradorLogado = ANA;
+
+  expect(servicoPonto.obterProximaMarcacao(ANA.id, '2026-09-20')).toBe('entrada');
+});
+
+test('A CÉLULA VAZIA DIZ POR QUE ESTÁ VAZIA', async () => {
+  /**
+   * `--:--` tem UM significado só: "deveria ter batido e não bateu". No
+   * sábado o almoço não existe, e imprimir `--:--` ali fazia o espelho
+   * acusar duas batidas esquecidas em todo sábado do mês.
+   */
+  const { motivoSemMarcacao } = await import('./ponto');
+
+  // Sábado: entrada e saída são esperadas; o almoço, não
+  expect(motivoSemMarcacao('2026-09-19', 'entrada', ANA as any)).toBeNull();
+  expect(motivoSemMarcacao('2026-09-19', 'saida', ANA as any)).toBeNull();
+  expect(motivoSemMarcacao('2026-09-19', 'saida_almoco', ANA as any)).toBe('Sábado');
+  expect(motivoSemMarcacao('2026-09-19', 'retorno_almoco', ANA as any)).toBe('Sábado');
+
+  // Domingo: nenhuma é esperada
+  expect(motivoSemMarcacao('2026-09-20', 'entrada', ANA as any)).toBe('Domingo');
+
+  // Dia útil: todas são esperadas, e a célula vazia continua sendo `--:--`
+  expect(motivoSemMarcacao('2026-09-21', 'saida_almoco', ANA as any)).toBeNull();
+});
+
+test('o feriado aparece pelo NOME dele na célula', async () => {
+  const { motivoSemMarcacao } = await import('./ponto');
+
+  comFeriados(
+    [{ id: 'f5', data: '2026-09-07', nome: 'Independência do Brasil', minutosPrevistos: 0, criadoEm: '' }],
+    () => {
+      expect(motivoSemMarcacao('2026-09-07', 'entrada', ANA as any)).toBe(
+        'Independência do Brasil'
+      );
+    }
+  );
+});
+
+test('O HORÁRIO BATIDO VENCE O RÓTULO NO ESPELHO', async () => {
+  /**
+   * Hora extra no feriado, domingo trabalhado: o documento tem de mostrar
+   * o que ACONTECEU, não o que era previsto. Se o rótulo vencesse, a
+   * batida sumiria do papel — e é justamente a batida que prova a hora
+   * extra.
+   */
+  equipe = [ELIAS, ANA];
+  colaboradorLogado = ELIAS;
+
+  bancoRegistros = [
+    {
+      id: 'r-dom',
+      colaborador_id: ANA.id,
+      data: '2026-09-20',
+      tipo: 'entrada',
+      horario: new Date(2026, 8, 20, 8, 0).toISOString(),
+      hora_formatada: '08:00',
+      metodo: 'qrcode',
+      loja: 'Pirassununga',
+      criado_em: new Date().toISOString(),
+    },
+  ];
+  armazenamento.setItem(
+    'conecta_v4_registros_ponto',
+    JSON.stringify([
+      {
+        id: 'r-dom',
+        colaboradorId: ANA.id,
+        data: '2026-09-20',
+        tipo: 'entrada',
+        horario: new Date(2026, 8, 20, 8, 0).toISOString(),
+        horaFormatada: '08:00',
+        metodo: 'qrcode',
+        loja: 'Pirassununga',
+        criadoEm: new Date().toISOString(),
+      },
+    ])
+  );
+
+  const html = servicoPonto.gerarHtmlEspelho('2026-09-20', '2026-09-20', [ANA.id]);
+
+  // A batida do domingo está no papel
+  expect(html).toContain('08:00');
+  // E as colunas que ninguém bateu dizem o motivo
+  expect(html).toContain('Domingo');
+});

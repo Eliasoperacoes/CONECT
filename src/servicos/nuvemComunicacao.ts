@@ -25,6 +25,7 @@ import {
   TipoMensagem,
 } from '../tipos';
 import { supabase } from './supabase';
+import { buscarTodasAsLinhas } from './paginacao';
 import { resolverCaminhos } from './anexos';
 import {
   aplicarPreferenciasDaNuvem,
@@ -156,6 +157,15 @@ interface LinhaConversa {
   eh_sistema_padrao: boolean;
   atualizado_em: string;
   criado_em: string;
+}
+
+/** Linha da tabela `participantes`, com as preferências de cada um. */
+interface LinhaParticipante {
+  conversa_id: string;
+  colaborador_id: string;
+  fixada?: boolean;
+  oculta_desde?: string | null;
+  removida?: boolean | null;
 }
 
 interface LinhaMensagem {
@@ -385,32 +395,47 @@ class PonteComunicacao {
   async sincronizarConversas(): Promise<boolean> {
     if (!supabase) return false;
 
+    /**
+     * TUDO PAGINADO, menos as conversas.
+     *
+     * O Supabase corta em 1000 linhas sem avisar. `leituras_mensagem` é a
+     * que estoura primeiro — uma linha por mensagem POR PESSOA que leu —
+     * e o efeito seria o contador de não lidas mentindo. Conversas são
+     * dezenas; ficam como estão.
+     */
     const [conversas, participantes, mensagens, leituras] = await Promise.all([
       supabase.from('conversas').select('*'),
-      supabase
-        .from('participantes')
-        .select('conversa_id, colaborador_id, fixada, oculta_desde, removida'),
-      supabase.from('mensagens').select('*').order('criado_em'),
-      supabase.from('leituras_mensagem').select('mensagem_id, colaborador_id'),
+      buscarTodasAsLinhas<LinhaParticipante>(
+        () =>
+          supabase!
+            .from('participantes')
+            .select('conversa_id, colaborador_id, fixada, oculta_desde, removida'),
+        'os participantes'
+      ),
+      buscarTodasAsLinhas<LinhaMensagem>(
+        () => supabase!.from('mensagens').select('*').order('criado_em'),
+        'as mensagens'
+      ),
+      buscarTodasAsLinhas<{ mensagem_id: string; colaborador_id: string }>(
+        () => supabase!.from('leituras_mensagem').select('mensagem_id, colaborador_id'),
+        'as leituras'
+      ),
     ]);
 
-    if (conversas.error || mensagens.error) {
-      console.error(
-        'Falha ao sincronizar conversas:',
-        conversas.error?.message || mensagens.error?.message
-      );
+    if (conversas.error || !mensagens || !participantes || !leituras) {
+      console.error('Falha ao sincronizar conversas:', conversas.error?.message);
       return false;
     }
 
     // Quem leu cada mensagem
     const lidaPorMensagem = new Map<string, string[]>();
-    ((leituras.data || []) as { mensagem_id: string; colaborador_id: string }[]).forEach((l) => {
+    leituras.forEach((l) => {
       const atual = lidaPorMensagem.get(l.mensagem_id) || [];
       atual.push(l.colaborador_id);
       lidaPorMensagem.set(l.mensagem_id, atual);
     });
 
-    const listaMensagens: Mensagem[] = ((mensagens.data || []) as LinhaMensagem[]).map((linha) => {
+    const listaMensagens: Mensagem[] = mensagens.map((linha) => {
       const lidaPor = lidaPorMensagem.get(linha.id) || [];
       return {
         id: linha.id,
@@ -476,15 +501,7 @@ class PonteComunicacao {
      */
     const preferencias: MapaDePreferencias = {};
 
-    (
-      (participantes.data || []) as {
-        conversa_id: string;
-        colaborador_id: string;
-        fixada?: boolean;
-        oculta_desde?: string | null;
-        removida?: boolean | null;
-      }[]
-    ).forEach((p) => {
+    participantes.forEach((p) => {
       const atual = idsPorConversa.get(p.conversa_id) || [];
       atual.push(p.colaborador_id);
       idsPorConversa.set(p.conversa_id, atual);
@@ -783,25 +800,25 @@ class PonteComunicacao {
   async sincronizarAvisos(): Promise<boolean> {
     if (!supabase) return false;
 
+    // A leitura de aviso cresce por PESSOA: 89 colaboradores vezes o
+    // número de comunicados passa de mil depressa, e aí a confirmação de
+    // quem leu começa a sumir sem erro nenhum
     const [avisos, leituras] = await Promise.all([
       supabase.from('avisos_rede').select('*').order('criado_em', { ascending: false }),
-      supabase.from('avisos_leitura').select('aviso_id, colaborador_id, confirmado'),
+      buscarTodasAsLinhas<{ aviso_id: string; colaborador_id: string; confirmado: boolean }>(
+        () => supabase!.from('avisos_leitura').select('aviso_id, colaborador_id, confirmado'),
+        'as leituras de aviso'
+      ),
     ]);
 
-    if (avisos.error) {
-      console.error('Falha ao sincronizar avisos:', avisos.error.message);
+    if (avisos.error || !leituras) {
+      console.error('Falha ao sincronizar avisos:', avisos.error?.message);
       return false;
     }
 
     const lidos = new Map<string, string[]>();
     const confirmados = new Map<string, string[]>();
-    (
-      (leituras.data || []) as {
-        aviso_id: string;
-        colaborador_id: string;
-        confirmado: boolean;
-      }[]
-    ).forEach((l) => {
+    leituras.forEach((l) => {
       const listaLidos = lidos.get(l.aviso_id) || [];
       listaLidos.push(l.colaborador_id);
       lidos.set(l.aviso_id, listaLidos);

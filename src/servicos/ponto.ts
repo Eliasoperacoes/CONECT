@@ -162,6 +162,18 @@ export const marcacoesEsperadas = (
   const feriado = feriadoEm(data, colaborador?.loja);
   if (feriado) return feriado.minutosPrevistos > 0 ? ['entrada', 'saida'] : [];
 
+  /**
+   * DOMINGO NÃO ESPERA BATIDA NENHUMA.
+   *
+   * Estava devolvendo as quatro, e o efeito era silencioso: todo domingo
+   * passado entrava na lista de dias com pendência da semana, como se a
+   * pessoa tivesse esquecido de bater num dia em que a loja nem abre.
+   *
+   * Trabalhar no domingo continua possível — é hora extra, e
+   * `obterProximaMarcacao` cuida disso.
+   */
+  if (ehDiaDeFolga(data)) return [];
+
   if (ehSabado(data)) {
     // Não trabalha aos sábados: não há batida a esperar, e o dia não é dela
     if (colaborador && !trabalhaNoSabado(colaborador)) return [];
@@ -171,6 +183,38 @@ export const marcacoesEsperadas = (
   if (colaborador && !temIntervaloNoDia(colaborador)) return ['entrada', 'saida'];
 
   return ORDEM_MARCACOES;
+};
+
+/**
+ * O QUE ESCREVER NUMA CÉLULA QUE O DIA NÃO ESPERA.
+ *
+ * Devolve `null` quando a marcação é esperada — aí vale o horário, ou o
+ * `--:--` de quem não bateu.
+ *
+ * Existe porque `--:--` tem UM significado só: "deveria ter batido e não
+ * bateu". No sábado o almoço não existe — a loja abre às 8 e fecha ao
+ * meio-dia, direto — e imprimir `--:--` ali fazia o espelho acusar duas
+ * batidas esquecidas em todo sábado do mês. Num documento de ponto isso
+ * não é detalhe de layout.
+ *
+ * Num lugar só porque a tela e o papel precisam dizer a MESMA coisa. Já
+ * houve um caso neste sistema em que os dois divergiram.
+ */
+export const motivoSemMarcacao = (
+  data: string,
+  tipo: TipoMarcacao,
+  colaborador?: Colaborador
+): string | null => {
+  if (marcacoesEsperadas(data, colaborador).includes(tipo)) return null;
+
+  const feriado = feriadoEm(data, colaborador?.loja);
+  if (feriado) return feriado.nome;
+
+  if (ehDiaDeFolga(data)) return 'Domingo';
+  if (ehSabado(data)) return 'Sábado';
+
+  // Sobra quem não tem intervalo: estágio, nas colunas do almoço
+  return 'Sem intervalo';
 };
 
 /** 95 -> "1h35"; -95 -> "-1h35"; 0 -> "0h00" */
@@ -504,9 +548,22 @@ class ServicoPonto {
      * para almoço que ela não tem, e o dia dela nunca fechava.
      */
     const colaborador = bancoDados.obterColaboradorPorId(colaboradorId);
-    return (
-      marcacoesEsperadas(data, colaborador).find((tipo) => !registradas.includes(tipo)) || null
-    );
+    const esperadas = marcacoesEsperadas(data, colaborador);
+
+    /**
+     * DIA QUE NÃO ESPERA NADA AINDA PODE SER TRABALHADO.
+     *
+     * Domingo, feriado, sábado de quem não vem no sábado: o contrato não
+     * prevê jornada, mas a pessoa pode estar ali — e isso se chama hora
+     * extra. Sem esta saída, quem foi trabalhar no feriado não conseguia
+     * nem registrar que esteve lá.
+     *
+     * A sequência completa, porque um dia desses pode ter almoço como
+     * qualquer outro.
+     */
+    const sequencia = esperadas.length > 0 ? esperadas : ORDEM_MARCACOES;
+
+    return sequencia.find((tipo) => !registradas.includes(tipo)) || null;
   }
 
   /** Rótulo do próximo passo, pronto para o botão da tela. */
@@ -1901,12 +1958,20 @@ class ServicoPonto {
              * Em feriado fechado não se espera nada, e as quatro colunas
              * ficam traçadas.
              */
-            const esperadas = marcacoesEsperadas(j.data, resumo.colaborador);
-
             const celulas = ORDEM_MARCACOES.map((t) => {
-              if (!esperadas.includes(t)) {
-                return `<td class="hora naoSeAplica">—</td>`;
+              const motivo = motivoSemMarcacao(j.data, t, resumo.colaborador);
+
+              /**
+               * A célula que o dia não espera diz POR QUE está vazia.
+               *
+               * Se a pessoa bateu mesmo assim — hora extra no feriado, um
+               * domingo trabalhado — o horário vence o rótulo: o documento
+               * tem de mostrar o que aconteceu, não o que era previsto.
+               */
+              if (motivo && !j.marcacoes[t]) {
+                return `<td class="hora naoSeAplica">${escapar(motivo)}</td>`;
               }
+
               const reg = j.marcacoes[t];
               const ajuste = reg && ehMarcacaoCorrigida(reg.metodo) ? ' *' : '';
               return `<td class="hora">${reg ? reg.horaFormatada + ajuste : '--:--'}</td>`;
