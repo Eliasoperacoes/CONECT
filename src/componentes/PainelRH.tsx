@@ -218,7 +218,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
             <Indicador
               rotulo="Sem bater"
               valor={numeros.comPendencia}
-              detalhe="faltou batida no ciclo"
+              detalhe="faltou batida em dia já fechado"
               icone={<AlertTriangle className="w-3.5 h-3.5" />}
               alerta={numeros.comPendencia > 0}
               aoAbrir={() => setSecao('espelhos')}
@@ -227,7 +227,15 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
             <Indicador
               rotulo="Saldo da rede"
               valor={formatarSaldo(numeros.saldoDaRede)}
-              detalhe="somado no ciclo"
+              /**
+               * "Já fechados" está escrito porque o número mudou de
+               * significado: ele somava o ciclo INTEIRO, futuro incluído, e
+               * numa segunda de manhã a rede aparecia devendo a semana que
+               * nem tinha começado. Agora só conta dia encerrado — e o
+               * rótulo diz isso, para ninguém procurar no sábado um número
+               * que só fecha na sexta.
+               */
+              detalhe="nos dias já fechados do ciclo"
               icone={<TrendingDown className="w-3.5 h-3.5" />}
               alerta={numeros.saldoDaRede < 0}
               aoAbrir={() => setSecao('espelhos')}

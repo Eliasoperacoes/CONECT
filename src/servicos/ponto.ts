@@ -51,6 +51,7 @@ import {
   cargaSemanalDe,
 } from '../tipos';
 import { bancoDados } from './bancoDados';
+import { podeUsar } from './permissoes';
 import { linhasDeIdentificacao, contatoEmLinha } from './fichaColaborador';
 import { temAlcadaSobre, regraAutomaticaDeAlcada } from './organograma';
 // A FOLHA, nunca o serviço: importar `justificativas` daqui refecharia o
@@ -750,8 +751,8 @@ class ServicoPonto {
    * carga semanal DELA. É isso que vai para o banco de horas, e é isso que
    * o líder olha no sábado.
    *
-   * A semana vai de SEGUNDA a DOMINGO: é como a folha corre e como o sábado
-   * fecha o ciclo, em vez de partir a semana ao meio.
+   * O ciclo vai de SÁBADO a SEXTA — é o que `semanaDe` recorta, e é como a
+   * folha corre aqui: o sábado ABRE a semana em vez de parti-la ao meio.
    */
   apurarSemana(
     colaboradorId: string,
@@ -773,6 +774,32 @@ class ServicoPonto {
     const hoje = dataDeHoje();
 
     for (const data of listarDatasDoPeriodo(inicio, fim)) {
+      /**
+       * O SALDO SÓ CONTA DIA QUE JÁ FECHOU.
+       *
+       * Isto somava a semana INTEIRA de previsto, hoje e amanhã incluídos,
+       * contra o que a pessoa tinha trabalhado até agora. O efeito
+       * aparecia no painel do RH: numa segunda de manhã a rede devia
+       * −3924h33, que é a carga semanal de 87 pessoas — a semana que nem
+       * tinha começado, cobrada por inteiro de todo mundo.
+       *
+       * Era um número que não dava para acreditar, e indicador em que não
+       * se acredita é pior do que indicador nenhum: ensina a ignorar o
+       * painel, e junto com ele o dia em que a rede realmente estiver
+       * devendo.
+       *
+       * O dia de HOJE também fica fora, e não só o futuro: quem entrou às
+       * 8h e ainda está trabalhando não deve as 8h10 do dia. Contar o
+       * previsto de um dia em andamento faz a rede inteira parecer
+       * devedora toda manhã, e quitar sozinha até a noite.
+       *
+       * O mesmo corte de `hoje` que a pendência já usava, agora valendo
+       * para a conta toda — eram duas noções de "dia que passou" no mesmo
+       * laço, e foi a discordância entre elas que pôs "Sem bater: 0" ao
+       * lado de um débito de quatro mil horas.
+       */
+      if (data >= hoje) continue;
+
       const jornada = this.obterJornadaDoDia(colaboradorId, data);
       minutosTrabalhados += jornada.minutosTrabalhados;
       minutosPrevistos += jornada.minutosPrevistos;
@@ -783,13 +810,26 @@ class ServicoPonto {
        * batida é assunto de quem responde pela pessoa, porque só ela sabe
        * o que aconteceu.
        */
-      if (data >= hoje) continue;
       const esperadas = marcacoesEsperadas(data, colaborador);
       if (esperadas.length === 0) continue;
       if (situacaoDoDia(colaboradorId, data) !== 'normal') continue;
 
+      /**
+       * DIA SEM NENHUMA BATIDA TAMBÉM É FALTA DE BATIDA.
+       *
+       * Era `feitas > 0 && feitas < esperadas.length`: só o dia batido
+       * pela METADE contava. O dia em que a pessoa não bateu nada —
+       * que é a falta mais completa que existe — passava calado, ao
+       * mesmo tempo em que o previsto dele pesava no saldo dela.
+       *
+       * QUEM NÃO BATE PONTO tem de ficar fora desta conta, e não fica
+       * por aqui: `marcacoesEsperadas` olha o dia e a ficha, nunca se a
+       * pessoa bate ponto, e devolve as quatro batidas para o gerente
+       * também. Quem tira a gerência da relação é
+       * `relacaoSemanalDaEquipe`, com o porquê escrito lá.
+       */
       const feitas = esperadas.filter((t) => !!jornada.marcacoes[t]).length;
-      if (feitas > 0 && feitas < esperadas.length) diasComPendencia.push(data);
+      if (feitas < esperadas.length) diasComPendencia.push(data);
     }
 
     return {
@@ -836,9 +876,29 @@ class ServicoPonto {
 
     // Só quem eu aprovo: a relação da rede inteira não é minha para olhar.
     // Quem lidera aparece na própria relação, porque aprova as próprias horas.
-    const equipe = this.obterColaboradoresVisiveis().filter((c) =>
-      this.podeDecidirSobre(c)
-    );
+    const equipe = this.obterColaboradoresVisiveis()
+      .filter((c) => this.podeDecidirSobre(c))
+      /**
+       * BANCO DE HORAS É DE QUEM BATE PONTO.
+       *
+       * Da gerência para cima não se bate — está no catálogo, em
+       * `ferramentas.ts`, e foi decisão do Elias. Mas esta relação
+       * continuava incluindo essas pessoas, e o resultado era aritmético:
+       * quem nunca bate marca zero trabalhado contra a carga cheia, e
+       * aparece devendo a semana inteira. Toda semana, para sempre.
+       *
+       * Somado no painel do RH isso virava um débito de milhares de horas
+       * que ninguém devia. E a linha de cada gerente ficava no topo da
+       * relação do banco de horas, que ordena pelo maior débito — o lugar
+       * reservado a quem precisa de atenção, ocupado por quem não tem o
+       * que ser olhado.
+       *
+       * A pergunta é a MESMA que faz a aba "Ponto" aparecer, e vem do
+       * mesmo lugar: se a pessoa não tem por onde bater, não há saldo dela
+       * para cobrar. Duas respostas para isso seria a quinta vez que este
+       * sistema se contradiz sozinho.
+       */
+      .filter((c) => podeUsar('ponto', c));
 
     const linhas = equipe
       .map((colaborador) => {

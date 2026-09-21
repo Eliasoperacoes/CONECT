@@ -262,3 +262,47 @@ vezes — por causa de alguém abrindo uma conversa do outro lado da rede.
 Ao juntar rajada, **não atrase a primeira**: seria trocar o atraso do envio
 por um atraso no recebimento. O primeiro evento depois de uma calmaria vai
 na hora; a janela só junta o que vem grudado nele.
+
+## Indicador que soma o futuro
+
+O painel do RH abriu numa segunda-feira dizendo duas coisas ao mesmo tempo:
+
+| Cartão | Valor |
+|---|---|
+| Sem bater | **0** — faltou batida no ciclo |
+| Saldo da rede | **−3924h33** — somado no ciclo |
+
+Os dois saíam do mesmo `apurarSemana`, e não podiam ser as duas verdade. A
+conta que fecha a pergunta: 3924h33 são 235.473 minutos, e a carga semanal
+da rede é 2690 (44h50). **235.473 ÷ 2690 = 87,5 pessoas devendo a semana
+inteira**, com 89 na rede.
+
+Duas causas somadas, e a segunda nunca apareceria sozinha:
+
+1. **O previsto somava os sete dias do ciclo**, hoje e amanhã incluídos,
+   contra o que a pessoa tinha trabalhado *até agora*. Havia um
+   `if (data >= hoje) continue` no laço, mas ele estava **depois** da soma —
+   valia só para a pendência. Toda segunda a rede devia a semana que ainda
+   não tinha acontecido, e ia quitando sozinha até sexta.
+2. **Quem não bate ponto entrava na conta.** Da gerência para cima não se
+   bate — está no catálogo — mas a relação do banco de horas incluía essas
+   pessoas assim mesmo. Zero trabalhado contra a carga cheia: devendo a
+   semana toda, toda semana, para sempre. E a linha delas ia para o **topo**
+   da relação, que ordena pelo maior débito.
+
+O "Sem bater: 0" não era erro de contagem, era o sintoma: dia futuro não
+tem batida faltando. Um número olhava o futuro e o outro não, no mesmo laço.
+
+Tinha ainda um terceiro, menor, escondido pelos dois: a pendência era
+`feitas > 0 && feitas < esperadas.length` — só o dia batido **pela metade**
+contava. O dia sem nenhuma batida, que é a falta mais completa que existe,
+passava calado enquanto o previsto dele pesava no saldo.
+
+**Sinal para procurar:** indicador cujo valor você não consegue explicar em
+uma frase. Divida pelo número de pessoas antes de investigar o código — se
+der um número redondo (uma carga diária, uma semanal), o laço está contando
+gente ou dia que não devia.
+
+**A regra:** saldo acumulado só conta período **encerrado**. O dia em
+andamento fica fora dos dois lados — nem previsto, nem trabalhado — senão a
+rede inteira parece devedora toda manhã.
