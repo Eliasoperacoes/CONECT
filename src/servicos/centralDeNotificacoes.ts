@@ -47,6 +47,7 @@ import { servicoPonto, formatarDataBR } from './ponto';
 import {
   pendenciasParaDecidir as pendenciasDeAusencia,
   pendenciasDeFolga,
+  deveSerAvisadoDeAusencia,
 } from './justificativas';
 import { montarPreviaDaMensagem } from './nuvemComunicacao';
 import { deveSerAvisadoSobre } from './organograma';
@@ -198,7 +199,19 @@ const deJornadas = (): ItemNotificacao[] =>
 
 const deAusencias = (): ItemNotificacao[] =>
   pendenciasDeAusencia()
-    .filter(({ colaborador }) => meuParaAcompanhar(colaborador))
+    /**
+     * Ausência NÃO passa pelo filtro da cadeia como a folga: atestado é
+     * trabalho do RH, e quem deve ser avisado dele é o RH. A regra mora
+     * em `justificativas`, junto de quem pode decidir — aqui só se
+     * pergunta.
+     */
+    .filter(({ justificativa, colaborador }) =>
+      deveSerAvisadoDeAusencia(
+        bancoDados.obterColaboradorAtual(),
+        colaborador,
+        justificativa.tipo
+      )
+    )
     .map(({ justificativa, colaborador }) => ({
       id: `ausencia-${justificativa.id}`,
       tipo: 'ausencia' as const,

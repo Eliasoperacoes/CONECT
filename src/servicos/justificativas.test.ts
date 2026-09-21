@@ -38,8 +38,22 @@ const OUTRO = {
   ...CHEFE, id: 'outro', nome: 'Outro', login: 'outro', loja: 'Descalvado',
 };
 
+/**
+ * O RH, que é quem decide DOCUMENTO.
+ *
+ * Entrou quando o Elias viu a Leigislaine — uma líder — recusar o
+ * atestado da Aline. Atestado não é jornada: o líder não tem como julgar
+ * o documento e nem deveria lê-lo, porque é dado de saúde de um colega.
+ *
+ * Note que o Chefe NÃO cuida de pessoas: é Gerência, nível 3. É ele que
+ * prova que a cadeia deixou de alcançar o atestado.
+ */
+const RH = {
+  ...CHEFE, id: 'rh', nome: 'Dani', login: 'dani', setor: 'RH', cargo: 'Analista de RH',
+};
+
 let logado: any = ANA;
-let equipe: any[] = [CHEFE, ANA, OUTRO];
+let equipe: any[] = [CHEFE, ANA, OUTRO, RH];
 
 mock.module('./supabase', () => ({ usandoNuvem: () => false, supabase: null }));
 mock.module('./nuvem', () => ({
@@ -71,7 +85,7 @@ const {
 beforeEach(() => {
   armazenamento.clear();
   logado = ANA;
-  equipe = [CHEFE, ANA, OUTRO];
+  equipe = [CHEFE, ANA, OUTRO, RH];
 });
 
 const pedirAtestado = async (de = '2026-09-16', ate = '2026-09-18') =>
@@ -131,17 +145,87 @@ test('um atestado de 3 dias é UMA solicitação, não três', async () => {
 });
 
 // ============================================================
-// A ALÇADA É A MESMA DA HORA EXTRA
+// DOCUMENTO É DO RH. ESCALA É DA CADEIA.
 // ============================================================
 
-test('a fila é de quem responde pela pessoa, e só dele', async () => {
+/**
+ * O DEFEITO QUE ORIGINOU ESTA SEPARAÇÃO:
+ *
+ * A Aline mandou um atestado e a LEIGISLAINE — uma líder — recusou. Ela
+ * não deveria ter podido. Atestado é documento: o líder não tem como
+ * julgá-lo, e nem deveria lê-lo, porque é dado de saúde de um colega.
+ */
+test('o LÍDER não decide atestado, mesmo respondendo pela pessoa', async () => {
   await pedirAtestado();
 
+  // O Chefe responde pela Ana e decide a hora extra dela — mas não isto
   logado = CHEFE;
+  expect(pendenciasParaDecidir()).toHaveLength(0);
+});
+
+test('o atestado cai na fila do RH', async () => {
+  await pedirAtestado();
+
+  logado = RH;
   expect(pendenciasParaDecidir()).toHaveLength(1);
+});
+
+test('o líder que tentar decidir por fora recebe NÃO', async () => {
+  /**
+   * A fila esconder não basta: quem já tinha a tela aberta, ou chamar a
+   * função direto, precisa esbarrar na mesma regra. Esconder o botão e
+   * deixar a porta aberta não é permissão, é disfarce.
+   */
+  const { justificativa } = (await pedirAtestado()) as any;
+
+  logado = CHEFE;
+  const res = await decidirAusencia(justificativa.id, false, 'Não aceito');
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('RH');
+});
+
+test('a FOLGA continua com a cadeia, e não vai para o RH', async () => {
+  /**
+   * Folga de sábado se decide olhando a ESCALA — quantos já estão fora
+   * naquele dia — e isso quem sabe é quem toca a loja. Mandar tudo para o
+   * RH teria consertado o atestado e quebrado a escala.
+   */
+  await solicitarAusencia({
+    dataInicio: '2026-09-19',
+    dataFim: '2026-09-19',
+    tipo: 'folga_sabado',
+  });
+
+  logado = CHEFE;
+  expect(pendenciasDeFolga()).toHaveLength(1);
+});
+
+test('a fila da cadeia é de quem responde pela pessoa, e só dele', async () => {
+  await solicitarAusencia({
+    dataInicio: '2026-09-19',
+    dataFim: '2026-09-19',
+    tipo: 'folga_sabado',
+  });
+
+  logado = CHEFE;
+  expect(pendenciasDeFolga()).toHaveLength(1);
 
   // Gerente de outra loja não decide sobre quem não é dele
   logado = OUTRO;
+  expect(pendenciasDeFolga()).toHaveLength(0);
+});
+
+test('nem o RH decide o próprio atestado', async () => {
+  // A trava de não decidir sobre si mesmo vale nos dois lados da regra
+  logado = RH;
+  await solicitarAusencia({
+    dataInicio: '2026-09-16',
+    dataFim: '2026-09-16',
+    tipo: 'atestado',
+    anexoCaminho: 'ausencias/rh/atestado.jpg',
+  });
+
   expect(pendenciasParaDecidir()).toHaveLength(0);
 });
 
@@ -152,14 +236,17 @@ test('a fila é de quem responde pela pessoa, e só dele', async () => {
  * junto com a da hora extra. E vale a mesma coisa aqui de propósito: a
  * regra vem de `podeDecidirSobre`, e não há uma segunda escrita neste
  * arquivo. Se houvesse, um dia elas discordariam.
+ *
+ * O tipo é FÉRIAS porque a regra é da cadeia, e férias é da cadeia —
+ * planejar quem sai quando é de quem toca a loja.
  */
-test('quem lidera aprova a propria ausencia', async () => {
+test('quem lidera aprova as proprias ferias', async () => {
   // O Chefe tem a Ana pendurada nele
   logado = CHEFE;
   await solicitarAusencia({
     dataInicio: '2026-09-16',
     dataFim: '2026-09-16',
-    tipo: 'comparecimento',
+    tipo: 'ferias',
   });
 
   // Ela aparece para ele mesmo decidir
@@ -168,12 +255,12 @@ test('quem lidera aprova a propria ausencia', async () => {
   const minha = minhasJustificativas()[0];
   const res = await decidirAusencia(minha.id, true);
   expect(res.sucesso).toBe(true);
-  expect(situacaoDoDia(CHEFE.id, '2026-09-16')).toBe('comparecimento');
+  expect(situacaoDoDia(CHEFE.id, '2026-09-16')).toBe('ferias');
 });
 
 test('recusar EXIGE motivo', async () => {
   await pedirAtestado();
-  logado = CHEFE;
+  logado = RH;
   const alvo = pendenciasParaDecidir()[0].justificativa;
 
   const semMotivo = await decidirAusencia(alvo.id, false);
@@ -189,7 +276,7 @@ test('recusar EXIGE motivo', async () => {
 
 test('APROVADA: o dia deixa de ser "sem batida" e ganha situação', async () => {
   await pedirAtestado('2026-09-16', '2026-09-18');
-  logado = CHEFE;
+  logado = RH;
   await decidirAusencia(pendenciasParaDecidir()[0].justificativa.id, true);
 
   // Todos os dias do período, inclusive as pontas
@@ -209,7 +296,7 @@ test('PENDENTE não muda o dia', async () => {
 
 test('RECUSADA não muda o dia', async () => {
   await pedirAtestado();
-  logado = CHEFE;
+  logado = RH;
   await decidirAusencia(
     pendenciasParaDecidir()[0].justificativa.id,
     false,
@@ -224,7 +311,7 @@ test('RECUSADA não muda o dia', async () => {
 
 test('a ausência de um não vaza para o dia de outro', async () => {
   await pedirAtestado();
-  logado = CHEFE;
+  logado = RH;
   await decidirAusencia(pendenciasParaDecidir()[0].justificativa.id, true);
 
   expect(situacaoDoDia(ANA.id, '2026-09-16')).toBe('abonado_atestado');
@@ -237,7 +324,8 @@ test('cada tipo vira a sua própria situação no dia', async () => {
     dataFim: '2026-09-20',
     tipo: 'falta_justificada',
   });
-  logado = CHEFE;
+  // Falta justificada é documento, como o atestado: decide o RH
+  logado = RH;
   await decidirAusencia(pendenciasParaDecidir()[0].justificativa.id, true);
 
   // Falta justificada não é abono de atestado: o espelho precisa distinguir

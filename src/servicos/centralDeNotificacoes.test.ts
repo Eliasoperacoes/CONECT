@@ -49,6 +49,8 @@ let porLer: any[] = [];
 let jornadas: any[] = [];
 let ausencias: any[] = [];
 let folgas: any[] = [];
+/** O que `justificativas` responderia sobre avisar de uma ausência. */
+let avisaAusencia = true;
 
 mock.module('./bancoDados', () => ({
   bancoDados: {
@@ -66,6 +68,13 @@ mock.module('./ponto', () => ({
 mock.module('./justificativas', () => ({
   pendenciasParaDecidir: () => ausencias,
   pendenciasDeFolga: () => folgas,
+  /**
+   * Atestado é do RH, e o aviso dele também — mas essa regra mora em
+   * `justificativas`, com teste próprio lá. O que cabe a ESTE arquivo
+   * provar é que ele PERGUNTA e OBEDECE, e por isso a resposta aqui é
+   * uma chave que os testes viram.
+   */
+  deveSerAvisadoDeAusencia: () => avisaAusencia,
 }));
 mock.module('./nuvemComunicacao', () => ({
   montarPreviaDaMensagem: (m: any) => m.texto || '',
@@ -104,6 +113,7 @@ beforeEach(() => {
   jornadas = [];
   ausencias = [];
   folgas = [];
+  avisaAusencia = true;
 });
 
 // ---------------------------------------------------------------
@@ -153,18 +163,43 @@ test('pedido de quem NÃO tem ninguém acima cai para quem cuida de pessoas', ()
   expect(contarNotificacoes()).toBe(0);
 });
 
-test('a regra vale para jornada e ausência, não só para folga', () => {
+test('a regra da cadeia vale para jornada, não só para folga', () => {
   jornadas = [jornadaDe(DANI)];
-  ausencias = [{
-    justificativa: { id: 'j1', tipo: 'atestado', dataInicio: '2026-09-21', criadoEm: '2026-09-21T07:00:00.000Z' },
-    colaborador: DANI,
-  }];
 
   logado = TI;
   expect(contarNotificacoes()).toBe(0);
 
   logado = LIDER;
-  expect(contarNotificacoes()).toBe(2);
+  expect(contarNotificacoes()).toBe(1);
+});
+
+test('a ausência obedece a quem manda nela, e não à cadeia', () => {
+  /**
+   * Atestado mudou de dono: quem decide — e quem é avisado — é o RH, e
+   * não a cadeia. A regra mora em `justificativas`, porque é lá que
+   * ficam todas as regras de ausência.
+   *
+   * O que se prende AQUI é que o sino pergunta e obedece. Uma segunda
+   * cópia da regra dentro deste arquivo seria a quinta vez que este
+   * sistema se contradiz sozinho.
+   */
+  ausencias = [{
+    justificativa: {
+      id: 'j1',
+      tipo: 'atestado',
+      dataInicio: '2026-09-21',
+      criadoEm: '2026-09-21T07:00:00.000Z',
+    },
+    colaborador: DANI,
+  }];
+
+  // A líder responde pela Dani — e ainda assim não é avisada do atestado
+  logado = LIDER;
+  avisaAusencia = false;
+  expect(contarNotificacoes()).toBe(0);
+
+  avisaAusencia = true;
+  expect(contarNotificacoes()).toBe(1);
 });
 
 test('mensagem NÃO passa pelo filtro de cadeia', () => {

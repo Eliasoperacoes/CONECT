@@ -1152,6 +1152,27 @@ class PonteNuvem {
           this.sincronizarAjustes();
         }
       )
+      /**
+       * A DECISÃO SOBRE UMA AUSÊNCIA PRECISA CHEGAR NOS OUTROS APARELHOS.
+       *
+       * A tabela já estava publicada no realtime — o `.sql` até diz por
+       * quê: "a decisão do gestor precisa chegar no aparelho de quem
+       * pediu sem a pessoa ficar recarregando a tela". Só que ninguém
+       * escutava. O banco falava sozinho.
+       *
+       * Foi o que o Elias viu: a Leigislaine recusou o atestado da Aline,
+       * a recusa foi gravada, e na conta da Dani a solicitação continuou
+       * pendente. Duas pessoas decidindo a mesma coisa, cada uma vendo um
+       * estado diferente — e a segunda decisão sobrescreveria a primeira
+       * sem ninguém notar.
+       */
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'justificativas_ausencia' },
+        () => {
+          this.sincronizarJustificativas();
+        }
+      )
       .subscribe();
   }
 }
@@ -1173,6 +1194,16 @@ export const iniciarNuvem = async (): Promise<void> => {
       await nuvem.sincronizarColaboradores();
       await nuvem.sincronizarPonto();
       await nuvem.sincronizarAjustes();
+      /**
+       * FALTAVA AQUI, e o login tinha.
+       *
+       * Login acontece uma vez; abrir o aplicativo com a sessão salva
+       * acontece todo dia. Sem esta linha, o cache de ausências de quem
+       * não deslogava ficava parado no dia do último login — mostrando
+       * como pendente o que já tinha sido decidido, e escondendo o que
+       * chegou depois.
+       */
+      await nuvem.sincronizarJustificativas();
       await nuvem.sincronizarFeriados();
       await carregarComunicacao();
     }

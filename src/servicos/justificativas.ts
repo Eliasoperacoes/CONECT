@@ -4,11 +4,23 @@
  * Atestado, falta justificada e comparecimento: o que NÃO passa por batida
  * nenhuma, e por isso o fluxo automático da jornada nunca enxerga.
  *
- * Segue a MESMA cadeia da aprovação de hora, e pelo mesmo motivo: quem
- * responde pela pessoa é quem decide. Não há uma segunda regra de alçada
- * aqui — `servicoPonto.podeDecidirSobre` é consultado, e é ele que já
- * carrega o organograma, a regra automática e a trava de ninguém decidir
- * sobre si mesmo.
+ * ===================================================================
+ * NEM TUDO AQUI SE DECIDE NO MESMO LUGAR
+ * ===================================================================
+ *
+ * Seguia tudo a cadeia da aprovação de hora. Deu no que o Elias viu: a
+ * Aline mandou um atestado, a Leigislaine recusou — e ela não deveria ter
+ * podido recusar nada disso.
+ *
+ * Atestado é DOCUMENTO, não jornada. O líder sabe se a pessoa fez hora
+ * extra porque ele estava lá; ele não tem como julgar um atestado, e
+ * também não deveria ler um: é dado de saúde de um colega, que pela LGPD
+ * pede tratamento restrito a quem precisa dele para trabalhar.
+ *
+ * Folga de sábado é o contrário — se decide olhando a ESCALA, quantos já
+ * estão de folga naquele sábado, e isso quem sabe é quem toca a loja.
+ *
+ * Então são dois donos, e `quemDecide` diz qual é qual.
  *
  * Um atestado de três dias é UMA solicitação com início e fim, não três
  * pedidos: quem aprova decide uma vez, sobre o documento inteiro.
@@ -19,7 +31,10 @@ import {
   SituacaoDoDia,
   SITUACAO_POR_TIPO,
   TipoAusencia,
+  cuidaDePessoas,
+  ehDoRh,
 } from '../tipos';
+import { deveSerAvisadoSobre } from './organograma';
 import {
   lerJustificativas,
   gravarJustificativas,
@@ -42,6 +57,64 @@ const gravar = gravarJustificativas;
 
 // Reexportado para quem usa o serviço não precisar saber do cache
 export { assinarJustificativas };
+
+/**
+ * QUEM DECIDE CADA TIPO. A regra mora aqui, e só aqui.
+ *
+ * `rh` — o documento. Atestado, falta justificada, comparecimento e
+ * "outro" são papéis que se julgam pelo papel, e o atestado ainda carrega
+ * dado de saúde. Não é assunto do líder, nem para decidir nem para ler.
+ *
+ * `cadeia` — a escala. Folga de sábado e férias se decidem olhando quem
+ * mais está fora naquele dia, e isso é de quem toca a loja.
+ */
+export const quemDecide = (tipo: TipoAusencia): 'rh' | 'cadeia' =>
+  tipo === 'folga_sabado' || tipo === 'ferias' ? 'cadeia' : 'rh';
+
+/**
+ * Esta pessoa pode decidir ESTA solicitação?
+ *
+ * As duas metades têm a mesma trava de não decidir sobre si mesmo, mas
+ * por caminhos diferentes: na cadeia quem cuida disso é
+ * `podeDecidirSobre`; no RH é a comparação explícita aqui embaixo —
+ * alguém do RH mandando o próprio atestado não se aprova.
+ */
+export const podeDecidirSobreAusencia = (
+  quem: Colaborador,
+  dono: Colaborador,
+  tipo: TipoAusencia
+): boolean => {
+  if (quemDecide(tipo) === 'cadeia') return servicoPonto.podeDecidirSobre(dono);
+
+  /**
+   * `cuidaDePessoas` e não `ehDoRh`: Diretoria e TI continuam alcançando,
+   * como alcançam todo o resto do sistema. Sem isso, um atestado ficaria
+   * parado para sempre se o RH estivesse de férias — e não haveria quem
+   * destravasse.
+   *
+   * Quem é AVISADO é mais estreito que quem pode decidir, e essa
+   * diferença está em `deveSerAvisadoDeAusencia`.
+   */
+  return cuidaDePessoas(quem) && quem.id !== dono.id;
+};
+
+/**
+ * Esta pessoa deve ser AVISADA desta solicitação?
+ *
+ * Poder decidir não é precisar ser avisado — é a mesma distinção que o
+ * organograma já faz para a jornada. O atestado é trabalho do RH: é o
+ * sino do RH que tem de tocar, e não o de todo diretor e todo TI da rede.
+ */
+export const deveSerAvisadoDeAusencia = (
+  quem: Colaborador,
+  dono: Colaborador,
+  tipo: TipoAusencia
+): boolean => {
+  if (quemDecide(tipo) === 'cadeia') {
+    return deveSerAvisadoSobre(quem, dono, bancoDados.obterColaboradores());
+  }
+  return ehDoRh(quem) && quem.id !== dono.id;
+};
 
 /** Os dias de um período, inclusive as pontas. */
 const diasDoPeriodo = (inicio: string, fim: string): string[] => {
@@ -314,7 +387,12 @@ export const pendenciasParaDecidir = (opcoes: { tipo?: 'ausencia' | 'folga' } = 
     }))
     .filter(
       (item): item is { justificativa: JustificativaAusencia; colaborador: Colaborador } =>
-        !!item.colaborador && servicoPonto.podeDecidirSobre(item.colaborador)
+        !!item.colaborador &&
+        podeDecidirSobreAusencia(
+          bancoDados.obterColaboradorAtual(),
+          item.colaborador,
+          item.justificativa.tipo
+        )
     )
     .sort((a, b) => a.justificativa.dataInicio.localeCompare(b.justificativa.dataInicio));
 
@@ -332,10 +410,13 @@ export const decidirAusencia = async (
 
   const alvo = lista[indice];
   const dono = bancoDados.obterColaboradorPorId(alvo.colaboradorId);
-  if (!dono || !servicoPonto.podeDecidirSobre(dono)) {
+  if (!dono || !podeDecidirSobreAusencia(eu, dono, alvo.tipo)) {
     return {
       sucesso: false,
-      erro: 'Você não responde por esta pessoa. A decisão cabe ao líder ou ao gerente dela.',
+      erro:
+        dono && quemDecide(alvo.tipo) === 'rh'
+          ? 'Atestados e declarações são decididos pelo RH.'
+          : 'Você não responde por esta pessoa. A decisão cabe ao líder ou ao gerente dela.',
     };
   }
   if (!aprovada && !motivoRecusa?.trim()) {
