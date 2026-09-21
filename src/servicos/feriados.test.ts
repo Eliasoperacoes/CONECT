@@ -137,7 +137,7 @@ test('o cache aguenta lixo no armazenamento', () => {
   localStorage.removeItem(CHAVE_FERIADOS);
 });
 
-test('O CACHE NÃO IMPORTA NADA ALÉM DE TIPOS', async () => {
+test('O CACHE SÓ IMPORTA FOLHAS', async () => {
   /**
    * `nuvem` precisa entregar os feriados vindos do banco. Se este arquivo
    * importasse o serviço de regra, o ciclo nuvem → feriados → ponto →
@@ -145,8 +145,22 @@ test('O CACHE NÃO IMPORTA NADA ALÉM DE TIPOS', async () => {
    * aplicativo inteiro com "Cannot access 'nuvem' before initialization".
    *
    * É o mesmo ciclo que já apagou a tela deste sistema uma vez.
+   *
+   * A regra era "só `../tipos`". Ficou estreita demais quando o feriado
+   * nacional passou a ser CALCULADO em vez de cadastrado: o cache precisa
+   * da tabela do ano, e ela mora em `feriadosNacionais`.
+   *
+   * O que protege contra o ciclo não é a lista de nomes, é a FOLHA: um
+   * módulo que não importa ninguém não pode fechar ciclo com ninguém. Por
+   * isso o teste deixou de conferir de quem se importa e passou a
+   * conferir o que essas importações arrastam junto.
    */
   const fonte = await Bun.file('src/servicos/feriadosCache.ts').text();
   const imports = [...fonte.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
-  expect(imports).toEqual(['../tipos']);
+
+  expect(imports).toEqual(['../tipos', './feriadosNacionais']);
+
+  // E a folha tem de continuar folha, senão a proteção acima é decorativa
+  const folha = await Bun.file('src/servicos/feriadosNacionais.ts').text();
+  expect([...folha.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1])).toEqual([]);
 });

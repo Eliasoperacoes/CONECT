@@ -37,24 +37,32 @@ import {
   dataDeHoje,
 } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
+import { podeUsar } from '../servicos/permissoes';
 import {
   lerJustificativas,
   assinarJustificativas,
 } from '../servicos/justificativasCache';
 import { EscalaDeFolgas } from './EscalaDeFolgas';
-import { CalendarioFeriados } from './CalendarioFeriados';
 import { BancoDeHoras } from './BancoDeHoras';
 import { AbaHolerites } from './AbaHolerites';
 import { AbaAdvertencias } from './AbaAdvertencias';
 import { AbaAtestados } from './AbaAtestados';
 
+/**
+ * A aba "Feriados" saiu daqui.
+ *
+ * Ela servia para apertar "Trazer nacionais" uma vez por ano e digitar o
+ * que o calendário já sabe. Natal não é dado a ser cadastrado, é conta —
+ * e agora `feriadoEm` responde sozinha, para qualquer ano, incluindo os
+ * móveis pela Páscoa. Uma tela cuja única função era alimentar o que o
+ * sistema podia calcular é trabalho que a pessoa fazia pelo sistema.
+ */
 type Secao =
   | 'painel'
   | 'holerites'
   | 'atestados'
   | 'advertencias'
   | 'escala'
-  | 'calendario'
   | 'espelhos';
 
 interface Props {
@@ -135,12 +143,37 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
     const aguardando = justificativas.filter((j) => j.estado === 'pendente');
 
     /**
-     * Sem organograma, a pessoa não tem aprovador — e ninguém percebe até a
-     * hora dela ficar parada. É o número que o RH precisa zerar antes de
-     * qualquer outro.
+     * QUEM FICA MESMO SEM APROVADOR.
+     *
+     * Era `!c.responsavelId`, e só. O painel acusava 9 pessoas "fora do
+     * organograma" com todo mundo devidamente ligado — porque as 9 eram
+     * os GERENTES, LÍDERES, RH e o ADM: o topo da cadeia, que não tem
+     * ninguém acima porque não existe ninguém acima.
+     *
+     * Um número que não pode chegar a zero é um alarme que só ensina a
+     * ignorar o painel. E este vinha com faixa amarela mandando
+     * "posicione cada uma na aba Organograma" — uma tarefa impossível,
+     * repetida todo dia.
+     *
+     * Não ter responsável só é problema quando sobra alguém sem ninguém
+     * para decidir. Duas saídas já existem no sistema, e nenhuma passa
+     * por ter alguém acima:
+     *
+     *  - QUEM LIDERA APROVA AS PRÓPRIAS HORAS. É regra de
+     *    `temAlcadaSobre`, e vale para quem tem gente pendurada abaixo.
+     *  - QUEM NÃO BATE PONTO não tem hora a aprovar. Da gerência para
+     *    cima não se bate — está no catálogo.
+     *
+     * Sobra o caso real: a pessoa que bate ponto, não tem ninguém acima
+     * e não lidera ninguém. Essa fica parada de verdade, e é ela que o
+     * RH precisa posicionar.
      */
     const semResponsavel = pessoas.filter(
-      (c) => !c.responsavelId && c.id !== colaboradorAtual.id
+      (c) =>
+        !c.responsavelId &&
+        c.id !== colaboradorAtual.id &&
+        podeUsar('ponto', c) &&
+        !pessoas.some((outro) => outro.responsavelId === c.id)
     );
 
     return {
@@ -152,6 +185,66 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
       semResponsavel: semResponsavel.length,
     };
   }, [versao, colaboradorAtual.id]);
+
+  /**
+   * O QUE ESTÁ PARADO ESPERANDO O RH, e só isso.
+   *
+   * Uma linha só entra aqui quando há trabalho a fazer — nada de cartão
+   * com zero ocupando o lugar do que importa. Cada uma diz o QUE é, POR
+   * QUE apareceu e para ONDE leva, porque "Sem bater: 3" não ensina
+   * ninguém a resolver nada.
+   *
+   * "Sem responsável" tem destino em OUTRA tela, o Organograma, que não é
+   * uma seção daqui. Por isso ela leva a explicação no corpo em vez de um
+   * botão que não teria para onde ir — prometer um caminho que não existe
+   * é pior do que dizer onde fica.
+   */
+  const pendencias: Array<{
+    id: string;
+    titulo: string;
+    explicacao: string;
+    /** Ausente quando o destino não é uma seção daqui. */
+    acao?: string;
+    icone: React.ReactNode;
+    aoAbrir?: () => void;
+  }> = [];
+
+  if (numeros.aguardando > 0) {
+    pendencias.push({
+      id: 'aguardando',
+      titulo: `${numeros.aguardando} ${
+        numeros.aguardando === 1 ? 'pedido aguarda' : 'pedidos aguardam'
+      } sua decisão`,
+      explicacao: 'Atestados e folgas que ninguém aprovou nem recusou ainda',
+      acao: 'Decidir',
+      icone: <Stethoscope className="w-4 h-4" />,
+      aoAbrir: () => setSecao('atestados'),
+    });
+  }
+
+  if (numeros.comPendencia > 0) {
+    pendencias.push({
+      id: 'sem-bater',
+      titulo: `${numeros.comPendencia} ${
+        numeros.comPendencia === 1 ? 'pessoa ficou' : 'pessoas ficaram'
+      } sem bater`,
+      explicacao: 'Faltou batida num dia que já fechou — o espelho não fecha assim',
+      acao: 'Ver espelhos',
+      icone: <AlertTriangle className="w-4 h-4" />,
+      aoAbrir: () => setSecao('espelhos'),
+    });
+  }
+
+  if (numeros.semResponsavel > 0) {
+    pendencias.push({
+      id: 'sem-responsavel',
+      titulo: `${numeros.semResponsavel} ${
+        numeros.semResponsavel === 1 ? 'pessoa bate ponto e não tem' : 'pessoas batem ponto e não têm'
+      } quem aprove`,
+      explicacao: 'A hora delas não chega a líder nenhum — posicione na aba Organograma',
+      icone: <Users className="w-4 h-4" />,
+    });
+  }
 
   const abas: Array<{ id: Secao; rotulo: string; icone: React.ReactNode; alerta?: boolean }> = [
     { id: 'painel', rotulo: 'Painel', icone: <ClipboardList className="w-3.5 h-3.5" /> },
@@ -168,7 +261,6 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
       icone: <AlertTriangle className="w-3.5 h-3.5" />,
     },
     { id: 'escala', rotulo: 'Escala de folgas', icone: <CalendarDays className="w-3.5 h-3.5" /> },
-    { id: 'calendario', rotulo: 'Feriados', icone: <CalendarDays className="w-3.5 h-3.5" /> },
     { id: 'espelhos', rotulo: 'Espelhos de ponto', icone: <FileText className="w-3.5 h-3.5" /> },
   ];
 
@@ -198,104 +290,145 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
       </nav>
 
       {secao === 'painel' && (
-        <div className="p-4 sm:p-6 flex flex-col gap-4">
-          <div>
-            <h2 className="text-sm font-bold text-[var(--c-texto)]">A rede esta semana</h2>
-            <p className="text-xs text-[var(--c-texto-3)]">
-              Todos os números saem do que o sistema já sabe. Toque num deles para ir ao
-              lugar onde se resolve.
-            </p>
-          </div>
+        <div className="p-4 sm:p-6 flex flex-col gap-6 max-w-[1100px]">
+          {/*
+            ===============================================================
+            PRIMEIRO O QUE ESPERA DECISÃO. DEPOIS O RESTO.
+            ===============================================================
 
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            <Indicador
-              rotulo="Pessoas ativas"
-              valor={numeros.pessoas}
-              detalhe="na rede inteira"
-              icone={<Users className="w-3.5 h-3.5" />}
-            />
+            Eram seis cartões do mesmo tamanho, na mesma cor, na mesma
+            linha. "Pessoas ativas: 89" — um número que não muda e não pede
+            nada — com o mesmo peso de "Aguardando decisão: 1", que é
+            alguém parado esperando resposta. Quem abre não sabe por onde
+            começar, e quem nunca usou o sistema menos ainda.
 
-            <Indicador
-              rotulo="Sem bater"
-              valor={numeros.comPendencia}
-              detalhe="faltou batida em dia já fechado"
-              icone={<AlertTriangle className="w-3.5 h-3.5" />}
-              alerta={numeros.comPendencia > 0}
-              aoAbrir={() => setSecao('espelhos')}
-            />
-
-            <Indicador
-              rotulo="Saldo da rede"
-              valor={formatarSaldo(numeros.saldoDaRede)}
-              /**
-               * "Já fechados" está escrito porque o número mudou de
-               * significado: ele somava o ciclo INTEIRO, futuro incluído, e
-               * numa segunda de manhã a rede aparecia devendo a semana que
-               * nem tinha começado. Agora só conta dia encerrado — e o
-               * rótulo diz isso, para ninguém procurar no sábado um número
-               * que só fecha na sexta.
-               */
-              detalhe="nos dias já fechados do ciclo"
-              icone={<TrendingDown className="w-3.5 h-3.5" />}
-              alerta={numeros.saldoDaRede < 0}
-              aoAbrir={() => setSecao('espelhos')}
-            />
-
-            <Indicador
-              rotulo="Aguardando decisão"
-              valor={numeros.aguardando}
-              detalhe="atestados e folgas"
-              icone={<Stethoscope className="w-3.5 h-3.5" />}
-              alerta={numeros.aguardando > 0}
-              aoAbrir={() => setSecao('atestados')}
-            />
-
-            <Indicador
-              rotulo="Atestados no mês"
-              valor={numeros.atestadosDoMes}
-              detalhe="entregues neste mês"
-              icone={<Stethoscope className="w-3.5 h-3.5" />}
-              aoAbrir={() => setSecao('atestados')}
-            />
-
-            {/*
-              O único indicador que não é sobre o mês, e sim sobre o cadastro.
-              Sem organograma a pessoa não tem aprovador, e ninguém percebe
-              até a hora dela ficar parada.
-            */}
-            <Indicador
-              rotulo="Sem responsável"
-              valor={numeros.semResponsavel}
-              detalhe={
-                numeros.semResponsavel > 0
-                  ? 'ninguém aprova a hora dessas pessoas'
-                  : 'todo mundo posicionado'
-              }
-              icone={
-                numeros.semResponsavel > 0 ? (
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                ) : (
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                )
-              }
-              alerta={numeros.semResponsavel > 0}
-            />
-          </div>
-
-          {numeros.semResponsavel > 0 && (
-            <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/25 flex gap-2.5">
-              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-[var(--c-texto-2)] leading-relaxed">
-                <strong className="text-[var(--c-texto)]">
-                  {numeros.semResponsavel}{' '}
-                  {numeros.semResponsavel === 1 ? 'pessoa está' : 'pessoas estão'} fora do
-                  organograma.
-                </strong>{' '}
-                A hora delas não chega a nenhum líder — cai aqui, no RH. Posicione cada uma
-                na aba Organograma para a aprovação seguir a cadeia.
+            Agora são duas coisas separadas: o que precisa de você, com
+            nome, verbo e caminho; e os números da rede, pequenos, embaixo,
+            porque conferir não é agir.
+          */}
+          <section className="flex flex-col gap-2.5">
+            <div>
+              <h2 className="text-sm font-bold text-[var(--c-texto)]">Precisa de você</h2>
+              <p className="text-xs text-[var(--c-texto-3)]">
+                O que está parado esperando uma decisão do RH.
               </p>
             </div>
-          )}
+
+            {pendencias.length === 0 ? (
+              /*
+                O estado calmo é uma FRASE, e não um cartão verde grande.
+                Nada esperando não é conquista para comemorar toda vez que
+                se abre a tela — é o normal, e o normal merece uma linha.
+              */
+              <div className="p-3.5 rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex items-center gap-2.5">
+                <CheckCircle2 className="w-4 h-4 text-[var(--c-ok)] flex-shrink-0" />
+                <p className="text-xs text-[var(--c-texto-2)]">
+                  Nada esperando decisão. O que chegar aparece aqui.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {pendencias.map((p) => {
+                  /*
+                    Com destino vira botão; sem destino, uma faixa. Um
+                    botão que não leva a lugar nenhum é pior do que texto:
+                    a pessoa toca, nada acontece, e ela passa a desconfiar
+                    dos outros também.
+                  */
+                  const Caixa = p.aoAbrir ? 'button' : 'div';
+                  return (
+                    <Caixa
+                      key={p.id}
+                      {...(p.aoAbrir
+                        ? { type: 'button' as const, onClick: p.aoAbrir }
+                        : {})}
+                      className={`w-full p-3.5 rounded-xl bg-[var(--c-superficie)] border border-amber-500/30 flex items-center gap-3 text-left transition-colors ${
+                        p.aoAbrir ? 'hover:border-amber-500/60 group' : ''
+                      }`}
+                    >
+                      <span className="w-9 h-9 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center flex-shrink-0">
+                        {p.icone}
+                      </span>
+
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-bold text-[var(--c-texto)]">
+                          {p.titulo}
+                        </span>
+                        <span className="block text-xs text-[var(--c-texto-3)]">
+                          {p.explicacao}
+                        </span>
+                      </span>
+
+                      {p.acao && (
+                        <span className="text-xs font-bold text-[var(--c-acento)] whitespace-nowrap group-hover:underline">
+                          {p.acao} →
+                        </span>
+                      )}
+                    </Caixa>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section className="flex flex-col gap-2.5">
+            <div>
+              <h2 className="text-sm font-bold text-[var(--c-texto)]">A rede em números</h2>
+              <p className="text-xs text-[var(--c-texto-3)]">
+                Saem do que o sistema já sabe — ninguém digita nada aqui.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <Indicador
+                rotulo="Pessoas ativas"
+                valor={numeros.pessoas}
+                detalhe="na rede inteira"
+                icone={<Users className="w-3.5 h-3.5" />}
+              />
+
+              <Indicador
+                rotulo="Saldo da rede"
+                valor={formatarSaldo(numeros.saldoDaRede)}
+                /**
+                 * "Já fechados" está escrito porque o número mudou de
+                 * significado: ele somava o ciclo INTEIRO, futuro incluído,
+                 * e numa segunda de manhã a rede aparecia devendo a semana
+                 * que nem tinha começado. Agora só conta dia encerrado — e o
+                 * rótulo diz isso, para ninguém procurar no sábado um número
+                 * que só fecha na sexta.
+                 */
+                detalhe="nos dias já fechados do ciclo"
+                icone={<TrendingDown className="w-3.5 h-3.5" />}
+                aoAbrir={() => setSecao('espelhos')}
+              />
+
+              <Indicador
+                rotulo="Atestados no mês"
+                valor={numeros.atestadosDoMes}
+                detalhe="entregues neste mês"
+                icone={<Stethoscope className="w-3.5 h-3.5" />}
+                aoAbrir={() => setSecao('atestados')}
+              />
+
+              <Indicador
+                rotulo="Sem responsável"
+                valor={numeros.semResponsavel}
+                detalhe={
+                  numeros.semResponsavel > 0
+                    ? 'batem ponto e ninguém aprova'
+                    : 'todo mundo tem quem aprove'
+                }
+                icone={
+                  numeros.semResponsavel > 0 ? (
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                  ) : (
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                  )
+                }
+              />
+            </div>
+          </section>
         </div>
       )}
 
@@ -313,15 +446,6 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
         <div className="p-4 sm:p-6">
           <EscalaDeFolgas colaboradorAtual={colaboradorAtual} />
         </div>
-      )}
-
-      {/*
-        O CALENDÁRIO FICA NO RH, e não no ADM.
-        Feriado mexe no banco de horas de todo mundo — é assunto de quem
-        cuida de pessoas, e é aqui que essa pessoa trabalha.
-      */}
-      {secao === 'calendario' && (
-        <CalendarioFeriados colaboradorAtual={colaboradorAtual} />
       )}
 
       {secao === 'espelhos' && (

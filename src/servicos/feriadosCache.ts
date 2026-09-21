@@ -17,6 +17,7 @@
  * **Não acrescente import aqui.** Há teste conferindo.
  */
 import { Feriado, Loja } from '../tipos';
+import { feriadosNacionaisDe } from './feriadosNacionais';
 
 export const CHAVE_FERIADOS = 'conecta_v4_feriados';
 
@@ -63,9 +64,40 @@ export const aplicarFeriadosDaNuvem = (lista: Feriado[]): void => {
  */
 export const feriadoEm = (data: string, loja?: Loja): Feriado | undefined => {
   const doDia = lerFeriados().filter((f) => f.data === data);
-  if (doDia.length === 0) return undefined;
 
-  return (
-    doDia.find((f) => f.loja && f.loja === loja) || doDia.find((f) => !f.loja)
-  );
+  const cadastrado =
+    doDia.find((f) => f.loja && f.loja === loja) || doDia.find((f) => !f.loja);
+  if (cadastrado) return cadastrado;
+
+  /**
+   * O FERIADO NACIONAL NÃO PRECISA SER CADASTRADO.
+   *
+   * Antes precisava: alguém tinha de abrir a tela de Feriados e apertar
+   * "Trazer nacionais", uma vez por ano. Funciona enquanto a pessoa
+   * lembra — e o dia em que ninguém lembrasse, todo feriado do ano
+   * viraria dia útil no espelho de ponto, cobrando 8h10 de uma loja
+   * fechada. Sem erro na tela, sem aviso: só o número errado.
+   *
+   * Natal não é dado a ser digitado, é conta. A data de cada um sai do
+   * calendário (e da Páscoa, para os móveis), e o algoritmo já estava
+   * aqui — só era usado para PREENCHER a lista, em vez de responder a
+   * pergunta.
+   *
+   * O que está cadastrado VENCE, e é por isso que esta consulta vem
+   * depois: o feriado municipal da loja, ou um nacional que a rede
+   * resolveu tratar diferente, continuam mandando.
+   */
+  const ano = Number(data.slice(0, 4));
+  if (!Number.isFinite(ano)) return undefined;
+
+  const nacional = feriadosNacionaisDe(ano).find((f) => f.data === data);
+  if (!nacional) return undefined;
+
+  return {
+    id: `nacional-${nacional.data}`,
+    data: nacional.data,
+    nome: nacional.nome,
+    minutosPrevistos: nacional.minutosPrevistos,
+    criadoEm: '',
+  };
 };

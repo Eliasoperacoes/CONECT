@@ -1712,9 +1712,25 @@ test('FERIADO NÃO VIRA DÉBITO NO BANCO DE HORAS', async () => {
   equipe = [ELIAS, ANA];
   colaboradorLogado = ANA;
 
-  // 07/09/2026 é uma segunda-feira: dia útil cheio, se não fosse feriado
-  const semFeriado = servicoPonto.obterJornadaDoDia(ANA.id, '2026-09-07');
+  /**
+   * O dia de controle era 07/09 — que É a Independência do Brasil.
+   *
+   * O teste usava o próprio feriado como "segunda-feira comum" e passava,
+   * porque naquela época feriado só existia se alguém tivesse ido à tela
+   * de Feriados cadastrar. Com o cálculo automático a premissa caiu, e o
+   * teste apontou para ela. O controle agora é 14/09, uma segunda sem
+   * nada em cima.
+   */
+  const semFeriado = servicoPonto.obterJornadaDoDia(ANA.id, '2026-09-14');
   expect(semFeriado.minutosPrevistos).toBeGreaterThan(0);
+
+  /**
+   * E o 7 de setembro fecha SOZINHO, sem ninguém cadastrar. Era isto que
+   * o comentário acima prometia e o código não entregava: a causa do
+   * defeito era a AUSÊNCIA de um registro, e a correção de verdade é não
+   * depender de registro nenhum.
+   */
+  expect(servicoPonto.obterJornadaDoDia(ANA.id, '2026-09-07').minutosPrevistos).toBe(0);
 
   comFeriados(
     [

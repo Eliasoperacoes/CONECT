@@ -54,6 +54,8 @@ Numa base nova, nesta ordem:
 > `conferir-equipe-da-fernanda.sql` também não altera nada: mostra quem responde a um líder, o setor inteiro e nomes parecidos. Serve quando o banco está correto e a correção ainda falha — aí a causa costuma ser o Organograma, não SQL.
 >
 > `conferir-carga-horaria.sql` mostra a carga cadastrada de cada pessoa — diária, semanal, sábado e intervalo. Serve quando o saldo do dia não bate com o que a pessoa cumpriu: o cálculo do dia é simples, quem costuma estar errado é o **previsto**, que sai da ficha.
+>
+> `conferir-sem-responsavel.sql` lista quem está solto no organograma, separando **o topo da cadeia** (gerentes, RH, ADM — que não têm ninguém acima porque não existe ninguém acima) de quem **bate ponto e ficou sem aprovador**, que é o caso que precisa de conserto. A terceira consulta mostra o responsável que o banco realmente guardou, para o caso de o gatilho `apenas_rh_move_o_organograma` ter revertido a gravação calada.
 
 Todos são idempotentes: rodar de novo não quebra nada.
 
