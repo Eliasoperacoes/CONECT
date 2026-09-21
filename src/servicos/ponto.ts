@@ -1319,11 +1319,33 @@ class ServicoPonto {
     const diferenca = jornada.minutosTrabalhados - jornada.minutosPrevistos;
     const existente = this.obterAjusteDoDia(colaboradorId, data);
 
-    // Dia certo: nada a decidir. Se havia apuração pendente de uma versão
-    // anterior do dia, ela perde sentido e sai da fila.
+    /**
+     * DIA CERTO: nada a decidir.
+     *
+     * Se havia pendência de uma versão anterior do dia — antes de alguém
+     * corrigir a batida —, ela perde o sentido e precisa sair da fila.
+     *
+     * REESCRITA, E NÃO APAGADA. Apagar exigiria dar permissão de remoção
+     * à própria pessoa, e aí bastaria apagar a linha para um débito
+     * sumir: a apuração só é refeita quando alguém bate ou corrige.
+     * Reescrever tira da fila, preserva o histórico e não abre nada.
+     *
+     * "Aprovado pela tolerância" é verdade literal aqui: diferença zero
+     * cabe em qualquer tolerância.
+     */
     if (diferenca === 0) {
       if (existente && existente.estado === 'pendente') {
-        await this.removerAjuste(existente.id);
+        await this.gravarAjusteCorrigido({
+          ...existente,
+          minutos: 0,
+          minutosTrabalhados: jornada.minutosTrabalhados,
+          minutosPrevistos: jornada.minutosPrevistos,
+          estado: 'aprovado',
+          origem: 'tolerancia_automatica',
+          aprovadorId: undefined,
+          aprovadorNome: 'Tolerância automática',
+          decididoEm: new Date().toISOString(),
+        });
       }
       return { criou: false };
     }
@@ -1375,7 +1397,25 @@ class ServicoPonto {
 
     if (usandoNuvem()) {
       const res = await nuvem.salvarAjuste(ajuste);
-      if (!res.sucesso) return { criou: false };
+      if (!res.sucesso) {
+        /**
+         * FALHA AQUI NÃO PODE SER MUDA.
+         *
+         * Era um `return` seco. O efeito: a pessoa corrigia a batida, a
+         * tela dizia "corrigido", e a apuração ANTIGA continuava na fila
+         * — com o número de antes da correção. Dois lugares mostrando
+         * dias diferentes do mesmo dia, e nenhum sinal de que algo falhou.
+         *
+         * O aviso não chega ao usuário por aqui (esta função roda em
+         * cadeia, atrás de outras telas), mas para de sumir: quem for
+         * investigar encontra o motivo do banco no console.
+         */
+        console.error(
+          `Apuração de ${data} de ${colaboradorId} NÃO foi gravada:`,
+          res.erro
+        );
+        return { criou: false };
+      }
     }
 
     const lista = this.lerAjustes().filter((a) => a.id !== ajuste.id);
@@ -1386,8 +1426,28 @@ class ServicoPonto {
     return { criou: true, ajuste };
   }
 
-  private async removerAjuste(id: string): Promise<void> {
-    this.gravarAjustes(this.lerAjustes().filter((a) => a.id !== id));
+  /**
+   * Grava a apuração reescrita, no banco ANTES do aparelho.
+   *
+   * A ordem importa: gravar aqui e falhar lá deixaria a tela mostrando
+   * um dia resolvido que o banco ainda tem como pendente — e a próxima
+   * sincronização traria o número velho de volta, sem explicação.
+   *
+   * Foi exatamente isso que aconteceu com a correção do sábado: a tela
+   * dizia "corrigido" e a fila seguia com o débito de antes.
+   */
+  private async gravarAjusteCorrigido(ajuste: AjusteJornada): Promise<void> {
+    if (usandoNuvem()) {
+      const res = await nuvem.salvarAjuste(ajuste);
+      if (!res.sucesso) {
+        console.error(`Apuração de ${ajuste.data} não foi reescrita:`, res.erro);
+        return;
+      }
+    }
+
+    const lista = this.lerAjustes().filter((a) => a.id !== ajuste.id);
+    lista.push(ajuste);
+    this.gravarAjustes(lista);
     this.notificar();
   }
 

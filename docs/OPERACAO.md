@@ -47,6 +47,7 @@ Numa base nova, nesta ordem:
 | 20 | `ponto-do-lider-completo.sql` | **Reúne 17, 18 e 19 num arquivo só, na ordem certa** — e é o único que precisa ser rodado. Os três separados abortavam se rodados fora de ordem, e script que aborta deixa tudo como estava. Também TIRA o `meu_nivel() >= 3` da leitura do ponto: qualquer gerente lia o ponto de qualquer pessoa da rede, inclusive de outra loja |
 | 21 | `escala-pela-lideranca.sql` | **Férias como tipo** e a liderança montando a escala da equipe sem esperar pedido. O pedido do colaborador continua nascendo pendente. Depende do 20 |
 | 22 | `calendario-feriados.sql` | **O calendário de feriados.** Sem ele, todo 7 de setembro vira um dia inteiro de débito para a rede — e o espelho mostra o dia como se a pessoa não tivesse batido. Feriado por loja, porque as 5 unidades ficam em cidades diferentes |
+| 23 | `apuracao-que-se-corrige.sql` | **A apuração consegue se corrigir.** Dia dentro da tolerância não gravava no banco (a regra só aceitava "pendente"), e pendência de dia já corrigido não saía — o débito voltava na sincronização seguinte. Depende do 20 |
 
 > `conferir-ponto-do-lider.sql` não altera nada: só responde se as regras acima estão valendo. **Uma consulta só, de propósito** — o SQL Editor mostra apenas o resultado da última consulta do arquivo, então conferência em vários `select` entrega respostas invisíveis.
 >

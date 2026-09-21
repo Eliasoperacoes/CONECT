@@ -1308,7 +1308,16 @@ drop policy if exists ajustes_abertura on public.ajustes_jornada;
 create policy ajustes_abertura on public.ajustes_jornada
   for insert to authenticated
   with check (
-    (colaborador_id = public.meu_colaborador_id() and estado = 'pendente')
+    -- A própria pessoa: pendência, ou o carimbo automático da tolerância.
+    -- Sem o segundo caso, todo dia que fechava DENTRO da tolerância era
+    -- recusado pelo banco e existia só no aparelho de quem bateu.
+    (
+      colaborador_id = public.meu_colaborador_id()
+      and (
+        estado = 'pendente'
+        or (estado = 'aprovado' and origem = 'tolerancia_automatica' and aprovador_id is null)
+      )
+    )
     or public.cuido_de_pessoas()
     -- Só PENDENTE: levantar o dia é para decidir, não é decidir
     or (public.posso_decidir_jornada(colaborador_id) and estado = 'pendente')
@@ -1329,6 +1338,14 @@ create policy ajustes_decisao on public.ajustes_jornada
     or (colaborador_id = public.meu_colaborador_id() and estado = 'pendente')
   );
 
+-- APAGAR SEGUE SÓ DO RH, e de propósito.
+--
+-- A tentação foi deixar a pessoa remover a própria pendência quando o dia
+-- passa a fechar certo. Seria um buraco: bastaria apagar a linha para o
+-- débito sumir, e a apuração só é refeita quando alguém bate ou corrige.
+--
+-- O dia que zera é REESCRITO como aprovado pela tolerância — diferença
+-- zero cabe em qualquer tolerância —, o que tira da fila sem apagar nada.
 drop policy if exists ajustes_remocao on public.ajustes_jornada;
 create policy ajustes_remocao on public.ajustes_jornada
   for delete to authenticated using (public.cuido_de_pessoas());

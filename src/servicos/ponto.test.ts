@@ -33,6 +33,8 @@ let modoNuvem = true;
 let bancoRegistros: any[] = [];
 let bancoCodigos: any[] = [];
 let bancoAjustes: any[] = [];
+/** Liga a recusa do banco, para provar que a tela não mente quando ele nega. */
+let bancoRecusaAjuste = false;
 let sincronizacoes = 0;
 
 mock.module('./supabase', () => ({
@@ -104,6 +106,8 @@ mock.module('./nuvem', () => ({
     // --- Apuração do dia e aprovação ---
     sincronizarAjustes: async () => true,
     salvarAjuste: async (a: any) => {
+      // O teste da gravação recusada liga isto
+      if (bancoRecusaAjuste) return { sucesso: false, erro: 'sem permissão' };
       bancoAjustes = bancoAjustes.filter((x) => x.id !== a.id);
       bancoAjustes.push({ ...a });
       return { sucesso: true };
@@ -146,6 +150,7 @@ beforeEach(() => {
   colaboradorLogado = ELIAS;
   equipe = [ELIAS, ANA];
   toleranciaDoTeste = 10;
+  bancoRecusaAjuste = false;
 
   /**
    * O RELÓGIO É FIXADO NUMA QUARTA-FEIRA.
@@ -1891,4 +1896,172 @@ test('O HORÁRIO BATIDO VENCE O RÓTULO NO ESPELHO', async () => {
   expect(html).toContain('08:00');
   // E as colunas que ninguém bateu dizem o motivo
   expect(html).toContain('Domingo');
+});
+
+test('CORRIGIR A BATIDA REESCREVE A PENDÊNCIA, E NÃO DEIXA A VELHA', async () => {
+  /**
+   * O defeito relatado: a líder corrigiu a batida de um sábado — 08:00 e
+   * 12:01 — e a fila continuou dizendo "trabalhou 2h28 de 4h00", com
+   * débito de 1h32. Dois lugares do sistema mostrando dias diferentes do
+   * MESMO dia.
+   *
+   * A apuração guarda os minutos congelados no momento em que nasceu. Se
+   * a correção não a reescrever, o número velho fica na fila para sempre.
+   */
+  const SABADO = '2026-09-05';
+  equipe = [ELIAS, ANA];
+  colaboradorLogado = ELIAS;
+
+  // A pessoa bateu e saiu cedo: 08:00 às 10:28
+  armazenamento.setItem(
+    'conecta_v4_registros_ponto',
+    JSON.stringify([
+      {
+        id: 'r1', colaboradorId: ANA.id, data: SABADO, tipo: 'entrada',
+        horario: new Date(2026, 8, 5, 8, 0).toISOString(), horaFormatada: '08:00',
+        metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '',
+      },
+      {
+        id: 'r2', colaboradorId: ANA.id, data: SABADO, tipo: 'saida',
+        horario: new Date(2026, 8, 5, 10, 28).toISOString(), horaFormatada: '10:28',
+        metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '',
+      },
+    ])
+  );
+
+  await servicoPonto.apurarDia(ANA.id, SABADO);
+
+  const pendente = servicoPonto.obterAjusteDoDia(ANA.id, SABADO);
+  expect(pendente?.estado).toBe('pendente');
+  expect(pendente?.tipo).toBe('debito');
+  expect(pendente?.minutosTrabalhados).toBe(148); // 2h28
+
+  // Agora a correção: a saída era 12:01
+  armazenamento.setItem(
+    'conecta_v4_registros_ponto',
+    JSON.stringify([
+      {
+        id: 'r1', colaboradorId: ANA.id, data: SABADO, tipo: 'entrada',
+        horario: new Date(2026, 8, 5, 8, 0).toISOString(), horaFormatada: '08:00',
+        metodo: 'ajuste_lider', loja: 'Pirassununga', criadoEm: '',
+      },
+      {
+        id: 'r2', colaboradorId: ANA.id, data: SABADO, tipo: 'saida',
+        horario: new Date(2026, 8, 5, 12, 1).toISOString(), horaFormatada: '12:01',
+        metodo: 'ajuste_lider', loja: 'Pirassununga', criadoEm: '',
+      },
+    ])
+  );
+
+  await servicoPonto.apurarDia(ANA.id, SABADO);
+
+  const depois = servicoPonto.obterAjusteDoDia(ANA.id, SABADO);
+
+  // O número velho NÃO pode ter sobrevivido
+  expect(depois?.minutosTrabalhados).toBe(241); // 4h01
+  // 1 minuto a mais cabe na tolerância: sai da fila
+  expect(depois?.estado).toBe('aprovado');
+  expect(depois?.origem).toBe('tolerancia_automatica');
+});
+
+test('DIA QUE PASSA A FECHAR EXATO SAI DA FILA SEM SER APAGADO', async () => {
+  /**
+   * Apagar exigiria dar permissão de remoção à própria pessoa — e aí
+   * bastaria apagar a linha para um débito sumir, já que a apuração só é
+   * refeita quando alguém bate ou corrige.
+   *
+   * Reescrever tira da fila e preserva o histórico.
+   */
+  const DIA = '2026-09-18'; // sexta
+  // Carga de 8h10, como a da Fernanda: é o turno da rede
+  const COM_TURNO = { ...ANA, cargaHorariaDiariaMinutos: 490 };
+  equipe = [ELIAS, COM_TURNO];
+  colaboradorLogado = ELIAS;
+
+  const bater = (saida: [number, number]) =>
+    armazenamento.setItem(
+      'conecta_v4_registros_ponto',
+      JSON.stringify([
+        { id: 'a', colaboradorId: ANA.id, data: DIA, tipo: 'entrada',
+          horario: new Date(2026, 8, 18, 7, 30).toISOString(), horaFormatada: '07:30',
+          metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '' },
+        { id: 'b', colaboradorId: ANA.id, data: DIA, tipo: 'saida_almoco',
+          horario: new Date(2026, 8, 18, 12, 30).toISOString(), horaFormatada: '12:30',
+          metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '' },
+        { id: 'c', colaboradorId: ANA.id, data: DIA, tipo: 'retorno_almoco',
+          horario: new Date(2026, 8, 18, 14, 0).toISOString(), horaFormatada: '14:00',
+          metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '' },
+        { id: 'd', colaboradorId: ANA.id, data: DIA, tipo: 'saida',
+          horario: new Date(2026, 8, 18, saida[0], saida[1]).toISOString(),
+          horaFormatada: `${saida[0]}:${String(saida[1]).padStart(2, '0')}`,
+          metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '' },
+      ])
+    );
+
+  // Saiu 16:37: faltam 33 minutos
+  bater([16, 37]);
+  await servicoPonto.apurarDia(ANA.id, DIA);
+  expect(servicoPonto.obterAjusteDoDia(ANA.id, DIA)?.estado).toBe('pendente');
+  expect(servicoPonto.obterAjusteDoDia(ANA.id, DIA)?.minutos).toBe(33);
+
+  // Corrigido para 17:10: o dia fecha exato
+  bater([17, 10]);
+  await servicoPonto.apurarDia(ANA.id, DIA);
+
+  const depois = servicoPonto.obterAjusteDoDia(ANA.id, DIA);
+  // A linha continua existindo — o histórico não some
+  expect(depois).toBeDefined();
+  // Mas não está mais na fila
+  expect(depois?.estado).toBe('aprovado');
+  expect(depois?.minutos).toBe(0);
+});
+
+test('BANCO RECUSOU: A TELA NÃO PODE DIZER QUE CORRIGIU', async () => {
+  /**
+   * O padrão que este projeto já pagou caro: mandar para o banco e não
+   * esperar. A tela mostra o dia resolvido, o banco continua com a
+   * pendência antiga — e a próxima sincronização traz o número velho de
+   * volta, sem explicação para ninguém.
+   *
+   * Aqui a ordem é banco PRIMEIRO. Recusou, o aparelho não muda.
+   */
+  const DIA = '2026-09-18';
+  const COM_TURNO = { ...ANA, cargaHorariaDiariaMinutos: 490 };
+  equipe = [ELIAS, COM_TURNO];
+  colaboradorLogado = ELIAS;
+
+  const marcar = (h: number, m: number) =>
+    armazenamento.setItem(
+      'conecta_v4_registros_ponto',
+      JSON.stringify([
+        { id: 'a', colaboradorId: ANA.id, data: DIA, tipo: 'entrada',
+          horario: new Date(2026, 8, 18, 7, 30).toISOString(), horaFormatada: '07:30',
+          metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '' },
+        { id: 'b', colaboradorId: ANA.id, data: DIA, tipo: 'saida_almoco',
+          horario: new Date(2026, 8, 18, 12, 30).toISOString(), horaFormatada: '12:30',
+          metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '' },
+        { id: 'c', colaboradorId: ANA.id, data: DIA, tipo: 'retorno_almoco',
+          horario: new Date(2026, 8, 18, 14, 0).toISOString(), horaFormatada: '14:00',
+          metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '' },
+        { id: 'd', colaboradorId: ANA.id, data: DIA, tipo: 'saida',
+          horario: new Date(2026, 8, 18, h, m).toISOString(),
+          horaFormatada: `${h}:${String(m).padStart(2, '0')}`,
+          metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '' },
+      ])
+    );
+
+  marcar(16, 37);
+  await servicoPonto.apurarDia(ANA.id, DIA);
+  expect(servicoPonto.obterAjusteDoDia(ANA.id, DIA)?.minutos).toBe(33);
+
+  // Agora o banco recusa, e a correção chega
+  bancoRecusaAjuste = true;
+  marcar(17, 10);
+  await servicoPonto.apurarDia(ANA.id, DIA);
+
+  // A pendência antiga CONTINUA, porque foi o que o banco guardou.
+  // Mostrar "resolvido" aqui seria a tela mentindo.
+  const depois = servicoPonto.obterAjusteDoDia(ANA.id, DIA);
+  expect(depois?.estado).toBe('pendente');
+  expect(depois?.minutos).toBe(33);
 });
