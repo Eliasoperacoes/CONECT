@@ -27,6 +27,7 @@ import {
   cargaSemanalDe,
   trabalhaNoSabado,
   ehDeEstagio,
+  MINUTOS_SABADO,
 } from '../tipos';
 import { formatarMinutos } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
@@ -140,6 +141,18 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
    */
   const turnosOferecidos = turnosDoPerfil(ehDeEstagio(form));
   const turnoEscolhido = turnoDe(form);
+
+  /**
+   * O que o HORÁRIO desta pessoa soma na semana.
+   *
+   * É o número que o espelho usa de verdade — cinco dias do turno mais o
+   * sábado, quando ela vem. A carga semanal da ficha só serve para dizer
+   * se o contrato bate com isso; ela não entra mais na apuração, porque
+   * ratear a diferença produzia previstos sem relógio nenhum.
+   */
+  const semanaPeloHorario =
+    minutosDoTurno(turnoEscolhido) * 5 +
+    (trabalhaNoSabado({ ...form, turno: turnoEscolhido.chave }) ? MINUTOS_SABADO : 0);
 
   /**
    * Trocar de contrato pode deixar a pessoa num turno que não existe mais
@@ -321,8 +334,33 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                 quando essa pergunta era respondida em dois lugares. Se
                 ele contradiz o turno, é melhor dizer do que esconder.
               */}
+              {/*
+                A CARGA SEMANAL QUE NÃO BATE COM O HORÁRIO.
+
+                Antes o sistema rateava a diferença pelos dias, e o
+                previsto virava um número sem relógio — 5h18 para quem tem
+                turno de 6h. O Elias perguntou qual era o sentido daquilo,
+                e não havia nenhum: espalhava um débito falso por todos os
+                dias e escondia a causa, que era o turno errado na ficha.
+
+                Divergência de cadastro se resolve no cadastro. Aqui ela
+                fica à vista, com os dois números, em vez de virar conta.
+              */}
+              {form.cargaSemanalMinutos !== undefined &&
+                form.cargaSemanalMinutos !== semanaPeloHorario && (
+                  <p className="text-[11px] text-amber-600 mt-1.5">
+                    A carga semanal da ficha ({formatarMinutos(form.cargaSemanalMinutos)}) não
+                    bate com o horário deste turno (
+                    {formatarMinutos(semanaPeloHorario)}
+                    {trabalhaNoSabado({ ...form, turno: turnoEscolhido.chave })
+                      ? ', com sábado'
+                      : ', sem sábado'}
+                    ). Vale o horário no espelho — corrija o turno ou apague a carga.
+                  </p>
+                )}
+
               {form.temIntervalo !== undefined &&
-                form.temIntervalo !== !!turnoEscolhido.intervalo && (
+                form.temIntervalo !== !!turnoEscolhido.intervalo?.desconta && (
                   <p className="text-[11px] text-amber-600 mt-1.5">
                     A ficha desta pessoa força{' '}
                     {form.temIntervalo ? '4 batidas' : '2 batidas'}, contrariando o

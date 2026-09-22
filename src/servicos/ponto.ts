@@ -795,49 +795,38 @@ class ServicoPonto {
 
     /**
      * ===============================================================
-     * O TURNO DÁ A FORMA DA SEMANA; A CARGA SEMANAL DÁ O TAMANHO.
+     * O PREVISTO DO DIA É O RELÓGIO DO TURNO. NADA DE RATEIO.
      * ===============================================================
      *
-     * O que faltava, e o Elias descreveu assim: "alguns estagiários não
-     * fecham as 6 horas diárias, o que faz que eles compensem trabalhando
-     * aos sábados — essas horas são divididas para abater a carga,
-     * complementando a semana".
+     * Eu havia feito o previsto ser a FATIA do dia na carga semanal:
      *
-     * O previsto era dia a dia, isolado. Então o sábado do estagiário que
-     * vem compensar virava um dia igual aos outros: se ele cumprisse o
-     * sábado inteiro, fechava zero; se faltasse cinco minutos na terça, o
-     * débito ficava lá, sem o sábado nunca conversar com ele.
+     *     previsto = dia pelo turno × (carga semanal ÷ semana pelo turno)
      *
-     * COMO A CONTA FUNCIONA AGORA
+     * A ideia era fazer a carga semanal pesar. O que ela produziu foi um
+     * número sem sentido nenhum, e o Elias perguntou exatamente isso:
+     * "qual o sentido do 5h18?".
      *
-     * O turno diz o FORMATO do dia — 8h10 de segunda a sexta e 4h no
-     * sábado, ou 4h45 e 4h. A carga semanal diz QUANTO a semana inteira
-     * tem de somar. O previsto de cada dia é a fatia dele nesse total:
+     * Nenhum. A Lyvia estava com turno de 6h e carga semanal de 30h, que
+     * com o sábado somaria 34h — então cada dia dela encolhia 12% e virava
+     * 5h18. Ninguém sai 5h18 depois de entrar. E pior: o rateio ESPALHAVA
+     * um débito de 33 minutos por todos os dias, quando o problema era um
+     * só e estava no cadastro — o turno não era o dela.
      *
-     *     previsto do dia = dia pelo turno × (carga semanal ÷ semana pelo turno)
+     * Número que não corresponde a relógio nenhum não se confere, não se
+     * explica para quem bateu o ponto, e ainda esconde a causa.
      *
-     * Quando os dois já batem — e batem para todo mundo que não tem carga
-     * própria na ficha — a razão é 1 e nada muda. A escala só entra
-     * quando alguém tem contrato de 25h e um horário que somaria 27h45:
-     * aí cada dia encolhe na mesma proporção, o sábado junto, e a semana
-     * fecha no contrato em vez de acusar débito todo dia.
+     * O QUE FAZ O SÁBADO COMPENSAR, ENTÃO
      *
-     * É o que faz o sábado COMPENSAR de verdade: ele deixa de ser um dia
-     * avulso e passa a ser parte do mesmo total.
+     * O sábado compensar não precisava de rateio: basta ele CONTAR. Quem
+     * trabalha o horário combinado — dia útil e sábado — fecha a semana em
+     * zero, porque a soma dos dias É a semana dela.
+     *
+     * Quando o contrato difere do horário, isso é DIVERGÊNCIA DE CADASTRO,
+     * e o lugar de resolver é a ficha, não a apuração. A tela de cadastro
+     * avisa quando os dois não batem.
      */
     const turno = turnoDe(colaborador);
-    const doDia = ehSabado(data) ? MINUTOS_SABADO : minutosDoTurno(turno);
-
-    const semanaPeloTurno =
-      minutosDoTurno(turno) * 5 + (trabalhaNoSabado(colaborador) ? MINUTOS_SABADO : 0);
-    if (semanaPeloTurno === 0) return 0;
-
-    const contratada = cargaSemanalDe(colaborador);
-
-    // Razão 1 é o caso comum: não arredonda o que não precisa mexer
-    if (contratada === semanaPeloTurno) return doDia;
-
-    return Math.round(doDia * (contratada / semanaPeloTurno));
+    return ehSabado(data) ? MINUTOS_SABADO : minutosDoTurno(turno);
   }
 
   /**

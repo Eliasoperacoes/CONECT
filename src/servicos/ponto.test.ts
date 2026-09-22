@@ -2552,35 +2552,37 @@ test('sem carga semanal própria, o dia é o do turno — nada muda', () => {
   expect(terca * 5 + sabado).toBe(1740); // 29h na semana
 });
 
-test('a CARGA SEMANAL encolhe os dias na mesma proporção', () => {
+test('a carga semanal NÃO rateia mais o dia — o previsto é o relógio', () => {
   /**
-   * O contrato é de 25h, e o horário dela somaria 27h45. Sem a escala,
-   * ela apareceria devendo 2h45 por semana cumprindo exatamente o que foi
-   * combinado — e o sábado não adiantaria nada.
+   * Eu havia feito o previsto ser a fatia do dia na carga semanal. O
+   * Elias perguntou o sentido do resultado — 5h18 para quem tem turno de
+   * 6h — e não havia nenhum: ninguém sai 5h18 depois de entrar.
+   *
+   * Pior, o rateio ESPALHAVA um débito de 33 minutos por todos os dias,
+   * quando o problema era um só e estava no cadastro: o turno não era o
+   * dela. Número sem relógio não se confere e ainda esconde a causa.
    */
-  const dela = { ...ESTAGIARIA_SABADO, cargaSemanalMinutos: 25 * 60 };
+  const comContratoMenor = { ...ESTAGIARIA_SABADO, cargaSemanalMinutos: 25 * 60 };
 
-  const terca = previstoDe(dela, '2026-09-15');
-  const sabado = previstoDe(dela, '2026-09-19');
-
-  // A semana fecha no contrato, com o arredondamento de cada dia
-  expect(terca * 5 + sabado).toBeGreaterThanOrEqual(25 * 60 - 3);
-  expect(terca * 5 + sabado).toBeLessThanOrEqual(25 * 60 + 3);
-
-  // E o sábado encolheu junto: ele faz parte do mesmo total
-  expect(sabado).toBeLessThan(240);
+  // O dia continua sendo o do turno, inteiro
+  expect(previstoDe(comContratoMenor, '2026-09-15')).toBe(300);
+  expect(previstoDe(comContratoMenor, '2026-09-19')).toBe(240);
 });
 
-test('cumprindo o horário combinado, a estagiária fica POSITIVA', () => {
+test('cumprindo o horário combinado, a semana fecha em ZERO', () => {
   /**
-   * É o que o Elias esperava ver: "considerando os sábados ela deveria
-   * estar com saldo positivo". Ela trabalha 4h45 na terça e 4h no
-   * sábado; com contrato de 25h, isso é mais do que o previsto.
+   * É assim que o sábado compensa, e não precisava de rateio: basta ele
+   * CONTAR. Quem trabalha o horário combinado — dia útil e sábado — fecha
+   * a semana em zero, porque a soma dos dias É a semana dela.
    */
-  const dela = { ...ESTAGIARIA_SABADO, cargaSemanalMinutos: 25 * 60 };
+  const dela = { ...ESTAGIARIA_SABADO, cargaSemanalMinutos: undefined };
 
-  expect(285 - previstoDe(dela, '2026-09-15')).toBeGreaterThan(0);
-  expect(240 - previstoDe(dela, '2026-09-19')).toBeGreaterThan(0);
+  const util = previstoDe(dela, '2026-09-15');
+  const sabado = previstoDe(dela, '2026-09-19');
+
+  expect(300 - util).toBe(0);
+  expect(240 - sabado).toBe(0);
+  expect(util * 5 + sabado).toBe(1740); // 29h, a semana do horário dela
 });
 
 test('quem NÃO vem ao sábado não tem o sábado na conta da semana', () => {
