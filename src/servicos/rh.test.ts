@@ -280,3 +280,66 @@ test('as abas que o RH NAO ve saem da barra e da lista juntas', async () => {
     expect(bloco).toContain(aba);
   }
 });
+
+test('os holerites abrem com as lojas RECOLHIDAS', async () => {
+  /**
+   * São 89 pessoas. Abrir com as cinco lojas expandidas devolve a coluna
+   * infinita que o recolhimento veio resolver.
+   *
+   * O estado guarda quem está ABERTA, e não quem está fechada — assim o
+   * conjunto vazio inicial quer dizer "tudo recolhido", sem nenhuma
+   * `useEffect` correndo atrás da lista de lojas para semear. Guardar as
+   * fechadas faria o vazio significar o contrário.
+   */
+  const aba = await Bun.file(
+    new URL('../componentes/AbaHolerites.tsx', import.meta.url)
+  ).text();
+
+  expect(aba).toContain('const [abertas, setAbertas] = useState<Set<string>>(new Set())');
+  expect(aba).toContain('const fechada = !buscando && !abertas.has(loja)');
+
+  // E o inverso não pode voltar: com "recolhidas", vazio = tudo aberto
+  expect(aba).not.toContain('const [recolhidas,');
+});
+
+test('o espelho cabe numa folha: a origem virou nota de rodapé', async () => {
+  /**
+   * "Origem das marcações" era uma coluna com até quatro frases por dia.
+   * Ela quebrava linha, cada dia virava três ou quatro alturas, e o mês
+   * de 31 dias não fechava na folha de pé — o espelho de uma pessoa saía
+   * em duas páginas.
+   *
+   * Na grade sobrou uma coluna de NÚMERO, que não quebra. O texto foi
+   * para um rodapé que cresce uma vez por documento, e não uma vez por
+   * dia — e só com os dias que fogem do normal.
+   */
+  const fonte = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+  const espelho = fonte.slice(fonte.indexOf('gerarHtmlEspelho'));
+
+  expect(espelho).toContain('<th>Nota</th>');
+  expect(espelho).not.toContain('<th>Origem das marcações</th>');
+  expect(espelho).toContain('class="nota-ref"');
+
+  // A data e o dia da semana na MESMA linha: dobrar 31 alturas decide a página
+  expect(espelho).not.toContain('<td class="dia">${formatarDataBR(j.data)}<br>');
+});
+
+test('o espelho não chama de QR o que ninguém bateu', async () => {
+  /**
+   * `descreverOrigem` não conhecia 'ajuste_lider' nem
+   * 'preenchimento_turno': os dois caíam no `return` final e o espelho
+   * imprimia "QR — Pirassununga" num horário que a pessoa NÃO bateu.
+   *
+   * Num documento que se assina e se arquiva, isso é o sistema afirmando
+   * uma batida que não houve.
+   */
+  const fonte = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+  const trecho = fonte.slice(
+    fonte.indexOf('descreverOrigem'),
+    fonte.indexOf('foiBatidaPelaPessoa')
+  );
+
+  expect(trecho).toContain("metodo === 'ajuste_lider'");
+  expect(trecho).toContain("metodo === 'preenchimento_turno'");
+  expect(trecho).toContain('Preenchido pelo horário do turno');
+});

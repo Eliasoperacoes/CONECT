@@ -98,7 +98,18 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
    * lote por unidade. Recolher por setor ou por letra não ajudaria em
    * nada nesse trabalho.
    */
-  const [recolhidas, setRecolhidas] = useState<Set<string>>(new Set());
+  /**
+   * GUARDA QUEM ESTÁ ABERTA, e não quem está fechada.
+   *
+   * Parece detalhe e não é: com o conjunto de fechadas, o estado inicial
+   * vazio queria dizer "tudo aberto" — as cinco lojas abertas de uma vez,
+   * 89 linhas na tela, que é o que o Elias pediu para mudar.
+   *
+   * Invertido, o vazio quer dizer o certo: tudo recolhido. E nenhuma
+   * `useEffect` precisa correr atrás da lista de lojas para semear o
+   * estado — o que seria um segundo lugar decidindo o mesmo.
+   */
+  const [abertas, setAbertas] = useState<Set<string>>(new Set());
 
   const porLoja = useMemo(() => {
     const mapa = new Map<string, typeof pessoas>();
@@ -120,17 +131,17 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
   const buscando = busca.trim().length > 0;
 
   const alternarLoja = (loja: string) =>
-    setRecolhidas((atual) => {
+    setAbertas((atual) => {
       const nova = new Set(atual);
       if (nova.has(loja)) nova.delete(loja);
       else nova.add(loja);
       return nova;
     });
 
-  const todasRecolhidas = porLoja.length > 0 && recolhidas.size === porLoja.length;
+  const todasRecolhidas = abertas.size === 0;
 
   const alternarTodas = () =>
-    setRecolhidas(todasRecolhidas ? new Set() : new Set(porLoja.map(([loja]) => loja)));
+    setAbertas(todasRecolhidas ? new Set(porLoja.map(([loja]) => loja)) : new Set());
 
   const jaTem = useMemo(() => {
     const mapa = new Map<string, Holerite>();
@@ -272,7 +283,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
 
       <div className="flex flex-col gap-2">
         {porLoja.map(([loja, daLoja]) => {
-          const fechada = !buscando && recolhidas.has(loja);
+          const fechada = !buscando && !abertas.has(loja);
           const publicados = daLoja.filter((c) => jaTem.has(c.id)).length;
           const completa = publicados === daLoja.length;
 

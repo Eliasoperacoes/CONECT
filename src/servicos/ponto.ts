@@ -2616,13 +2616,35 @@ class ServicoPonto {
 
   /** Origem da marcação, por extenso, para o espelho impresso. */
   private descreverOrigem(registro: RegistroPonto): string {
-    if (registro.metodo === 'ajuste_rh') {
-      return `Ajuste RH — ${registro.ajustadoPorNome || 'RH'}${
-        registro.justificativa ? `: ${registro.justificativa}` : ''
-      }`;
+    const quem = registro.ajustadoPorNome || 'RH';
+    const porque = registro.justificativa ? `: ${registro.justificativa}` : '';
+
+    if (registro.metodo === 'ajuste_rh') return `Ajuste RH — ${quem}${porque}`;
+
+    /**
+     * OS DOIS QUE FALTAVAM, e o silêncio deles era grave.
+     *
+     * `ajuste_lider` e `preenchimento_turno` não tinham linha aqui e caíam
+     * no `return` final — o espelho imprimia "QR — Pirassununga" num
+     * horário que a pessoa NÃO bateu.
+     *
+     * Num documento que se assina e se arquiva, isso é o sistema
+     * afirmando uma batida que não houve. O preenchimento é o pior dos
+     * dois: ele foi deduzido do turno, e sem esta linha nada no papel
+     * diria isso.
+     */
+    if (registro.metodo === 'ajuste_lider') return `Correção — ${quem}${porque}`;
+    if (registro.metodo === 'preenchimento_turno') {
+      return `Preenchido pelo horário do turno — ${quem}${porque}`;
     }
+
     if (registro.metodo === 'codigo_manual') return `Código digitado — ${registro.loja}`;
     return `QR — ${registro.loja}`;
+  }
+
+  /** A marcação foi batida pela pessoa, ou escrita por alguém/pelo sistema? */
+  private foiBatidaPelaPessoa(registro: RegistroPonto): boolean {
+    return registro.metodo === 'qrcode' || registro.metodo === 'codigo_manual';
   }
 
   /**
@@ -2686,12 +2708,43 @@ class ServicoPonto {
           (j) => Object.keys(j.marcacoes).length > 0 || j.minutosPrevistos > 0
         );
 
+        /**
+         * AS ORIGENS SAÍRAM DA GRADE E VIRARAM RODAPÉ.
+         *
+         * "Origem das marcações" era uma coluna com até quatro frases por
+         * dia — "Entrada: QR — Pirassununga | Saída almoço: QR — ...". Ela
+         * quebrava linha, cada dia virava três ou quatro alturas, e o mês
+         * de 31 dias não cabia na folha de pé: o espelho de uma pessoa
+         * saía em duas páginas.
+         *
+         * E o que ela dizia na esmagadora maioria dos dias era "QR",
+         * repetido quatro vezes — a informação que menos precisa estar
+         * ali, porque é o normal.
+         *
+         * Agora a grade tem uma coluna estreita de nota, e só os dias que
+         * FOGEM do normal — correção, preenchimento — ganham número e
+         * aparecem embaixo, por extenso. O que interessa a quem confere o
+         * documento fica mais visível, não menos.
+         */
+        const notas: string[] = [];
+
         const linhas = dias
           .map((j) => {
-            const origens = ORDEM_MARCACOES.map((t) => j.marcacoes[t])
+            const foraDoComum = ORDEM_MARCACOES.map((t) => j.marcacoes[t])
               .filter((r): r is RegistroPonto => !!r)
-              .map((r) => `${ROTULO_MARCACAO[r.tipo]}: ${this.descreverOrigem(r)}`)
-              .join(' | ');
+              .filter((r) => !this.foiBatidaPelaPessoa(r));
+
+            let nota = '';
+            if (foraDoComum.length > 0) {
+              notas.push(
+                `<li><strong>${formatarDataBR(j.data)}</strong> — ${escapar(
+                  foraDoComum
+                    .map((r) => `${ROTULO_MARCACAO[r.tipo]}: ${this.descreverOrigem(r)}`)
+                    .join(' | ')
+                )}</li>`
+              );
+              nota = String(notas.length);
+            }
 
             /**
              * O QUE O DIA ESPERA, e não as quatro colunas sempre.
@@ -2727,7 +2780,18 @@ class ServicoPonto {
             const semMarcacao = Object.keys(j.marcacoes).length === 0;
 
             return `<tr class="${semMarcacao ? 'vazio' : ''}">
-              <td class="dia">${formatarDataBR(j.data)}<br><span class="semana">${
+              ${/*
+                DATA E DIA DA SEMANA NA MESMA LINHA.
+
+                Eram duas, com um <br> entre elas. Numa folha deitada isso
+                não custava nada; de pé, dobrar a altura de 31 linhas é o
+                que decide se o mês fecha numa página ou vira duas.
+
+                O feriado continua ganhando o nome inteiro — é a única
+                informação da coluna que explica um dia vazio, e vale a
+                linha extra nos poucos dias em que aparece.
+              */ ''}
+              <td class="dia">${formatarDataBR(j.data)} <span class="semana">${
                 feriadoDoDia
                   ? escapar(feriadoDoDia.nome)
                   : formatarDiaCurto(j.data).split(',')[0]
@@ -2738,7 +2802,7 @@ class ServicoPonto {
               <td class="num ${j.saldoMinutos < 0 ? 'neg' : ''}">${
                 j.minutosTrabalhados === 0 ? '—' : formatarSaldo(j.saldoMinutos)
               }</td>
-              <td class="origem">${escapar(origens)}</td>
+              <td class="nota-ref">${nota}</td>
             </tr>`;
           })
           .join('');
@@ -2770,7 +2834,7 @@ class ServicoPonto {
                 <th>Trabalhado</th>
                 <th>Previsto</th>
                 <th>Saldo</th>
-                <th>Origem das marcações</th>
+                <th>Nota</th>
               </tr>
             </thead>
             <tbody>${linhas}</tbody>
@@ -2799,10 +2863,16 @@ class ServicoPonto {
             </tr>
           </table>
 
-          <p class="nota">
-            (*) Marcação lançada ou corrigida pelo RH, com justificativa registrada na coluna de
-            origem e na auditoria do sistema.
-          </p>
+          ${
+            notas.length > 0
+              ? `<div class="notas">
+            <strong>Notas — marcações que não foram batidas pela pessoa</strong>
+            <ol>${notas.join('')}</ol>
+          </div>`
+              : `<p class="nota">
+            Todas as marcações do período foram batidas pelo próprio colaborador.
+          </p>`
+          }
 
           <div class="assinaturas">
             <div><span class="linha"></span>Assinatura do colaborador</div>
@@ -2845,7 +2915,17 @@ class ServicoPonto {
   .marcacoes td { border: 1px solid #bbb; padding: 3px 2px; text-align: center; }
   .marcacoes .dia { text-align: left; white-space: nowrap; font-weight: 600; font-size: 9px; }
   .semana { font-weight: 400; color: #666; text-transform: capitalize; }
-  .origem { text-align: left; font-size: 8px; color: #555; word-break: break-word; }
+  /*
+    A NOTA É UM NÚMERO, e a coluna tem largura de número.
+
+    Enquanto ali cabia texto livre, a linha do dia crescia junto e o mês
+    não fechava numa folha. Agora ela não quebra: o que cresce é o rodapé,
+    e ele cresce uma vez por documento, não uma vez por dia.
+  */
+  .marcacoes .nota-ref { width: 22px; font-size: 9px; color: #555; }
+  .notas { margin-top: 10px; font-size: 9px; color: #333; }
+  .notas ol { margin: 4px 0 0 16px; padding: 0; }
+  .notas li { margin-bottom: 2px; }
   .naoSeAplica { color: #bbb; }
   .vazio td { background: #fafafa; }
   /* De pé, 60% de largura deixava o quadro de totais solto no meio */
