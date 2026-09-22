@@ -2225,3 +2225,160 @@ test('O PADRÃO É O NÚMERO DA LEI: 5 minutos por marcação, 10 no dia', async
   toleranciaPorMarcacaoDoTeste = undefined as any;
   expect(servicoPonto.obterToleranciaPorMarcacaoMinutos()).toBe(5);
 });
+
+// ============================================================
+// QUEM CORRIGE A BATIDA JÁ DECIDIU O DIA
+//
+// O DEFEITO, relatado pelo Elias: "ao atualizar o espelho no modo RH ele
+// manda solicitação de aprovação para o líder do setor".
+//
+// Pedir ao líder que carimbe o horário que o RH acabou de afirmar inverte
+// a hierarquia — e enche a fila de quem não tem o que julgar ali: a única
+// informação que o líder teria é a justificativa que o RH escreveu.
+// ============================================================
+
+test('correção do RH NÃO vira pendência para o líder', async () => {
+  montarEquipe(ELIAS);
+
+  // Um dia fechado com uma hora a mais: fora da tolerância, viraria fila
+  await fecharJornada(PEDRO, '2026-09-16', '08:00', '18:00');
+  expect(servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-16')!.estado).toBe('pendente');
+
+  // O RH corrige a saída para o horário certo
+  await servicoPonto.ajustarMarcacao({
+    colaboradorId: PEDRO.id, data: '2026-09-16', tipo: 'saida',
+    hora: '17:30', justificativa: 'Cartão não leu na saída',
+  });
+
+  const ajuste = servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-16')!;
+  expect(ajuste.estado).toBe('aprovado');
+  expect(ajuste.origem).toBe('correcao_manual');
+  // E assinado: ponto é registro trabalhista, alguém responde por ele
+  expect(ajuste.aprovadorId).toBe(ELIAS.id);
+  expect(ajuste.aprovadorNome).toBe('Elias');
+});
+
+test('a batida NORMAL continua virando pendência', async () => {
+  /**
+   * A correção nasce decidida porque quem corrigiu tem autoridade. Bater
+   * o próprio ponto não é corrigir nada — se isto passasse, qualquer um
+   * aprovaria a própria hora extra batendo o cartão.
+   */
+  montarEquipe(PEDRO);
+  await fecharJornada(PEDRO, '2026-09-16', '08:00', '18:00');
+
+  const ajuste = servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-16')!;
+  expect(ajuste.estado).toBe('pendente');
+  expect(ajuste.aprovadorId).toBeUndefined();
+});
+
+test('o LÍDER também decide o dia que ele corrigiu', async () => {
+  // A regra é da autoridade sobre a pessoa, e não do cargo de RH
+  montarEquipe(LIDER_BALCAO);
+  await fecharJornada(PEDRO, '2026-09-16', '08:00', '18:00');
+
+  await servicoPonto.ajustarMarcacao({
+    colaboradorId: PEDRO.id, data: '2026-09-16', tipo: 'saida',
+    hora: '17:30', justificativa: 'Corrigido pela líder',
+  });
+
+  const ajuste = servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-16')!;
+  expect(ajuste.estado).toBe('aprovado');
+  expect(ajuste.aprovadorId).toBe(LIDER_BALCAO.id);
+});
+
+// ============================================================
+// O SALDO PRESO DA LYVIA
+//
+// "a Lyvia ficou com o saldo de hora negativo mesmo estando com a sua
+// carga horaria correta."
+//
+// O dia dela fechou com débito enquanto a jornada ainda era lida errada.
+// O débito foi decidido. Depois a batida foi corrigida — e o débito velho
+// continuou no saldo, porque a apuração voltava antes de refazer conta
+// nenhuma quando o dia já tinha decisão.
+// ============================================================
+
+test('dia JÁ DECIDIDO é refeito quando a batida é corrigida', async () => {
+  montarEquipe(ELIAS);
+  await fecharJornada(PEDRO, '2026-09-16', '08:00', '18:00');
+
+  // Alguém decide o débito/extra do jeito que estava
+  await servicoPonto.decidirAjuste(
+    servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-16')!.id,
+    true
+  );
+  expect(servicoPonto.obterSaldoAcumulado(PEDRO.id)).toBe(60);
+
+  // E então a batida é corrigida para o horário certo
+  await servicoPonto.ajustarMarcacao({
+    colaboradorId: PEDRO.id, data: '2026-09-16', tipo: 'saida',
+    hora: '17:00', justificativa: 'Horário conferido no espelho',
+  });
+
+  /**
+   * O saldo TEM de acompanhar. Antes ficava nos 60 minutos de um dia que
+   * não existe mais — e era isso que a Lyvia via: carga certa na ficha,
+   * saldo negativo na tela.
+   */
+  expect(servicoPonto.obterSaldoAcumulado(PEDRO.id)).toBe(0);
+});
+
+test('a correção que zera a diferença tira o débito do saldo', async () => {
+  montarEquipe(ELIAS);
+  // Uma hora a MENOS, decidida como débito
+  await fecharJornada(PEDRO, '2026-09-16', '08:00', '16:00');
+  await servicoPonto.decidirAjuste(
+    servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-16')!.id,
+    true
+  );
+  expect(servicoPonto.obterSaldoAcumulado(PEDRO.id)).toBe(-60);
+
+  await servicoPonto.ajustarMarcacao({
+    colaboradorId: PEDRO.id, data: '2026-09-16', tipo: 'saida',
+    hora: '17:00', justificativa: 'Bateu no relógio da loja',
+  });
+
+  expect(servicoPonto.obterSaldoAcumulado(PEDRO.id)).toBe(0);
+
+  /**
+   * E o dia zerado também é ASSINADO por quem corrigiu.
+   *
+   * Sem isto ele ficaria como "Tolerância automática" — dizendo que a
+   * regra resolveu um dia que na verdade uma pessoa reescreveu à mão.
+   * Ponto é registro trabalhista: quem mexeu tem de ficar no documento.
+   */
+  const ajuste = servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-16')!;
+  expect(ajuste.origem).toBe('correcao_manual');
+  expect(ajuste.aprovadorId).toBe(ELIAS.id);
+  expect(ajuste.aprovadorNome).toBe('Elias');
+});
+
+test('dia já decidido que continua FORA da tolerância também é refeito', async () => {
+  /**
+   * O irmão do caso da Lyvia, e o que escapou da primeira rodada de
+   * testes: lá a correção zerava a diferença e caía no ramo do dia certo.
+   * Aqui a diferença continua existindo, só que menor — e a apuração
+   * precisa reescrever o número em vez de voltar antes da conta.
+   */
+  montarEquipe(ELIAS);
+  await fecharJornada(PEDRO, '2026-09-16', '08:00', '18:00'); // +60
+
+  await servicoPonto.decidirAjuste(
+    servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-16')!.id,
+    true
+  );
+  expect(servicoPonto.obterSaldoAcumulado(PEDRO.id)).toBe(60);
+
+  // Corrige para 17:30: a extra cai de 60 para 30, mas não some
+  await servicoPonto.ajustarMarcacao({
+    colaboradorId: PEDRO.id, data: '2026-09-16', tipo: 'saida',
+    hora: '17:30', justificativa: 'Conferido no relógio da loja',
+  });
+
+  const ajuste = servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-16')!;
+  expect(ajuste.minutos).toBe(30);
+  expect(ajuste.estado).toBe('aprovado');
+  expect(ajuste.aprovadorId).toBe(ELIAS.id);
+  expect(servicoPonto.obterSaldoAcumulado(PEDRO.id)).toBe(30);
+});

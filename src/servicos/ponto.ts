@@ -1523,10 +1523,18 @@ class ServicoPonto {
     return { sucesso: true };
   }
 
+  /**
+   * @param corrigidoPor Quem acabou de corrigir a batida à mão, quando foi
+   * o caso. Só chega preenchido de `ajustarMarcacao`, DEPOIS de a
+   * autoridade sobre a pessoa ter sido conferida lá — o dia apurado por
+   * uma batida normal não passa por aqui, e ninguém aprova o próprio dia
+   * batendo o ponto.
+   */
   async apurarDia(
     colaboradorId: string,
     data: string,
-    dadosDoColaborador?: { motivo?: string; anexoCaminho?: string }
+    dadosDoColaborador?: { motivo?: string; anexoCaminho?: string },
+    corrigidoPor?: Colaborador
   ): Promise<{ criou: boolean; ajuste?: AjusteJornada }> {
     const jornada = this.obterJornadaDoDia(colaboradorId, data);
     if (!jornada.completa) return { criou: false };
@@ -1549,25 +1557,49 @@ class ServicoPonto {
      * cabe em qualquer tolerância.
      */
     if (diferenca === 0) {
-      if (existente && existente.estado === 'pendente') {
+      /**
+       * DIA JÁ DECIDIDO TAMBÉM PRECISA SER REESCRITO QUANDO A BATIDA MUDA.
+       *
+       * Era só `estado === 'pendente'`. O efeito foi o saldo da Lyvia: o
+       * dia fechou com débito enquanto a jornada dela ainda era lida como
+       * 8h10, o débito foi decidido, e depois a batida foi corrigida. A
+       * diferença virou zero — e o débito velho continuou no saldo dela,
+       * porque esta linha não o alcançava.
+       *
+       * O dia mudou; a conta do dia tem de mudar junto. Quem já decidiu
+       * decidiu sobre outro dia, que não existe mais.
+       */
+      const precisaReescrever =
+        existente && (existente.estado === 'pendente' || !!corrigidoPor);
+
+      if (precisaReescrever) {
         await this.gravarAjusteCorrigido({
-          ...existente,
+          ...existente!,
           minutos: 0,
           minutosTrabalhados: jornada.minutosTrabalhados,
           minutosPrevistos: jornada.minutosPrevistos,
           estado: 'aprovado',
-          origem: 'tolerancia_automatica',
-          aprovadorId: undefined,
-          aprovadorNome: 'Tolerância automática',
+          origem: corrigidoPor ? 'correcao_manual' : 'tolerancia_automatica',
+          aprovadorId: corrigidoPor?.id,
+          aprovadorNome: corrigidoPor?.nome || 'Tolerância automática',
           decididoEm: new Date().toISOString(),
         });
       }
       return { criou: false };
     }
 
-    // Já decidido: não reabre sozinho. Quem corrige marcação depois da
-    // decisão é o RH, e aí a decisão é dele.
-    if (existente && existente.estado !== 'pendente') return { criou: false };
+    /**
+     * Já decidido: não reabre sozinho.
+     *
+     * A exceção é a correção manual. O comentário aqui dizia "quem corrige
+     * marcação depois da decisão é o RH, e aí a decisão é dele" — mas o
+     * código voltava antes de refazer conta nenhuma, e a decisão do RH não
+     * chegava a lugar nenhum. O saldo seguia com o número de antes da
+     * correção, sem nada na tela dizendo isso.
+     */
+    if (existente && existente.estado !== 'pendente' && !corrigidoPor) {
+      return { criou: false };
+    }
 
     /**
      * A TOLERÂNCIA.
@@ -1613,12 +1645,36 @@ class ServicoPonto {
       minutos: Math.abs(diferenca),
       minutosTrabalhados: jornada.minutosTrabalhados,
       minutosPrevistos: jornada.minutosPrevistos,
-      estado: dentroDaTolerancia ? 'aprovado' : 'pendente',
-      origem: dentroDaTolerancia ? 'tolerancia_automatica' : 'pendencia',
-      // Sem aprovadorId: ninguém carimbou. O nome existe para o espelho
-      // conseguir dizer que aquilo foi regra, e não decisão de gente.
-      aprovadorNome: dentroDaTolerancia ? 'Tolerância automática' : undefined,
-      decididoEm: dentroDaTolerancia ? agora : undefined,
+      /**
+       * QUEM CORRIGE A BATIDA JÁ DECIDIU O DIA.
+       *
+       * Era sempre `pendente` fora da tolerância, viesse de onde viesse.
+       * O Elias corrigiu o espelho pelo RH e o sistema mandou o resultado
+       * para o líder do setor aprovar — pedindo carimbo de terceiro sobre
+       * o horário que o RH acabou de afirmar.
+       *
+       * Além de inverter a hierarquia, isso enche a fila de quem não tem
+       * o que julgar ali: o líder não sabe por que o RH mudou a batida, e
+       * a única informação que ele teria é a justificativa que o RH já
+       * escreveu.
+       *
+       * A autoridade foi conferida em `ajustarMarcacao`, que é quem
+       * preenche `corrigidoPor`. Batida normal não passa por aqui.
+       */
+      estado: dentroDaTolerancia || corrigidoPor ? 'aprovado' : 'pendente',
+      origem: dentroDaTolerancia
+        ? 'tolerancia_automatica'
+        : corrigidoPor
+          ? 'correcao_manual'
+          : 'pendencia',
+      // Sem aprovadorId na tolerância: ninguém carimbou. O nome existe para
+      // o espelho conseguir dizer que aquilo foi regra, e não decisão de
+      // gente. Na correção manual há gente, e ela assina.
+      aprovadorId: corrigidoPor?.id,
+      aprovadorNome: dentroDaTolerancia
+        ? 'Tolerância automática'
+        : corrigidoPor?.nome,
+      decididoEm: dentroDaTolerancia || corrigidoPor ? agora : undefined,
       motivoColaborador:
         dadosDoColaborador?.motivo?.trim() ||
         guardada?.motivo ||
@@ -2042,9 +2098,14 @@ class ServicoPonto {
     }
     this.gravarRegistros(registros);
 
-    // Corrigir marcação muda o dia: a apuração é refeita para a fila do
-    // responsável refletir o horário certo, e não o que estava errado.
-    await this.apurarDia(dados.colaboradorId, dados.data);
+    /**
+     * Corrigir marcação muda o dia, e a apuração é refeita.
+     *
+     * `atual` vai junto porque quem corrigiu JÁ DECIDIU: a autoridade dele
+     * sobre esta pessoa foi conferida lá em cima, e o dia sai aprovado em
+     * nome dele em vez de ir para a fila de um terceiro.
+     */
+    await this.apurarDia(dados.colaboradorId, dados.data, undefined, atual);
 
     bancoDados.registrarAuditoria(
       indice !== -1 ? 'Correção de Ponto' : 'Lançamento Manual de Ponto',

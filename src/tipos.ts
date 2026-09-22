@@ -871,7 +871,19 @@ export const ROTULO_ESTADO_AJUSTE: Record<EstadoAjuste, string> = {
  * origem para o espelho conseguir dizer que ninguem carimbou aquilo — e para
  * o RH separar o que foi decisao de gente do que foi regra.
  */
-export type OrigemAjuste = 'pendencia' | 'tolerancia_automatica';
+/**
+ * De onde veio a decisão sobre o dia.
+ *
+ * `correcao_manual` entrou quando o Elias corrigiu o espelho pelo RH e o
+ * sistema mandou o resultado para o líder aprovar. Quem corrige a batida
+ * com autoridade sobre a pessoa já decidiu — pedir carimbo de terceiro
+ * sobre o horário que o RH acabou de afirmar inverte a hierarquia, e
+ * enche a fila de quem não tem nada a julgar ali.
+ */
+export type OrigemAjuste =
+  | 'pendencia'
+  | 'tolerancia_automatica'
+  | 'correcao_manual';
 
 /**
  * Dia que comecou e nao fechou — faltou marcacao.
