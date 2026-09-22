@@ -168,9 +168,22 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
     const temRh = podeUsar('rh_pessoal', colaboradorAtual) && cuidaDeRh;
 
     if (temRh) lista.push('rh');
-    if (podeUsar('visao_lojas', colaboradorAtual)) lista.push('visao_geral');
 
     if (!ehDoRh(colaboradorAtual)) {
+      /**
+       * "VISÃO & LOJAS" NÃO É DO RH.
+       *
+       * Ela mostra indicadores de operação por unidade — o que a rede
+       * está vendendo, como cada loja vai. É a leitura de quem toca o
+       * negócio, e o RH não decide nada com ela.
+       *
+       * Entrou aqui junto das outras que o Elias já tinha tirado do RH
+       * pelo mesmo motivo: quadro de equipe, equipe & ponto e
+       * organograma. Aba que aparece e não serve é ruído na barra, e
+       * numa barra curta cada item a menos é um item a mais de clareza.
+       */
+      if (podeUsar('visao_lojas', colaboradorAtual)) lista.push('visao_geral');
+
       if (podeUsar('quadro_equipe', colaboradorAtual)) lista.push('quadro');
 
       /**
@@ -317,7 +330,13 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               </button>
             )}
 
-            {pode('visao_lojas') && (
+            {/*
+              O `!souDoRh` acompanha o de `abasPermitidas`, e precisa
+              acompanhar: botão que aparece sem a aba estar na lista é
+              escolhido e cai fora no clique seguinte — a tela pisca e
+              volta sozinha, sem dizer por quê.
+            */}
+            {pode('visao_lojas') && !souDoRh && (
             <button
               type="button"
               id="subaba-visao-geral"

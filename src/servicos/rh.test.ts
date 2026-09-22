@@ -238,3 +238,45 @@ test('o RH consegue apagar o arquivo que ele mesmo publicou', async () => {
   // E o expurgo de histórico continua sendo da administração
   expect(remocao).toContain('public.sou_admin()');
 });
+
+test('as abas que o RH NAO ve saem da barra e da lista juntas', async () => {
+  /**
+   * A barra desenha os botões; `abasPermitidas` diz quais abas existem.
+   * Quando as duas discordam, o efeito é o pior possível para quem usa:
+   * o botão aparece, a pessoa clica, e a tela pisca e volta sozinha sem
+   * dizer por quê.
+   *
+   * O RH não vê quadro de equipe, equipe & ponto, organograma nem
+   * "Visão & Lojas" — nenhuma delas decide nada do trabalho dele, e aba
+   * que aparece e não serve é ruído numa barra curta.
+   *
+   * Este teste prende a SIMETRIA, não a lista: o dia em que uma aba
+   * voltar para o RH, ela tem de voltar nos dois lugares.
+   */
+  const painel = await Bun.file(
+    new URL('../componentes/PainelRede.tsx', import.meta.url)
+  ).text();
+
+  // Na barra, todas passam por `!souDoRh`
+  for (const botao of [
+    "pode('visao_lojas') && !souDoRh",
+    "pode('quadro_equipe') && !souDoRh",
+    'podeVerGestao && !souDoRh',
+    "pode('organograma') && !souDoRh",
+  ]) {
+    expect(painel).toContain(botao);
+  }
+
+  /**
+   * E na lista, todas moram DENTRO do mesmo bloco. O recorte vai do
+   * `if (!ehDoRh(...))` até o fecho dele — se alguma escapar de lá, a
+   * barra some com o botão e a aba continua alcançável por estado antigo.
+   */
+  const inicio = painel.indexOf('if (!ehDoRh(colaboradorAtual)) {');
+  expect(inicio).toBeGreaterThan(-1);
+
+  const bloco = painel.slice(inicio, painel.indexOf("lista.push('avisos')", inicio));
+  for (const aba of ["'visao_geral'", "'quadro'", "'gestao'", "'organograma'"]) {
+    expect(bloco).toContain(aba);
+  }
+});
