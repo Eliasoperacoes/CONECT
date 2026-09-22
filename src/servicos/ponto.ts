@@ -777,7 +777,19 @@ class ServicoPonto {
      * sistema distribuiu sozinho, para o `??` abaixo voltar a ter o
      * efeito que sempre foi a intenção dele.
      */
-    if (colaborador?.cargaHorariaDiariaMinutos !== undefined && !ehSabado(data)) {
+    /**
+     * `!= null` PEGA O NULL E O UNDEFINED, e a diferença não é estilo.
+     *
+     * Escrevi `!== undefined` aqui. O banco guarda `null` desde a migração
+     * que limpou a jornada automática — e `null !== undefined` é
+     * verdadeiro. A função devolvia `null`, que vira ZERO na subtração.
+     *
+     * No espelho da Lyvia isso apareceu como saldo +4h45 em todo dia
+     * útil: ela trabalhava 4h45 contra previsto nenhum. O sábado escapou
+     * porque nem entra neste ramo, e por isso só ele mostrava um número
+     * plausível — o que tornou o erro mais confuso, não menos.
+     */
+    if (colaborador?.cargaHorariaDiariaMinutos != null && !ehSabado(data)) {
       return colaborador.cargaHorariaDiariaMinutos;
     }
 

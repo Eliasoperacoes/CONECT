@@ -2591,3 +2591,43 @@ test('meio período continua vencendo tudo no dia útil', () => {
   const meioPeriodo = { ...ESTAGIARIA_SABADO, id: 'colab-mp', cargaHorariaDiariaMinutos: 240 };
   expect(previstoDe(meioPeriodo, '2026-09-15')).toBe(240);
 });
+
+test('jornada NULA no banco vale o turno, e não ZERO', () => {
+  /**
+   * O defeito que o Elias viu no espelho: saldo +4h45 em todo dia útil,
+   * como se a pessoa não devesse jornada nenhuma.
+   *
+   * A migração limpou a coluna para `null`, e a checagem aqui era
+   * `!== undefined` — que `null` satisfaz. A função devolvia null, que
+   * vira zero na subtração. O sábado escapava porque nem passa por essa
+   * linha, e por isso só ele mostrava número plausível.
+   *
+   * `null` chega do banco; `undefined` chega do cache local. Os dois
+   * querem dizer a mesma coisa: vale o turno.
+   */
+  const comNull = {
+    ...ESTAGIARIA_SABADO, id: 'colab-null',
+    cargaHorariaDiariaMinutos: null as unknown as undefined,
+  };
+
+  const terca = previstoDe(comNull, '2026-09-15');
+  expect(terca).not.toBe(0);
+  expect(terca).toBe(285); // as 4h45 do turno da tarde
+});
+
+test('a ponte do banco traduz null para "vale o turno"', async () => {
+  /**
+   * A tradução tem de acontecer na BORDA, e não em cada lugar que lê o
+   * campo. Uma checagem esquecida lá adiante devolve zero de novo.
+   *
+   * E na volta nunca 490: salvar uma ficha qualquer — trocar um ramal —
+   * desfaria a migração para aquela pessoa, sem ninguém notar.
+   */
+  const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+
+  expect(ponte).toContain(
+    'cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos ?? undefined'
+  );
+  expect(ponte).toContain('carga_horaria_diaria_minutos: c.cargaHorariaDiariaMinutos ?? null');
+  expect(ponte).not.toContain('c.cargaHorariaDiariaMinutos ?? 490');
+});

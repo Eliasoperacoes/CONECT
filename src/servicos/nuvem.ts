@@ -79,7 +79,7 @@ interface LinhaColaborador {
   responsavel_id: string | null;
   data_admissao: string | null;
   observacoes: string | null;
-  carga_horaria_diaria_minutos: number;
+  carga_horaria_diaria_minutos: number | null;
   turno: string | null;
   carga_semanal_minutos: number | null;
   trabalha_sabado: boolean | null;
@@ -108,7 +108,10 @@ const paraColaborador = (linha: LinhaColaborador): Colaborador => ({
   responsavelId: linha.responsavel_id || undefined,
   dataAdmissao: linha.data_admissao || undefined,
   observacoes: linha.observacoes || undefined,
-  cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos,
+  // `null` no banco quer dizer "vale o turno". Sem o `?? undefined` ele
+  // chega como null e vence o turno valendo ZERO — foi o que zerou o
+  // previsto de todo dia útil da Lyvia.
+  cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos ?? undefined,
   turno: linha.turno || undefined,
   /**
    * A jornada da pessoa. Vazio no banco quer dizer "vale o padrão do
@@ -156,7 +159,9 @@ const paraLinha = (c: Colaborador) => ({
   responsavel_id: c.responsavelId ?? null,
   data_admissao: c.dataAdmissao ?? null,
   observacoes: c.observacoes ?? null,
-  carga_horaria_diaria_minutos: c.cargaHorariaDiariaMinutos ?? 490,
+  // Nunca 490 de volta: salvar uma ficha qualquer desfaria a migração que
+  // limpou a jornada que ninguém escolheu.
+  carga_horaria_diaria_minutos: c.cargaHorariaDiariaMinutos ?? null,
   /**
    * NUNCA `null`: a coluna e `not null default 'A'`, e um null EXPLICITO
    * anula o default em vez de cair nele. Cada cadastro novo era recusado

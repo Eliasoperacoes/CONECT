@@ -34,7 +34,13 @@ create table if not exists public.colaboradores (
   departamento                    text,
   data_admissao                   text,
   observacoes                     text,
-  carga_horaria_diaria_minutos    integer not null default 480,
+  -- NULO quer dizer "vale o turno da pessoa", que é o certo para quase
+  -- todo mundo. Era `not null default 480`, e o efeito foi silencioso: a
+  -- coluna nunca vinha vazia, então a jornada da ficha vencia o turno
+  -- SEMPRE — inclusive para os estagiários, que passaram a dever 3h25
+  -- por dia contra uma jornada que ninguém tinha escolhido.
+  -- Preenchida, é contrato individual (meio período) e manda mesmo.
+  carga_horaria_diaria_minutos    integer,
   ativo                           boolean not null default true,
   criado_em                       timestamptz not null default now()
 );
