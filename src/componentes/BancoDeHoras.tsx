@@ -45,6 +45,7 @@ import {
   minutosDoTurno,
   INFORMACOES_LOJAS,
   ehMarcacaoCorrigida,
+  ehMarcacaoPreenchida,
 } from '../tipos';
 import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
@@ -124,6 +125,39 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
       res.dias === 0
         ? 'Nada mudou: as contas já estavam com a regra de hoje.'
         : `${res.dias} dia(s) reapurado(s).`
+    );
+  };
+
+  /**
+   * O preenchimento do espelho pelo turno.
+   *
+   * Pede justificativa antes de rodar, como qualquer lançamento manual —
+   * isto CRIA registro trabalhista por dedução, e o motivo fica na
+   * Auditoria junto de quem mandou.
+   */
+  const [preenchimento, setPreenchimento] = useState<string | null>(null);
+  const [preenchendo, setPreenchendo] = useState(false);
+
+  const preencherEspelho = async () => {
+    if (!detalheId || preenchimento === null) return;
+    setPreenchendo(true);
+    const res = await servicoPonto.preencherEspelhoPeloTurno({
+      colaboradorId: detalheId,
+      dataInicio,
+      dataFim,
+      justificativa: preenchimento,
+    });
+    setPreenchendo(false);
+
+    if (!res.sucesso) {
+      exibirToast(res.erro || 'Não foi possível preencher.', true);
+      return;
+    }
+    setPreenchimento(null);
+    exibirToast(
+      res.dias === 0
+        ? 'Nenhum dia vazio para preencher no período.'
+        : `${res.dias} dia(s) preenchido(s) com o horário do turno.`
     );
   };
 
@@ -997,6 +1031,20 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
               </div>
             </div>
 
+            {podeReapurar && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPreenchimento('')}
+                  className="px-3 py-1.5 rounded-lg bg-[var(--c-superficie)] border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto)] hover:border-[var(--c-borda-forte)] transition-all flex items-center gap-1.5"
+                  title="Escreve o horário do turno nos dias que ficaram sem nenhuma batida"
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  Preencher dias vazios
+                </button>
+              </div>
+            )}
+
             {/*
               O ACUMULADO DISCORDANDO DO PERÍODO.
 
@@ -1126,7 +1174,9 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                                       })
                                     }
                                     title={
-                                      reg && ehMarcacaoCorrigida(reg.metodo)
+                                      reg && ehMarcacaoPreenchida(reg.metodo)
+                                        ? `Preenchido pelo horário do turno, por ${reg.ajustadoPorNome}: ${reg.justificativa}. NÃO foi batido pela pessoa.`
+                                        : reg && ehMarcacaoCorrigida(reg.metodo)
                                         ? `Corrigido por ${reg.ajustadoPorNome}: ${reg.justificativa}`
                                         : motivo && podeCorrigirMarcacao
                                         ? `${motivo}: o dia não prevê esta marcação. Clique para lançar assim mesmo — é hora extra.`
@@ -1139,10 +1189,27 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                                         ? 'text-[10px] italic text-[var(--c-texto-3)]'
                                         : 'font-mono tabular-nums'
                                     } ${
+                                      /*
+                                        TRÊS ORIGENS, TRÊS APARÊNCIAS.
+
+                                        Âmbar: alguém corrigiu, e afirmou
+                                        o horário. Azul em itálico: o
+                                        sistema deduziu do turno, e
+                                        ninguém bateu. Normal: batido
+                                        pela pessoa.
+
+                                        Quem confere o documento precisa
+                                        separar as três sem perguntar a
+                                        ninguém — é o que faz o espelho
+                                        continuar honesto depois do
+                                        preenchimento automático.
+                                      */
                                       reg
-                                        ? ehMarcacaoCorrigida(reg.metodo)
-                                          ? 'text-amber-600 font-bold'
-                                          : 'text-[var(--c-texto)]'
+                                        ? ehMarcacaoPreenchida(reg.metodo)
+                                          ? 'text-sky-600 italic'
+                                          : ehMarcacaoCorrigida(reg.metodo)
+                                            ? 'text-amber-600 font-bold'
+                                            : 'text-[var(--c-texto)]'
                                         : 'text-[var(--c-texto-3)]'
                                     }`}
                                   >
@@ -1344,6 +1411,72 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
       />
 
       {/* Modal de ajuste de marcação */}
+      {/*
+        O PREENCHIMENTO PEDE JUSTIFICATIVA ANTES DE RODAR.
+
+        Não é formalidade: isto escreve registro trabalhista por dedução,
+        em lote, e o motivo é o que explica meses depois por que aqueles
+        horários estão ali. Fica na Auditoria junto de quem mandou.
+      */}
+      {preenchimento !== null && (
+        <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3">
+          <div className="bg-[var(--c-superficie)] w-full max-w-md rounded-2xl border border-[var(--c-borda)] shadow-[var(--s-3)] p-4 flex flex-col gap-3">
+            <div>
+              <h3 className="font-bold text-sm text-[var(--c-texto)]">
+                Preencher dias vazios pelo turno
+              </h3>
+              <p className="text-[11px] text-[var(--c-texto-3)] mt-1 leading-relaxed">
+                De {formatarDataBR(dataInicio)} a {formatarDataBR(dataFim)}. Só entram
+                dias <strong>sem nenhuma batida</strong> — dia começado fica como está.
+                Domingo, feriado, folga e atestado ficam de fora.
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-amber-500/5 border border-amber-500/25">
+              <p className="text-[11px] text-[var(--c-texto-2)] leading-relaxed">
+                As marcações entram em <span className="text-sky-600 italic">azul</span>,
+                marcadas como preenchidas pelo turno — elas não se confundem com batida
+                da pessoa, e o motivo abaixo fica gravado na Auditoria.
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor="preench-motivo" className="block text-[11px] font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1">
+                Motivo *
+              </label>
+              <input
+                id="preench-motivo"
+                type="text"
+                autoFocus
+                value={preenchimento}
+                onChange={(e) => setPreenchimento(e.target.value)}
+                placeholder="Ex.: relógio da loja fora do ar na semana"
+                className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)]"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPreenchimento(null)}
+                className="py-2.5 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto)]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={preencherEspelho}
+                disabled={preenchendo || !preenchimento.trim()}
+                className="py-2.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                <Clock className="w-3.5 h-3.5" />
+                {preenchendo ? 'Preenchendo…' : 'Preencher'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {ajuste && (
         <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
           <form

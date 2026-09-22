@@ -3014,3 +3014,179 @@ test('o sábado do ESTÁGIO continua completando a semana', () => {
   // 5h × 5 = 25h; para fechar 30h o sábado carrega as 5h que faltam
   expect(previstoDe({ ...estagiaria, cargaSemanalMinutos: 1800 }, '2026-09-19')).toBe(300);
 });
+
+// ============================================================
+// PREENCHER O ESPELHO PELO TURNO
+//
+// O RH precisava digitar quatro batidas por pessoa por dia para fechar
+// um mês. Com 89 pessoas isso não se faz — e o que não se faz vira
+// espelho incompleto, que é pior do que o trabalho.
+//
+// Mas isto CRIA registro trabalhista por dedução. As travas abaixo são o
+// que separa "poupar digitação" de "inventar jornada".
+// ============================================================
+
+const preencher = (quem: any, de: string, ate: string, motivo = 'Fechamento do mês') =>
+  servicoPonto.preencherEspelhoPeloTurno({
+    colaboradorId: quem.id, dataInicio: de, dataFim: ate, justificativa: motivo,
+  });
+
+test('preenche o dia vazio com o horário do turno', async () => {
+  montarEquipe(ELIAS);
+
+  const res = await preencher(PEDRO, '2026-09-14', '2026-09-15');
+  expect(res.sucesso).toBe(true);
+  expect(res.dias).toBe(2);
+
+  const dia = servicoPonto.obterJornadaDoDia(PEDRO.id, '2026-09-15');
+  expect(dia.completa).toBe(true);
+  expect(dia.marcacoes.entrada!.horaFormatada).toBe('07:30');
+  expect(dia.marcacoes.saida!.horaFormatada).toBe('17:10');
+});
+
+test('a origem NUNCA se confunde com batida nem com correção', async () => {
+  const { ehMarcacaoPreenchida, ehMarcacaoCorrigida } = await import('../tipos');
+
+  /**
+   * É o que separa o documento honesto do inventado: quem confere
+   * precisa ver que aquele horário foi DEDUZIDO do contrato, e não
+   * batido pela pessoa nem afirmado por alguém.
+   */
+  montarEquipe(ELIAS);
+  await preencher(PEDRO, '2026-09-15', '2026-09-15');
+
+  const entrada = servicoPonto.obterJornadaDoDia(PEDRO.id, '2026-09-15').marcacoes.entrada!;
+  expect(entrada.metodo).toBe('preenchimento_turno');
+  expect(ehMarcacaoPreenchida(entrada.metodo)).toBe(true);
+  expect(ehMarcacaoCorrigida(entrada.metodo)).toBe(false);
+
+  // E fica o rastro de quem mandou e por quê
+  expect(entrada.ajustadoPorNome).toBe('Elias');
+  expect(entrada.justificativa).toBe('Fechamento do mês');
+});
+
+test('TRAVA: dia com UMA batida fica como está', async () => {
+  /**
+   * Dia pela metade é justamente o que precisa de gente olhando — uma
+   * saída que não foi batida é pergunta, não lacuna. Preencher o resto
+   * apagaria a pergunta e fecharia o dia como se estivesse certo.
+   */
+  montarEquipe(ELIAS);
+  bancoRegistros.push({
+    id: 'so-entrada', colaboradorId: PEDRO.id, data: '2026-09-15', tipo: 'entrada',
+    horario: new Date('2026-09-15T08:00:00').toISOString(), horaFormatada: '08:00',
+    metodo: 'qrcode', loja: PEDRO.loja, criadoEm: new Date().toISOString(),
+  });
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+
+  const res = await preencher(PEDRO, '2026-09-15', '2026-09-15');
+
+  expect(res.dias).toBe(0);
+  const dia = servicoPonto.obterJornadaDoDia(PEDRO.id, '2026-09-15');
+  expect(dia.marcacoes.saida).toBeUndefined();
+});
+
+test('TRAVA: não toca no dia de HOJE', async () => {
+  montarEquipe(ELIAS);
+  const hoje = dataDeHoje();
+
+  const res = await preencher(PEDRO, hoje, hoje);
+  expect(res.dias).toBe(0);
+});
+
+test('TRAVA: exige justificativa', async () => {
+  montarEquipe(ELIAS);
+  const res = await preencher(PEDRO, '2026-09-15', '2026-09-15', '   ');
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('motivo');
+});
+
+test('TRAVA: quem não responde pela pessoa não preenche', async () => {
+  montarEquipe(OUTRA_LOJA);
+  const res = await preencher(PEDRO, '2026-09-15', '2026-09-15');
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('responde');
+});
+
+test('não preenche DOMINGO nem dia que não é da pessoa', async () => {
+  // 2026-09-20 é um domingo
+  montarEquipe(ELIAS);
+  const res = await preencher(PEDRO, '2026-09-20', '2026-09-20');
+
+  expect(res.dias).toBe(0);
+  expect(servicoPonto.obterJornadaDoDia(PEDRO.id, '2026-09-20').marcacoes.entrada)
+    .toBeUndefined();
+});
+
+test('o dia preenchido é APURADO junto, e não fica solto', async () => {
+  /**
+   * Preencher sem apurar deixaria o espelho cheio e o saldo vazio — duas
+   * telas contando histórias diferentes do mesmo mês, que é o defeito
+   * que já apareceu aqui por outros caminhos.
+   */
+  const semJornadaPropria = {
+    ...PEDRO, id: 'colab-limpo', login: 'limpo',
+    cargaHorariaDiariaMinutos: undefined,
+  };
+  equipe = [ELIAS, semJornadaPropria];
+  colaboradorLogado = ELIAS;
+
+  await preencher(semJornadaPropria, '2026-09-15', '2026-09-15');
+
+  const dia = servicoPonto.obterJornadaDoDia(semJornadaPropria.id, '2026-09-15');
+  // O turno fecha a carga certinha: nada a decidir, e nada na fila
+  expect(dia.minutosTrabalhados).toBe(490);
+  expect(dia.saldoMinutos).toBe(0);
+});
+
+test('preencher EXPÕE a jornada da ficha que discorda do turno', async () => {
+  /**
+   * O Pedro tem 8h00 gravadas na ficha e cumpre o turno A, que fecha
+   * 8h10. Preenchido pelo turno, o dia dele nasce com 10 minutos de
+   * sobra — todo dia.
+   *
+   * Isso é a divergência aparecendo, e não um defeito do preenchimento:
+   * o número saiu do relógio do turno, que é o horário que ele cumpre. O
+   * conserto é na ficha — ou a jornada própria é real e o turno é outro,
+   * ou ela é resquício e deve sair.
+   */
+  montarEquipe(ELIAS);
+  await preencher(PEDRO, '2026-09-15', '2026-09-15');
+
+  const dia = servicoPonto.obterJornadaDoDia(PEDRO.id, '2026-09-15');
+  expect(dia.minutosTrabalhados).toBe(490); // o turno
+  expect(dia.minutosPrevistos).toBe(480); // a ficha
+  expect(dia.saldoMinutos).toBe(10);
+});
+
+test('não preenche dia de ATESTADO ou falta abonada', async () => {
+  /**
+   * O domingo já não é preenchido porque o turno não espera batida
+   * nenhuma nele. Este caso é outro, e só a checagem de situação pega:
+   * uma terça-feira normal, em que a pessoa tem atestado aprovado.
+   *
+   * Preencher ali seria o sistema afirmando que ela trabalhou um dia em
+   * que o próprio sistema sabe que ela não estava.
+   */
+  montarEquipe(ELIAS);
+  armazenamento.setItem(
+    'conecta_v4_justificativas_ausencia',
+    JSON.stringify([
+      {
+        id: 'at1', colaboradorId: PEDRO.id, dataInicio: '2026-09-15',
+        dataFim: '2026-09-15', tipo: 'atestado', estado: 'aprovada',
+        criadoEm: new Date().toISOString(),
+      },
+    ])
+  );
+
+  const res = await preencher(PEDRO, '2026-09-15', '2026-09-15');
+
+  expect(res.dias).toBe(0);
+  expect(servicoPonto.obterJornadaDoDia(PEDRO.id, '2026-09-15').marcacoes.entrada)
+    .toBeUndefined();
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});

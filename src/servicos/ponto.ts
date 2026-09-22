@@ -24,6 +24,7 @@ import {
   MINUTOS_SABADO,
   minutosDoTurno,
   turnoDe,
+  Turno,
   minutosPausaDoTurno,
   minutosDeIntervaloDe,
   HORARIO_ENTRADA_PADRAO,
@@ -2339,6 +2340,172 @@ class ServicoPonto {
     this.notificar();
 
     return { sucesso: true, dias };
+  }
+
+  /**
+   * PREENCHE OS DIAS VAZIOS com o horário do turno da pessoa.
+   *
+   * O RH precisava digitar quatro batidas por pessoa por dia para fechar
+   * um mês. Com 89 pessoas isso não se faz, e o que não se faz vira
+   * espelho incompleto — que é pior do que o trabalho.
+   *
+   * ===================================================================
+   * O QUE ISTO É, E O QUE ELE NÃO PODE VIRAR
+   * ===================================================================
+   *
+   * Isto CRIA registro de ponto por dedução: o sistema afirmando que a
+   * pessoa cumpriu o turno num dia em que ninguém bateu nada. É
+   * documento trabalhista, e por isso vem com quatro travas:
+   *
+   *  1. SÓ DIA COMPLETAMENTE VAZIO. Uma batida que seja, e o dia fica
+   *     como está — dia pela metade é justamente o que precisa de gente
+   *     olhando, e preencher o resto apagaria a pergunta.
+   *  2. MÉTODO PRÓPRIO. `preenchimento_turno` não se confunde com batida
+   *     nem com correção: tem cor no espelho e sai na Auditoria.
+   *  3. SÓ DIA QUE JÁ FECHOU, e só dia que a pessoa deveria trabalhar —
+   *     domingo, feriado, folga aprovada e sábado de quem não vem ficam
+   *     de fora.
+   *  4. EXIGE JUSTIFICATIVA, como qualquer lançamento manual.
+   *
+   * Nenhuma delas é excesso de zelo: sem a primeira, o preenchimento
+   * esconderia uma saída não batida; sem a segunda, a fiscalização não
+   * teria como separar o que foi batido do que foi suposto.
+   */
+  async preencherEspelhoPeloTurno(dados: {
+    colaboradorId: string;
+    dataInicio: string;
+    dataFim: string;
+    justificativa: string;
+  }): Promise<{ sucesso: boolean; dias: number; erro?: string }> {
+    const atual = bancoDados.obterColaboradorAtual();
+    const colaborador = bancoDados.obterColaboradorPorId(dados.colaboradorId);
+
+    if (!colaborador) {
+      return { sucesso: false, dias: 0, erro: 'Colaborador não encontrado.' };
+    }
+    if (!this.podeAcessarPainelRH(atual) && !this.podeDecidirSobre(colaborador)) {
+      return {
+        sucesso: false,
+        dias: 0,
+        erro: 'Preencher espelho é de quem responde por esta pessoa, ou do RH.',
+      };
+    }
+    if (!dados.justificativa.trim()) {
+      return { sucesso: false, dias: 0, erro: 'Informe o motivo do preenchimento.' };
+    }
+
+    // O banco antes do aparelho: preencher sobre cache velho criaria
+    // batida em dia que já tinha marcação lançada de outro lugar
+    if (usandoNuvem()) await nuvem.sincronizarPonto();
+
+    const turno = turnoDe(colaborador);
+    const hoje = dataDeHoje();
+    let dias = 0;
+
+    for (const data of listarDatasDoPeriodo(dados.dataInicio, dados.dataFim)) {
+      if (data >= hoje) continue;
+
+      // Dia que não é dela: domingo, feriado, folga, sábado de quem não vem
+      const esperadas = marcacoesEsperadas(data, colaborador);
+      if (esperadas.length === 0) continue;
+      if (situacaoDoDia(dados.colaboradorId, data) !== 'normal') continue;
+
+      // TRAVA 1: uma batida que seja, e o dia fica como está
+      const jaTem = this.obterMarcacoesDoDia(dados.colaboradorId, data);
+      if (jaTem.length > 0) continue;
+
+      const horarios = this.horariosDoTurnoParaODia(turno, data, esperadas);
+      if (!horarios) continue;
+
+      for (const [tipo, hora] of horarios) {
+        const base = deDataLocal(data);
+        const [h, m] = hora.split(':').map(Number);
+        const horario = new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, m, 0);
+
+        const registro: RegistroPonto = {
+          id: `ponto-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          colaboradorId: dados.colaboradorId,
+          data,
+          tipo,
+          horario: horario.toISOString(),
+          horaFormatada: hora,
+          metodo: 'preenchimento_turno',
+          loja: colaborador.loja,
+          criadoEm: new Date().toISOString(),
+          ajustadoPorId: atual.id,
+          ajustadoPorNome: atual.nome,
+          justificativa: dados.justificativa.trim(),
+        };
+
+        if (usandoNuvem()) {
+          const res = await nuvem.salvarRegistroPonto(registro);
+          if (!res.sucesso && !res.duplicado) {
+            return {
+              sucesso: false,
+              dias,
+              erro: `Não foi possível gravar ${formatarDataBR(data)}: ${res.erro || 'recusado pelo banco'}`,
+            };
+          }
+        }
+
+        const registros = this.lerRegistros();
+        registros.push(registro);
+        this.gravarRegistros(registros);
+      }
+
+      await this.apurarDia(dados.colaboradorId, data, undefined, atual);
+      dias += 1;
+    }
+
+    if (dias > 0) {
+      bancoDados.registrarAuditoria(
+        'Preenchimento de Espelho',
+        'seguranca',
+        `${atual.nome} preencheu ${dias} dia(s) vazio(s) de ${colaborador.nome} entre ${formatarDataBR(dados.dataInicio)} e ${formatarDataBR(dados.dataFim)} com o horário do turno ${turno.nome}. Motivo: ${dados.justificativa.trim()}`
+      );
+    }
+    this.notificar();
+
+    return { sucesso: true, dias };
+  }
+
+  /**
+   * Os horários que o turno prevê para AQUELE dia, na ordem das batidas.
+   *
+   * Separado porque o sábado tem relógio próprio e o dia útil depende de
+   * o turno ter almoço — e embutir isso no laço do preenchimento faria a
+   * mesma decisão existir em dois lugares.
+   */
+  private horariosDoTurnoParaODia(
+    turno: Turno,
+    data: string,
+    esperadas: TipoMarcacao[]
+  ): Array<[TipoMarcacao, string]> | null {
+    if (ehSabado(data)) {
+      return [
+        ['entrada', TURNO_SABADO.entrada],
+        ['saida', TURNO_SABADO.saida],
+      ];
+    }
+
+    if (esperadas.length === 4 && turno.intervalo) {
+      return [
+        ['entrada', turno.entrada],
+        ['saida_almoco', turno.intervalo.saida],
+        ['retorno_almoco', turno.intervalo.retorno],
+        ['saida', turno.saida],
+      ];
+    }
+
+    if (esperadas.length === 2) {
+      return [
+        ['entrada', turno.entrada],
+        ['saida', turno.saida],
+      ];
+    }
+
+    // Combinação que o turno não sabe desenhar: melhor não inventar nada
+    return null;
   }
 
   /** Remove uma marcação lançada por engano. Só RH/Administrador. */

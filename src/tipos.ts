@@ -853,7 +853,21 @@ export const ROTULO_MARCACAO: Record<TipoMarcacao, string> = {
 };
 
 /** Como a marcação foi comprovada. */
-export type MetodoMarcacao = 'qrcode' | 'codigo_manual' | 'ajuste_rh' | 'ajuste_lider';
+/**
+ * `preenchimento_turno` é o único que NÃO veio de gente.
+ *
+ * O sistema escreve o horário do turno num dia que ficou vazio, para o
+ * RH não ter de digitar quatro batidas por pessoa por dia. Isso é criar
+ * registro trabalhista por dedução — e por isso ele nunca se confunde
+ * com batida nem com correção: tem cor própria no espelho, fica na
+ * Auditoria e pode ser desfeito.
+ */
+export type MetodoMarcacao =
+  | 'qrcode'
+  | 'codigo_manual'
+  | 'ajuste_rh'
+  | 'ajuste_lider'
+  | 'preenchimento_turno';
 
 /**
  * A marcação foi escrita por alguém, e não batida pela pessoa?
@@ -866,6 +880,17 @@ export type MetodoMarcacao = 'qrcode' | 'codigo_manual' | 'ajuste_rh' | 'ajuste_
  */
 export const ehMarcacaoCorrigida = (metodo?: MetodoMarcacao): boolean =>
   metodo === 'ajuste_rh' || metodo === 'ajuste_lider';
+
+/**
+ * A marcação foi DEDUZIDA do turno, e não escrita por alguém?
+ *
+ * Separada de `ehMarcacaoCorrigida` de propósito. Correção tem autor e
+ * justificativa: uma pessoa afirmou o horário. Preenchimento é o sistema
+ * supondo pelo contrato — e quem confere o documento precisa distinguir
+ * as duas coisas sem ter de perguntar a ninguém.
+ */
+export const ehMarcacaoPreenchida = (metodo?: MetodoMarcacao): boolean =>
+  metodo === 'preenchimento_turno';
 
 export interface RegistroPonto {
   id: string;
