@@ -188,7 +188,11 @@ create table if not exists public.registros_ponto (
   tipo                text not null check (tipo in ('entrada', 'saida_almoco', 'retorno_almoco', 'saida')),
   horario             timestamptz not null,
   hora_formatada      text not null,
-  metodo              text not null check (metodo in ('qrcode', 'codigo_manual', 'ajuste_rh', 'ajuste_lider')),
+  -- 'preenchimento_turno' e o unico que nao veio de gente: o sistema
+  -- deduziu o horario do turno num dia em que ninguem bateu. Valor
+  -- proprio de proposito, para o banco guardar a diferenca entre o que
+  -- foi batido, o que foi corrigido e o que foi suposto.
+  metodo              text not null check (metodo in ('qrcode', 'codigo_manual', 'ajuste_rh', 'ajuste_lider', 'preenchimento_turno')),
   loja                text not null,
   ajustado_por_id     text references public.colaboradores(id) on delete set null,
   ajustado_por_nome   text,
@@ -701,13 +705,19 @@ create policy ponto_batida on public.registros_ponto
   with check (
     (
       colaborador_id = public.meu_colaborador_id()
-      and metodo not in ('ajuste_rh', 'ajuste_lider')
+      and metodo not in ('ajuste_rh', 'ajuste_lider', 'preenchimento_turno')
     )
     or public.cuido_de_pessoas()
     -- O responsável lança a batida que faltou, na fila de aprovação. Sem
     -- isto ele só podia aprovar o dia errado ou recusar — e recusar não
     -- conserta o espelho de ninguém.
-    or (public.posso_decidir_jornada(colaborador_id) and metodo = 'ajuste_lider')
+    -- E preenche os dias vazios da equipe pelo turno, como o RH: sem o
+    -- segundo valor, o preenchimento do líder seria recusado pelo banco
+    -- enquanto o do RH funcionava.
+    or (
+      public.posso_decidir_jornada(colaborador_id)
+      and metodo in ('ajuste_lider', 'preenchimento_turno')
+    )
   );
 
 drop policy if exists ponto_ajuste on public.registros_ponto;
