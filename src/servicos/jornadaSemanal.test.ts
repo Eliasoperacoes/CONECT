@@ -623,3 +623,23 @@ test('a PAUSA de 15 min não se bate; o ALMOÇO de 1h30 sim', async () => {
   const estagiarioManha = { id: 'e1', setor: 'Estágio', turno: 'E1' } as never;
   expect(marcacoesEsperadas('2026-09-15', estagiarioManha)).toEqual(['entrada', 'saida']);
 });
+
+test('o espelho de ponto sai com a folha DE PÉ', async () => {
+  /**
+   * Estava em paisagem porque a grade tem sete colunas e coube melhor
+   * deitada. Só que espelho de ponto é documento que se arquiva, se
+   * assina e se entrega — e no meio de uma pasta de papel de pé, uma
+   * folha deitada é a que some.
+   *
+   * Prendido aqui porque é uma palavra só no código: trocar de volta não
+   * quebra nada, não acusa nada, e só aparece na hora de imprimir.
+   */
+  const fonte = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+
+  const inicio = fonte.indexOf('Espelho de Ponto —');
+  expect(inicio).toBeGreaterThan(-1);
+
+  const trecho = fonte.slice(inicio, inicio + 800);
+  expect(trecho).toContain("orientacao: 'retrato'");
+  expect(trecho).not.toContain("orientacao: 'paisagem'");
+});

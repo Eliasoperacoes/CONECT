@@ -2822,17 +2822,34 @@ class ServicoPonto {
      */
     return montarDocumento({
       titulo: `Espelho de Ponto — ${formatarDataBR(dataInicio)} a ${formatarDataBR(dataFim)}`,
-      orientacao: 'paisagem',
+      /**
+       * A FOLHA FICA DE PÉ.
+       *
+       * Estava em paisagem porque a grade tem sete colunas e coube melhor
+       * deitada. Só que espelho de ponto é documento que se arquiva, se
+       * assina e se entrega — e no meio de uma pasta de papel de pé, uma
+       * folha deitada é a que some.
+       */
+      orientacao: 'retrato',
       estiloExtra: `
-  .marcacoes { font-size: 11px; }
-  .marcacoes th { background: #eee; border: 1px solid #999; padding: 5px 4px; font-size: 10px; text-transform: uppercase; }
-  .marcacoes td { border: 1px solid #bbb; padding: 4px; text-align: center; }
-  .marcacoes .dia { text-align: left; white-space: nowrap; font-weight: 600; }
+  /*
+    OS NÚMEROS ENCOLHERAM PARA A FOLHA DE PÉ.
+
+    Em paisagem sobravam ~90mm de largura para as sete colunas. De pé
+    sobram ~65mm, e o que estourava primeiro era a coluna de origem —
+    ela empurrava as marcações e quebrava o horário em duas linhas, que
+    num documento de ponto é o pior lugar para haver dúvida.
+  */
+  .marcacoes { font-size: 10px; table-layout: fixed; }
+  .marcacoes th { background: #eee; border: 1px solid #999; padding: 4px 2px; font-size: 9px; text-transform: uppercase; }
+  .marcacoes td { border: 1px solid #bbb; padding: 3px 2px; text-align: center; }
+  .marcacoes .dia { text-align: left; white-space: nowrap; font-weight: 600; font-size: 9px; }
   .semana { font-weight: 400; color: #666; text-transform: capitalize; }
-  .origem { text-align: left; font-size: 9px; color: #555; }
+  .origem { text-align: left; font-size: 8px; color: #555; word-break: break-word; }
   .naoSeAplica { color: #bbb; }
   .vazio td { background: #fafafa; }
-  .totais { margin-top: 12px; width: 60%; font-size: 12px; }
+  /* De pé, 60% de largura deixava o quadro de totais solto no meio */
+  .totais { margin-top: 12px; width: 85%; font-size: 11px; }
   .totais td { border: 1px solid #bbb; padding: 5px 8px; }
   .totais .destaque td { font-weight: 700; background: #f2f2f2; }
       `,

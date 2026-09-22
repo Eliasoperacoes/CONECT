@@ -313,7 +313,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                 }`}
               >
                 <Briefcase className="w-3.5 h-3.5" />
-                <span>RH</span>
+                <span>Recursos Humanos</span>
               </button>
             )}
 

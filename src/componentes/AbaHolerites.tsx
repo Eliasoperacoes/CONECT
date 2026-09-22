@@ -15,7 +15,16 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Receipt, Upload, Check, Search, Trash2, FileText } from 'lucide-react';
+import {
+  Receipt,
+  Upload,
+  Check,
+  Search,
+  Trash2,
+  FileText,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 import { Colaborador, Holerite } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import { listarHolerites, salvarHolerite, removerHolerite } from '../servicos/rh';
@@ -78,6 +87,51 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
   }, [busca, versao]);
 
   /** Quem já tem holerite NESTA competência. */
+  /**
+   * A LISTA RECOLHE POR LOJA.
+   *
+   * São 89 pessoas numa coluna só. Quem está subindo o holerite de Porto
+   * Ferreira rolava a matriz inteira para chegar lá, e perdia o lugar a
+   * cada arquivo enviado.
+   *
+   * A loja é o corte certo porque é assim que o holerite chega ao RH: um
+   * lote por unidade. Recolher por setor ou por letra não ajudaria em
+   * nada nesse trabalho.
+   */
+  const [recolhidas, setRecolhidas] = useState<Set<string>>(new Set());
+
+  const porLoja = useMemo(() => {
+    const mapa = new Map<string, typeof pessoas>();
+    for (const c of pessoas) {
+      const lista = mapa.get(c.loja) || [];
+      lista.push(c);
+      mapa.set(c.loja, lista);
+    }
+    return [...mapa.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [pessoas]);
+
+  /**
+   * BUSCANDO, TUDO ABRE.
+   *
+   * Um resultado escondido dentro de um grupo fechado é pior do que
+   * resultado nenhum: a pessoa digita o nome certo, não vê nada e
+   * conclui que o colega não está cadastrado.
+   */
+  const buscando = busca.trim().length > 0;
+
+  const alternarLoja = (loja: string) =>
+    setRecolhidas((atual) => {
+      const nova = new Set(atual);
+      if (nova.has(loja)) nova.delete(loja);
+      else nova.add(loja);
+      return nova;
+    });
+
+  const todasRecolhidas = porLoja.length > 0 && recolhidas.size === porLoja.length;
+
+  const alternarTodas = () =>
+    setRecolhidas(todasRecolhidas ? new Set() : new Set(porLoja.map(([loja]) => loja)));
+
   const jaTem = useMemo(() => {
     const mapa = new Map<string, Holerite>();
     for (const h of holerites) {
@@ -201,12 +255,69 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
         className="hidden"
       />
 
-      <div className="flex flex-col gap-1.5">
-        {pessoas.map((c) => {
-          const holerite = jaTem.get(c.id);
-          const subindo = enviando === c.id;
+      {porLoja.length > 1 && !buscando && (
+        <button
+          type="button"
+          onClick={alternarTodas}
+          className="self-start text-[11px] font-bold text-[var(--c-acento)] hover:underline flex items-center gap-1"
+        >
+          {todasRecolhidas ? (
+            <ChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5" />
+          )}
+          {todasRecolhidas ? 'Abrir todas as lojas' : 'Recolher todas as lojas'}
+        </button>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {porLoja.map(([loja, daLoja]) => {
+          const fechada = !buscando && recolhidas.has(loja);
+          const publicados = daLoja.filter((c) => jaTem.has(c.id)).length;
+          const completa = publicados === daLoja.length;
 
           return (
+            <div key={loja} className="flex flex-col gap-1.5">
+              {/*
+                O CABEÇALHO DIZ O PROGRESSO SEM PRECISAR ABRIR.
+
+                "3 de 12" é o que o RH quer saber ao passar o olho: qual
+                loja ainda falta. Sem isso, recolher esconderia justamente
+                a informação que faz decidir onde mexer.
+              */}
+              <button
+                type="button"
+                onClick={() => alternarLoja(loja)}
+                disabled={buscando}
+                className="px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] flex items-center gap-2 text-left hover:border-[var(--c-borda-forte)] transition-colors disabled:opacity-60"
+              >
+                {fechada ? (
+                  <ChevronRight className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
+                )}
+
+                <span className="flex-1 min-w-0 text-xs font-bold text-[var(--c-texto)] truncate">
+                  {loja}
+                </span>
+
+                <span
+                  className={`text-[11px] font-bold tabular-nums flex-shrink-0 ${
+                    completa ? 'text-emerald-600' : 'text-[var(--c-texto-3)]'
+                  }`}
+                >
+                  {completa && <Check className="w-3.5 h-3.5 inline mr-0.5" />}
+                  {publicados} de {daLoja.length}
+                </span>
+              </button>
+
+              {!fechada && (
+                <div className="flex flex-col gap-1.5 pl-2">
+                  {daLoja.map((c) => {
+                    const holerite = jaTem.get(c.id);
+                    const subindo = enviando === c.id;
+
+                    return (
             <div
               key={c.id}
               className={`px-3 py-2.5 rounded-xl border flex items-center gap-3 ${
@@ -268,6 +379,11 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
                   <Upload className="w-3.5 h-3.5" />
                   {subindo ? 'Enviando…' : 'Enviar'}
                 </button>
+              )}
+            </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           );
