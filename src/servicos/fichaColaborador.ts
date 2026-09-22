@@ -12,7 +12,7 @@
  * chama `montarFicha` e mostra; quem precisa de um bloco pronto para
  * documento chama `linhasDeIdentificacao`. Campo novo entra uma vez só.
  */
-import { Colaborador, ROTULO_NIVEL, acharTurno, minutosDoTurno } from '../tipos';
+import { Colaborador, ROTULO_NIVEL, turnoDe, minutosDoTurno } from '../tipos';
 
 export interface CampoDaFicha {
   /** Chave estável — serve de `key` no React e de coluna em exportação */
@@ -77,12 +77,12 @@ export const montarFicha = (
       chave: 'jornada',
       rotulo: 'Jornada diária',
       valor: formatarJornada(
-        c.cargaHorariaDiariaMinutos ?? minutosDoTurno(acharTurno(c.turno))
+        minutosDoTurno(turnoDe(c))
       ),
     },
     // O turno não é enfeite: é dele que sai o horário cobrado na batida e o
     // previsto do dia. Num espelho de ponto, é o que explica o saldo.
-    { chave: 'turno', rotulo: 'Turno', valor: acharTurno(c.turno).nome },
+    { chave: "turno", rotulo: "Turno", valor: turnoDe(c).nome },
     { chave: 'ramal', rotulo: 'Ramal', valor: c.ramal || '' },
     { chave: 'telefone', rotulo: 'Telefone', valor: c.telefone || '', sensivel: true },
     { chave: 'email', rotulo: 'E-mail', valor: c.email || '', sensivel: true },

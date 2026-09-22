@@ -756,9 +756,31 @@ class ServicoPonto {
       return trabalhaNoSabado(colaborador) ? MINUTOS_SABADO : 0;
     }
 
+    /**
+     * O DIA ÚTIL PREVÊ O QUE O TURNO DIZ. Ponto.
+     *
+     * Era `cargaHorariaDiariaMinutos ?? minutosDoTurno(...)` — a ficha
+     * vencendo o turno. Só que a coluna é `not null default 480`: ela
+     * NUNCA vem indefinida, então o `??` nunca caía para o turno e a
+     * segunda metade da linha era código morto.
+     *
+     * Foi o que o Elias viu no espelho da Lyvia: estagiária, turno da
+     * tarde, 4h45 por dia — e o cabeçalho dizendo "jornada diária 8h10",
+     * com −3h25 de débito todo santo dia. A ficha dela tinha 490 minutos
+     * gravados de quando foi cadastrada, e esse número vencia o turno de
+     * estágio que o sistema já sabia que era dela.
+     *
+     * O CAMPO CONTINUA EXISTINDO — meio período é contrato real, e ele
+     * precisa vencer a escala da rede. O que mudou é que ele virou
+     * OPCIONAL de verdade: `null` quer dizer "vale o turno", e só um
+     * número escrito de propósito manda mais que ele.
+     *
+     * A migração `jornada-vem-do-turno.sql` limpa os 480 e 490 que o
+     * sistema distribuiu sozinho, para o `??` abaixo voltar a ter o
+     * efeito que sempre foi a intenção dele.
+     */
     return (
-      colaborador?.cargaHorariaDiariaMinutos ??
-      minutosDoTurno(turnoDe(colaborador))
+      colaborador?.cargaHorariaDiariaMinutos ?? minutosDoTurno(turnoDe(colaborador))
     );
   }
 

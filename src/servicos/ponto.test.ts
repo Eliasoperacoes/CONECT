@@ -2382,3 +2382,107 @@ test('dia já decidido que continua FORA da tolerância também é refeito', asy
   expect(ajuste.aprovadorId).toBe(ELIAS.id);
   expect(servicoPonto.obterSaldoAcumulado(PEDRO.id)).toBe(30);
 });
+
+// ============================================================
+// O PREVISTO DO DIA SAI DO TURNO, E NÃO DE UM NÚMERO NA FICHA
+//
+// O DEFEITO, visto no espelho da Lyvia: estagiária do turno da tarde,
+// 4h45 por dia, com o cabeçalho dizendo "jornada diária: 8h10" e −3h25
+// de débito TODO dia. Acumulou −47h50 em três semanas.
+//
+// A causa era uma linha: `cargaHorariaDiariaMinutos ?? minutosDoTurno()`.
+// A coluna é `not null default 480` — ela NUNCA vem indefinida, então o
+// `??` nunca caía para o turno e a metade direita era código morto.
+// ============================================================
+
+/**
+ * A Lyvia DEPOIS da migração: turno A ainda gravado de quando foi
+ * cadastrada, mas sem a jornada diária que o sistema tinha distribuído
+ * sozinho. Vazio quer dizer "vale o turno".
+ */
+const LYVIA = {
+  ...ANA, id: 'colab-lyvia', nome: 'Lyvia', login: 'lyvia',
+  setor: 'Estágio', cargo: 'Estagiário(a)', turno: 'A',
+  cargaHorariaDiariaMinutos: undefined,
+};
+
+test('sem jornada própria na ficha, o previsto sai do TURNO', async () => {
+  equipe = [ELIAS, LYVIA];
+  colaboradorLogado = ELIAS;
+
+  // 15/09/2026 é uma terça
+  const jornada = servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-15');
+
+  // O encaixe do estágio, e não as 8h10 da rede
+  expect(jornada.minutosPrevistos).toBe(360); // 6h
+  expect(jornada.minutosPrevistos).not.toBe(490);
+});
+
+test('a jornada que o sistema DISTRIBUIU sozinho era o defeito', async () => {
+  /**
+   * Toda ficha nascia com 8h10 gravados — `?? CARGA_HORARIA_PADRAO_MINUTOS`
+   * no cadastro — e esse número vencia o turno no cálculo do previsto.
+   *
+   * Este teste prende o estrago: com o número lá, a estagiária da tarde
+   * deve 3h25 por dia. É por isso que a migração limpa os 480 e 490 que
+   * ninguém escolheu, e por isso o campo nasce vazio agora.
+   */
+  equipe = [ELIAS, { ...LYVIA, turno: 'E3', cargaHorariaDiariaMinutos: 490 }];
+  colaboradorLogado = ELIAS;
+
+  const jornada = servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-15');
+  expect(jornada.minutosPrevistos).toBe(490);
+  expect(jornada.minutosPrevistos - 285).toBe(205); // 3h25 de débito por dia
+});
+
+test('o previsto acompanha a TROCA de turno', async () => {
+  colaboradorLogado = ELIAS;
+
+  const previstoCom = (turno: string) => {
+    equipe = [ELIAS, { ...LYVIA, turno }];
+    return servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-15').minutosPrevistos;
+  };
+
+  // É o que o RH ganha ao classificar cada estagiário
+  expect(previstoCom('E1')).toBe(345); // 5h45
+  expect(previstoCom('E2')).toBe(300); // 5h00
+  expect(previstoCom('E3')).toBe(285); // 4h45
+});
+
+test('a estagiária da tarde fecha o dia em ZERO, e não em débito', async () => {
+  /**
+   * O caso do print, de ponta a ponta: 13:15 às 18:00 são 4h45, que é
+   * exatamente a jornada do turno da tarde. O dia tem de fechar em zero.
+   *
+   * Antes fechava em −3h25, porque o previsto vinha dos 490 da ficha.
+   */
+  equipe = [ELIAS, { ...LYVIA, turno: 'E3' }];
+  colaboradorLogado = ELIAS;
+
+  const marcar = (tipo: string, hora: string) => ({
+    id: `r-lyvia-${tipo}`, colaboradorId: LYVIA.id, data: '2026-09-15', tipo,
+    horario: new Date(`2026-09-15T${hora}:00`).toISOString(), horaFormatada: hora,
+    metodo: 'ajuste_rh', loja: 'Pirassununga', criadoEm: new Date().toISOString(),
+  });
+  bancoRegistros.push(marcar('entrada', '13:15'), marcar('saida', '18:00'));
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+
+  const jornada = servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-15');
+  expect(jornada.minutosTrabalhados).toBe(285);
+  expect(jornada.minutosPrevistos).toBe(285);
+  expect(jornada.minutosTrabalhados - jornada.minutosPrevistos).toBe(0);
+});
+
+test('MEIO PERÍODO continua vencendo o turno', async () => {
+  /**
+   * O campo não sumiu, virou opcional. Contrato individual é real e manda
+   * mais que a escala da rede — o que mudou é que agora ele só vale
+   * quando alguém escreveu de propósito.
+   */
+  equipe = [ELIAS, { ...LYVIA, turno: 'E1', cargaHorariaDiariaMinutos: 240 }];
+  colaboradorLogado = ELIAS;
+
+  expect(
+    servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-15').minutosPrevistos
+  ).toBe(240);
+});

@@ -41,7 +41,8 @@ import {
   TipoMarcacao,
   ORDEM_MARCACOES,
   ROTULO_MARCACAO,
-  CARGA_HORARIA_PADRAO_MINUTOS,
+  turnoDe,
+  minutosDoTurno,
   INFORMACOES_LOJAS,
   ehMarcacaoCorrigida,
 } from '../tipos';
@@ -940,10 +941,16 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                   {detalhe.colaborador.loja}
                 </p>
                 <p className="text-[11px] text-[var(--c-texto-3)] mt-0.5">
-                  Jornada diária:{' '}
-                  {formatarMinutos(
-                    detalhe.colaborador.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS
-                  )}
+                  {/*
+                    O MESMO NÚMERO QUE O ESPELHO USA.
+                    Mostrava a carga da ficha enquanto o saldo era apurado
+                    pelo turno — o cabeçalho dizia 8h10 e as linhas cobravam
+                    outra coisa. Cabeçalho que discorda da tabela embaixo
+                    dele é pior do que cabeçalho nenhum.
+                  */}
+                  Jornada diária: {formatarMinutos(minutosDoTurno(turnoDe(detalhe.colaborador)))}
+                  {' · '}
+                  {turnoDe(detalhe.colaborador).nome}
                 </p>
               </div>
               <div className="text-right flex-shrink-0">

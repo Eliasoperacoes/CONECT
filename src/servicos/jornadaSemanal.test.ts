@@ -552,3 +552,30 @@ test('todo lugar que pergunta as batidas passa a PESSOA', async () => {
   // Só a definição da própria função
   expect(semPessoa.length).toBeLessThanOrEqual(1);
 });
+
+test('o cadastro NÃO distribui jornada diária sozinho', async () => {
+  /**
+   * Era `dados.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS`:
+   * toda ficha nova nascia com 8h10 gravados, e esse número vencia o
+   * turno no cálculo do previsto.
+   *
+   * Foi assim que a Lyvia — estagiária da tarde — passou a dever 3h25 por
+   * dia contra uma jornada que ninguém escolheu para ela. O campo existe
+   * para contrato individual; preenchê-lo sozinho o transforma numa
+   * armadilha que só aparece semanas depois, no espelho.
+   */
+  const fonte = await Bun.file(
+    new URL('./bancoDados.ts', import.meta.url)
+  ).text();
+
+  expect(fonte).toContain('cargaHorariaDiariaMinutos: dados.cargaHorariaDiariaMinutos,');
+  expect(fonte).not.toContain(
+    'cargaHorariaDiariaMinutos:\n        dados.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS'
+  );
+
+  // E o formulário também nasce vazio, com a opção de seguir o turno
+  const modal = await Bun.file(
+    new URL('../componentes/ModalCadastroColaborador.tsx', import.meta.url)
+  ).text();
+  expect(modal).toContain('Padrão do turno');
+});

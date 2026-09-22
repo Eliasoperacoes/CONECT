@@ -54,7 +54,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
     cnpj: '',
     turno: TURNO_PADRAO,
     dataAdmissao: '',
-    cargaHorariaDiariaMinutos: CARGA_HORARIA_PADRAO_MINUTOS,
+    cargaHorariaDiariaMinutos: undefined as number | undefined,
     cargaSemanalMinutos: undefined as number | undefined,
     trabalhaSabado: undefined as boolean | undefined,
     temIntervalo: undefined as boolean | undefined,
@@ -80,8 +80,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       cnpj: colaborador.cnpj || '',
       turno: colaborador.turno || TURNO_PADRAO,
       dataAdmissao: colaborador.dataAdmissao || '',
-      cargaHorariaDiariaMinutos:
-        colaborador.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS,
+      cargaHorariaDiariaMinutos: colaborador.cargaHorariaDiariaMinutos,
       cargaSemanalMinutos: colaborador.cargaSemanalMinutos,
       trabalhaSabado: colaborador.trabalhaSabado,
       temIntervalo: colaborador.temIntervalo,
@@ -461,6 +460,21 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                 className={campo}
               />
             </div>
+            {/*
+              "JORNADA DIÁRIA" SAIU DAQUI, e foi o campo que quebrou o
+              espelho da Lyvia.
+
+              Era uma lista de números solta, escolhida na mão, que vencia
+              o turno no cálculo do previsto. A ficha dela tinha 490
+              minutos gravados de quando foi cadastrada, e esse número
+              cobrava 8h10 por dia de uma estagiária da tarde — −3h25 todo
+              dia, com a carga certa aparecendo na tela ao lado.
+
+              Um número que não conversa com o horário de entrada nem com
+              as batidas esperadas não é jornada, é palpite. Quem precisa
+              de jornada diferente recebe um TURNO, que traz as três
+              respostas juntas.
+            */}
             <div>
               <label htmlFor="cad-jornada" className={rotuloCampo}>
                 <Clock className="w-3 h-3 inline mr-1" />
@@ -468,20 +482,42 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
               </label>
               <select
                 id="cad-jornada"
-                value={form.cargaHorariaDiariaMinutos}
+                value={form.cargaHorariaDiariaMinutos ?? ''}
                 onChange={(e) =>
-                  setForm({ ...form, cargaHorariaDiariaMinutos: Number(e.target.value) })
+                  setForm({
+                    ...form,
+                    cargaHorariaDiariaMinutos: e.target.value
+                      ? Number(e.target.value)
+                      : undefined,
+                  })
                 }
                 className={campo}
               >
+                {/*
+                  "PADRÃO DO TURNO" É A ESCOLHA CERTA PARA QUASE TODO MUNDO,
+                  e por isso vem primeiro e vazia.
+
+                  Antes não havia opção vazia: o campo nascia com 8h10
+                  escolhido e gravava esse número em toda ficha nova. Como
+                  ele vencia o turno no cálculo, a Lyvia — estagiária da
+                  tarde — passou a dever 3h25 por dia contra uma jornada
+                  que ninguém tinha escolhido para ela.
+                */}
+                <option value="">
+                  Padrão do turno · {formatarMinutos(minutosDoTurno(turnoEscolhido))}
+                </option>
                 <option value={240}>4h00</option>
+                <option value={300}>5h00</option>
                 <option value={360}>6h00</option>
                 <option value={396}>6h36</option>
                 <option value={440}>7h20</option>
-                <option value={490}>8h10 (turno da rede)</option>
                 <option value={480}>8h00</option>
+                <option value={490}>8h10</option>
                 <option value={528}>8h48</option>
               </select>
+              <span className="text-[11px] text-[var(--c-texto-3)] block mt-1">
+                Só preencha em contrato individual — meio período, por exemplo.
+              </span>
             </div>
           </div>
 

@@ -970,8 +970,21 @@ class BancoDadosConecta {
       ramal: dados.ramal?.trim() || '',
       telefone: dados.telefone?.trim() || '',
       email: dados.email?.trim() || '',
-      cargaHorariaDiariaMinutos:
-        dados.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS,
+      /**
+       * NASCE VAZIA, e não com as 8h10 da rede.
+       *
+       * Era `?? CARGA_HORARIA_PADRAO_MINUTOS`: toda ficha nova já vinha
+       * com uma jornada diária gravada que ninguém tinha escolhido — e
+       * esse número vencia o turno no cálculo do previsto.
+       *
+       * Foi como a Lyvia, estagiária da tarde, passou a dever 3h25 por
+       * dia: o cadastro dela guardou 8h10 no dia em que foi criada.
+       *
+       * Vazio quer dizer "vale o turno", que é o certo para quase todo
+       * mundo. Meio período e outros contratos individuais continuam
+       * podendo escrever o número deles.
+       */
+      cargaHorariaDiariaMinutos: dados.cargaHorariaDiariaMinutos,
       /**
        * Preenchido aqui, e não deixado para o padrão do banco.
        *
