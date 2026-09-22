@@ -262,7 +262,26 @@ export interface Turno {
    * lugares que podiam discordar. Agora quem responde é o turno, e a
    * ficha só o escolhe.
    */
-  intervalo?: { saida: string; retorno: string };
+  intervalo?: {
+    saida: string;
+    retorno: string;
+    /**
+     * SAI DA JORNADA, OU ESTÁ DENTRO DELA?
+     *
+     * O almoço de 1h30 sai: a pessoa deixa o posto, e o turno A das 07:30
+     * às 17:10 fecha 8h10, não 9h40. Ele é batido — quatro marcações.
+     *
+     * A pausa de 15 minutos do estágio NÃO sai. Decisão do Elias: "13:30,
+     * mas não precisa descontar os 15 min de intervalo". Quem entra 07:30
+     * e sai 13:30 cumpre 6h, e é assim que a rede conta.
+     *
+     * E pausa que não desconta também não se bate: exigir a saída e a
+     * volta de um descanso de 15 minutos deixaria o dia eternamente pela
+     * metade — o mesmo defeito que já derrubou o espelho do estágio uma
+     * vez, por outro caminho.
+     */
+    desconta: boolean;
+  };
   /**
    * De quem é este turno.
    *
@@ -303,7 +322,7 @@ export const TURNOS: Turno[] = [
     nome: 'Turno A · 07:30 às 17:10',
     entrada: '07:30',
     saida: '17:10',
-    intervalo: { saida: '12:30', retorno: '14:00' },
+    intervalo: { saida: '12:30', retorno: '14:00', desconta: true },
     perfil: 'integral',
     sabado: true,
   },
@@ -312,7 +331,7 @@ export const TURNOS: Turno[] = [
     nome: 'Turno B · 08:20 às 18:00',
     entrada: '08:20',
     saida: '18:00',
-    intervalo: { saida: '11:00', retorno: '12:30' },
+    intervalo: { saida: '11:00', retorno: '12:30', desconta: true },
     perfil: 'integral',
     sabado: true,
   },
@@ -342,7 +361,7 @@ export const TURNOS: Turno[] = [
   },
   {
     chave: 'E1',
-    nome: 'Estágio manhã · 07:30 às 13:30 (15 min)',
+    nome: 'Estágio manhã · 07:30 às 13:30 · 6h',
     entrada: '07:30',
     saida: '13:30',
     /**
@@ -352,13 +371,13 @@ export const TURNOS: Turno[] = [
      * movimento do balcão. O meio é o palpite que menos acusa atraso
      * injusto, e a tolerância da CLT cobre o deslocamento normal.
      */
-    intervalo: { saida: '10:30', retorno: '10:45' },
+    intervalo: { saida: '10:30', retorno: '10:45', desconta: false },
     perfil: 'estagio',
     sabado: false,
   },
   {
     chave: 'E2',
-    nome: 'Estágio escola · 07:30 às 12:30 (direto)',
+    nome: 'Estágio escola · 07:30 às 12:30 · 5h',
     entrada: '07:30',
     saida: '12:30',
     // Sai direto para a escola: duas batidas, sem intervalo
@@ -367,10 +386,10 @@ export const TURNOS: Turno[] = [
   },
   {
     chave: 'E3',
-    nome: 'Estágio tarde · 13:00 às 18:00 (15 min)',
+    nome: 'Estágio tarde · 13:00 às 18:00 · 5h',
     entrada: '13:00',
     saida: '18:00',
-    intervalo: { saida: '15:30', retorno: '15:45' },
+    intervalo: { saida: '15:30', retorno: '15:45', desconta: false },
     perfil: 'estagio',
     sabado: false,
   },
@@ -398,7 +417,23 @@ export const acharTurno = (chave?: string): Turno =>
  */
 export const minutosDoTurno = (turno: Turno): number => {
   const permanencia = emMinutos(turno.saida) - emMinutos(turno.entrada);
-  if (!turno.intervalo) return permanencia;
+
+  /**
+   * SÓ O INTERVALO QUE DESCONTA SAI DA CONTA.
+   *
+   * O almoço de 1h30 sai: o turno A das 07:30 às 17:10 fecha 8h10.
+   *
+   * A pausa de 15 minutos do estágio fica dentro — decisão do Elias.
+   * Quem entra 07:30 e sai 13:30 cumpre SEIS horas, e é o que fecha com
+   * a regra da casa: "os estagiários que cumprem 6 horas diárias não
+   * trabalham aos sábados".
+   *
+   * Eu tinha descontado os 15 minutos por conta própria, apoiado no art.
+   * 71 §2º da CLT. Estava errado sobre a prática da rede: o turno da
+   * manhã aparecia como 5h45 e a semana dele como 28h45, quando é 6h e
+   * 30h.
+   */
+  if (!turno.intervalo || !turno.intervalo.desconta) return permanencia;
 
   return (
     permanencia -
@@ -406,8 +441,17 @@ export const minutosDoTurno = (turno: Turno): number => {
   );
 };
 
-/** Quantas batidas este turno espera: 4 com intervalo, 2 direto. */
-export const marcacoesDoTurno = (turno: Turno): 2 | 4 => (turno.intervalo ? 4 : 2);
+/**
+ * Quantas batidas este turno espera.
+ *
+ * Quatro só quando há intervalo QUE DESCONTA: o almoço tira a pessoa do
+ * posto e precisa estar no documento. A pausa de 15 minutos não se bate —
+ * exigir a saída e a volta de um descanso desse tamanho deixaria o dia
+ * eternamente pela metade, que é o defeito que já derrubou o espelho do
+ * estágio uma vez por outro caminho.
+ */
+export const marcacoesDoTurno = (turno: Turno): 2 | 4 =>
+  turno.intervalo?.desconta ? 4 : 2;
 
 /** Os turnos que fazem sentido para este contrato. */
 export const turnosDoPerfil = (ehEstagio: boolean): Turno[] =>
@@ -548,7 +592,7 @@ export const temIntervaloNoDia = (colaborador?: {
   turno?: string;
   setor?: string;
   cargo?: string;
-}): boolean => colaborador?.temIntervalo ?? !!turnoDe(colaborador).intervalo;
+}): boolean => colaborador?.temIntervalo ?? !!turnoDe(colaborador).intervalo?.desconta;
 
 /**
  * O intervalo contratado desta pessoa, em minutos.
@@ -564,7 +608,9 @@ export const minutosDeIntervaloDe = (colaborador?: {
   cargo?: string;
 }): number => {
   const turno = turnoDe(colaborador);
-  if (!turno.intervalo) return 0;
+  // Só o intervalo que DESCONTA é cobrado: a pausa de 15 minutos não sai
+  // da jornada, e por isso não há excedente a apurar nela
+  if (!turno.intervalo?.desconta) return 0;
   return emMinutos(turno.intervalo.retorno) - emMinutos(turno.intervalo.saida);
 };
 

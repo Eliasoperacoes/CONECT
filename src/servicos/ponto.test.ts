@@ -2444,15 +2444,15 @@ test('o previsto acompanha a TROCA de turno', async () => {
   };
 
   // É o que o RH ganha ao classificar cada estagiário
-  expect(previstoCom('E1')).toBe(345); // 5h45
+  expect(previstoCom("E1")).toBe(360); // 6h — a pausa de 15 min não desconta
   expect(previstoCom('E2')).toBe(300); // 5h00
-  expect(previstoCom('E3')).toBe(285); // 4h45
+  expect(previstoCom("E3")).toBe(300); // 5h
 });
 
 test('a estagiária da tarde fecha o dia em ZERO, e não em débito', async () => {
   /**
-   * O caso do print, de ponta a ponta: 13:15 às 18:00 são 4h45, que é
-   * exatamente a jornada do turno da tarde. O dia tem de fechar em zero.
+   * O caso do print, de ponta a ponta. O turno da tarde é 13:00 às 18:00
+   * e a pausa de 15 minutos NÃO desconta: são 5h cheias.
    *
    * Antes fechava em −3h25, porque o previsto vinha dos 490 da ficha.
    */
@@ -2464,13 +2464,39 @@ test('a estagiária da tarde fecha o dia em ZERO, e não em débito', async () =
     horario: new Date(`2026-09-15T${hora}:00`).toISOString(), horaFormatada: hora,
     metodo: 'ajuste_rh', loja: 'Pirassununga', criadoEm: new Date().toISOString(),
   });
-  bancoRegistros.push(marcar('entrada', '13:15'), marcar('saida', '18:00'));
+  bancoRegistros.push(marcar('entrada', '13:00'), marcar('saida', '18:00'));
   armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
 
   const jornada = servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-15');
-  expect(jornada.minutosTrabalhados).toBe(285);
-  expect(jornada.minutosPrevistos).toBe(285);
+  expect(jornada.minutosTrabalhados).toBe(300);
+  expect(jornada.minutosPrevistos).toBe(300);
   expect(jornada.minutosTrabalhados - jornada.minutosPrevistos).toBe(0);
+});
+
+test('quem entra 13:15 num turno de 13:00 deve os 15 minutos', () => {
+  /**
+   * É o que as batidas do print mostram: entrada 13:15 todo dia, num
+   * turno que começa 13:00. Com a pausa não descontando, isso é um atraso
+   * de 15 minutos — e não uma jornada de 4h45.
+   *
+   * A distinção importa: atraso se justifica e se decide; jornada menor
+   * seria contrato. Confundir os dois esconde um do outro.
+   */
+  equipe = [ELIAS, { ...LYVIA, turno: 'E3' }];
+  colaboradorLogado = ELIAS;
+
+  const marcar = (tipo: string, hora: string) => ({
+    id: `r-atraso-${tipo}`, colaboradorId: LYVIA.id, data: '2026-09-16', tipo,
+    horario: new Date(`2026-09-16T${hora}:00`).toISOString(), horaFormatada: hora,
+    metodo: 'ajuste_rh', loja: 'Pirassununga', criadoEm: new Date().toISOString(),
+  });
+  bancoRegistros.push(marcar('entrada', '13:15'), marcar('saida', '18:00'));
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+
+  const jornada = servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-16');
+  expect(jornada.minutosTrabalhados).toBe(285);
+  expect(jornada.minutosPrevistos).toBe(300);
+  expect(jornada.minutosTrabalhados - jornada.minutosPrevistos).toBe(-15);
 });
 
 test('MEIO PERÍODO continua vencendo o turno', async () => {
@@ -2521,9 +2547,9 @@ test('sem carga semanal própria, o dia é o do turno — nada muda', () => {
   const terca = previstoDe(ESTAGIARIA_SABADO, '2026-09-15');
   const sabado = previstoDe(ESTAGIARIA_SABADO, '2026-09-19');
 
-  expect(terca).toBe(285); // 4h45 do turno da tarde
+  expect(terca).toBe(300); // 5h do turno da tarde
   expect(sabado).toBe(240); // as 4h do sábado da rede
-  expect(terca * 5 + sabado).toBe(1665); // 27h45 na semana
+  expect(terca * 5 + sabado).toBe(1740); // 29h na semana
 });
 
 test('a CARGA SEMANAL encolhe os dias na mesma proporção', () => {
@@ -2612,7 +2638,7 @@ test('jornada NULA no banco vale o turno, e não ZERO', () => {
 
   const terca = previstoDe(comNull, '2026-09-15');
   expect(terca).not.toBe(0);
-  expect(terca).toBe(285); // as 4h45 do turno da tarde
+  expect(terca).toBe(300); // as 5h do turno da tarde
 });
 
 test('a ponte do banco traduz null para "vale o turno"', async () => {
@@ -2632,19 +2658,23 @@ test('a ponte do banco traduz null para "vale o turno"', async () => {
   expect(ponte).not.toContain('c.cargaHorariaDiariaMinutos ?? 490');
 });
 
-test('27h45 é o horário dela somado: cada dia fecha em ZERO', () => {
+test('a semana do turno da tarde com sábado é 29h', () => {
   /**
-   * O RH conferiu: os estagiários fecham 27h45, e não 30h. Esse número é
-   * exatamente o horário deles — 4h45 de segunda a sexta mais as 4h do
-   * sábado.
+   * A PAUSA DE 15 MINUTOS NÃO DESCONTA — decisão do Elias: "13:30, mas
+   * não precisa descontar os 15 min de intervalo".
+   *
+   * Com isso o turno da tarde é 5h cheias, não 4h45, e a semana com
+   * sábado dá 29h. Eu havia descontado por conta própria, apoiado no art.
+   * 71 §2º da CLT, e o efeito era o turno da manhã aparecer como 5h45 —
+   * quando a regra da casa é "os estagiários que cumprem 6 horas não
+   * trabalham aos sábados".
    *
    * Quando o contrato É o horário, a carga semanal fica VAZIA e a razão
    * da escala vira 1: cada dia prevê o que o turno diz e quem cumpriu o
-   * combinado fecha em zero. Preencher "30h" ali encolheria todos os dias
-   * para caber numa carga que ninguém tem.
+   * combinado fecha em zero.
    */
   const dela = {
-    ...ESTAGIARIA_SABADO, id: 'colab-2745',
+    ...ESTAGIARIA_SABADO, id: 'colab-tarde',
     turno: 'E3', trabalhaSabado: true,
     cargaSemanalMinutos: undefined,
   };
@@ -2652,12 +2682,12 @@ test('27h45 é o horário dela somado: cada dia fecha em ZERO', () => {
   const terca = previstoDe(dela, '2026-09-15');
   const sabado = previstoDe(dela, '2026-09-19');
 
-  expect(terca).toBe(285); // 4h45, o turno da tarde
+  expect(terca).toBe(300); // 5h, sem descontar a pausa
   expect(sabado).toBe(240); // 4h00
-  expect(terca * 5 + sabado).toBe(1665); // 27h45 na semana
+  expect(terca * 5 + sabado).toBe(1740); // 29h na semana
 
   // Cumprindo o horário, não sobra nem falta nada
-  expect(285 - terca).toBe(0);
+  expect(300 - terca).toBe(0);
   expect(240 - sabado).toBe(0);
 });
 

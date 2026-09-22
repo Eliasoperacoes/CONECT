@@ -43,14 +43,15 @@ test('a semana do colaborador sai do relogio do turno, e nao de um numero escolh
  * jornadas. O Elias listou três só no estágio: 07:30–13:30 com 15 min,
  * 07:30–12:30 direto (sai para a escola) e 13:00–18:00 com 15 min.
  *
- * Nenhuma das três fecha 30h. Tratá-las como "30h de qualquer jeito"
- * errava o banco de horas de todo estagiário, em silêncio.
+ * A manhã fecha 30h; as outras duas, 25h. Tratá-las como "30h de
+ * qualquer jeito" errava o banco de horas de todo estagiário, em
+ * silêncio.
  */
 test('cada turno fecha a SUA semana, e não um numero do setor', () => {
-  // O intervalo não conta como trabalho (CLT art. 71 §2º)
-  expect(cargaSemanalDe({ setor: 'Estágio', turno: 'E1' })).toBe(5 * 345); // 5h45 × 5
+  // A pausa de 15 min NÃO desconta (decisão do Elias); o almoço de 1h30 sim
+  expect(cargaSemanalDe({ setor: "Estágio", turno: "E1" })).toBe(5 * 360); // 6h × 5
   expect(cargaSemanalDe({ setor: 'Estágio', turno: 'E2' })).toBe(5 * 300); // 5h00 × 5
-  expect(cargaSemanalDe({ setor: 'Estágio', turno: 'E3' })).toBe(5 * 285); // 4h45 × 5
+  expect(cargaSemanalDe({ setor: "Estágio", turno: "E3" })).toBe(5 * 300); // 5h × 5
 
   // O integral não mudou: 8h10 × 5 mais as 4h de sábado
   expect(cargaSemanalDe({ setor: 'Balcão', turno: 'A' })).toBe(MINUTOS_SEMANA_PADRAO);
@@ -588,4 +589,37 @@ test('o cadastro NÃO distribui jornada diária sozinho', async () => {
     new URL('../componentes/ModalCadastroColaborador.tsx', import.meta.url)
   ).text();
   expect(modal).toContain('Padrão do turno');
+});
+
+test('a PAUSA de 15 min não se bate; o ALMOÇO de 1h30 sim', async () => {
+  const { marcacoesEsperadas } = await import('./ponto');
+  const { marcacoesDoTurno, TURNOS, minutosDoTurno } = await import('../tipos');
+
+  const turno = (chave: string) => TURNOS.find((t) => t.chave === chave)!;
+
+  /**
+   * Os dois turnos de estágio TÊM pausa de 15 minutos no cadastro — ela
+   * existe, está escrita, e o espelho pode mostrá-la. O que ela não faz é
+   * descontar da jornada nem exigir batida.
+   *
+   * Exigir a saída e a volta de um descanso de 15 minutos deixaria o dia
+   * eternamente "pela metade" — é o mesmo defeito que já derrubou o
+   * espelho do estágio uma vez, por outro caminho.
+   */
+  expect(turno('E1').intervalo).toBeDefined();
+  expect(turno('E1').intervalo!.desconta).toBe(false);
+  expect(marcacoesDoTurno(turno('E1'))).toBe(2);
+  expect(minutosDoTurno(turno('E1'))).toBe(360); // 07:30→13:30 = 6h cheias
+
+  expect(marcacoesDoTurno(turno('E3'))).toBe(2);
+  expect(minutosDoTurno(turno('E3'))).toBe(300); // 13:00→18:00 = 5h cheias
+
+  // O almoço continua saindo da jornada e sendo batido
+  expect(turno('A').intervalo!.desconta).toBe(true);
+  expect(marcacoesDoTurno(turno('A'))).toBe(4);
+  expect(minutosDoTurno(turno('A'))).toBe(490); // 9h40 menos 1h30
+
+  // E a regra chega na hora de cobrar a batida do dia
+  const estagiarioManha = { id: 'e1', setor: 'Estágio', turno: 'E1' } as never;
+  expect(marcacoesEsperadas('2026-09-15', estagiarioManha)).toEqual(['entrada', 'saida']);
 });
