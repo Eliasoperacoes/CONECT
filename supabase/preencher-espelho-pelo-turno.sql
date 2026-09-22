@@ -104,9 +104,23 @@ union all
 
 select
   'ninguém preenche o PRÓPRIO espelho',
+  /**
+   * CONTA AS OCORRÊNCIAS, e não procura a frase.
+   *
+   * A primeira versão desta linha usava
+   * `like '%not in (%ajuste_rh%...'` e acusou "NÃO" com a política
+   * CORRETA no banco — susto por nada. O Postgres reescreve
+   * `metodo not in ('a','b')` como `metodo <> ALL (ARRAY['a','b'])` ao
+   * guardar, e o texto original não existe mais para ser procurado.
+   *
+   * `preenchimento_turno` precisa aparecer DUAS vezes: uma na lista do
+   * que a própria pessoa não pode gravar, outra na do que a liderança
+   * pode. Contar não depende da forma que o banco escolheu.
+   */
   case
-    when coalesce(with_check, '') like
-      '%not in (%ajuste_rh%ajuste_lider%preenchimento_turno%'
+    when (length(coalesce(with_check, '')) -
+          length(replace(coalesce(with_check, ''), 'preenchimento_turno', ''))
+         ) / length('preenchimento_turno') >= 2
       then 'sim'
     else 'NÃO — confira a política ponto_criacao'
   end
