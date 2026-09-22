@@ -381,7 +381,17 @@ test('a ficha deixa marcar o estagiario que VEM ao sabado', async () => {
   // As exceções ao turno, e as duas com a opção de seguir o padrão
   expect(modal).toContain('id="cad-semanal"');
   expect(modal).toContain('id="cad-sabado"');
-  expect((modal.match(/Padrão do setor/g) || []).length).toBe(2);
+
+  /**
+   * "PADRÃO DO SETOR" SÓ SOBROU NO SÁBADO.
+   *
+   * A carga semanal deixou de sair do setor e passou a sair do turno, e
+   * o rótulo mostra o NÚMERO junto. Era o que faltava para não escolher
+   * "30h (estágio)" achando que é o número da categoria — o RH conferiu
+   * e os estagiários fecham 27h45, que é o horário deles somado.
+   */
+  expect((modal.match(/Padrão do setor/g) || []).length).toBe(1);
+  expect(modal).toContain('Padrão do turno ·');
 
   /**
    * "TEM INTERVALO" SAIU DO FORMULÁRIO.

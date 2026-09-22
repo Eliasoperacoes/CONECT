@@ -2631,3 +2631,48 @@ test('a ponte do banco traduz null para "vale o turno"', async () => {
   expect(ponte).toContain('carga_horaria_diaria_minutos: c.cargaHorariaDiariaMinutos ?? null');
   expect(ponte).not.toContain('c.cargaHorariaDiariaMinutos ?? 490');
 });
+
+test('27h45 é o horário dela somado: cada dia fecha em ZERO', () => {
+  /**
+   * O RH conferiu: os estagiários fecham 27h45, e não 30h. Esse número é
+   * exatamente o horário deles — 4h45 de segunda a sexta mais as 4h do
+   * sábado.
+   *
+   * Quando o contrato É o horário, a carga semanal fica VAZIA e a razão
+   * da escala vira 1: cada dia prevê o que o turno diz e quem cumpriu o
+   * combinado fecha em zero. Preencher "30h" ali encolheria todos os dias
+   * para caber numa carga que ninguém tem.
+   */
+  const dela = {
+    ...ESTAGIARIA_SABADO, id: 'colab-2745',
+    turno: 'E3', trabalhaSabado: true,
+    cargaSemanalMinutos: undefined,
+  };
+
+  const terca = previstoDe(dela, '2026-09-15');
+  const sabado = previstoDe(dela, '2026-09-19');
+
+  expect(terca).toBe(285); // 4h45, o turno da tarde
+  expect(sabado).toBe(240); // 4h00
+  expect(terca * 5 + sabado).toBe(1665); // 27h45 na semana
+
+  // Cumprindo o horário, não sobra nem falta nada
+  expect(285 - terca).toBe(0);
+  expect(240 - sabado).toBe(0);
+});
+
+test('marcar 30h numa semana de 27h45 ENCOLHE todos os dias', () => {
+  /**
+   * O erro que a tela convidava a cometer, e que o rótulo agora evita: a
+   * carga semanal não é o número da categoria, é o contrato da pessoa.
+   */
+  const comTrintaHoras = {
+    ...ESTAGIARIA_SABADO, id: 'colab-30h',
+    turno: 'E3', trabalhaSabado: true,
+    cargaSemanalMinutos: 1800,
+  };
+
+  // 27h45 de horário contra 30h de contrato: os dias CRESCEM, e ela passa
+  // a dever todo dia por cumprir exatamente o que foi combinado
+  expect(previstoDe(comTrintaHoras, '2026-09-15')).toBeGreaterThan(285);
+});

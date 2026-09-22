@@ -555,14 +555,36 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                   }
                   className={campo}
                 >
-                  <option value="">Padrão do setor</option>
+                  {/*
+                    O NÚMERO DO TURNO FICA À VISTA, e "do setor" saiu do
+                    rótulo porque a carga deixou de sair do setor.
+
+                    O RH conferiu e os estagiários fecham 27h45 — que é
+                    exatamente o horário deles somado. Só que a tela
+                    oferecia "30h (estágio)" como se fosse o número da
+                    categoria, e escolher isso fazia o sistema encolher
+                    todos os dias para caber numa carga que ninguém tem.
+
+                    Vazio é a resposta certa quando o horário JÁ é o
+                    contrato — e agora dá para ver que é.
+                  */}
+                  <option value="">
+                    Padrão do turno ·{' '}
+                    {formatarMinutos(
+                      cargaSemanalDe({ ...form, cargaSemanalMinutos: undefined })
+                    )}
+                  </option>
                   <option value={1200}>20h</option>
                   <option value={1500}>25h</option>
-                  <option value={1800}>30h (estágio)</option>
+                  <option value={1665}>27h45</option>
+                  <option value={1800}>30h</option>
                   <option value={2400}>40h</option>
                   <option value={2640}>44h</option>
-                  <option value={2690}>44h50 (turno + sábado)</option>
+                  <option value={2690}>44h50</option>
                 </select>
+                <span className="text-[11px] text-[var(--c-texto-3)] block mt-1">
+                  Só preencha se o contrato for diferente do horário.
+                </span>
               </div>
 
               <div>
