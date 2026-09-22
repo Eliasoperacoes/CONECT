@@ -24,6 +24,7 @@ import {
   MINUTOS_SABADO,
   minutosDoTurno,
   turnoDe,
+  minutosPausaDoTurno,
   minutosDeIntervaloDe,
   HORARIO_ENTRADA_PADRAO,
   INTERVALO_ALMOCO_PADRAO_MINUTOS,
@@ -1093,9 +1094,38 @@ class ServicoPonto {
     );
     const emAndamento = entrada !== null && saida === null;
 
+    /**
+     * ===============================================================
+     * A PAUSA É O COLCHÃO DO DIA, E ELA SÓ EXISTE UMA VEZ.
+     * ===============================================================
+     *
+     * A pausa de 15 minutos do estágio é paga e não se bate. Quem entra
+     * 13:15 num turno que começa 13:00 ABRIU MÃO DELA — e trabalhou
+     * exatamente o mesmo que a colega que entrou 13:00 e parou 15
+     * minutos. Os dois dias valem igual, e é assim que a casa conta.
+     *
+     * Sem isto o espelho da Lyvia acusava −15 minutos todo santo dia por
+     * uma jornada que ela cumpriu inteira.
+     *
+     * DOIS LIMITES, e os dois importam:
+     *
+     *  - Só abate ATÉ o tamanho da pausa. Quem entra 13:40 perdeu a pausa
+     *    E chegou atrasado: os 25 minutos além dela continuam débito.
+     *  - Só abate PARA BAIXO. Pausa não vira crédito para quem ficou
+     *    além do horário — hora extra é outra coisa, e passa por decisão.
+     *
+     * E vale uma vez por dia, porque a pausa é uma por dia: quem tem
+     * almoço de 1h30 não entra aqui, o almoço dele é batido e descontado.
+     */
+    const pausa = minutosPausaDoTurno(turnoDe(colaborador));
+
+    const diferenca = minutosTrabalhados - minutosPrevistos;
+    const abatidoPelaPausa =
+      diferenca < 0 ? Math.min(pausa, Math.abs(diferenca)) : 0;
+
     // Dia sem nenhuma marcação em fim de semana não é falta nem saldo negativo;
     // dia útil sem jornada fechada também não gera saldo até o RH tratar.
-    const saldoMinutos = minutosTrabalhados > 0 ? minutosTrabalhados - minutosPrevistos : 0;
+    const saldoMinutos = minutosTrabalhados > 0 ? diferenca + abatidoPelaPausa : 0;
 
     return {
       data,

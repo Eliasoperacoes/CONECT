@@ -2708,3 +2708,100 @@ test('marcar 30h numa semana de 27h45 ENCOLHE todos os dias', () => {
   // a dever todo dia por cumprir exatamente o que foi combinado
   expect(previstoDe(comTrintaHoras, '2026-09-15')).toBeGreaterThan(285);
 });
+
+// ============================================================
+// A PAUSA É O COLCHÃO DO DIA
+//
+// "esses 15 min são descontados do intervalo dela."
+//
+// A pausa do estágio é paga e não se bate. Quem entra 13:15 num turno
+// que começa 13:00 abriu mão dela — e trabalhou exatamente o mesmo que a
+// colega que entrou 13:00 e parou 15 minutos.
+// ============================================================
+
+const marcarDia = (quem: any, data: string, entrada: string, saida: string) => {
+  equipe = [ELIAS, quem];
+  colaboradorLogado = ELIAS;
+  bancoRegistros.push(
+    { id: `p-${quem.id}-${data}-e`, colaboradorId: quem.id, data, tipo: 'entrada',
+      horario: new Date(`${data}T${entrada}:00`).toISOString(), horaFormatada: entrada,
+      metodo: 'ajuste_rh', loja: 'Pirassununga', criadoEm: new Date().toISOString() },
+    { id: `p-${quem.id}-${data}-s`, colaboradorId: quem.id, data, tipo: 'saida',
+      horario: new Date(`${data}T${saida}:00`).toISOString(), horaFormatada: saida,
+      metodo: 'ajuste_rh', loja: 'Pirassununga', criadoEm: new Date().toISOString() }
+  );
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+  return servicoPonto.obterJornadaDoDia(quem.id, data);
+};
+
+const DA_TARDE = {
+  ...ANA, id: 'colab-tarde-p', setor: 'Estágio', cargo: 'Estagiário(a)',
+  turno: 'E3', trabalhaSabado: true, cargaHorariaDiariaMinutos: undefined,
+};
+
+test('entrar 15 min depois abre mão da pausa: o dia fecha em ZERO', () => {
+  // Era −15 minutos todo santo dia por uma jornada cumprida inteira
+  const dia = marcarDia(DA_TARDE, '2026-09-15', '13:15', '18:00');
+
+  expect(dia.minutosTrabalhados).toBe(285); // a presença dela
+  expect(dia.minutosPrevistos).toBe(300); // as 5h do turno
+  expect(dia.saldoMinutos).toBe(0); // a pausa cobriu
+});
+
+test('a pausa cobre ATÉ o tamanho dela, e nem um minuto mais', () => {
+  /**
+   * Quem entra 13:40 perdeu a pausa E chegou atrasado. Os 25 minutos
+   * além dela continuam débito — senão a pausa viraria tolerância
+   * silenciosa de qualquer atraso.
+   */
+  const dia = marcarDia(DA_TARDE, '2026-09-16', '13:40', '18:00');
+
+  expect(dia.minutosTrabalhados).toBe(260);
+  expect(dia.saldoMinutos).toBe(-25); // 40 de atraso menos os 15 da pausa
+});
+
+test('a pausa NÃO vira crédito para quem fica além do horário', () => {
+  /**
+   * Só abate para baixo. Hora extra é outra coisa e passa por decisão de
+   * quem responde pela pessoa — transformar pausa em crédito criaria
+   * meia hora de extra fantasma por dia.
+   */
+  const dia = marcarDia(DA_TARDE, '2026-09-17', '13:00', '18:30');
+
+  expect(dia.minutosTrabalhados).toBe(330);
+  expect(dia.saldoMinutos).toBe(30); // os 30 cheios, sem somar pausa
+});
+
+test('quem cumpre o horário E tira a pausa fecha igual', () => {
+  // Os dois caminhos valem o mesmo: é o ponto da regra
+  const dia = marcarDia(DA_TARDE, '2026-09-18', '13:00', '18:00');
+  expect(dia.saldoMinutos).toBe(0);
+});
+
+test('quem tem ALMOÇO não ganha colchão nenhum', () => {
+  /**
+   * Almoço não é pausa: ele sai da jornada e é batido. Dar o mesmo
+   * abatimento ao balconista seria criar uma tolerância de 1h30 por dia.
+   */
+  const balconista = {
+    ...ANA, id: 'colab-balc-p', setor: 'Balcão', cargo: 'Balconista',
+    turno: 'A', cargaHorariaDiariaMinutos: undefined,
+  };
+
+  // Entra 15 minutos atrasado num turno com almoço: os 15 são débito
+  equipe = [ELIAS, balconista];
+  colaboradorLogado = ELIAS;
+  const marcar = (tipo: string, hora: string) => ({
+    id: `b-${tipo}`, colaboradorId: balconista.id, data: '2026-09-15', tipo,
+    horario: new Date(`2026-09-15T${hora}:00`).toISOString(), horaFormatada: hora,
+    metodo: 'ajuste_rh', loja: 'Pirassununga', criadoEm: new Date().toISOString(),
+  });
+  bancoRegistros.push(
+    marcar('entrada', '07:45'), marcar('saida_almoco', '12:30'),
+    marcar('retorno_almoco', '14:00'), marcar('saida', '17:10')
+  );
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+
+  const dia = servicoPonto.obterJornadaDoDia(balconista.id, '2026-09-15');
+  expect(dia.saldoMinutos).toBe(-15);
+});

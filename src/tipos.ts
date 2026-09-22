@@ -453,6 +453,22 @@ export const minutosDoTurno = (turno: Turno): number => {
 export const marcacoesDoTurno = (turno: Turno): 2 | 4 =>
   turno.intervalo?.desconta ? 4 : 2;
 
+/**
+ * O tamanho da PAUSA deste turno — a que não desconta.
+ *
+ * Diferente de `minutosDeIntervaloDe`, que só conhece o almoço: aquele
+ * sai da jornada e é cobrado quando estoura. Este fica dentro dela e
+ * serve de colchão — quem entra atrasado até este tanto abriu mão da
+ * pausa, e trabalhou o mesmo que quem parou para tomar café.
+ *
+ * Zero quando o turno não tem pausa, ou quando o intervalo dele é
+ * almoço: almoço não é colchão de nada, é hora que não se trabalha.
+ */
+export const minutosPausaDoTurno = (turno: Turno): number => {
+  if (!turno.intervalo || turno.intervalo.desconta) return 0;
+  return emMinutos(turno.intervalo.retorno) - emMinutos(turno.intervalo.saida);
+};
+
 /** Os turnos que fazem sentido para este contrato. */
 export const turnosDoPerfil = (ehEstagio: boolean): Turno[] =>
   TURNOS.filter((t) => t.perfil === (ehEstagio ? 'estagio' : 'integral'));
