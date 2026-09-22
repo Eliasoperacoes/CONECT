@@ -2486,3 +2486,108 @@ test('MEIO PERÍODO continua vencendo o turno', async () => {
     servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-15').minutosPrevistos
   ).toBe(240);
 });
+
+// ============================================================
+// O SÁBADO COMPENSA A SEMANA
+//
+// "alguns estagiários não fecham as 6 horas diárias, o que faz que eles
+// compensem trabalhando aos sábados — essas horas são divididas para
+// abater a carga, complementando a semana."
+//
+// O previsto era dia a dia, isolado: o sábado de quem vem compensar era
+// um dia igual aos outros, e nunca conversava com o débito da terça.
+//
+// Agora o turno dá a FORMA do dia e a carga semanal dá o TAMANHO da
+// semana. Cada dia é a fatia dele no total contratado.
+// ============================================================
+
+/** Estagiária da tarde que VEM ao sábado para completar a semana. */
+const ESTAGIARIA_SABADO = {
+  ...ANA, id: 'colab-est', nome: 'Lyvia', login: 'lyvia',
+  setor: 'Estágio', cargo: 'Estagiário(a)', turno: 'E3',
+  trabalhaSabado: true,
+  cargaHorariaDiariaMinutos: undefined,
+  cargaSemanalMinutos: undefined as number | undefined,
+};
+
+const previstoDe = (quem: any, data: string) => {
+  equipe = [ELIAS, quem];
+  colaboradorLogado = ELIAS;
+  return servicoPonto.obterJornadaDoDia(quem.id, data).minutosPrevistos;
+};
+
+// 2026-09-15 é terça; 2026-09-19 é sábado
+test('sem carga semanal própria, o dia é o do turno — nada muda', () => {
+  const terca = previstoDe(ESTAGIARIA_SABADO, '2026-09-15');
+  const sabado = previstoDe(ESTAGIARIA_SABADO, '2026-09-19');
+
+  expect(terca).toBe(285); // 4h45 do turno da tarde
+  expect(sabado).toBe(240); // as 4h do sábado da rede
+  expect(terca * 5 + sabado).toBe(1665); // 27h45 na semana
+});
+
+test('a CARGA SEMANAL encolhe os dias na mesma proporção', () => {
+  /**
+   * O contrato é de 25h, e o horário dela somaria 27h45. Sem a escala,
+   * ela apareceria devendo 2h45 por semana cumprindo exatamente o que foi
+   * combinado — e o sábado não adiantaria nada.
+   */
+  const dela = { ...ESTAGIARIA_SABADO, cargaSemanalMinutos: 25 * 60 };
+
+  const terca = previstoDe(dela, '2026-09-15');
+  const sabado = previstoDe(dela, '2026-09-19');
+
+  // A semana fecha no contrato, com o arredondamento de cada dia
+  expect(terca * 5 + sabado).toBeGreaterThanOrEqual(25 * 60 - 3);
+  expect(terca * 5 + sabado).toBeLessThanOrEqual(25 * 60 + 3);
+
+  // E o sábado encolheu junto: ele faz parte do mesmo total
+  expect(sabado).toBeLessThan(240);
+});
+
+test('cumprindo o horário combinado, a estagiária fica POSITIVA', () => {
+  /**
+   * É o que o Elias esperava ver: "considerando os sábados ela deveria
+   * estar com saldo positivo". Ela trabalha 4h45 na terça e 4h no
+   * sábado; com contrato de 25h, isso é mais do que o previsto.
+   */
+  const dela = { ...ESTAGIARIA_SABADO, cargaSemanalMinutos: 25 * 60 };
+
+  expect(285 - previstoDe(dela, '2026-09-15')).toBeGreaterThan(0);
+  expect(240 - previstoDe(dela, '2026-09-19')).toBeGreaterThan(0);
+});
+
+test('quem NÃO vem ao sábado não tem o sábado na conta da semana', () => {
+  /**
+   * O estagiário das 6h de segunda a sexta fecha a semana sem sábado. Se
+   * o sábado entrasse no divisor, o dia útil dele encolheria para caber
+   * num dia que ele nunca trabalha.
+   */
+  const semSabado = {
+    ...ESTAGIARIA_SABADO, id: 'colab-est2', trabalhaSabado: false,
+    turno: 'E0', cargaSemanalMinutos: undefined,
+  };
+
+  expect(previstoDe(semSabado, '2026-09-15')).toBe(360); // 6h
+  expect(previstoDe(semSabado, '2026-09-19')).toBe(0);   // sábado não é dele
+});
+
+test('o INTEGRAL não se mexe: a razão é 1', () => {
+  /**
+   * 8h10 × 5 + 4h de sábado é exatamente a carga semanal padrão. A escala
+   * só entra quando alguém tem contrato diferente do próprio horário —
+   * para o resto da rede, a conta é a mesma de antes.
+   */
+  const balconista = {
+    ...ANA, id: 'colab-bal', setor: 'Balcão', cargo: 'Balconista', turno: 'A',
+    cargaHorariaDiariaMinutos: undefined, cargaSemanalMinutos: undefined,
+  };
+
+  expect(previstoDe(balconista, '2026-09-15')).toBe(490);
+  expect(previstoDe(balconista, '2026-09-19')).toBe(240);
+});
+
+test('meio período continua vencendo tudo no dia útil', () => {
+  const meioPeriodo = { ...ESTAGIARIA_SABADO, id: 'colab-mp', cargaHorariaDiariaMinutos: 240 };
+  expect(previstoDe(meioPeriodo, '2026-09-15')).toBe(240);
+});

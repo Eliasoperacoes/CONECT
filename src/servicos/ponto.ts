@@ -752,9 +752,7 @@ class ServicoPonto {
      * segunda a sexta fechava o mês com 16 horas de débito por um sábado
      * que nunca foi dele.
      */
-    if (ehSabado(data)) {
-      return trabalhaNoSabado(colaborador) ? MINUTOS_SABADO : 0;
-    }
+    if (ehSabado(data) && !trabalhaNoSabado(colaborador)) return 0;
 
     /**
      * O DIA ÚTIL PREVÊ O QUE O TURNO DIZ. Ponto.
@@ -779,9 +777,55 @@ class ServicoPonto {
      * sistema distribuiu sozinho, para o `??` abaixo voltar a ter o
      * efeito que sempre foi a intenção dele.
      */
-    return (
-      colaborador?.cargaHorariaDiariaMinutos ?? minutosDoTurno(turnoDe(colaborador))
-    );
+    if (colaborador?.cargaHorariaDiariaMinutos !== undefined && !ehSabado(data)) {
+      return colaborador.cargaHorariaDiariaMinutos;
+    }
+
+    /**
+     * ===============================================================
+     * O TURNO DÁ A FORMA DA SEMANA; A CARGA SEMANAL DÁ O TAMANHO.
+     * ===============================================================
+     *
+     * O que faltava, e o Elias descreveu assim: "alguns estagiários não
+     * fecham as 6 horas diárias, o que faz que eles compensem trabalhando
+     * aos sábados — essas horas são divididas para abater a carga,
+     * complementando a semana".
+     *
+     * O previsto era dia a dia, isolado. Então o sábado do estagiário que
+     * vem compensar virava um dia igual aos outros: se ele cumprisse o
+     * sábado inteiro, fechava zero; se faltasse cinco minutos na terça, o
+     * débito ficava lá, sem o sábado nunca conversar com ele.
+     *
+     * COMO A CONTA FUNCIONA AGORA
+     *
+     * O turno diz o FORMATO do dia — 8h10 de segunda a sexta e 4h no
+     * sábado, ou 4h45 e 4h. A carga semanal diz QUANTO a semana inteira
+     * tem de somar. O previsto de cada dia é a fatia dele nesse total:
+     *
+     *     previsto do dia = dia pelo turno × (carga semanal ÷ semana pelo turno)
+     *
+     * Quando os dois já batem — e batem para todo mundo que não tem carga
+     * própria na ficha — a razão é 1 e nada muda. A escala só entra
+     * quando alguém tem contrato de 25h e um horário que somaria 27h45:
+     * aí cada dia encolhe na mesma proporção, o sábado junto, e a semana
+     * fecha no contrato em vez de acusar débito todo dia.
+     *
+     * É o que faz o sábado COMPENSAR de verdade: ele deixa de ser um dia
+     * avulso e passa a ser parte do mesmo total.
+     */
+    const turno = turnoDe(colaborador);
+    const doDia = ehSabado(data) ? MINUTOS_SABADO : minutosDoTurno(turno);
+
+    const semanaPeloTurno =
+      minutosDoTurno(turno) * 5 + (trabalhaNoSabado(colaborador) ? MINUTOS_SABADO : 0);
+    if (semanaPeloTurno === 0) return 0;
+
+    const contratada = cargaSemanalDe(colaborador);
+
+    // Razão 1 é o caso comum: não arredonda o que não precisa mexer
+    if (contratada === semanaPeloTurno) return doDia;
+
+    return Math.round(doDia * (contratada / semanaPeloTurno));
   }
 
   /**
