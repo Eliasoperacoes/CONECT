@@ -100,6 +100,33 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
   const [toast, setToast] = useState<{ texto: string; erro: boolean } | null>(null);
 
   // Ajuste de marcação
+  /**
+   * A reapuração do período.
+   *
+   * Quem corrige marcação reapura — é a mesma autoridade, e o serviço
+   * confere de novo do lado dele. Aqui a checagem só evita oferecer um
+   * botão que vai ser recusado.
+   */
+  const podeReapurar = podeUsar('banco_horas_rh', colaboradorAtual);
+  const [reapurando, setReapurando] = useState(false);
+
+  const reapurar = async () => {
+    if (!detalheId) return;
+    setReapurando(true);
+    const res = await servicoPonto.reapurarPeriodo(detalheId, dataInicio, dataFim);
+    setReapurando(false);
+
+    if (!res.sucesso) {
+      exibirToast(res.erro || 'Não foi possível reapurar.', true);
+      return;
+    }
+    exibirToast(
+      res.dias === 0
+        ? 'Nada mudou: as contas já estavam com a regra de hoje.'
+        : `${res.dias} dia(s) reapurado(s).`
+    );
+  };
+
   const [ajuste, setAjuste] = useState<{
     colaboradorId: string;
     data: string;
@@ -969,6 +996,50 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                 <span className="text-[10px] text-[var(--c-texto-3)]">acumulado</span>
               </div>
             </div>
+
+            {/*
+              O ACUMULADO DISCORDANDO DO PERÍODO.
+
+              O acumulado vem das apurações GRAVADAS; o saldo do período é
+              recalculado na hora. Enquanto a regra da jornada não mudava,
+              os dois eram a mesma coisa. Quando ela muda — turno
+              corrigido, carga acertada — os dias antigos guardam o número
+              velho, e o espelho passa a mostrar dois números que não
+              conversam. Foi o que o Elias viu: −47h50 em cima, −17h30 no
+              período.
+
+              A faixa só aparece quando eles de fato divergem: alarme que
+              vive na tela deixa de ser lido.
+            */}
+            {podeReapurar &&
+              detalhe.saldoAcumuladoMinutos !== detalhe.saldoPeriodoMinutos && (
+                <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/25 flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-[var(--c-texto-2)] leading-relaxed">
+                      <strong className="text-[var(--c-texto)]">
+                        O acumulado não bate com o período.
+                      </strong>{' '}
+                      As apurações gravadas usam a regra que valia no dia em que
+                      foram feitas. Reapurar refaz as contas destes dias com a
+                      regra de hoje — as batidas não mudam.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={reapurar}
+                      disabled={reapurando}
+                      className="mt-2 px-3 py-1.5 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold hover:brightness-110 disabled:opacity-50 transition-all flex items-center gap-1.5"
+                    >
+                      <RefreshCw
+                        className={`w-3.5 h-3.5 ${reapurando ? 'animate-spin' : ''}`}
+                      />
+                      {reapurando
+                        ? 'Reapurando…'
+                        : `Reapurar ${formatarDataBR(dataInicio)} a ${formatarDataBR(dataFim)}`}
+                    </button>
+                  </div>
+                </div>
+              )}
 
             {/* Espelho do período */}
             <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] overflow-hidden">

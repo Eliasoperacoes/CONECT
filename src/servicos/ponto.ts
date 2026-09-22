@@ -753,7 +753,43 @@ class ServicoPonto {
      * segunda a sexta fechava o mês com 16 horas de débito por um sábado
      * que nunca foi dele.
      */
-    if (ehSabado(data) && !trabalhaNoSabado(colaborador)) return 0;
+    /**
+     * ===============================================================
+     * O SÁBADO COMPLETA A SEMANA — NÃO É MAIS UM DIA PADRÃO.
+     * ===============================================================
+     *
+     * Era 4h fixas para todo mundo que vem ao sábado, como se fosse um
+     * dia igual aos outros com horário próprio. O Elias corrigiu: "os
+     * sábados devem compor a semana e não ser apenas mais um horário
+     * padrão".
+     *
+     * E é a descrição dele desde o começo: "os que fazem menos durante a
+     * semana trabalham no sábado, e essas horas complementam a semana".
+     * O sábado é o dia FLEXÍVEL da escala — ele carrega o que falta.
+     *
+     * Então o previsto dele é a SOBRA: o contrato da semana menos o que
+     * os cinco dias úteis já preveem.
+     *
+     *     sábado = carga semanal − (dia do turno × 5)
+     *
+     * Para o balcão a conta dá exatamente as 4h de sempre: 8h10 × 5 são
+     * 40h50, e o contrato é 44h50. Nada muda para eles.
+     *
+     * Para o estágio ela passa a fazer sentido: quem cumpre 6h de segunda
+     * a sexta já fechou as 30h, e o sábado dele prevê ZERO — se vier,
+     * é hora extra, e não um dia que ele "devia". Quem faz 5h por dia
+     * chega a 25h, e o sábado dele prevê as 5h que faltam.
+     *
+     * Nunca negativo: contrato menor que a semana útil não vira crédito
+     * automático no sábado. Isso é divergência de cadastro, e a ficha
+     * avisa.
+     */
+    if (ehSabado(data)) {
+      if (!trabalhaNoSabado(colaborador)) return 0;
+
+      const uteis = minutosDoTurno(turnoDe(colaborador)) * 5;
+      return Math.max(0, cargaSemanalDe(colaborador) - uteis);
+    }
 
     /**
      * O DIA ÚTIL PREVÊ O QUE O TURNO DIZ. Ponto.
@@ -816,18 +852,13 @@ class ServicoPonto {
      * Número que não corresponde a relógio nenhum não se confere, não se
      * explica para quem bateu o ponto, e ainda esconde a causa.
      *
-     * O QUE FAZ O SÁBADO COMPENSAR, ENTÃO
+     * O QUE FAZ A SEMANA FECHAR, ENTÃO
      *
-     * O sábado compensar não precisava de rateio: basta ele CONTAR. Quem
-     * trabalha o horário combinado — dia útil e sábado — fecha a semana em
-     * zero, porque a soma dos dias É a semana dela.
-     *
-     * Quando o contrato difere do horário, isso é DIVERGÊNCIA DE CADASTRO,
-     * e o lugar de resolver é a ficha, não a apuração. A tela de cadastro
-     * avisa quando os dois não batem.
+     * O dia útil prevê o relógio do turno, e o SÁBADO carrega a
+     * diferença — é o dia flexível da escala, e a conta dele está lá em
+     * cima. Nenhum dia útil vira número quebrado por causa do contrato.
      */
-    const turno = turnoDe(colaborador);
-    return ehSabado(data) ? MINUTOS_SABADO : minutosDoTurno(turno);
+    return minutosDoTurno(turnoDe(colaborador));
   }
 
   /**
@@ -2213,6 +2244,81 @@ class ServicoPonto {
     );
     this.notificar();
     return { sucesso: true, registro: registroAjustado };
+  }
+
+  /**
+   * REAPURA UM PERÍODO INTEIRO com a regra de hoje.
+   *
+   * A apuração de um dia só é refeita quando alguém bate ou corrige uma
+   * marcação daquele dia. É de propósito — refazer sozinho seria reabrir
+   * decisão tomada. Mas isso deixa um rastro: quando a REGRA muda, os
+   * dias já apurados guardam o número antigo para sempre.
+   *
+   * Foi o que aconteceu com a Lyvia. O espelho dela mostrava dois
+   * números que não conversavam: −47h50 no acumulado, vindo dos ajustes
+   * gravados com a jornada errada, e o saldo do período recalculado na
+   * hora. Corrigir dia a dia seriam três semanas de cliques.
+   *
+   * NÃO É UM APAGADOR. Cada dia passa pela mesma `apurarDia` que a
+   * batida usa — a regra é uma só, e reescrever aqui uma segunda versão
+   * dela é como as contas deste sistema passariam a divergir. O que
+   * muda é só quem disparou.
+   *
+   * Quem reapura DECIDE: a autoridade é a mesma de corrigir a marcação,
+   * e o dia sai aprovado em nome de quem mandou, como na correção
+   * manual. Reapurar para jogar tudo na fila do líder seria transformar
+   * um conserto de sistema em trabalho para outra pessoa.
+   */
+  async reapurarPeriodo(
+    colaboradorId: string,
+    dataInicio: string,
+    dataFim: string
+  ): Promise<{ sucesso: boolean; dias: number; erro?: string }> {
+    const atual = bancoDados.obterColaboradorAtual();
+    const colaborador = bancoDados.obterColaboradorPorId(colaboradorId);
+
+    if (!colaborador) {
+      return { sucesso: false, dias: 0, erro: 'Colaborador não encontrado.' };
+    }
+
+    // A MESMA porta de `ajustarMarcacao`: quem corrige o dia reapura o dia
+    if (!this.podeAcessarPainelRH(atual) && !this.podeDecidirSobre(colaborador)) {
+      return {
+        sucesso: false,
+        dias: 0,
+        erro: 'Reapurar é de quem responde por esta pessoa, ou do RH.',
+      };
+    }
+
+    /**
+     * O banco antes do aparelho, como no resto do ponto: reapurar sobre
+     * cache velho reescreveria dias com marcações que já mudaram.
+     */
+    if (usandoNuvem()) {
+      await nuvem.sincronizarPonto();
+      await nuvem.sincronizarAjustes();
+    }
+
+    let dias = 0;
+    for (const data of listarDatasDoPeriodo(dataInicio, dataFim)) {
+      // Dia que ainda não fechou não se apura: ele não acabou
+      if (data >= dataDeHoje()) continue;
+
+      const antes = this.obterAjusteDoDia(colaboradorId, data);
+      await this.apurarDia(colaboradorId, data, undefined, atual);
+      const depois = this.obterAjusteDoDia(colaboradorId, data);
+
+      if ((antes?.minutos ?? 0) !== (depois?.minutos ?? 0)) dias += 1;
+    }
+
+    bancoDados.registrarAuditoria(
+      'Reapuração de Período',
+      'seguranca',
+      `${atual.nome} reapurou ${formatarDataBR(dataInicio)} a ${formatarDataBR(dataFim)} de ${colaborador.nome}. ${dias} dia(s) mudaram de valor.`
+    );
+    this.notificar();
+
+    return { sucesso: true, dias };
   }
 
   /** Remove uma marcação lançada por engano. Só RH/Administrador. */

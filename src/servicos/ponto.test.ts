@@ -2564,9 +2564,82 @@ test('a carga semanal NÃO rateia mais o dia — o previsto é o relógio', () =
    */
   const comContratoMenor = { ...ESTAGIARIA_SABADO, cargaSemanalMinutos: 25 * 60 };
 
-  // O dia continua sendo o do turno, inteiro
+  // O DIA ÚTIL continua sendo o do turno, inteiro — sem número quebrado
   expect(previstoDe(comContratoMenor, '2026-09-15')).toBe(300);
-  expect(previstoDe(comContratoMenor, '2026-09-19')).toBe(240);
+
+  /**
+   * Quem carrega a diferença é o SÁBADO, que é o dia flexível da escala.
+   * Cinco dias de 5h já fecham as 25h contratadas, então o sábado dela
+   * não prevê nada — se ela vier, é hora extra.
+   */
+  expect(previstoDe(comContratoMenor, '2026-09-19')).toBe(0);
+});
+
+test('o SÁBADO carrega o que falta para fechar a semana', () => {
+  /**
+   * "Os sábados devem compor a semana e não ser apenas mais um horário
+   * padrão." Eram 4h fixas para todo mundo que vem, como se fosse um dia
+   * igual aos outros.
+   *
+   * Agora ele é a SOBRA: contrato menos os cinco dias úteis. É o dia
+   * flexível da escala, e é assim que ele complementa a semana.
+   */
+  const turnoDe5h = { ...ESTAGIARIA_SABADO, turno: 'E3', trabalhaSabado: true };
+
+  // 5h × 5 = 25h; para fechar 30h, o sábado precisa de 5h
+  expect(previstoDe({ ...turnoDe5h, cargaSemanalMinutos: 1800 }, '2026-09-19')).toBe(300);
+
+  // Para fechar 29h, precisa das 4h de sempre
+  expect(previstoDe({ ...turnoDe5h, cargaSemanalMinutos: 1740 }, '2026-09-19')).toBe(240);
+});
+
+test('quem já fecha a semana de segunda a sexta não DEVE o sábado', () => {
+  /**
+   * A regra da casa: "os estagiários que cumprem 6 horas diárias não
+   * trabalham aos sábados". Se um deles vier assim mesmo, o dia é hora
+   * extra — e não um dia que ele estava devendo.
+   *
+   * Isso só aparece com o CONTRATO ESCRITO na ficha. Sem ele o sistema
+   * não tem como saber se o sábado é parte do combinado ou sobra: ele
+   * deriva o contrato do próprio horário, e aí o sábado fecha em zero
+   * como qualquer outro dia.
+   *
+   * É a diferença entre "ela trabalha sábado" e "ela DEVE o sábado", e é
+   * o que torna a carga semanal do estágio um dado que vale preencher.
+   */
+  const seisHoras = {
+    ...ESTAGIARIA_SABADO, turno: 'E1', trabalhaSabado: true,
+    cargaSemanalMinutos: 1800, // 30h escritas em contrato
+  };
+
+  expect(previstoDe(seisHoras, '2026-09-15')).toBe(360); // 6h × 5 = 30h
+  expect(previstoDe(seisHoras, '2026-09-19')).toBe(0); // já fechou: o sábado é extra
+
+  // Sem o contrato escrito, o sistema deriva 34h do próprio horário
+  const semContrato = { ...seisHoras, cargaSemanalMinutos: undefined };
+  expect(previstoDe(semContrato, '2026-09-19')).toBe(240);
+});
+
+test('o sábado do BALCÃO continua sendo 4h', () => {
+  // 8h10 × 5 são 40h50, e o contrato é 44h50: a sobra é exatamente 4h.
+  // A regra nova não pode mexer em quem já estava certo.
+  const balconista = {
+    ...ANA, id: 'colab-sab-balc', setor: 'Balcão', cargo: 'Balconista', turno: 'A',
+    cargaHorariaDiariaMinutos: undefined, cargaSemanalMinutos: undefined,
+  };
+
+  expect(previstoDe(balconista, '2026-09-19')).toBe(240);
+});
+
+test('contrato menor que a semana útil não vira crédito no sábado', () => {
+  // Divergência de cadastro não pode virar hora a favor sozinha: a ficha
+  // é que avisa, e o sábado para em zero
+  const contratoMenor = {
+    ...ESTAGIARIA_SABADO, turno: 'E1', trabalhaSabado: true,
+    cargaSemanalMinutos: 20 * 60,
+  };
+
+  expect(previstoDe(contratoMenor, '2026-09-19')).toBe(0);
 });
 
 test('cumprindo o horário combinado, a semana fecha em ZERO', () => {
@@ -2804,4 +2877,102 @@ test('quem tem ALMOÇO não ganha colchão nenhum', () => {
 
   const dia = servicoPonto.obterJornadaDoDia(balconista.id, '2026-09-15');
   expect(dia.saldoMinutos).toBe(-15);
+});
+
+// ============================================================
+// REAPURAR O PERÍODO
+//
+// A apuração de um dia só é refeita quando alguém mexe naquele dia. É de
+// propósito. Mas quando a REGRA muda, os dias já apurados guardam o
+// número antigo para sempre — e o espelho passa a mostrar dois números
+// que não conversam.
+// ============================================================
+
+test('reapurar refaz os dias com a regra de hoje', async () => {
+  montarEquipe(ELIAS);
+  await fecharJornada(PEDRO, '2026-09-15', '08:00', '18:00'); // +60
+
+  // Alguém decidiu o dia como estava
+  await servicoPonto.decidirAjuste(
+    servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-15')!.id,
+    true
+  );
+  expect(servicoPonto.obterSaldoAcumulado(PEDRO.id)).toBe(60);
+
+  /**
+   * A marcação muda por fora da apuração — como se a REGRA tivesse
+   * mudado e os dias antigos tivessem ficado com o número velho.
+   *
+   * A edição vai no BANCO simulado, e não no cache: `reapurarPeriodo`
+   * sincroniza antes de recontar, justamente para não reescrever dias
+   * sobre marcações vencidas. Mexer só no cache seria desfeito ali.
+   */
+  const saida = bancoRegistros.find(
+    (r: any) => r.colaboradorId === PEDRO.id && r.data === '2026-09-15' && r.tipo === 'saida'
+  );
+  saida.horario = new Date('2026-09-15T17:00:00').toISOString();
+  saida.horaFormatada = '17:00';
+
+  const res = await servicoPonto.reapurarPeriodo(PEDRO.id, '2026-09-15', '2026-09-15');
+
+  expect(res.sucesso).toBe(true);
+  expect(res.dias).toBe(1);
+  expect(servicoPonto.obterSaldoAcumulado(PEDRO.id)).toBe(0);
+});
+
+test('reapurar NÃO joga o resultado na fila de ninguém', async () => {
+  /**
+   * Quem reapura decide: a autoridade é a mesma de corrigir a marcação.
+   * Jogar o resultado na fila do líder transformaria um conserto de
+   * sistema em trabalho para outra pessoa — e ela não teria o que julgar.
+   */
+  montarEquipe(ELIAS);
+  await fecharJornada(PEDRO, '2026-09-15', '08:00', '18:00');
+
+  await servicoPonto.reapurarPeriodo(PEDRO.id, '2026-09-15', '2026-09-15');
+
+  const ajuste = servicoPonto.obterAjusteDoDia(PEDRO.id, '2026-09-15')!;
+  expect(ajuste.estado).toBe('aprovado');
+  expect(ajuste.aprovadorId).toBe(ELIAS.id);
+});
+
+test('reapurar não alcança o dia de HOJE, nem quando ele já fechou', async () => {
+  /**
+   * Dia em andamento não se apura: ele não acabou. E "não acabou" vale
+   * mesmo quando as batidas já estão todas lá — alguém pode voltar de
+   * uma entrega às 18h30, e o dia fechado às 17h não era o dia dela.
+   *
+   * As marcações entram direto no banco simulado, sem passar por
+   * `fecharJornada`: aquele helper já apura, e o que se testa aqui é se
+   * a REAPURAÇÃO apura por conta própria.
+   */
+  montarEquipe(ELIAS);
+  const hoje = dataDeHoje();
+
+  const marcar = (tipo: string, hora: string) => ({
+    id: `hoje-${tipo}`, colaboradorId: PEDRO.id, data: hoje, tipo,
+    horario: new Date(`${hoje}T${hora}:00`).toISOString(), horaFormatada: hora,
+    metodo: 'qrcode', loja: PEDRO.loja, criadoEm: new Date().toISOString(),
+  });
+  bancoRegistros.push(
+    marcar('entrada', '08:00'), marcar('saida_almoco', '12:00'),
+    marcar('retorno_almoco', '13:00'), marcar('saida', '18:00')
+  );
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+
+  const res = await servicoPonto.reapurarPeriodo(PEDRO.id, hoje, hoje);
+
+  expect(res.dias).toBe(0);
+  // E nenhuma apuração nasceu de um dia que ainda está acontecendo
+  expect(servicoPonto.obterAjusteDoDia(PEDRO.id, hoje)).toBeNull();
+});
+
+test('quem não responde pela pessoa NÃO reapura', async () => {
+  // A mesma porta de corrigir a marcação: senão reapurar seria uma
+  // segunda forma de mexer no ponto alheio, sem a trava da primeira
+  montarEquipe(OUTRA_LOJA);
+
+  const res = await servicoPonto.reapurarPeriodo(PEDRO.id, '2026-09-15', '2026-09-15');
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('responde');
 });
