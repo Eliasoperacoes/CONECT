@@ -787,7 +787,27 @@ class ServicoPonto {
     if (ehSabado(data)) {
       if (!trabalhaNoSabado(colaborador)) return 0;
 
-      const uteis = minutosDoTurno(turnoDe(colaborador)) * 5;
+      const turno = turnoDe(colaborador);
+
+      /**
+       * SÓ O ESTÁGIO TEM SÁBADO ELÁSTICO.
+       *
+       * Para o balcão, o estoque e o escritório o sábado é horário de
+       * verdade: 08:00 às 12:00, a loja abre e fecha nessas horas. Ele
+       * não estica nem encolhe para fechar conta nenhuma.
+       *
+       * Eu havia aplicado a sobra para todo mundo, e o Elias cortou.
+       * Estava certo: um balconista com contrato de 48h teria sábado
+       * previsto de 7h10 — a loja fecha ao meio-dia, então o sistema
+       * cobraria três horas que não existem. E com contrato de 40h o
+       * sábado dele zeraria, sumindo com um dia inteiro de trabalho.
+       *
+       * No estágio é o contrário: o sábado É o dia de completar a
+       * semana, e foi para isso que ele entrou na escala deles.
+       */
+      if (turno.perfil !== 'estagio') return MINUTOS_SABADO;
+
+      const uteis = minutosDoTurno(turno) * 5;
       return Math.max(0, cargaSemanalDe(colaborador) - uteis);
     }
 

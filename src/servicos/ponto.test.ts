@@ -2976,3 +2976,41 @@ test('quem não responde pela pessoa NÃO reapura', async () => {
   expect(res.sucesso).toBe(false);
   expect(res.erro).toContain('responde');
 });
+
+test('o sábado do BALCÃO não estica nem encolhe por contrato', () => {
+  /**
+   * "Isso é pra ser reflexo apenas para os estagiários."
+   *
+   * Para o balcão o sábado é horário de verdade: 08:00 às 12:00, a loja
+   * abre e fecha nessas horas. Eu havia aplicado a sobra para todo mundo.
+   *
+   * Um balconista com contrato de 48h teria sábado previsto de 7h10 — a
+   * loja fecha ao meio-dia, então o sistema cobraria três horas que não
+   * existem. Com 40h o sábado zeraria, sumindo com um dia inteiro de
+   * trabalho.
+   */
+  const balconista = {
+    ...ANA, id: 'colab-sab-fixo', setor: 'Balcão', cargo: 'Balconista', turno: 'A',
+    trabalhaSabado: true, cargaHorariaDiariaMinutos: undefined,
+  };
+
+  // Contrato maior: o sábado NÃO estica para além do que a loja abre
+  expect(previstoDe({ ...balconista, cargaSemanalMinutos: 48 * 60 }, '2026-09-19')).toBe(240);
+
+  // Contrato menor: o sábado NÃO some
+  expect(previstoDe({ ...balconista, cargaSemanalMinutos: 40 * 60 }, '2026-09-19')).toBe(240);
+
+  // E sem contrato escrito continua nas 4h de sempre
+  expect(previstoDe(balconista, '2026-09-19')).toBe(240);
+});
+
+test('o sábado do ESTÁGIO continua completando a semana', () => {
+  // A regra não sumiu, só ficou onde ela faz sentido
+  const estagiaria = {
+    ...ANA, id: 'colab-sab-est', setor: 'Estágio', cargo: 'Estagiário(a)', turno: 'E3',
+    trabalhaSabado: true, cargaHorariaDiariaMinutos: undefined,
+  };
+
+  // 5h × 5 = 25h; para fechar 30h o sábado carrega as 5h que faltam
+  expect(previstoDe({ ...estagiaria, cargaSemanalMinutos: 1800 }, '2026-09-19')).toBe(300);
+});
