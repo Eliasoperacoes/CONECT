@@ -36,18 +36,64 @@ test('a semana do colaborador sai do relogio do turno, e nao de um numero escolh
   expect(MINUTOS_SEMANA_PADRAO).toBe(2690); // 44h50
 });
 
-test('a semana do estagio e 30h, cheguem elas como chegarem', () => {
-  expect(MINUTOS_SEMANA_ESTAGIO).toBe(1800);
+/**
+ * A SEMANA SAI DO TURNO, E NÃO DO SETOR.
+ *
+ * Era `estágio ? 30h : 44h50` — dois números para uma rede que tem cinco
+ * jornadas. O Elias listou três só no estágio: 07:30–13:30 com 15 min,
+ * 07:30–12:30 direto (sai para a escola) e 13:00–18:00 com 15 min.
+ *
+ * Nenhuma das três fecha 30h. Tratá-las como "30h de qualquer jeito"
+ * errava o banco de horas de todo estagiário, em silêncio.
+ */
+test('cada turno fecha a SUA semana, e não um numero do setor', () => {
+  // O intervalo não conta como trabalho (CLT art. 71 §2º)
+  expect(cargaSemanalDe({ setor: 'Estágio', turno: 'E1' })).toBe(5 * 345); // 5h45 × 5
+  expect(cargaSemanalDe({ setor: 'Estágio', turno: 'E2' })).toBe(5 * 300); // 5h00 × 5
+  expect(cargaSemanalDe({ setor: 'Estágio', turno: 'E3' })).toBe(5 * 285); // 4h45 × 5
 
-  const estagiario = { setor: 'Estágio', cargo: 'Estagiário' };
-  expect(cargaSemanalDe(estagiario)).toBe(1800);
+  // O integral não mudou: 8h10 × 5 mais as 4h de sábado
+  expect(cargaSemanalDe({ setor: 'Balcão', turno: 'A' })).toBe(MINUTOS_SEMANA_PADRAO);
+});
 
+test('quem vem ao SÁBADO soma as 4h dele', () => {
   /**
-   * Os DOIS casos fecham 30h. O que muda é como: um faz 6h de segunda a
-   * sexta, o outro faz menos por dia e vem no sábado completar.
+   * É o caso que o Elias descreveu: o estagiário que faz menos na semana
+   * e completa no sábado. Antes os dois davam 30h fixos, e o sábado dele
+   * não entrava em lugar nenhum.
    */
-  const vemNoSabado = { setor: 'Estágio', trabalhaSabado: true };
-  expect(cargaSemanalDe(vemNoSabado)).toBe(1800);
+  const semSabado = cargaSemanalDe({ setor: 'Estágio', turno: 'E2' });
+  const comSabado = cargaSemanalDe({
+    setor: 'Estágio',
+    turno: 'E2',
+    trabalhaSabado: true,
+  });
+
+  expect(comSabado - semSabado).toBe(MINUTOS_SABADO);
+});
+
+test('o estagiario JÁ CADASTRADO não vira 8h10 de uma vez', () => {
+  /**
+   * Toda ficha de estágio tem o Turno A gravado — o formulário sempre
+   * salvou um turno e o padrão era o A. Enquanto a jornada saía do setor
+   * isso não fazia diferença.
+   *
+   * Obedecer a esse A agora daria 8h10 e quatro batidas a quem faz seis
+   * horas e bate duas vezes: o espelho de todo estagiário quebrado no
+   * mesmo dia. O encaixe E0 segura isso até alguém classificar a pessoa.
+   */
+  const comTurnoErrado = { setor: 'Estágio', cargo: 'Estagiário', turno: 'A' };
+
+  expect(cargaSemanalDe(comTurnoErrado)).toBe(MINUTOS_SEMANA_ESTAGIO); // 30h
+  expect(temIntervaloNoDia(comTurnoErrado)).toBe(false); // duas batidas
+  expect(trabalhaNoSabado(comTurnoErrado)).toBe(false);
+});
+
+test('a carga da FICHA vence o turno', () => {
+  // É o contrato individual, e ele manda sobre qualquer padrão
+  expect(
+    cargaSemanalDe({ setor: 'Estágio', turno: 'E1', cargaSemanalMinutos: 1200 })
+  ).toBe(1200);
 });
 
 test('o padrao do estagio e NAO vir ao sabado, e o do colaborador e vir', () => {
@@ -332,16 +378,42 @@ test('a ficha deixa marcar o estagiario que VEM ao sabado', async () => {
     new URL('../componentes/ModalCadastroColaborador.tsx', import.meta.url)
   ).text();
 
-  // Os três campos, e todos com a opção de seguir o padrão
+  // As exceções ao turno, e as duas com a opção de seguir o padrão
   expect(modal).toContain('id="cad-semanal"');
   expect(modal).toContain('id="cad-sabado"');
-  expect(modal).toContain('id="cad-intervalo"');
-  expect((modal.match(/Padrão do setor/g) || []).length).toBe(3);
+  expect((modal.match(/Padrão do setor/g) || []).length).toBe(2);
+
+  /**
+   * "TEM INTERVALO" SAIU DO FORMULÁRIO.
+   *
+   * Era a mesma pergunta que o turno responde, num segundo lugar — e os
+   * dois podiam discordar. O turno traz o intervalo dele: 1h30 nos
+   * integrais, 15 minutos no estágio da manhã e da tarde, nenhum no da
+   * escola. Devolver o campo devolve a contradição.
+   */
+  expect(modal).not.toContain('id="cad-intervalo"');
 
   // E o que for escolhido tem de sair do formulário para a ficha
   expect(modal).toContain('cargaSemanalMinutos: form.cargaSemanalMinutos');
   expect(modal).toContain('trabalhaSabado: form.trabalhaSabado');
-  expect(modal).toContain('temIntervalo: form.temIntervalo');
+});
+
+test('o cadastro so oferece os turnos do contrato, e mostra o que cada um implica', async () => {
+  const modal = await Bun.file(
+    new URL('../componentes/ModalCadastroColaborador.tsx', import.meta.url)
+  ).text();
+
+  /**
+   * Oferecer a jornada de 8h10 a um estagiário é convidar ao erro — e
+   * turno errado desalinha o espelho por meses sem ninguém notar.
+   */
+  expect(modal).toContain('turnosDoPerfil(ehDeEstagio(form))');
+  expect(modal).not.toContain('TURNOS.map(');
+
+  // E quem cadastra precisa VER a consequência do que acabou de escolher
+  expect(modal).toContain('minutosDoTurno(turnoEscolhido)');
+  expect(modal).toContain('marcacoesDoTurno(turnoEscolhido)');
+  expect(modal).toContain('cargaSemanalDe(');
 });
 
 /**

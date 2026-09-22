@@ -19,7 +19,16 @@ import {
   CARGOS_SUGERIDOS,
   TURNOS,
   TURNO_PADRAO,
+  turnoDe,
+  turnosDoPerfil,
+  minutosDoTurno,
+  marcacoesDoTurno,
+  minutosDeIntervaloDe,
+  cargaSemanalDe,
+  trabalhaNoSabado,
+  ehDeEstagio,
 } from '../tipos';
+import { formatarMinutos } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 
 interface PropsModalCadastroColaborador {
@@ -121,6 +130,28 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       setErro(res.erro || 'Falha ao salvar o cadastro.');
     }
   };
+
+  /**
+   * Os turnos que cabem neste contrato, e o escolhido.
+   *
+   * O perfil sai do SETOR/CARGO que já está sendo preenchido no
+   * formulário, e não do cadastro salvo: quem acabou de mudar o cargo
+   * para Estagiário precisa ver os turnos de estágio na hora, e não
+   * depois de salvar e reabrir.
+   */
+  const turnosOferecidos = turnosDoPerfil(ehDeEstagio(form));
+  const turnoEscolhido = turnoDe(form);
+
+  /**
+   * Trocar de contrato pode deixar a pessoa num turno que não existe mais
+   * para ela — um estagiário com o Turno A de 8h10. Aqui o turno cai para
+   * o primeiro da lista nova, em vez de ficar num valor que a tela nem
+   * mostra e que o espelho obedeceria em silêncio.
+   */
+  useEffect(() => {
+    if (turnosOferecidos.some((t) => t.chave === form.turno)) return;
+    setForm((atual) => ({ ...atual, turno: turnosOferecidos[0]?.chave || TURNO_PADRAO }));
+  }, [form.setor, form.cargo]);
 
   const rotuloCampo =
     'block text-[11px] font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1';
@@ -229,17 +260,81 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
               value={form.turno}
               onChange={(e) => setForm({ ...form, turno: e.target.value })}
             >
-              {TURNOS.map((t) => (
+              {/*
+                SÓ OS TURNOS DESTE CONTRATO.
+                Oferecer a jornada de 8h10 a um estagiário é convidar ao
+                erro — e turno errado desalinha o espelho da pessoa por
+                meses sem ninguém notar.
+              */}
+              {turnosOferecidos.map((t) => (
                 <option key={t.chave} value={t.chave}>
                   {t.nome}
                 </option>
               ))}
             </select>
-            {/* O turno decide de que horário o atraso é contado e quanto o
-                dia prevê — não é enfeite de cadastro */}
+
+            {/*
+              O QUE O TURNO ESCOLHIDO IMPLICA, à vista.
+
+              Antes a tela mostrava só o nome, e as consequências ficavam
+              escondidas em três campos mais abaixo que repetiam a mesma
+              informação por outro caminho. Quem cadastra precisa ver o
+              que acabou de escolher: quanto o dia prevê, quantas batidas
+              fecham o dia e quanto fecha a semana.
+            */}
+            <div className="mt-2 rounded-lg border border-[var(--c-borda)] bg-[var(--c-canvas)] px-3 py-2">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                <span className="text-[var(--c-texto-2)]">
+                  Jornada do dia{' '}
+                  <strong className="text-[var(--c-texto)]">
+                    {formatarMinutos(minutosDoTurno(turnoEscolhido))}
+                  </strong>
+                </span>
+                <span className="text-[var(--c-texto-2)]">
+                  Batidas{' '}
+                  <strong className="text-[var(--c-texto)]">
+                    {marcacoesDoTurno(turnoEscolhido)}
+                  </strong>
+                  {turnoEscolhido.intervalo
+                    ? ` · intervalo de ${formatarMinutos(
+                        minutosDeIntervaloDe({ turno: turnoEscolhido.chave })
+                      )}`
+                    : ' · direto, sem intervalo'}
+                </span>
+                <span className="text-[var(--c-texto-2)]">
+                  Semana{' '}
+                  <strong className="text-[var(--c-texto)]">
+                    {formatarMinutos(cargaSemanalDe({ ...form, turno: turnoEscolhido.chave }))}
+                  </strong>
+                </span>
+                <span className="text-[var(--c-texto-2)]">
+                  Sábado{' '}
+                  <strong className="text-[var(--c-texto)]">
+                    {trabalhaNoSabado({ ...form, turno: turnoEscolhido.chave })
+                      ? '08:00 às 12:00'
+                      : 'não vem'}
+                  </strong>
+                </span>
+              </div>
+
+              {/*
+                A ficha pode ter um "tem intervalo" gravado de antes,
+                quando essa pergunta era respondida em dois lugares. Se
+                ele contradiz o turno, é melhor dizer do que esconder.
+              */}
+              {form.temIntervalo !== undefined &&
+                form.temIntervalo !== !!turnoEscolhido.intervalo && (
+                  <p className="text-[11px] text-amber-600 mt-1.5">
+                    A ficha desta pessoa força{' '}
+                    {form.temIntervalo ? '4 batidas' : '2 batidas'}, contrariando o
+                    turno. Quem manda é a ficha — avise o TI se não for intencional.
+                  </p>
+                )}
+            </div>
+
             <span className="text-[11px] text-[var(--c-texto-3)] block mt-1">
-              Define o horário cobrado na batida. No sábado vale 08:00 às 12:00
-              para os dois turnos.
+              O turno define o horário cobrado na batida e o que o dia prevê. Não é
+              enfeite de cadastro: escolher errado desalinha o espelho.
             </span>
           </div>
 
@@ -408,7 +503,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
               Banco de horas · jornada da semana
             </span>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label htmlFor="cad-semanal" className={rotuloCampo}>
                   Carga semanal
@@ -455,33 +550,21 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                 </select>
               </div>
 
-              <div>
-                <label htmlFor="cad-intervalo" className={rotuloCampo}>
-                  Tem intervalo
-                </label>
-                <select
-                  id="cad-intervalo"
-                  value={form.temIntervalo === undefined ? '' : String(form.temIntervalo)}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      temIntervalo: e.target.value === '' ? undefined : e.target.value === 'true',
-                    })
-                  }
-                  className={campo}
-                >
-                  <option value="">Padrão do setor</option>
-                  <option value="true">Sim · 4 batidas</option>
-                  <option value="false">Não · 2 batidas</option>
-                </select>
-              </div>
             </div>
 
+            {/*
+              "TEM INTERVALO" SAIU DAQUI.
+
+              Era a mesma pergunta que o turno já responde, num segundo
+              lugar — e os dois podiam discordar. O turno traz o intervalo
+              dele: 1h30 nos integrais, 15 minutos no estágio da manhã e
+              da tarde, nenhum no da escola.
+            */}
             <p className="text-[11px] text-[var(--c-texto-3)] leading-snug mt-2">
-              O padrão do setor: <strong>Estágio</strong> fecha 30h na semana, sem sábado e sem
-              intervalo. Os demais fecham 44h50, com sábado e com intervalo. Só preencha aqui
-              quando o contrato desta pessoa for diferente disso — por exemplo, o estagiário que
-              vem ao sábado completar a carga.
+              O padrão sai do <strong>turno</strong> escolhido acima, e está resumido
+              lá. Só preencha aqui quando o contrato desta pessoa for diferente —
+              por exemplo, o estagiário que vem ao sábado completar a carga, ou
+              quem tem carga combinada em contrato.
             </p>
           </div>
 

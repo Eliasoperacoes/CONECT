@@ -249,27 +249,130 @@ export interface Turno {
   chave: string;
   nome: string;
   entrada: string;
-  saidaAlmoco: string;
-  retornoAlmoco: string;
   saida: string;
+  /**
+   * O intervalo DESTE turno — ausente quer dizer jornada direta.
+   *
+   * Era `saidaAlmoco` e `retornoAlmoco`, obrigatórios, e por isso todo
+   * turno tinha almoço de 1h30. O estagiário que entra 07:30 e sai 12:30
+   * direto não cabia; o que para 15 minutos, menos ainda.
+   *
+   * Pior: a ficha tinha um `temIntervalo` à parte, então a mesma
+   * pergunta — "este dia tem intervalo?" — era respondida em dois
+   * lugares que podiam discordar. Agora quem responde é o turno, e a
+   * ficha só o escolhe.
+   */
+  intervalo?: { saida: string; retorno: string };
+  /**
+   * De quem é este turno.
+   *
+   * Existe para a tela de cadastro não oferecer a jornada de 8h10 a um
+   * estagiário, nem a de 5h a quem é do balcão. Escolher errado aqui
+   * desalinha o espelho da pessoa por meses sem ninguém notar.
+   */
+  perfil: 'integral' | 'estagio';
+  /** Este turno vem ao sábado, quando a ficha não diz o contrário? */
+  sabado: boolean;
 }
 
+/**
+ * A ESCALA DA REDE, e ela não é uma só.
+ *
+ * Os dois primeiros são o dia inteiro do balcão, do estoque, do
+ * escritório: 8h10 com 1h30 de almoço, mais o sábado curto.
+ *
+ * Os três seguintes são o estágio, e foram o que o Elias apontou. Não dá
+ * para tratá-los como "o turno normal com menos horas": eles têm intervalo
+ * de 15 minutos em vez de almoço, um deles não tem intervalo nenhum, e um
+ * começa depois do almoço.
+ *
+ * A CONTA DE CADA UM, pelo relógio e não por número escolhido:
+ *
+ *   A   07:30→17:10  −1h30   =  8h10
+ *   B   08:20→18:00  −1h30   =  8h10
+ *   E1  07:30→13:30  −0h15   =  5h45
+ *   E2  07:30→12:30  direto  =  5h00
+ *   E3  13:00→18:00  −0h15   =  4h45
+ *
+ * O intervalo NÃO entra na jornada: é o art. 71 §2º da CLT, e é por isso
+ * que o E1 fecha 5h45 e não as 6h de permanência.
+ */
 export const TURNOS: Turno[] = [
   {
     chave: 'A',
     nome: 'Turno A · 07:30 às 17:10',
     entrada: '07:30',
-    saidaAlmoco: '12:30',
-    retornoAlmoco: '14:00',
     saida: '17:10',
+    intervalo: { saida: '12:30', retorno: '14:00' },
+    perfil: 'integral',
+    sabado: true,
   },
   {
     chave: 'B',
     nome: 'Turno B · 08:20 às 18:00',
     entrada: '08:20',
-    saidaAlmoco: '11:00',
-    retornoAlmoco: '12:30',
     saida: '18:00',
+    intervalo: { saida: '11:00', retorno: '12:30' },
+    perfil: 'integral',
+    sabado: true,
+  },
+  {
+    /**
+     * O ENCAIXE DE QUEM AINDA NÃO FOI CLASSIFICADO.
+     *
+     * Todo estagiário já cadastrado tem o Turno A gravado na ficha — o
+     * formulário sempre salvou um turno, e o padrão dele era o A. Enquanto
+     * a jornada saía do SETOR, isso não fazia diferença: o turno era
+     * ignorado para eles.
+     *
+     * Agora que o turno manda, o A daria 8h10 e quatro batidas a quem faz
+     * seis horas e bate duas vezes. Este encaixe preserva exatamente o que
+     * valia antes — 6h, direto, sem sábado, 30h na semana — até alguém
+     * abrir a ficha e dizer qual dos três turnos reais é o daquela pessoa.
+     *
+     * O nome diz "a definir" porque é isso que ele é: um lugar de espera
+     * que aparece no cadastro pedindo para ser trocado.
+     */
+    chave: 'E0',
+    nome: 'Estágio · 6h direto (turno a definir)',
+    entrada: '07:30',
+    saida: '13:30',
+    perfil: 'estagio',
+    sabado: false,
+  },
+  {
+    chave: 'E1',
+    nome: 'Estágio manhã · 07:30 às 13:30 (15 min)',
+    entrada: '07:30',
+    saida: '13:30',
+    /**
+     * O horário do intervalo de 15 minutos é o meio da jornada.
+     *
+     * O Elias disse a duração, não a hora — e na prática ela varia com o
+     * movimento do balcão. O meio é o palpite que menos acusa atraso
+     * injusto, e a tolerância da CLT cobre o deslocamento normal.
+     */
+    intervalo: { saida: '10:30', retorno: '10:45' },
+    perfil: 'estagio',
+    sabado: false,
+  },
+  {
+    chave: 'E2',
+    nome: 'Estágio escola · 07:30 às 12:30 (direto)',
+    entrada: '07:30',
+    saida: '12:30',
+    // Sai direto para a escola: duas batidas, sem intervalo
+    perfil: 'estagio',
+    sabado: false,
+  },
+  {
+    chave: 'E3',
+    nome: 'Estágio tarde · 13:00 às 18:00 (15 min)',
+    entrada: '13:00',
+    saida: '18:00',
+    intervalo: { saida: '15:30', retorno: '15:45' },
+    perfil: 'estagio',
+    sabado: false,
   },
 ];
 
@@ -286,11 +389,50 @@ const emMinutos = (hora: string): number => {
 export const acharTurno = (chave?: string): Turno =>
   TURNOS.find((t) => t.chave === chave) || TURNOS[0];
 
-/** Minutos contratados num dia útil deste turno. */
-export const minutosDoTurno = (turno: Turno): number =>
-  emMinutos(turno.saidaAlmoco) -
-  emMinutos(turno.entrada) +
-  (emMinutos(turno.saida) - emMinutos(turno.retornoAlmoco));
+/**
+ * Minutos contratados num dia útil deste turno.
+ *
+ * O intervalo sai da conta porque não é trabalho — art. 71 §2º da CLT. É
+ * o que faz o estágio da manhã fechar 5h45, e não as 6h que se passam
+ * entre entrar e sair.
+ */
+export const minutosDoTurno = (turno: Turno): number => {
+  const permanencia = emMinutos(turno.saida) - emMinutos(turno.entrada);
+  if (!turno.intervalo) return permanencia;
+
+  return (
+    permanencia -
+    (emMinutos(turno.intervalo.retorno) - emMinutos(turno.intervalo.saida))
+  );
+};
+
+/** Quantas batidas este turno espera: 4 com intervalo, 2 direto. */
+export const marcacoesDoTurno = (turno: Turno): 2 | 4 => (turno.intervalo ? 4 : 2);
+
+/** Os turnos que fazem sentido para este contrato. */
+export const turnosDoPerfil = (ehEstagio: boolean): Turno[] =>
+  TURNOS.filter((t) => t.perfil === (ehEstagio ? 'estagio' : 'integral'));
+
+/**
+ * O TURNO DESTA PESSOA. É por aqui que todo o resto pergunta.
+ *
+ * Diferente de `acharTurno`, que só procura pela chave: aqui o turno
+ * precisa CABER no contrato da pessoa. Um estagiário com o Turno A
+ * gravado não recebe 8h10 e quatro batidas — recebe o encaixe do estágio.
+ *
+ * Isso não é zelo teórico: é o estado real do banco. O formulário sempre
+ * salvou um turno, com o A por padrão, e enquanto a jornada saía do setor
+ * ninguém percebeu. Obedecer a esse A agora quebraria o espelho de todo
+ * estagiário da rede de uma vez.
+ */
+export const turnoDe = (colaborador?: {
+  turno?: string;
+  setor?: string;
+  cargo?: string;
+}): Turno => {
+  const doPerfil = turnosDoPerfil(ehDeEstagio(colaborador));
+  return doPerfil.find((t) => t.chave === colaborador?.turno) || doPerfil[0];
+};
 
 /** Minutos contratados no sábado. */
 export const MINUTOS_SABADO =
@@ -336,14 +478,43 @@ export const ehDeEstagio = (colaborador?: {
   (colaborador?.setor || '').toLowerCase().includes('esta') ||
   (colaborador?.cargo || '').toLowerCase().includes('estagi');
 
-/** A carga da semana desta pessoa, com o padrão do contrato dela. */
+/**
+ * A carga da semana desta pessoa.
+ *
+ * SAI DO TURNO DELA, e não de uma constante por setor. Era
+ * `estágio ? 30h : 44h50` — dois números para uma rede que tem cinco
+ * jornadas diferentes, e que por isso errava três delas.
+ *
+ * A conta é o relógio: os dias úteis do turno, mais o sábado se ela vem
+ * ao sábado. Quem tem carga própria na ficha continua vencendo tudo isso
+ * — é o contrato individual, e ele manda.
+ *
+ * O que cada turno fecha por semana:
+ *
+ *   A / B  8h10 × 5 + 4h de sábado  = 44h50
+ *   E1     5h45 × 5                 = 28h45
+ *   E2     5h00 × 5                 = 25h00
+ *   E3     4h45 × 5                 = 23h45
+ *
+ * Quem faz E2 ou E3 e vem ao sábado soma as 4h dele — é o caso que o
+ * Elias descreveu, de quem compensa no sábado o que não fecha na semana.
+ */
 export const cargaSemanalDe = (colaborador?: {
   cargaSemanalMinutos?: number;
+  turno?: string;
+  trabalhaSabado?: boolean;
   setor?: string;
   cargo?: string;
-}): number =>
-  colaborador?.cargaSemanalMinutos ??
-  (ehDeEstagio(colaborador) ? MINUTOS_SEMANA_ESTAGIO : MINUTOS_SEMANA_PADRAO);
+}): number => {
+  if (colaborador?.cargaSemanalMinutos !== undefined) {
+    return colaborador.cargaSemanalMinutos;
+  }
+
+  const turno = turnoDe(colaborador);
+  const uteis = minutosDoTurno(turno) * 5;
+
+  return uteis + (trabalhaNoSabado(colaborador) ? MINUTOS_SABADO : 0);
+};
 
 /**
  * Esta pessoa trabalha aos sábados?
@@ -353,21 +524,49 @@ export const cargaSemanalDe = (colaborador?: {
  */
 export const trabalhaNoSabado = (colaborador?: {
   trabalhaSabado?: boolean;
+  turno?: string;
   setor?: string;
   cargo?: string;
-}): boolean => colaborador?.trabalhaSabado ?? !ehDeEstagio(colaborador);
+}): boolean => colaborador?.trabalhaSabado ?? turnoDe(colaborador).sabado;
 
 /**
- * O dia desta pessoa tem intervalo de almoço?
+ * O dia desta pessoa tem intervalo?
  *
- * O padrão do estágio é NÃO: jornada de até 6h não exige intervalo, e o dia
- * dele é entrada e saída, direto.
+ * QUEM RESPONDE É O TURNO. Antes era um `temIntervalo` na ficha, separado
+ * do turno — a mesma pergunta em dois lugares, que é como este sistema já
+ * passou a discordar de si mesmo quatro vezes.
+ *
+ * E discordava mesmo: o turno sempre trazia almoço de 1h30, e a ficha
+ * podia dizer "sem intervalo". O estagiário das 07:30 às 13:30, que para
+ * 15 minutos, não era nenhum dos dois.
+ *
+ * A ficha ainda vence quando alguém marca explicitamente — é a exceção
+ * combinada com a área, e some junto do campo se um dia ele sair.
  */
 export const temIntervaloNoDia = (colaborador?: {
   temIntervalo?: boolean;
+  turno?: string;
   setor?: string;
   cargo?: string;
-}): boolean => colaborador?.temIntervalo ?? !ehDeEstagio(colaborador);
+}): boolean => colaborador?.temIntervalo ?? !!turnoDe(colaborador).intervalo;
+
+/**
+ * O intervalo contratado desta pessoa, em minutos.
+ *
+ * Existe porque 15 minutos e 1h30 são coisas diferentes na hora de dizer
+ * "seu intervalo passou do contratado". Antes a conta pegava o almoço do
+ * turno A para todo mundo, e cobrava do estagiário um almoço que ele não
+ * tem.
+ */
+export const minutosDeIntervaloDe = (colaborador?: {
+  turno?: string;
+  setor?: string;
+  cargo?: string;
+}): number => {
+  const turno = turnoDe(colaborador);
+  if (!turno.intervalo) return 0;
+  return emMinutos(turno.intervalo.retorno) - emMinutos(turno.intervalo.saida);
+};
 
 /**
  * Tolerancia diaria padrao, em minutos.

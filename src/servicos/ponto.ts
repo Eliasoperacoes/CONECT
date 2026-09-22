@@ -23,7 +23,8 @@ import {
   TURNO_SABADO,
   MINUTOS_SABADO,
   minutosDoTurno,
-  acharTurno,
+  turnoDe,
+  minutosDeIntervaloDe,
   HORARIO_ENTRADA_PADRAO,
   INTERVALO_ALMOCO_PADRAO_MINUTOS,
   Colaborador,
@@ -757,7 +758,7 @@ class ServicoPonto {
 
     return (
       colaborador?.cargaHorariaDiariaMinutos ??
-      minutosDoTurno(acharTurno(colaborador?.turno))
+      minutosDoTurno(turnoDe(colaborador))
     );
   }
 
@@ -1178,8 +1179,18 @@ class ServicoPonto {
       return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
     };
 
-    const turno = acharTurno(colaborador?.turno);
+    const turno = turnoDe(colaborador);
 
+    /**
+     * O DIA ÚTIL DE DUAS BATIDAS TAMBÉM TEM HORÁRIO.
+     *
+     * Antes só o sábado e o dia de quatro batidas tinham. O estagiário
+     * que entra 07:30 e sai 12:30 direto caía no `{}`, e o sistema dizia
+     * que não sabia o horário dele — quando sabe, está escrito no turno.
+     *
+     * O efeito era mudo: sem horário esperado não há atraso, e a entrada
+     * às 09:00 dele passava como se fosse no relógio.
+     */
     const horarios: Partial<Record<TipoMarcacao, number>> = ehSabado(data)
       ? esperadas.length === 2
         ? {
@@ -1187,14 +1198,19 @@ class ServicoPonto {
             saida: emMinutos(TURNO_SABADO.saida),
           }
         : {}
-      : esperadas.length === 4
+      : esperadas.length === 4 && turno.intervalo
         ? {
             entrada: emMinutos(turno.entrada),
-            saida_almoco: emMinutos(turno.saidaAlmoco),
-            retorno_almoco: emMinutos(turno.retornoAlmoco),
+            saida_almoco: emMinutos(turno.intervalo.saida),
+            retorno_almoco: emMinutos(turno.intervalo.retorno),
             saida: emMinutos(turno.saida),
           }
-        : {};
+        : esperadas.length === 2
+          ? {
+              entrada: emMinutos(turno.entrada),
+              saida: emMinutos(turno.saida),
+            }
+          : {};
 
     if (Object.keys(horarios).length === 0) return null;
 
@@ -1287,7 +1303,7 @@ class ServicoPonto {
      * rede: quem é do turno B entra às 08:20, e cobrar dele o horário do
      * turno A o faria justificar um atraso que não existe.
      */
-    const turno = acharTurno(colaborador?.turno);
+    const turno = turnoDe(colaborador);
     const emMinutos = (hora: string): number => {
       const [h, m] = hora.split(':').map(Number);
       return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
@@ -1315,8 +1331,16 @@ class ServicoPonto {
 
       const saiuEm = new Date(saida.horario);
       const intervalo = minutosAgora - (saiuEm.getHours() * 60 + saiuEm.getMinutes());
-      // O intervalo contratado é o do turno: a distância entre sair e voltar
-      const contratado = emMinutos(turno.retornoAlmoco) - emMinutos(turno.saidaAlmoco);
+      /**
+       * O intervalo contratado é o DESTA PESSOA, e não o almoço da rede.
+       *
+       * A conta pegava o almoço do turno direto. Para quem tem 1h30 dava
+       * certo por acaso; para o estagiário de 15 minutos, o sistema
+       * silenciava uma hora e quinze de intervalo a mais todo dia, porque
+       * cabia dentro do "contratado" que não era o dele.
+       */
+      const contratado = minutosDeIntervaloDe(colaborador);
+      if (contratado === 0) return semMotivo;
 
       const excedente = intervalo - contratado;
       if (excedente <= tolerancia) return semMotivo;
