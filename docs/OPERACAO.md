@@ -90,7 +90,8 @@ esquema.
 
 | Arquivo | Quando usar |
 |---|---|
-| `resetar-acesso.sql` | **O mais usado.** Pessoa não entra e não lembra a senha |
+| `resetar-senha-inicial.sql` | **Rode uma vez.** Cria a função do botão "Resetar para a senha padrão", na ficha do colaborador |
+| `resetar-acesso.sql` | Pessoa não entra e não lembra a senha, e o botão não está à mão |
 | `liberar-acesso.sql` | Contas de autenticação órfãs (sem ficha do outro lado) |
 | `conserto-login.sql` | Só se o cadastro duplicado voltar. Já aplicado |
 | `conferir-exclusao.sql` | Conversa excluída que volta sozinha |
@@ -125,7 +126,16 @@ A mensagem da tela diz qual é o caso. Em ordem de frequência:
 A pessoa ativou o acesso algum dia e esqueceu a senha. A senha de primeiro
 acesso não vale mais.
 
-**Solução:** `supabase/resetar-acesso.sql`. Troque o login na linha marcada:
+**Solução, pelo sistema:** Painel Administrativo → Colaboradores → editar a
+pessoa → **Senha Inicial → "Resetar para a senha padrão"**. Pede confirmação
+e devolve a pessoa ao primeiro acesso, com `123456`.
+
+Depende de `supabase/resetar-senha-inicial.sql` ter sido rodado uma vez. O
+botão não aparece em cadastro novo nem sobre a sua própria ficha, e o banco
+recusa resetar alguém de nível acima do seu.
+
+**Solução, pelo SQL:** `supabase/resetar-acesso.sql`. Troque o login na linha
+marcada:
 
 ```sql
 login_alvo  text := 'Dani';

@@ -59,6 +59,7 @@ import {
   INFORMACOES_LOJAS,
 } from '../tipos';
 import { nuvemComunicacao, UsoDoBanco } from '../servicos/nuvemComunicacao';
+import { nuvem } from '../servicos/nuvem';
 import { PainelPermissoes } from './PainelPermissoes';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA, obterFotoColaborador } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
@@ -161,6 +162,16 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   // Modal Novo/Editar Colaborador
   const [modalColabAberto, setModalColabAberto] = useState(false);
   const [colabEditando, setColabEditando] = useState<Colaborador | null>(null);
+  /**
+   * O reset da senha inicial. Pede confirmação porque derruba o acesso de
+   * alguém: se a pessoa estiver logada agora, na próxima vez que o app
+   * pedir a sessão ela cai — e só volta pela senha padrão.
+   */
+  const [confirmandoReset, setConfirmandoReset] = useState(false);
+  const [resetando, setResetando] = useState(false);
+  const [avisoReset, setAvisoReset] = useState<{ ok: boolean; texto: string } | null>(
+    null
+  );
   const [formColab, setFormColab] = useState({
     nome: '',
     login: '',
@@ -352,9 +363,40 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     setModalColabAberto(true);
   };
 
+  /**
+   * DEVOLVE A PESSOA À SENHA PADRÃO.
+   *
+   * Existe porque a senha, depois do primeiro acesso, não é legível por
+   * ninguém — nem pelo TI. Quem esquece não tem como "ver qual era": o
+   * único caminho é voltar ao começo e criar outra.
+   *
+   * Quem pode resetar quem é decidido NO BANCO. O que a tela faz aqui é
+   * só esconder o que não faz sentido; trava de tela se contorna abrindo
+   * o console.
+   */
+  const resetarSenhaInicial = async () => {
+    if (!colabEditando) return;
+
+    setResetando(true);
+    const res = await nuvem.resetarSenhaInicial(colabEditando.id);
+    setResetando(false);
+    setConfirmandoReset(false);
+
+    setAvisoReset(
+      res.sucesso
+        ? {
+            ok: true,
+            texto: `${colabEditando.nome} volta a entrar com a senha ${res.senha} e cria a dela na primeira entrada.`,
+          }
+        : { ok: false, texto: res.erro || 'Não foi possível resetar.' }
+    );
+  };
+
   // Abre modal para editar colaborador
   const abrirModalEditarColab = (colab: Colaborador) => {
     setColabEditando(colab);
+    setConfirmandoReset(false);
+    setAvisoReset(null);
     setFormColab({
       nome: colab.nome,
       login: colab.login || '',
@@ -1873,12 +1915,77 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                   {/* No modo rede o administrador não define senha de ninguém:
                       a pessoa ativa o acesso com a padrão e cria a dela. */}
                   {usandoNuvem() ? (
-                    <div className="w-full px-3 py-2 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-[11px] text-[var(--c-texto-3)] leading-snug">
-                      Entra com{' '}
-                      <strong className="font-mono text-[var(--c-texto-2)]">
-                        {SENHA_PADRAO_PRIMEIRO_ACESSO}
-                      </strong>{' '}
-                      e cria a própria senha na primeira entrada.
+                    <div className="flex flex-col gap-1.5">
+                      <div className="w-full px-3 py-2 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-[11px] text-[var(--c-texto-3)] leading-snug">
+                        Entra com{' '}
+                        <strong className="font-mono text-[var(--c-texto-2)]">
+                          {SENHA_PADRAO_PRIMEIRO_ACESSO}
+                        </strong>{' '}
+                        e cria a própria senha na primeira entrada.
+                      </div>
+
+                      {/* SÓ AO EDITAR, e nunca sobre si mesmo: quem reseta a
+                          própria conta se desloga e volta ao primeiro acesso.
+                          Em cadastro novo não há o que resetar. */}
+                      {colabEditando && colabEditando.id !== colaboradorAtual.id && (
+                        <>
+                          {!confirmandoReset ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvisoReset(null);
+                                setConfirmandoReset(true);
+                              }}
+                              className="w-full px-3 py-2 rounded-xl border border-amber-500/40 bg-amber-500/5 text-[11px] font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Resetar para a senha padrão
+                            </button>
+                          ) : (
+                            <div className="w-full p-2.5 rounded-xl border border-amber-500/40 bg-amber-500/5 flex flex-col gap-2">
+                              <span className="text-[11px] leading-snug text-[var(--c-texto-2)]">
+                                A senha atual de{' '}
+                                <strong>{colabEditando.nome}</strong> deixa de valer.
+                                Ela entra com{' '}
+                                <strong className="font-mono">
+                                  {SENHA_PADRAO_PRIMEIRO_ACESSO}
+                                </strong>{' '}
+                                e cria uma nova. Ficha, ponto e mensagens não são
+                                tocados.
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmandoReset(false)}
+                                  className="flex-1 px-2 py-1.5 rounded-lg border border-[var(--c-borda)] text-[11px] font-bold text-[var(--c-texto-2)]"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={resetando}
+                                  onClick={resetarSenhaInicial}
+                                  className="flex-1 px-2 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold disabled:opacity-40"
+                                >
+                                  {resetando ? 'Resetando...' : 'Confirmar reset'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {avisoReset && (
+                        <div
+                          className={`w-full px-3 py-2 rounded-xl border text-[11px] leading-snug ${
+                            avisoReset.ok
+                              ? 'bg-emerald-500/5 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
+                              : 'bg-red-500/5 border-red-500/30 text-red-700 dark:text-red-400'
+                          }`}
+                        >
+                          {avisoReset.texto}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <input

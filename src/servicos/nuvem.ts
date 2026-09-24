@@ -26,6 +26,7 @@ import {
   TURNO_PADRAO,
   TipoAjuste,
   EstadoAjuste,
+  SENHA_PADRAO_PRIMEIRO_ACESSO,
 } from '../tipos';
 import { supabase, usandoNuvem, loginParaEmailInterno, normalizarLogin } from './supabase';
 import { nuvemComunicacao } from './nuvemComunicacao';
@@ -573,6 +574,34 @@ class PonteNuvem {
     await supabase.rpc('concluir_troca_de_senha');
     await this.sincronizarColaboradores();
     return { sucesso: true };
+  }
+
+  /**
+   * DEVOLVE ALGUÉM AO PRIMEIRO ACESSO, com a senha padrão da rede.
+   *
+   * É para quando a pessoa já trocou a senha dela e esqueceu. Ninguém
+   * consegue ler a senha de ninguém — nem o TI —, então não há "ver qual
+   * é": o caminho é zerar e deixar a pessoa criar outra na entrada.
+   *
+   * O trabalho todo acontece no banco, em `resetar_senha_inicial`, porque
+   * apagar conta de acesso é coisa que o navegador não alcança. As travas
+   * de quem pode resetar quem moram lá pelo mesmo motivo: trava que mora
+   * na tela se contorna abrindo o console.
+   */
+  async resetarSenhaInicial(
+    colaboradorId: string
+  ): Promise<{ sucesso: boolean; senha?: string; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
+
+    const { data, error } = await supabase.rpc('resetar_senha_inicial', {
+      colaborador_alvo: colaboradorId,
+    });
+
+    if (error) return { sucesso: false, erro: error.message };
+
+    await this.sincronizarColaboradores();
+    const linha = Array.isArray(data) ? data[0] : data;
+    return { sucesso: true, senha: linha?.senha || SENHA_PADRAO_PRIMEIRO_ACESSO };
   }
 
   async sair(): Promise<void> {
