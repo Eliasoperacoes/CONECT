@@ -86,28 +86,48 @@ test('AGRUPADO POR UNIDADE, com o resumo no cabeçalho', async () => {
   expect(tabela).toContain('emAberto: pessoas.filter((p) => p.diasComPendencia > 0).length');
 });
 
-test('A UNIDADE DE QUEM ABRE VEM PRIMEIRO E JÁ ABERTA', async () => {
+test('TUDO NASCE RECOLHIDO', async () => {
   /**
-   * É a que ele olha todo dia. Empurrá-la para baixo por ordem
-   * alfabética, ou obrigá-lo a abri-la, seria trocar rolagem por
-   * clique — e não é isso que se pediu.
+   * A REGRA MUDOU, a pedido do dono do sistema.
+   *
+   * A primeira versão abria a unidade de quem entra, para poupar um
+   * clique. Mas o pedido era tela limpa, e a unidade de quem entra é
+   * justamente a maior — abrir nela é abrir com a rolagem que esta tela
+   * veio tirar.
+   *
+   * Recolhido não é vazio: o cabeçalho de cada bloco continua dizendo
+   * quantos são, o saldo somado e quem está devendo batida.
    */
   const tabela = semComentarios(await lerTabela());
 
-  expect(tabela).toContain('if (a.loja === colaboradorAtual.loja) return -1;');
-  expect(tabela).toContain('(loja) => loja !== colaboradorAtual.loja');
+  expect(tabela).toContain('useState<Set<string>>(() => new Set())');
+  expect(tabela).toContain('const aberto = abertos.has(grupo.loja);');
+
+  // Nada abre por conta própria
+  expect(tabela).not.toContain('loja !== colaboradorAtual.loja');
 });
 
-test('GUARDA OS FECHADOS, e não os abertos', async () => {
+test('a unidade de quem abre continua vindo PRIMEIRO', async () => {
   /**
-   * Assim uma loja que apareça depois — pessoa transferida, unidade
-   * nova — nasce aberta em vez de invisível. Guardando os abertos, ela
-   * nasceria fechada e ninguém saberia que existe.
+   * Recolhida como as outras, mas no topo: é a que ele olha todo dia, e
+   * empurrá-la para baixo por ordem alfabética obrigaria a procurar a
+   * própria loja no meio das cinco.
+   */
+  const tabela = semComentarios(await lerTabela());
+  expect(tabela).toContain('if (a.loja === colaboradorAtual.loja) return -1;');
+});
+
+test('GUARDA OS ABERTOS, e não os fechados', async () => {
+  /**
+   * O conjunto guardado tem que ser o PEQUENO — agora os abertos, que
+   * nascem vazios. Guardar os fechados exigiria listar todas as lojas
+   * na montagem, e uma loja que aparecesse depois cairia no estado
+   * errado: apareceria aberta num painel que deve nascer todo fechado.
    */
   const tabela = semComentarios(await lerTabela());
 
-  expect(tabela).toContain('const [fechados, setFechados] = useState<Set<string>>');
-  expect(tabela).toContain('const aberto = !fechados.has(grupo.loja);');
+  expect(tabela).toContain('const [abertos, setAbertos] = useState<Set<string>>');
+  expect(tabela).toContain('const tudoFechado = grupos.every((g) => !abertos.has(g.loja));');
 });
 
 test('dá para recolher e expandir TUDO de uma vez', async () => {
@@ -133,7 +153,8 @@ test('NO CICLO, A LISTA RECOLHE MAS OS NÚMEROS FICAM', async () => {
    */
   const ciclo = semComentarios(await lerCiclo());
 
-  expect(ciclo).toContain('const [listaAberta, setListaAberta] = useState(true)');
+  // E nasce RECOLHIDA, como os blocos da equipe
+  expect(ciclo).toContain('const [listaAberta, setListaAberta] = useState(false)');
   expect(ciclo).toContain('!listaAberta ? null : (');
 
   /**

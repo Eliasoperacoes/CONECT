@@ -58,8 +58,12 @@ export const CicloSemanal: React.FC<Props> = ({ colaboradorAtual, aoEscolherPeri
    * que faz alguém abrir.
    *
    * Então o cabeçalho e os números ficam sempre; só os nomes somem.
+   *
+   * E nasce RECOLHIDA, como os blocos da equipe: a tela abre inteira
+   * numa olhada, e abre-se só o que interessa. O cabeçalho já diz
+   * quantas pessoas precisam de você — quem quer os nomes clica.
    */
-  const [listaAberta, setListaAberta] = useState(true);
+  const [listaAberta, setListaAberta] = useState(false);
 
   const dataDeReferencia = useMemo(() => {
     const d = new Date();

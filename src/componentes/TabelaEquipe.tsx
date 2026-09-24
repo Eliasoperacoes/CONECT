@@ -108,34 +108,37 @@ export const TabelaEquipe: React.FC<Props> = ({
       });
   }, [linhas, colaboradorAtual.loja]);
 
-  const [fechados, setFechados] = useState<Set<string>>(
-    () =>
-      /**
-       * Guardamos os FECHADOS, e não os abertos.
-       *
-       * Assim uma loja que apareça depois — pessoa transferida, unidade
-       * nova — nasce aberta em vez de invisível. Guardando os abertos,
-       * ela nasceria fechada e ninguém saberia que existe.
-       */
-      new Set(
-        [...new Set(linhas.map((l) => l.colaborador.loja))].filter(
-          (loja) => loja !== colaboradorAtual.loja
-        )
-      )
-  );
+  /**
+   * TUDO NASCE RECOLHIDO.
+   *
+   * A primeira versão abria a unidade de quem entra, com a ideia de
+   * poupar um clique. Mas o pedido era tela limpa, e a unidade de quem
+   * entra é justamente a maior — abrir nela é abrir com a rolagem que
+   * esta tela veio tirar.
+   *
+   * Recolhido não é vazio: o cabeçalho de cada bloco continua dizendo
+   * quantos são, o saldo somado e quem está devendo batida. A tela
+   * inteira cabe numa olhada, e abre-se só o que interessa.
+   *
+   * Guardamos os ABERTOS, e não os fechados — é o inverso de antes,
+   * pelo mesmo motivo de sempre: o conjunto guardado tem que ser o
+   * pequeno, para que uma loja que apareça depois caia no padrão em vez
+   * de aparecer no estado errado.
+   */
+  const [abertos, setAbertos] = useState<Set<string>>(() => new Set());
 
   const alternar = (loja: string) =>
-    setFechados((atual) => {
+    setAbertos((atual) => {
       const novo = new Set(atual);
       if (novo.has(loja)) novo.delete(loja);
       else novo.add(loja);
       return novo;
     });
 
-  const tudoFechado = grupos.every((g) => fechados.has(g.loja));
+  const tudoFechado = grupos.every((g) => !abertos.has(g.loja));
 
   const alternarTudo = () =>
-    setFechados(tudoFechado ? new Set() : new Set(grupos.map((g) => g.loja)));
+    setAbertos(tudoFechado ? new Set(grupos.map((g) => g.loja)) : new Set());
 
   if (linhas.length === 0) return null;
 
@@ -161,7 +164,7 @@ export const TabelaEquipe: React.FC<Props> = ({
       )}
 
       {grupos.map((grupo) => {
-        const aberto = !fechados.has(grupo.loja);
+        const aberto = abertos.has(grupo.loja);
 
         return (
           <div
