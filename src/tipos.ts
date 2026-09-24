@@ -1040,6 +1040,30 @@ export const ROTULO_TIPO_AUSENCIA: Record<TipoAusencia, string> = {
   outro: 'Outro',
 };
 
+/**
+ * QUAIS AUSÊNCIAS SE PROVAM COM PAPEL.
+ *
+ * Atestado, declaração de comparecimento e falta justificada só valem com
+ * o documento na mão — e é esse acervo que o RH guarda, consulta na
+ * homologação e apresenta na fiscalização.
+ *
+ * Férias e folga de sábado não: uma é programação do ano, a outra é
+ * escala do mês. Nenhuma das duas tem documento para arquivar, e
+ * misturá-las ao acervo virou uma lista de avisos de coisa recusada em
+ * vez do arquivo de documentos que a tela precisa ser.
+ *
+ * É `Record` de propósito: tipo novo de ausência não compila sem que
+ * alguém decida, aqui, se ele entra no acervo.
+ */
+export const SE_COMPROVA_COM_DOCUMENTO: Record<TipoAusencia, boolean> = {
+  atestado: true,
+  falta_justificada: true,
+  comparecimento: true,
+  outro: true,
+  folga_sabado: false,
+  ferias: false,
+};
+
 export type EstadoJustificativa = 'pendente' | 'aprovada' | 'recusada';
 
 export interface JustificativaAusencia {

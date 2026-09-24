@@ -31,7 +31,7 @@ import {
   CheckCircle2,
   Palmtree,
 } from 'lucide-react';
-import { Colaborador } from '../tipos';
+import { Colaborador, SE_COMPROVA_COM_DOCUMENTO } from '../tipos';
 import {
   servicoPonto,
   formatarSaldo,
@@ -143,7 +143,16 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
     const atestadosDoMes = justificativas.filter(
       (j) => j.tipo === 'atestado' && j.dataInicio.slice(0, 7) === mesAtual
     );
-    const aguardando = justificativas.filter((j) => j.estado === 'pendente');
+    /**
+     * O que aguarda O RH — não o que aguarda alguém.
+     *
+     * Contava tudo que estivesse pendente, férias e folga de sábado
+     * inclusive, e o clique levava à aba Atestados, onde essas duas nem
+     * aparecem. O número mandava a Dani para uma tela vazia.
+     */
+    const aguardando = justificativas.filter(
+      (j) => j.estado === 'pendente' && SE_COMPROVA_COM_DOCUMENTO[j.tipo]
+    );
 
     /**
      * QUEM FICA MESMO SEM APROVADOR.
@@ -218,7 +227,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
       titulo: `${numeros.aguardando} ${
         numeros.aguardando === 1 ? 'pedido aguarda' : 'pedidos aguardam'
       } sua decisão`,
-      explicacao: 'Atestados e folgas que ninguém aprovou nem recusou ainda',
+      explicacao: 'Documentos de ausência que ninguém aceitou nem recusou ainda',
       acao: 'Decidir',
       icone: <Stethoscope className="w-4 h-4" />,
       aoAbrir: () => setSecao('atestados'),

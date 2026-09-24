@@ -30,6 +30,7 @@ import {
   JustificativaAusencia,
   SituacaoDoDia,
   SITUACAO_POR_TIPO,
+  SE_COMPROVA_COM_DOCUMENTO,
   TipoAusencia,
   cuidaDePessoas,
   ehDoRh,
@@ -59,7 +60,7 @@ const gravar = gravarJustificativas;
 export { assinarJustificativas };
 
 /**
- * QUEM DECIDE CADA TIPO. A regra mora aqui, e só aqui.
+ * QUEM DECIDE CADA TIPO.
  *
  * `rh` — o documento. Atestado, falta justificada, comparecimento e
  * "outro" são papéis que se julgam pelo papel, e o atestado ainda carrega
@@ -67,9 +68,15 @@ export { assinarJustificativas };
  *
  * `cadeia` — a escala. Folga de sábado e férias se decidem olhando quem
  * mais está fora naquele dia, e isso é de quem toca a loja.
+ *
+ * É A MESMA LINHA de `SE_COMPROVA_COM_DOCUMENTO`, vista do outro lado:
+ * quem guarda o papel é quem decide sobre o papel. Escrevê-la de novo
+ * aqui deixaria o acervo do RH e a fila de aprovação discordando no dia
+ * em que um tipo novo aparecesse — e foi assim que férias entrou na
+ * tela de atestados.
  */
 export const quemDecide = (tipo: TipoAusencia): 'rh' | 'cadeia' =>
-  tipo === 'folga_sabado' || tipo === 'ferias' ? 'cadeia' : 'rh';
+  SE_COMPROVA_COM_DOCUMENTO[tipo] ? 'rh' : 'cadeia';
 
 /**
  * Esta pessoa pode decidir ESTA solicitação?
