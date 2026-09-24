@@ -32,6 +32,7 @@ import {
   Palmtree,
 } from 'lucide-react';
 import { Colaborador, SE_COMPROVA_COM_DOCUMENTO } from '../tipos';
+import { ondeParei, lembrarOndeParei } from '../servicos/navegacaoLembrada';
 import {
   servicoPonto,
   formatarSaldo,
@@ -59,14 +60,23 @@ import { AbaFerias } from './AbaFerias';
  * móveis pela Páscoa. Uma tela cuja única função era alimentar o que o
  * sistema podia calcular é trabalho que a pessoa fazia pelo sistema.
  */
-type Secao =
-  | 'painel'
-  | 'holerites'
-  | 'atestados'
-  | 'advertencias'
-  | 'escala'
-  | 'ferias'
-  | 'espelhos';
+/**
+ * As seções do RH, em lista, porque `ondeParei` precisa conferir o que
+ * leu do aparelho contra o que existe HOJE — aba renomeada, removida ou
+ * escrita à mão no console cairia no padrão em vez de deixar a tela em
+ * branco.
+ */
+const SECOES = [
+  'painel',
+  'holerites',
+  'atestados',
+  'advertencias',
+  'escala',
+  'ferias',
+  'espelhos',
+] as const;
+
+type Secao = (typeof SECOES)[number];
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -109,7 +119,14 @@ const Indicador: React.FC<{
 );
 
 export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
-  const [secao, setSecao] = useState<Secao>('painel');
+  /** Volta para a seção onde a pessoa parou, e não para o painel. */
+  const [secao, setSecao] = useState<Secao>(() =>
+    ondeParei(colaboradorAtual.id, 'rh', SECOES, 'painel')
+  );
+
+  useEffect(() => {
+    lembrarOndeParei(colaboradorAtual.id, 'rh', secao);
+  }, [colaboradorAtual.id, secao]);
   const [versao, setVersao] = useState(0);
 
   useEffect(() => {

@@ -60,6 +60,7 @@ import {
 } from '../tipos';
 import { nuvemComunicacao, UsoDoBanco } from '../servicos/nuvemComunicacao';
 import { nuvem } from '../servicos/nuvem';
+import { ondeParei, lembrarOndeParei } from '../servicos/navegacaoLembrada';
 import { PainelPermissoes } from './PainelPermissoes';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA, obterFotoColaborador } from '../servicos/bancoDados';
 import { servicoPonto } from '../servicos/ponto';
@@ -75,17 +76,25 @@ interface PropsPainelAdministrativo {
   aoAbrirConversa: (conversaId: string) => void;
 }
 
-type AbaAdmin =
-  | 'colaboradores'
-  | 'planilha'
-  | 'lojas'
-  | 'canais'
-  | 'avisos'
-  | 'parametros'
-  | 'auditoria'
-  | 'banco'
-  | 'permissoes'
-  | 'backup';
+/**
+ * Em lista, porque `ondeParei` confere o que leu do aparelho contra o
+ * que existe HOJE — aba removida ou escrita à mão no console cai no
+ * padrão em vez de deixar a tela em branco.
+ */
+const ABAS_ADMIN = [
+  'colaboradores',
+  'planilha',
+  'lojas',
+  'canais',
+  'avisos',
+  'parametros',
+  'auditoria',
+  'banco',
+  'permissoes',
+  'backup',
+] as const;
+
+type AbaAdmin = (typeof ABAS_ADMIN)[number];
 
 // Mesma regra do quadro de equipe: as listas vêm de tipos.ts. Setor novo
 // cadastrado lá aparece aqui sozinho — a cópia escrita à mão era o que fazia
@@ -99,7 +108,10 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   aoFechar,
   aoAbrirConversa,
 }) => {
-  const [abaEscolhida, setAbaAtiva] = useState<AbaAdmin>('colaboradores');
+  /** Volta para a aba onde a pessoa parou, e não para Colaboradores. */
+  const [abaEscolhida, setAbaAtiva] = useState<AbaAdmin>(() =>
+    ondeParei(colaboradorAtual.id, 'admin', ABAS_ADMIN, 'colaboradores')
+  );
 
 
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
@@ -146,6 +158,11 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     abasPermitidas.some((a) => a.id === abaEscolhida)
       ? abaEscolhida
       : abasPermitidas[0]?.id ?? 'colaboradores';
+
+  /** Guarda a que VALE — a escolhida pode ser uma que a pessoa perdeu. */
+  useEffect(() => {
+    lembrarOndeParei(colaboradorAtual.id, 'admin', abaAtiva);
+  }, [colaboradorAtual.id, abaAtiva]);
 
   // Aba Banco de Dados
   const [usoBanco, setUsoBanco] = useState<UsoDoBanco | null>(null);

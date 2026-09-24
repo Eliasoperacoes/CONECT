@@ -36,6 +36,7 @@ import {
   Inbox,
 } from 'lucide-react';
 import { Colaborador, ResumoPontoColaborador } from '../tipos';
+import { ondeParei, lembrarOndeParei } from '../servicos/navegacaoLembrada';
 import {
   servicoPonto,
   formatarMinutos,
@@ -90,7 +91,14 @@ interface Props {
  * tela faz: a rede continua sendo a tela do RH, com correção de marcação e
  * exportação, e a equipe continua sendo a cadeia de quem abre.
  */
-type Aba = 'equipe' | 'sem_bater' | 'aprovacoes' | 'folgas' | 'rede' | 'qr';
+/**
+ * Em lista, porque `ondeParei` confere o que leu do aparelho contra o
+ * que existe HOJE: aba removida ou escrita à mão no console cai no
+ * padrão, em vez de deixar a tela em branco.
+ */
+const ABAS = ['equipe', 'sem_bater', 'aprovacoes', 'folgas', 'rede', 'qr'] as const;
+
+type Aba = (typeof ABAS)[number];
 
 /** Saldo colorido pelo sinal: verde credita a pessoa, âmbar deve. */
 const CorDoSaldo: React.FC<{ minutos: number; className?: string }> = ({
@@ -170,7 +178,43 @@ export const PainelGestao: React.FC<Props> = ({
    */
   const abaInicial: Aba = temEquipe ? 'equipe' : veRede ? 'rede' : 'qr';
 
-  const [aba, setAba] = useState<Aba>(abaInicial);
+  /**
+   * Começa onde a pessoa parou; `abaInicial` é o padrão de quem nunca
+   * escolheu nada — e continua sendo o desvio quando o que foi lembrado
+   * não vale mais.
+   */
+  const [abaEscolhida, setAba] = useState<Aba>(() =>
+    ondeParei(colaboradorAtual.id, 'gestao', ABAS, abaInicial)
+  );
+
+  /**
+   * A ABA QUE VALE. Nunca uma que a pessoa não tenha.
+   *
+   * As abas somem da barra conforme a permissão, mas o conteúdo abaixo é
+   * escolhido pelo estado — então bastava o estado apontar para uma aba
+   * escondida e a tela aparecia sem o botão. Enquanto o estado nascia
+   * sempre em `abaInicial` isso não acontecia; passando a nascer do que
+   * ficou guardado no aparelho, passa a acontecer: basta a pessoa perder
+   * a permissão depois de ter estado lá — ou editar o `localStorage`.
+   */
+  const aba: Aba = (() => {
+    if (abaEscolhida === 'folgas' && !veEscala) return abaInicial;
+    if (abaEscolhida === 'rede' && !veRede) return abaInicial;
+    if (abaEscolhida === 'qr' && !veQr) return abaInicial;
+    if (
+      (abaEscolhida === 'equipe' ||
+        abaEscolhida === 'sem_bater' ||
+        abaEscolhida === 'aprovacoes') &&
+      !temEquipe
+    ) {
+      return abaInicial;
+    }
+    return abaEscolhida;
+  })();
+
+  useEffect(() => {
+    lembrarOndeParei(colaboradorAtual.id, 'gestao', aba);
+  }, [colaboradorAtual.id, aba]);
 
   /**
    * O sino mandou abrir uma seção. Abre.

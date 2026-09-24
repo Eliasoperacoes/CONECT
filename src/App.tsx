@@ -18,7 +18,7 @@ import {
   Clock,
   ClipboardList,
 } from 'lucide-react';
-import { AbaPrincipal, Colaborador, Conversa, Mensagem } from './tipos';
+import { ABAS_PRINCIPAIS, AbaPrincipal, Colaborador, Conversa, Mensagem } from './tipos';
 
 /**
  * As medidas das janelas de conversa, num lugar só.
@@ -42,6 +42,11 @@ const ESPACO_ENTRE_JANELAS = 12;
  */
 const MAXIMO_JANELAS_ABERTAS = 3;
 import { bancoDados } from './servicos/bancoDados';
+import {
+  ondeParei,
+  lembrarOndeParei,
+  esquecerOndeParei,
+} from './servicos/navegacaoLembrada';
 import { ItemConversa } from './componentes/ItemConversa';
 import { FaixaAvisoDirecao } from './componentes/FaixaAvisoDirecao';
 import { TelaConversa } from './componentes/TelaConversa';
@@ -113,7 +118,26 @@ export default function App() {
   /** Saiu publicação nova enquanto esta aba estava aberta. */
   const [saiuVersaoNova, setSaiuVersaoNova] = useState(false);
   const [painelAdminAberto, setPainelAdminAberto] = useState<boolean>(false);
-  const [abaAtivaEscolhida, setAbaAtiva] = useState<AbaPrincipal>('conversas');
+  /**
+   * A aba começa onde a pessoa parou, e não na inicial.
+   *
+   * Atualizar a página é rotina aqui: o navegador da loja recarrega
+   * sozinho, e quem está no meio de uma lista de vinte espelhos de ponto
+   * voltava para Conversas e recomeçava a navegação.
+   *
+   * Lido uma vez, na montagem — função dentro do `useState` para não ler
+   * `localStorage` a cada desenho da tela. Permissão não entra aqui:
+   * quem filtra é `abaAtiva`, lá embaixo, porque a escolha guardada pode
+   * ser de uma aba que a pessoa perdeu desde ontem.
+   */
+  const [abaAtivaEscolhida, setAbaAtiva] = useState<AbaPrincipal>(() =>
+    ondeParei(
+      bancoDados.obterColaboradorAtual()?.id || '',
+      'aba-principal',
+      ABAS_PRINCIPAIS,
+      'conversas'
+    )
+  );
 
   /**
    * A seção que o sino pediu, esperando o painel montar.
@@ -537,6 +561,18 @@ export default function App() {
         setAutenticado(true);
 
         /**
+         * SÓ AGORA DÁ PARA SABER ONDE A PESSOA PAROU.
+         *
+         * No modo rede, na montagem ainda não se sabe quem entrou — a
+         * sessão vem do banco, e a memória de navegação é por pessoa. Ler
+         * lá em cima devolveria sempre o padrão, e a aba lembrada nunca
+         * seria restaurada.
+         */
+        setAbaAtiva(
+          ondeParei(eu.id, 'aba-principal', ABAS_PRINCIPAIS, 'conversas')
+        );
+
+        /**
          * A REGRA DE GUARDA DO HISTÓRICO roda aqui, em segundo plano.
          *
          * Apaga a mensagem inteira — texto, foto, recado de voz e documento
@@ -591,6 +627,44 @@ export default function App() {
     void versaoPreferencias;
     return aplicarPreferencias(colaboradorAtual.id, grupos);
   }, [grupos, colaboradorAtual.id, versaoPreferencias]);
+
+  // A aba RH reúne indicadores da rede, quadro de equipe, banco de horas e
+  // comunicados: é informação de gestão, restrita a Administrador, RH e
+  // gestores (nível 3+). Dentro dela, o banco de horas ainda exige RH ou
+  // Administrador — um gestor vê a rede, não o ponto de todo mundo.
+  const podeVerRede = vePainelDeRede(colaboradorAtual);
+
+  // Se o colaborador estiver na aba RH e perder o acesso (por troca de conta
+  // ou mudança de cargo pela gestão), a navegação volta sozinha para Conversas.
+  /**
+   * A aba que vale. Nunca uma que a pessoa não enxergue — nem por escolha
+   * antiga guardada, nem por permissão retirada com a tela aberta.
+   *
+   * MORA AQUI EM CIMA, e não junto do resto da navegação, por causa do
+   * efeito logo abaixo: hook depois de um `return` condicional derruba o
+   * React inteiro — tela branca, sem erro de compilação. Já aconteceu
+   * antes neste arquivo, e há teste cobrando.
+   */
+  const abaAtiva: AbaPrincipal = (() => {
+    if (abaAtivaEscolhida === 'painel' && !podeVerRede) return 'eu';
+    if (abaAtivaEscolhida !== 'painel' && !podeUsar(abaAtivaEscolhida, colaboradorAtual)) {
+      if (podeVerRede) return 'painel';
+      return podeUsar('conversas', colaboradorAtual) ? 'conversas' : 'eu';
+    }
+    return abaAtivaEscolhida;
+  })();
+
+  /**
+   * Guarda a aba que VALE, não a que foi escolhida.
+   *
+   * São diferentes quando a pessoa perde uma permissão: a escolhida
+   * continua sendo a antiga, e gravá-la faria a pessoa voltar a cair no
+   * desvio a cada recarga, para sempre.
+   */
+  useEffect(() => {
+    if (!autenticado || !colaboradorAtual.id) return;
+    lembrarOndeParei(colaboradorAtual.id, 'aba-principal', abaAtiva);
+  }, [autenticado, colaboradorAtual.id, abaAtiva]);
 
   // Enquanto a sessão do banco não é conferida, não dá para saber se mostra
   // o login ou o sistema. Piscar uma tela e trocar pela outra é pior.
@@ -680,8 +754,17 @@ export default function App() {
     bancoDados.deslogar();
     // No modo rede a sessão vive no banco e também precisa ser encerrada
     if (usandoNuvem()) nuvem.sair();
+    /**
+     * A tela lembrada sai junto com a sessão.
+     *
+     * Nas lojas o mesmo computador atende o balcão inteiro. Quem entrar
+     * depois começa na tela inicial dele — e não na ficha que o colega
+     * estava conferindo.
+     */
+    esquecerOndeParei();
     setPrecisaTrocarSenha(false);
     setAutenticado(false);
+    setAbaAtiva('conversas');
     setConversaAtivaId(null);
   };
 
@@ -718,27 +801,6 @@ export default function App() {
   };
 
   const ehAdmin = colaboradorAtual.nivel >= NIVEL_TI;
-
-  // A aba RH reúne indicadores da rede, quadro de equipe, banco de horas e
-  // comunicados: é informação de gestão, restrita a Administrador, RH e
-  // gestores (nível 3+). Dentro dela, o banco de horas ainda exige RH ou
-  // Administrador — um gestor vê a rede, não o ponto de todo mundo.
-  const podeVerRede = vePainelDeRede(colaboradorAtual);
-
-  // Se o colaborador estiver na aba RH e perder o acesso (por troca de conta
-  // ou mudança de cargo pela gestão), a navegação volta sozinha para Conversas.
-  /**
-   * A aba que vale. Nunca uma que a pessoa não enxergue — nem por escolha
-   * antiga guardada, nem por permissão retirada com a tela aberta.
-   */
-  const abaAtiva: AbaPrincipal = (() => {
-    if (abaAtivaEscolhida === 'painel' && !podeVerRede) return 'eu';
-    if (abaAtivaEscolhida !== 'painel' && !podeUsar(abaAtivaEscolhida, colaboradorAtual)) {
-      if (podeVerRede) return 'painel';
-      return podeUsar('conversas', colaboradorAtual) ? 'conversas' : 'eu';
-    }
-    return abaAtivaEscolhida;
-  })();
 
   // Abas da barra inferior, montadas conforme a permissão de cada colaborador
   const todasAsAbas: ItemNavegacao[] = [

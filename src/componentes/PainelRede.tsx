@@ -31,6 +31,7 @@ import { podeUsar } from '../servicos/permissoes';
 import { pendenciasParaDecidir as pendenciasDeAusencia } from '../servicos/justificativas';
 import { pendenciasDeFolga } from '../servicos/justificativas';
 import { bancoDados } from '../servicos/bancoDados';
+import { ondeParei, lembrarOndeParei } from '../servicos/navegacaoLembrada';
 import { servicoPonto } from '../servicos/ponto';
 import { QuadroFuncionarios } from './QuadroFuncionarios';
 import { CentralAvisos } from './CentralAvisos';
@@ -53,14 +54,22 @@ interface PropsPainelRede {
   aoConsumirSecao?: () => void;
 }
 
-type SubAbaPainel =
-  | 'visao_geral'
-  | 'quadro'
-  | 'gestao'
-  | 'rh'
-  | 'organograma'
-  | 'aprovacoes'
-  | 'avisos';
+/**
+ * Em lista, porque `ondeParei` confere o que leu do aparelho contra o
+ * que existe HOJE — sub-aba removida ou escrita à mão no console cai no
+ * padrão em vez de deixar a tela em branco.
+ */
+const SUB_ABAS = [
+  'visao_geral',
+  'quadro',
+  'gestao',
+  'rh',
+  'organograma',
+  'aprovacoes',
+  'avisos',
+] as const;
+
+type SubAbaPainel = (typeof SUB_ABAS)[number];
 
 export const PainelRede: React.FC<PropsPainelRede> = ({
   colaboradorAtual,
@@ -69,7 +78,10 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
   secaoAlvo,
   aoConsumirSecao,
 }) => {
-  const [subAbaEscolhida, setSubAbaAtiva] = useState<SubAbaPainel>('visao_geral');
+  /** Volta para a sub-aba onde a pessoa parou, e não para a visão geral. */
+  const [subAbaEscolhida, setSubAbaAtiva] = useState<SubAbaPainel>(() =>
+    ondeParei(colaboradorAtual.id, 'rede', SUB_ABAS, 'visao_geral')
+  );
   const [estatisticas, setEstatisticas] = useState(bancoDados.obterEstatisticasRede());
 
   const atualizar = () => {
@@ -214,6 +226,16 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    */
   const subAbaAtiva: SubAbaPainel =
     abasPermitidas.includes(subAbaEscolhida) ? subAbaEscolhida : abasPermitidas[0];
+
+  /**
+   * Guarda a que VALE, não a que foi escolhida.
+   *
+   * Se a pessoa perdeu a permissão de uma sub-aba, gravar a escolhida a
+   * faria cair no desvio a cada recarga, para sempre.
+   */
+  useEffect(() => {
+    if (subAbaAtiva) lembrarOndeParei(colaboradorAtual.id, 'rede', subAbaAtiva);
+  }, [colaboradorAtual.id, subAbaAtiva]);
 
   /**
    * Leva o alvo do sino até "Equipe & Ponto".

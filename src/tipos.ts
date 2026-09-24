@@ -735,7 +735,15 @@ export interface Conversa {
 }
 
 // Abas da barra inferior: Conversas | Grupos | Rede (painel) | Eu
-export type AbaPrincipal = 'conversas' | 'grupos' | 'ponto' | 'painel' | 'eu';
+export const ABAS_PRINCIPAIS = [
+  'conversas',
+  'grupos',
+  'ponto',
+  'painel',
+  'eu',
+] as const;
+
+export type AbaPrincipal = (typeof ABAS_PRINCIPAIS)[number];
 
 export interface RegistroAuditoria {
   id: string;
