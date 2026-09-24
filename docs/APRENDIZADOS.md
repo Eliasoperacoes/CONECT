@@ -306,3 +306,72 @@ gente ou dia que não devia.
 **A regra:** saldo acumulado só conta período **encerrado**. O dia em
 andamento fica fora dos dois lados — nem previsto, nem trabalhado — senão a
 rede inteira parece devedora toda manhã.
+
+## Teste que passa porque o ambiente não tem a peça
+
+Os testes da memória de navegação — a que faz atualizar a página não jogar
+a pessoa na tela inicial — passaram de primeira em nove dos doze casos.
+Pareciam bons. Não eram.
+
+**O Bun não tem `localStorage`.** Toda chamada caía no `catch`, e o `catch`
+devolve o padrão da tela — que é exatamente o que metade das asserções
+esperava. Os três que falharam foram os únicos que pediam para *lembrar*
+alguma coisa; sem eles, o arquivo inteiro teria passado sem exercitar uma
+linha do que ia para produção.
+
+O falso de `localStorage` que o projeto já usava em outros testes tem
+`getItem`/`setItem`/`removeItem`, e nada mais. Não bastava: `esquecer`
+varre o armazenamento, e varrer precisa de `length` e `key(i)`.
+
+Isso expôs um segundo defeito, este no código: `esquecerOndeParei` varria
+com `Object.keys(localStorage)`. Funciona no navegador, mas não é contrato
+de `Storage` — é detalhe de implementação. Trocado pela API padrão, que
+além de correta é testável.
+
+**Sinal para procurar:** teste novo que passa inteiro de primeira, sobre
+código que toca o navegador. Antes de comemorar, quebre a regra de
+propósito. Se um teste que deveria falhar continua verde, o ambiente não
+tem a peça que ele acha que está usando.
+
+**A regra:** quando o teste depende de um falso, o falso ganha um teste
+próprio. Uma asserção que confirme que ele guarda, devolve e se deixa
+varrer — senão um falso quebrado transforma o arquivo inteiro em enfeite.
+
+## `replaceAll` num arquivo de teste
+
+Repontando testes depois de remover o quadro de equipe, troquei
+`podeUsar('organograma', gerente)` por `aprovar_jornadas` com um
+`replaceAll`. A expressão aparecia em **dois** testes: o que eu queria
+mudar e outro, vinte linhas acima, que afirmava o contrário. O segundo
+passou a exigir que o gerente não tivesse uma permissão que ele tem.
+
+A suíte acusou na hora — mas só porque a asserção atingida era forte. Uma
+troca em comentário, em `id` de elemento ou em texto de tela teria passado
+calada.
+
+**A regra:** `replaceAll` só quando todas as ocorrências são o alvo. Na
+dúvida, conte antes (`grep -c`) e confira o `git diff` linha a linha
+depois. Vale para arquivo de teste tanto quanto para código — o arquivo de
+teste é que não tem ninguém conferindo *ele*.
+
+## Número que leva para uma tela onde o item não está
+
+Aconteceu duas vezes na mesma semana, nos dois casos com o cartão clicável
+do painel do RH:
+
+| Cartão | Contava | Levava para |
+|---|---|---|
+| "N pedidos aguardam sua decisão" | toda ausência pendente | aba de documentos, que não mostra férias nem folga |
+| "Sem responsável: 9" | todo mundo sem alguém acima | organograma, onde não havia nada a fazer — os 9 eram o topo da cadeia |
+
+A Dani clicava num 4 e caía numa lista de 1. O número não estava errado em
+si: estava errado **em relação ao destino**.
+
+**Sinal para procurar:** todo indicador que abre uma tela ao ser clicado. A
+pergunta é sempre a mesma — *o filtro da tela é o mesmo do contador?* Se a
+tela filtra por algo que o contador ignora, o número mente.
+
+**A regra:** contador e destino leem a mesma fonte. Quando a tela filtra
+por uma lista (`SE_COMPROVA_COM_DOCUMENTO`, uma permissão, um tipo), o
+contador filtra pela mesma — nunca por uma condição parecida escrita ao
+lado.
