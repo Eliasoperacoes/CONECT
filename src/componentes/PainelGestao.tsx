@@ -54,6 +54,7 @@ import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { EscalaDeFolgas } from './EscalaDeFolgas';
+import { TabelaEquipe } from './TabelaEquipe';
 import type { SecaoDestino } from '../servicos/centralDeNotificacoes';
 
 interface Props {
@@ -625,115 +626,28 @@ export const PainelGestao: React.FC<Props> = ({
                 }}
               />
 
-              <div className="flex flex-col gap-2">
-                {exibidos.length === 0 && (
-                  <div className="p-6 text-center text-xs text-[var(--c-texto-3)]">
-                    Ninguém na equipe bate com “{busca}”.
-                  </div>
-                )}
+              {exibidos.length === 0 ? (
+                <div className="p-6 text-center text-xs text-[var(--c-texto-3)]">
+                  Ninguém na equipe bate com “{busca}”.
+                </div>
+              ) : (
+                /*
+                  A EQUIPE EM LINHAS, e não em cartões.
 
-                {exibidos.map((r) => {
-                  const c = r.colaborador;
-                  const pendente = servicoPonto.obterSaldoPendente(c.id);
-
-                  return (
-                    <div
-                      key={c.id}
-                      className="p-3.5 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex flex-col sm:flex-row sm:items-center gap-3"
-                    >
-                      <FotoPresenca
-                        foto={c.foto}
-                        nome={c.nome}
-                        presenca={c.presenca}
-                        tamanho="w-10 h-10"
-                      />
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-bold text-[var(--c-texto)] truncate">
-                            {c.nome}
-                          </span>
-                          {!r.registrouHoje && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-700 border-amber-500/20">
-                              sem bater hoje
-                            </span>
-                          )}
-                          {r.diasComPendencia > 0 && (
-                            <span
-                              className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-red-500/10 text-red-600 border-red-500/20"
-                              title="Dias iniciados e não fechados"
-                            >
-                              {r.diasComPendencia} dia(s) em aberto
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-[11px] text-[var(--c-texto-3)] block truncate">
-                          {resumoDaFicha(c)}
-                        </span>
-                      </div>
-
-                      {/* Os números que importam para a decisão do gestor */}
-                      <div className="flex items-center gap-4 text-xs flex-shrink-0">
-                        <div className="flex flex-col">
-                          <span className="text-[10px] text-[var(--c-texto-3)]">
-                            No período
-                          </span>
-                          <CorDoSaldo minutos={r.saldoPeriodoMinutos} />
-                          <span className="text-[10px] text-[var(--c-texto-3)]">
-                            {formatarMinutos(r.minutosTrabalhados)} trabalhadas
-                          </span>
-                        </div>
-
-                        <div className="flex flex-col">
-                          <span className="text-[10px] text-[var(--c-texto-3)]">
-                            Banco de horas
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            {r.saldoAcumuladoMinutos >= 0 ? (
-                              <TrendingUp className="w-3 h-3 text-emerald-600" />
-                            ) : (
-                              <TrendingDown className="w-3 h-3 text-amber-600" />
-                            )}
-                            <CorDoSaldo minutos={r.saldoAcumuladoMinutos} />
-                          </span>
-                          {pendente !== 0 && (
-                            <span className="text-[10px] text-amber-600 font-semibold">
-                              {formatarSaldo(pendente)} esperando você
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setFichaAberta(c)}
-                          title="Ver ficha completa"
-                          className="p-2 rounded-lg border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:border-[var(--c-borda-forte)] transition-colors"
-                        >
-                          <Users className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => abrirEspelho(c.id)}
-                          title="Espelho de ponto do período"
-                          className="p-2 rounded-lg border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:border-[var(--c-borda-forte)] transition-colors"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => aoAbrirConversa(c.id)}
-                          title="Falar com a pessoa"
-                          className="p-2 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] hover:brightness-110 transition-all"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                  Cada pessoa ocupava uns 90 pixels — foto de 40, dois blocos
+                  de números e três botões. Com 23 pessoas davam mais de dois
+                  metros de rolagem, e o cartão não dizia nada que a linha não
+                  diga. Agrupada por unidade e recolhível: quem responde por
+                  mais de uma loja lê a loja que tem problema, não 23 nomes.
+                */
+                <TabelaEquipe
+                  linhas={exibidos}
+                  colaboradorAtual={colaboradorAtual}
+                  aoAbrirFicha={setFichaAberta}
+                  aoAbrirEspelho={abrirEspelho}
+                  aoAbrirConversa={aoAbrirConversa}
+                />
+              )}
 
               {/* Marcação é registro trabalhista: alterar é do RH */}
               <div className="p-3 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] flex gap-2.5 text-[11px] text-[var(--c-texto-3)]">

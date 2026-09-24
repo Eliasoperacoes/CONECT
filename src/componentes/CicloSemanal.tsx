@@ -18,6 +18,8 @@ import React, { useMemo, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   AlertTriangle,
   CalendarCheck,
   TrendingDown,
@@ -46,6 +48,18 @@ export const CicloSemanal: React.FC<Props> = ({ colaboradorAtual, aoEscolherPeri
    * sexta.
    */
   const [deslocamento, setDeslocamento] = useState(-1);
+
+  /**
+   * A LISTA DE PENDÊNCIAS RECOLHE; OS TRÊS NÚMEROS, NÃO.
+   *
+   * Numa equipe grande, esta lista e a da equipe empilhadas davam dois
+   * blocos longos um atrás do outro — era a queixa. Mas recolher o
+   * cartão inteiro esconderia "sem bater: 4", que é justamente o aviso
+   * que faz alguém abrir.
+   *
+   * Então o cabeçalho e os números ficam sempre; só os nomes somem.
+   */
+  const [listaAberta, setListaAberta] = useState(true);
 
   const dataDeReferencia = useMemo(() => {
     const d = new Date();
@@ -149,13 +163,33 @@ export const CicloSemanal: React.FC<Props> = ({ colaboradorAtual, aoEscolherPeri
         </div>
       </div>
 
+      {/* O cabeçalho da lista diz quantos são mesmo recolhido */}
+      {precisamDeVoce.length > 0 && (
+        <button
+          type="button"
+          onClick={() => setListaAberta((v) => !v)}
+          className="w-full px-3.5 py-2 flex items-center gap-2 text-left hover:bg-[var(--c-superficie-2)] transition-colors"
+        >
+          {listaAberta ? (
+            <ChevronUp className="w-3.5 h-3.5 text-[var(--c-texto-3)]" />
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 text-[var(--c-texto-3)]" />
+          )}
+          <span className="text-[11px] font-bold text-[var(--c-texto-2)]">
+            {precisamDeVoce.length}{' '}
+            {precisamDeVoce.length === 1 ? 'pessoa precisa' : 'pessoas precisam'} de
+            você
+          </span>
+        </button>
+      )}
+
       <div className="p-2.5 flex flex-col gap-1.5">
         {precisamDeVoce.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-5 text-xs text-[var(--c-texto-3)]">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
             Ninguém com pendência neste ciclo.
           </div>
-        ) : (
+        ) : !listaAberta ? null : (
           precisamDeVoce.map((linha) => {
             const c = linha.colaborador;
             const temPendencia = linha.diasComPendencia.length > 0;
