@@ -84,11 +84,11 @@ test('líder vê menos que gerente onde isso foi configurado', () => {
 
   // E é isto que o painel permite ajustar sem mexer em código: tirar uma
   // ferramenta do líder mantendo no gerente
-  const { mapa } = alternarNivel(obterPermissoes(), 'quadro_equipe', NIVEL_LIDER_SETOR);
+  const { mapa } = alternarNivel(obterPermissoes(), 'aprovar_jornadas', NIVEL_LIDER_SETOR);
   aplicarPermissoes(mapa);
 
-  expect(podeUsar('quadro_equipe', lider)).toBe(false);
-  expect(podeUsar('quadro_equipe', gerente)).toBe(true);
+  expect(podeUsar('aprovar_jornadas', lider)).toBe(false);
+  expect(podeUsar('aprovar_jornadas', gerente)).toBe(true);
 });
 
 // ============================================================
@@ -216,7 +216,6 @@ test('todo nível que abre o painel tem pelo menos uma aba', () => {
    */
   const abasDoPainel = [
     'visao_lojas',
-    'quadro_equipe',
     'painel_gestao',
     'organograma',
     'aprovar_jornadas',
@@ -236,22 +235,22 @@ test('o gerente cai numa aba que ele TEM ao abrir o painel', () => {
   const gerente = pessoa(NIVEL_GERENTE);
   expect(podeUsar('visao_lojas', gerente)).toBe(false);
 
-  const primeira = ['visao_lojas', 'quadro_equipe', 'painel_gestao', 'avisos_direcao'].find(
+  const primeira = ['visao_lojas', 'painel_gestao', 'avisos_direcao'].find(
     (c) => podeUsar(c, gerente)
   );
-  expect(primeira).toBe('quadro_equipe');
+  expect(primeira).toBe('painel_gestao');
 });
 
 test('desligar TUDO de um nível é possível, mas some do painel inteiro', () => {
   // Não é proibido — mas quem configurar precisa saber que é isso que faz.
   // O teste existe para essa consequência ficar registrada, não escondida.
   aplicarPermissoes({
-    visao_lojas: [], quadro_equipe: [], painel_gestao: [],
+    visao_lojas: [], painel_gestao: [],
     organograma: [], aprovar_jornadas: [], banco_horas_rh: [], avisos_direcao: [],
   });
 
   const gerente = pessoa(NIVEL_GERENTE);
-  const abas = ['visao_lojas', 'quadro_equipe', 'painel_gestao', 'avisos_direcao'].filter(
+  const abas = ['visao_lojas', 'painel_gestao', 'avisos_direcao'].filter(
     (c) => podeUsar(c, gerente)
   );
   expect(abas).toHaveLength(0);
@@ -704,7 +703,6 @@ test('quem e do RH ve RH, Visao & Lojas e Avisos — e nada mais', async () => {
 
   // E as outras três ficam DENTRO dela
   const dentroDaGuarda = lista.slice(lista.indexOf('if (!ehDoRh(colaboradorAtual))'));
-  expect(dentroDaGuarda).toContain("lista.push('quadro')");
   expect(dentroDaGuarda).toContain("lista.push('gestao')");
   expect(dentroDaGuarda).toContain("lista.push('organograma')");
 });
@@ -737,7 +735,6 @@ test('a BARRA diz o mesmo que a lista', async () => {
    * fora no render seguinte — porque `subAbaAtiva` só aceita o que está na
    * lista. Um botão que pisca e não leva a lugar nenhum.
    */
-  expect(painel).toContain("{pode('quadro_equipe') && !souDoRh && (");
   expect(painel).toContain('{podeVerGestao && !souDoRh && (');
   expect(painel).toContain("{pode('organograma') && !souDoRh && (");
 });

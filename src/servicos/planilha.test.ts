@@ -170,8 +170,16 @@ test('nenhuma tela pode ter uma cópia da lista de setores', async () => {
   // escrita à mão. Quando Logística, Estágio, Administrativo e Gerência
   // entraram na rede, as pessoas foram cadastradas nesses setores e o filtro
   // simplesmente não as achava — com o cadastro certo no banco.
+  /**
+   * O quadro de equipe, que era a terceira tela desta lista, saiu do
+   * sistema. Ficam as duas que OFERECEM setor num seletor — as únicas
+   * que podem ganhar uma cópia da lista.
+   *
+   * A janela de Nova conversa, que herdou a procura por pessoa, não
+   * entra aqui: ela não tem lista nenhuma escrita, deriva as opções de
+   * quem está na tela. `acervoDeColegas` cobre isso do lado dela.
+   */
   const telas = [
-    '../componentes/QuadroFuncionarios.tsx',
     '../componentes/PainelAdministrativo.tsx',
     '../componentes/ModalCadastroColaborador.tsx',
   ];

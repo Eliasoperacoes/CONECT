@@ -33,7 +33,6 @@ import { pendenciasDeFolga } from '../servicos/justificativas';
 import { bancoDados } from '../servicos/bancoDados';
 import { ondeParei, lembrarOndeParei } from '../servicos/navegacaoLembrada';
 import { servicoPonto } from '../servicos/ponto';
-import { QuadroFuncionarios } from './QuadroFuncionarios';
 import { CentralAvisos } from './CentralAvisos';
 import { PainelRH } from './PainelRH';
 import { AprovacaoJornada } from './AprovacaoJornada';
@@ -61,7 +60,6 @@ interface PropsPainelRede {
  */
 const SUB_ABAS = [
   'visao_geral',
-  'quadro',
   'gestao',
   'rh',
   'organograma',
@@ -196,7 +194,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
        */
       if (podeUsar('visao_lojas', colaboradorAtual)) lista.push('visao_geral');
 
-      if (podeUsar('quadro_equipe', colaboradorAtual)) lista.push('quadro');
 
       /**
        * "Equipe & Ponto" reúne a equipe, o banco de horas da rede e o
@@ -371,22 +368,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
             >
               <Building2 className="w-3.5 h-3.5" />
               <span>Visão & Lojas</span>
-            </button>
-            )}
-
-            {pode('quadro_equipe') && !souDoRh && (
-            <button
-              type="button"
-              id="subaba-quadro-funcionarios"
-              onClick={() => setSubAbaAtiva('quadro')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                subAbaAtiva === 'quadro'
-                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                  : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Quadro de Equipe</span>
             </button>
             )}
 
@@ -583,13 +564,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setSubAbaAtiva('quadro')}
-                  className="text-xs font-bold text-[var(--c-acento)] hover:underline flex items-center gap-1"
-                >
-                  Ver quadro completo <ArrowRight className="w-3 h-3" />
-                </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -662,13 +636,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                             <span>Canal da Loja</span>
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setSubAbaAtiva('quadro')}
-                          className="px-2.5 py-1.5 rounded-lg bg-[var(--c-acento)] hover:brightness-110 text-[var(--c-sobre-acento)] font-semibold text-xs transition-all flex items-center justify-center gap-1"
-                        >
-                          <span>Ver Funcionários</span>
-                        </button>
                       </div>
                     </div>
                   );
@@ -694,8 +661,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                   return (
                     <div
                       key={setorNome}
-                      onClick={() => setSubAbaAtiva('quadro')}
-                      className="bg-[var(--c-superficie)] p-3.5 rounded-xl border border-[var(--c-borda)] shadow-xs hover:border-[var(--c-acento)] cursor-pointer transition-all flex flex-col justify-between gap-2"
+                      className="bg-[var(--c-superficie)] p-3.5 rounded-xl border border-[var(--c-borda)] shadow-xs transition-all flex flex-col justify-between gap-2"
                     >
                       <div className="flex items-center justify-between">
                         <strong className="text-sm text-[var(--c-texto)]">{setorNome}</strong>
@@ -743,14 +709,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               </button>
             </section>
           </div>
-        )}
-
-        {/* SUB-ABA 2: QUADRO COMPLETO DE FUNCIONÁRIOS */}
-        {subAbaAtiva === 'quadro' && (
-          <QuadroFuncionarios
-            colaboradorAtual={colaboradorAtual}
-            aoIniciarConversa={lidarIniciarConversaColega}
-          />
         )}
 
         {/* SUB-ABA 3: BANCO DE HORAS E QR DO PONTO */}

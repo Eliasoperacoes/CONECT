@@ -154,13 +154,17 @@ export const FERRAMENTAS: Ferramenta[] = [
     area: 'gestao',
     nivelPadrao: NIVEL_LIDER_SETOR,
   },
-  {
-    chave: 'quadro_equipe',
-    nome: 'Quadro de Equipe',
-    descricao: 'A lista de pessoas com foto, ramal, setor e ficha.',
-    area: 'gestao',
-    nivelPadrao: NIVEL_LIDER_SETOR,
-  },
+  /**
+   * "QUADRO DE EQUIPE" SAIU DO SISTEMA.
+   *
+   * Era uma parede de 89 cartões que ninguém abria, com filtros que já
+   * não achavam quem se procurava. O que ela tinha de útil — achar uma
+   * pessoa por cidade e por cargo — foi para onde a procura de fato
+   * acontece: a janela de Nova conversa.
+   *
+   * A chave sai do catálogo junto. Permissão de uma tela que não existe
+   * é linha morta que alguém um dia lê como se valesse alguma coisa.
+   */
   {
     chave: 'visao_lojas',
     nome: 'Visão & Lojas',

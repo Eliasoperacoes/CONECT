@@ -284,7 +284,7 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
             className="w-full py-2 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center justify-center gap-1.5 hover:brightness-110 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            {secao === 'individuais' ? 'Chamar um colega' : 'Criar canal'}
+            {secao === 'individuais' ? 'Nova conversa' : 'Criar canal'}
           </button>
         </div>
       )}

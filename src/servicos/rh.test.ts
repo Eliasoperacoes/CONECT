@@ -260,7 +260,6 @@ test('as abas que o RH NAO ve saem da barra e da lista juntas', async () => {
   // Na barra, todas passam por `!souDoRh`
   for (const botao of [
     "pode('visao_lojas') && !souDoRh",
-    "pode('quadro_equipe') && !souDoRh",
     'podeVerGestao && !souDoRh',
     "pode('organograma') && !souDoRh",
   ]) {
@@ -276,7 +275,7 @@ test('as abas que o RH NAO ve saem da barra e da lista juntas', async () => {
   expect(inicio).toBeGreaterThan(-1);
 
   const bloco = painel.slice(inicio, painel.indexOf("lista.push('avisos')", inicio));
-  for (const aba of ["'visao_geral'", "'quadro'", "'gestao'", "'organograma'"]) {
+  for (const aba of ["'visao_geral'", "'gestao'", "'organograma'"]) {
     expect(bloco).toContain(aba);
   }
 });
