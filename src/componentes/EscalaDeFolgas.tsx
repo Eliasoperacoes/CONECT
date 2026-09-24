@@ -20,8 +20,6 @@ import {
   Clock,
   AlertTriangle,
   ChevronDown,
-  CalendarPlus,
-  Palmtree,
 } from 'lucide-react';
 import { Colaborador, JustificativaAusencia } from '../tipos';
 import { servicoPonto, formatarDataBR } from '../servicos/ponto';
@@ -30,15 +28,9 @@ import {
   decidirAusencia,
   assinarJustificativas,
   salvarEscalaDeFolgas,
-  salvarEscalaDeFerias,
-  conflitosDeFerias,
-  diasDeFeriasNoAno,
-  diasCorridos,
 } from '../servicos/justificativas';
 import { QuadroEscalaFolgas } from './QuadroEscalaFolgas';
-import { PainelEscalaFerias } from './PainelEscalaFerias';
 import { bancoDados } from '../servicos/bancoDados';
-import { ModalLancarEscala } from './ModalLancarEscala';
 import {
   montarDocumento,
   cabecalho,
@@ -170,83 +162,20 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
     );
   };
 
-  const [aba, setAba] = useState<'sabados' | 'ferias'>('sabados');
-  const [salvandoFerias, setSalvandoFerias] = useState(false);
-
   /**
-   * TODAS as férias da equipe, de qualquer ano.
+   * FÉRIAS SAÍRAM DESTA TELA.
    *
-   * O painel recorta o ano que ele está mostrando; filtrar aqui obrigaria
-   * este componente a saber qual ano está aberto lá dentro — duas peças
-   * guardando o mesmo estado, e a que desatualiza primeiro mostra o ano
-   * errado.
-   */
-  const feriasDaEquipe = useMemo(() => {
-    void versao;
-    const idsDaEquipe = new Set(equipe.map((c) => c.id));
-    return lerJustificativas().filter(
-      (j) =>
-        j.tipo === 'ferias' &&
-        j.estado !== 'recusada' &&
-        idsDaEquipe.has(j.colaboradorId)
-    );
-  }, [equipe, versao]);
-
-  const gravarFerias = async (dados: {
-    colaboradorIds: string[];
-    dataInicio: string;
-    dataFim: string;
-    observacao?: string;
-  }) => {
-    setSalvandoFerias(true);
-    const res = await salvarEscalaDeFerias(dados);
-    setSalvandoFerias(false);
-    setVersao((v) => v + 1);
-
-    if (res.falhas.length === 0) {
-      mostrar(
-        `Férias lançadas para ${res.aplicadas} pessoa(s): ${formatarDataBR(
-          dados.dataInicio
-        )} a ${formatarDataBR(dados.dataFim)}.`
-      );
-      return;
-    }
-
-    // Como na escala de sábado: quem ficou de fora, e por quê
-    mostrar(
-      `${res.aplicadas} lançada(s). Ficaram de fora: ${res.falhas
-        .map((f) => `${f.nome} (${f.erro})`)
-        .join(' · ')}`,
-      true
-    );
-  };
-
-  /**
-   * Tira um período JÁ LANÇADO da escala.
+   * Eram uma aba aqui dentro, e estava errado: são duas decisões
+   * diferentes, com dois donos e dois ritmos. A folga de sábado é
+   * direito MENSAL, decidida pelo gestor da loja olhando quem cobre o
+   * balcão no dia 19; férias é período de ANO, com lançamento e
+   * programação — trabalho de RH.
    *
-   * Vira recusado, e não apagado — férias é documento, e o que sai da
-   * escala precisa continuar auditável. É o mesmo caminho da folga
-   * retirada.
+   * Agora moram em Recursos Humanos > Férias, com calendário do ano,
+   * exportação e impressão por mês ou por ano.
    */
-  const tirarFerias = async (j: JustificativaAusencia) => {
-    const res = await decidirAusencia(
-      j.id,
-      false,
-      'Período retirado da escala pela liderança.'
-    );
-    setVersao((v) => v + 1);
-    mostrar(
-      res.sucesso
-        ? `Férias de ${nomeDe(j.colaboradorId)} retiradas da escala.`
-        : res.erro || 'Não foi possível retirar.',
-      !res.sucesso
-    );
-  };
-
   /** A lista de quem não marcou começa fechada: são 23 nomes. */
   const [semFolgaAberta, setSemFolgaAberta] = useState(false);
-  /** O formulário de lançamento da liderança. */
-  const [lancando, setLancando] = useState(false);
 
   const sabados = useMemo(() => sabadosDoMes(ano, mes), [ano, mes]);
 
@@ -267,34 +196,6 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
     }
     return mapa;
   }, [equipe, sabados, versao]);
-
-  /**
-   * As FÉRIAS que tocam o mês aberto.
-   *
-   * Férias é um período, não um sábado, então não cabe na tabela acima —
-   * mas precisa aparecer na mesma tela: quem monta a escala do mês decide
-   * olhando quem vai estar fora, e férias é a maior ausência que existe.
-   *
-   * Basta ENCOSTAR no mês: um período que começa em 28/12 e termina em
-   * 10/01 importa para os dois meses.
-   */
-  const feriasDoMes = useMemo(() => {
-    void versao;
-    const idsDaEquipe = new Set(equipe.map((c) => c.id));
-    const primeiro = `${ano}-${String(mes + 1).padStart(2, '0')}-01`;
-    const ultimo = `${ano}-${String(mes + 1).padStart(2, '0')}-31`;
-
-    return lerJustificativas()
-      .filter(
-        (j) =>
-          j.tipo === 'ferias' &&
-          j.estado !== 'recusada' &&
-          idsDaEquipe.has(j.colaboradorId) &&
-          j.dataInicio <= ultimo &&
-          j.dataFim >= primeiro
-      )
-      .sort((a, b) => a.dataInicio.localeCompare(b.dataInicio));
-  }, [equipe, ano, mes, versao]);
 
   /** Quem ainda não marcou folga no mês — é a cobrança que o gestor faz. */
   const semFolga = useMemo(() => {
@@ -348,27 +249,6 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
       })
       .join('');
 
-    /**
-     * As férias entram no mesmo papel, em tabela própria.
-     *
-     * Quem prega a escala no quadro precisa das duas informações: quem
-     * folga no sábado e quem está fora o mês inteiro.
-     */
-    const tabelaDeFerias = feriasDoMes.length
-      ? `<h2 class="secao">Férias no período</h2>
-         <table class="grade">
-           <thead><tr><th>Colaborador</th><th>Início</th><th>Fim</th></tr></thead>
-           <tbody>${feriasDoMes
-             .map(
-               (f) => `<tr>
-                 <td>${nomeDe(f.colaboradorId)}</td>
-                 <td class="centro hora">${formatarDataBR(f.dataInicio)}</td>
-                 <td class="centro hora">${formatarDataBR(f.dataFim)}</td>
-               </tr>`
-             )
-             .join('')}</tbody>
-         </table>`
-      : '';
 
     const pendentes = [...porSabado.values()]
       .flat()
@@ -388,7 +268,6 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         <tbody>${linhasDaTabela}</tbody>
       </table>
 
-      ${tabelaDeFerias}
 
       ${
         pendentes > 0
@@ -463,19 +342,6 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         </div>
 
         <div className="flex items-center gap-1.5">
-          {/*
-            MONTAR A ESCALA, e não só responder a pedidos.
-            Fechar os sábados do mês e planejar as férias é trabalho de
-            quem organiza a equipe — não há pedido nenhum a responder.
-          */}
-          <button
-            type="button"
-            onClick={() => setLancando(true)}
-            className="px-3 py-2 rounded-xl border border-[var(--c-acento)] text-xs font-bold text-[var(--c-acento)] hover:bg-[var(--c-acento-suave)] transition-colors flex items-center gap-1.5"
-          >
-            <CalendarPlus className="w-3.5 h-3.5" />
-            Lançar
-          </button>
           <button
             type="button"
             onClick={exportarCsv}
@@ -507,59 +373,8 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         </div>
       )}
 
-      {/*
-        DUAS ESCALAS, DOIS RECORTES.
 
-        O sábado é direito MENSAL: a tela olha um mês, e o mês seguinte
-        não depende do anterior. Férias é do ANO — a pergunta do gestor é
-        "quem já tirou e quando", e ela só tem resposta olhando os doze
-        meses, senão ele autoriza julho sem lembrar que o mesmo setor
-        esvaziou em janeiro.
 
-        Ficam na mesma tela porque são a mesma decisão de cobertura, e
-        sob a mesma permissão: quem monta a escala da equipe monta as
-        duas. Separá-las em ferramentas diferentes criaria uma segunda
-        porta para o mesmo trabalho.
-      */}
-      <div className="flex gap-1.5">
-        {(
-          [
-            ['sabados', 'Folgas de sábado'],
-            ['ferias', 'Férias'],
-          ] as const
-        ).map(([chave, rotulo]) => (
-          <button
-            key={chave}
-            type="button"
-            onClick={() => setAba(chave)}
-            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors border ${
-              aba === chave
-                ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] border-[var(--c-acento)]'
-                : 'bg-[var(--c-superficie)] text-[var(--c-texto-3)] border-[var(--c-borda)] hover:text-[var(--c-texto-2)]'
-            }`}
-          >
-            {rotulo}
-          </button>
-        ))}
-      </div>
-
-      {aba === 'ferias' && (
-        <PainelEscalaFerias
-          equipe={equipe}
-          ferias={feriasDaEquipe}
-          diasNoAno={diasDeFeriasNoAno}
-          conflitos={conflitosDeFerias}
-          diasDoPeriodo={diasCorridos}
-          salvando={salvandoFerias}
-          aoSalvar={gravarFerias}
-          aoRemover={(j) =>
-            j.estado === 'pendente' ? setRecusando(j) : tirarFerias(j)
-          }
-        />
-      )}
-
-      {aba === 'sabados' && (
-        <>
       {/* Navegação do mês */}
       <div className="flex items-center justify-center gap-3">
         <button
@@ -618,8 +433,6 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         útil das duas: quem planeja precisa do ANO, e o ano ganhou aba
         própria logo acima.
       */}
-        </>
-      )}
 
       {/*
         RECOLHIDA POR PADRÃO.
@@ -714,17 +527,18 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         </div>
       )}
 
-      {lancando && (
-        <ModalLancarEscala
-          equipe={equipe}
-          sabados={sabados}
-          aoFechar={() => setLancando(false)}
-          aoLancar={(texto, ehErro) => {
-            mostrar(texto, ehErro);
-            setVersao((v) => v + 1);
-          }}
-        />
-      )}
+      {/*
+        O MODAL "LANÇAR" SAIU.
+
+        Ele servia para as duas escalas: escolhia o tipo, a pessoa e o
+        período. Férias mudou de lugar e ganhou tela própria no RH; a
+        folga de sábado passou a se montar arrastando no quadro acima.
+
+        Sobrou um formulário que fazia pior o que duas telas passaram a
+        fazer melhor — e uma terceira porta para o mesmo trabalho é o
+        que faz a pessoa perder tempo descobrindo qual das três é a
+        certa.
+      */}
     </div>
   );
 };

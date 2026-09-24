@@ -29,6 +29,7 @@ import {
   ClipboardList,
   TrendingDown,
   CheckCircle2,
+  Palmtree,
 } from 'lucide-react';
 import { Colaborador } from '../tipos';
 import {
@@ -47,6 +48,7 @@ import { BancoDeHoras } from './BancoDeHoras';
 import { AbaHolerites } from './AbaHolerites';
 import { AbaAdvertencias } from './AbaAdvertencias';
 import { AbaAtestados } from './AbaAtestados';
+import { AbaFerias } from './AbaFerias';
 
 /**
  * A aba "Feriados" saiu daqui.
@@ -63,6 +65,7 @@ type Secao =
   | 'atestados'
   | 'advertencias'
   | 'escala'
+  | 'ferias'
   | 'espelhos';
 
 interface Props {
@@ -261,6 +264,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
       icone: <AlertTriangle className="w-3.5 h-3.5" />,
     },
     { id: 'escala', rotulo: 'Escala de folgas', icone: <CalendarDays className="w-3.5 h-3.5" /> },
+    { id: 'ferias', rotulo: 'Férias', icone: <Palmtree className="w-3.5 h-3.5" /> },
     { id: 'espelhos', rotulo: 'Espelhos de ponto', icone: <FileText className="w-3.5 h-3.5" /> },
   ];
 
@@ -447,6 +451,8 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
           <EscalaDeFolgas colaboradorAtual={colaboradorAtual} />
         </div>
       )}
+
+      {secao === 'ferias' && <AbaFerias colaboradorAtual={colaboradorAtual} />}
 
       {secao === 'espelhos' && (
         <BancoDeHoras colaboradorAtual={colaboradorAtual} abaFixa="banco_horas" />

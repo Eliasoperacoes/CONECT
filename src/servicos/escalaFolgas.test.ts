@@ -273,99 +273,34 @@ test('salvar o rascunho passa pelo servico, e nao grava direto', async () => {
   expect(tela).toContain('f.nome');
 });
 
-// ============================================================
-// A ESCALA DE FÉRIAS
-// ============================================================
-
-const lerFerias = async (): Promise<string> =>
-  Bun.file(new URL('../componentes/PainelEscalaFerias.tsx', import.meta.url)).text();
-
-test('o painel de ferias NAO escreve regra nenhuma', async () => {
+test('a escala de SABADO nao fala de ferias', async () => {
   /**
-   * Quem pode escalar quem é a ALÇADA, e ela chega pronta na prop
-   * `equipe`. Conflito e contagem de dias chegam como função. Uma
-   * segunda regra aqui divergiria da primeira no primeiro ajuste.
-   */
-  const painel = semComentarios(await lerFerias());
-
-  expect(painel).not.toContain('podeDecidirSobre');
-  expect(painel).not.toContain('lancarAusenciaPelaLideranca');
-  expect(painel).not.toContain('lerJustificativas');
-});
-
-test('o ano inteiro, e nao o mes', async () => {
-  /**
-   * Férias não se planejam de mês em mês. A pergunta do gestor é "quem
-   * já tirou e quando", e ela só tem resposta olhando os doze — senão
-   * ele autoriza julho sem lembrar que o mesmo setor esvaziou em
-   * janeiro.
+   * Férias e folga de sábado moravam na mesma tela, em duas abas. Deu
+   * confusão de verdade: gente lançada de férias aparecia no quadro de
+   * sábado, e o botão "Lançar" ficava a um clique do quadro errado.
    *
-   * A escala de SÁBADO é o contrário, e continua mês a mês: a folga é
-   * direito mensal, e o mês seguinte não depende do anterior.
+   * Agora são duas telas. Esta é a do sábado, e não sabe o que é férias
+   * — nem no quadro, nem no documento que vai para o mural da loja.
    */
-  const painel = await lerFerias();
+  const tela = semComentarios(await lerTela());
+  const quadro = semComentarios(await lerQuadro());
 
-  expect(painel).toContain('MESES.map');
-  expect((await lerFerias()).match(/'Dezembro'/)).toBeTruthy();
+  expect(tela).not.toContain("'ferias'");
+  expect(tela).not.toContain('salvarEscalaDeFerias');
+  expect(tela).not.toContain('tabelaDeFerias');
+  expect(quadro).not.toContain("'ferias'");
 
-  // E as doze colunas rolam de lado, em vez de empilhar
-  expect(painel).toContain('overflow-x-auto');
+  // E a aba que dividia as duas não existe mais
+  expect(tela).not.toContain("useState<'sabados' | 'ferias'>");
 });
 
-test('o periodo vale para VARIOS de uma vez', async () => {
-  const painel = await lerFerias();
-  const tela = await lerTela();
-
-  expect(painel).toContain('colaboradorIds: selecionados');
-  expect(tela).toContain('salvarEscalaDeFerias(dados)');
-
-  // E o aviso diz quem ficou de fora, como na escala de sábado
-  expect(tela).toContain('Ficaram de fora');
-});
-
-test('o conflito de ferias MOSTRA, e nao trava o botao', async () => {
+test('o catalogo de ferramentas NAO ganhou porta nova', async () => {
   /**
-   * Dois vendedores fora na mesma semana pode ser tranquilo numa loja e
-   * impossível noutra — quem sabe disso é quem está lá. Travar com um
-   * limite inventado recusaria férias legítimas.
+   * Férias saiu para uma tela própria, mas DENTRO do RH — que já é uma
+   * ferramenta. Uma chave nova no catálogo criaria uma segunda permissão
+   * para o mesmo trabalho, e uma delas ficaria para trás no dia em que a
+   * outra mudasse.
    */
-  const painel = semComentarios(await lerFerias());
-
-  expect(painel).toContain('conflitosDoPeriodo.length > 0 &&');
-
-  // O botão depende só de ter gente e período — nunca do conflito
-  expect(painel).toContain(
-    'const podeSalvar = selecionados.length > 0 && dias > 0 && !salvando;'
-  );
-  expect(painel).not.toContain('conflitosDoPeriodo.length === 0 &&');
-});
-
-test('os dias ja lancados no ano ficam a vista na hora de escolher', async () => {
-  /**
-   * É o número que evita marcar um terceiro período sem perceber. Ele
-   * informa e não impede: o direito de cada um depende do período
-   * aquisitivo dele, que o sistema não acompanha.
-   */
-  const painel = await lerFerias();
-
-  expect(painel).toContain('diasNoAno(c.id, ano)');
-  expect(painel).toContain('dias em ${ano}');
-});
-
-test('as duas escalas moram na mesma tela e na mesma permissao', async () => {
-  /**
-   * Quem monta a escala da equipe monta as duas. Separá-las em
-   * ferramentas diferentes criaria uma segunda porta para o mesmo
-   * trabalho — e uma delas ficaria para trás no dia em que a permissão
-   * mudasse.
-   */
-  const tela = await lerTela();
-
-  expect(tela).toContain("useState<'sabados' | 'ferias'>('sabados')");
-  expect(tela).toContain("{aba === 'ferias' && (");
-  expect(tela).toContain("{aba === 'sabados' && (");
-
-  // E o catálogo não ganhou ferramenta nova
   const ferramentas = await Bun.file('src/servicos/ferramentas.ts').text();
   expect(ferramentas).not.toContain("chave: 'escala_ferias'");
 });
