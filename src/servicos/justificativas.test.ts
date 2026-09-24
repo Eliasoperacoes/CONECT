@@ -81,6 +81,10 @@ const {
   pendenciasDeFolga,
   lancarAusenciaPelaLideranca,
   salvarEscalaDeFolgas,
+  salvarEscalaDeFerias,
+  conflitosDeFerias,
+  diasDeFeriasNoAno,
+  diasCorridos,
 } = await import('./justificativas');
 
 beforeEach(() => {
@@ -793,4 +797,138 @@ test('a escala recusa dia que não é SÁBADO', async () => {
 
   expect(res.aplicadas).toBe(0);
   expect(res.falhas[0].erro).toContain('sábado');
+});
+
+// ============================================================
+// A ESCALA DE FÉRIAS
+//
+// Férias do ano inteiro, para várias pessoas no mesmo período. O que
+// este módulo NÃO faz é decidir quantos dias alguém tem direito nem
+// quantos podem sair juntos — ele mostra os dois números.
+// ============================================================
+
+test('lança o MESMO período para várias pessoas de uma vez', async () => {
+  logado = CHEFE;
+
+  const res = await salvarEscalaDeFerias({
+    colaboradorIds: [ANA.id, CHEFE.id],
+    dataInicio: '2026-07-01',
+    dataFim: '2026-07-15',
+  });
+
+  expect(res.aplicadas).toBe(2);
+  expect(res.falhas).toEqual([]);
+  expect(situacaoDoDia(ANA.id, '2026-07-05')).toBe('ferias');
+  expect(situacaoDoDia(CHEFE.id, '2026-07-15')).toBe('ferias');
+});
+
+test('as férias também respeitam a ALÇADA', async () => {
+  // A separação por loja vem daqui, como na escala de sábado
+  logado = CHEFE;
+
+  const res = await salvarEscalaDeFerias({
+    colaboradorIds: [ANA.id, OUTRO.id],
+    dataInicio: '2026-07-01',
+    dataFim: '2026-07-15',
+  });
+
+  expect(res.aplicadas).toBe(1);
+  expect(res.falhas).toHaveLength(1);
+  expect(res.falhas[0].nome).toBe('Outro');
+  expect(res.falhas[0].erro).toContain('não responde por esta pessoa');
+});
+
+test('os dias corridos contam as DUAS pontas', () => {
+  /**
+   * 01/07 a 15/07 são 15 dias, e não 14: quem sai no dia 1 e volta no 16
+   * ficou fora quinze dias. Contar só a diferença tiraria um dia de
+   * férias de todo mundo, todo ano.
+   */
+  expect(diasCorridos('2026-07-01', '2026-07-15')).toBe(15);
+  expect(diasCorridos('2026-07-01', '2026-07-01')).toBe(1);
+
+  // Fim antes do início não é período nenhum
+  expect(diasCorridos('2026-07-15', '2026-07-01')).toBe(0);
+});
+
+test('o conflito pega quem ENCOSTA no período, e não só quem está dentro', async () => {
+  /**
+   * Um período que termina no dia em que o outro começa deixa a loja sem
+   * os dois na virada — e é o caso que passa despercebido quando se
+   * compara só o início.
+   */
+  logado = CHEFE;
+  await salvarEscalaDeFerias({
+    colaboradorIds: [ANA.id],
+    dataInicio: '2026-07-01',
+    dataFim: '2026-07-15',
+  });
+
+  // Começa no último dia da Ana
+  expect(conflitosDeFerias('2026-07-15', '2026-07-30')).toHaveLength(1);
+  // Termina no primeiro dia dela
+  expect(conflitosDeFerias('2026-06-20', '2026-07-01')).toHaveLength(1);
+  // E o que não encosta não conflita
+  expect(conflitosDeFerias('2026-07-16', '2026-07-30')).toHaveLength(0);
+});
+
+test('o conflito MOSTRA, e não recusa', async () => {
+  /**
+   * Dois vendedores fora na mesma semana pode ser tranquilo numa loja e
+   * impossível noutra — quem sabe disso é quem está lá. O sistema
+   * informa; a decisão continua de quem toca o negócio.
+   */
+  logado = CHEFE;
+  await salvarEscalaDeFerias({
+    colaboradorIds: [ANA.id],
+    dataInicio: '2026-07-01',
+    dataFim: '2026-07-15',
+  });
+
+  const res = await salvarEscalaDeFerias({
+    colaboradorIds: [CHEFE.id],
+    dataInicio: '2026-07-01',
+    dataFim: '2026-07-15',
+  });
+
+  expect(res.aplicadas).toBe(1);
+  expect(res.falhas).toEqual([]);
+});
+
+test('o conflito só enxerga a EQUIPE de quem pergunta', async () => {
+  // Férias de outra loja não atrapalham esta: a pergunta é sobre a
+  // cobertura daqui, e quem está lá não cobre nada aqui
+  logado = CHEFE;
+  await salvarEscalaDeFerias({
+    colaboradorIds: [ANA.id],
+    dataInicio: '2026-07-01',
+    dataFim: '2026-07-15',
+  });
+
+  logado = OUTRO;
+  expect(conflitosDeFerias('2026-07-01', '2026-07-15')).toHaveLength(0);
+});
+
+test('os dias do ANO somam todos os períodos lançados', async () => {
+  /**
+   * O número existe para a tela mostrar — "Fulano ficaria com 45 dias no
+   * ano" — e não para bloquear: o período aquisitivo de cada um começa
+   * na admissão dele, e o sistema não acompanha aquisição. Recusar a 31ª
+   * diária com esse dado incompleto negaria férias legítimas de quem
+   * virou período no meio do ano.
+   */
+  logado = CHEFE;
+  await salvarEscalaDeFerias({
+    colaboradorIds: [ANA.id],
+    dataInicio: '2026-07-01',
+    dataFim: '2026-07-15',
+  });
+  await salvarEscalaDeFerias({
+    colaboradorIds: [ANA.id],
+    dataInicio: '2026-11-01',
+    dataFim: '2026-11-15',
+  });
+
+  expect(diasDeFeriasNoAno(ANA.id, 2026)).toBe(30);
+  expect(diasDeFeriasNoAno(ANA.id, 2025)).toBe(0);
 });

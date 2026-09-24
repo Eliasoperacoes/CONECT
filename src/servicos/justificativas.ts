@@ -464,6 +464,120 @@ export const pendenciasDeFolga = () => pendenciasParaDecidir({ tipo: 'folga' });
 
 /**
  * ===================================================================
+ * A ESCALA DE FÉRIAS
+ * ===================================================================
+ *
+ * Férias do ano inteiro, para várias pessoas no mesmo período. O gestor
+ * escolhe cinco nomes, um início e um fim, e grava de uma vez — era um
+ * formulário por pessoa.
+ *
+ * O QUE ESTE MÓDULO NÃO FAZ: decidir quantos dias alguém tem direito,
+ * nem quantos podem sair juntos. Ele MOSTRA os dois números e deixa a
+ * decisão com quem toca a loja.
+ *
+ * É deliberado. O art. 130 da CLT dá 30 dias por período aquisitivo, mas
+ * o período aquisitivo de cada um começa na data de admissão dele, e o
+ * sistema não acompanha aquisição — só o que foi lançado. Bloquear a 31ª
+ * diária com esse dado incompleto recusaria férias legítimas de quem
+ * virou período no meio do ano.
+ *
+ * E quantos podem sair juntos não existe em lugar nenhum da rede: é
+ * julgamento de quem conhece o movimento da loja.
+ */
+
+/** Os dias corridos de um período, incluindo as duas pontas. */
+export const diasCorridos = (inicio: string, fim: string): number => {
+  const a = new Date(`${inicio}T12:00:00`).getTime();
+  const b = new Date(`${fim}T12:00:00`).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return 0;
+  return Math.round((b - a) / 86400000) + 1;
+};
+
+/**
+ * Quem da equipe já tem férias encostando neste período.
+ *
+ * "Encostando" e não "dentro": um período que termina no dia em que o
+ * outro começa deixa a loja sem os dois na virada, e é justamente o
+ * caso que passa despercebido quando se compara só o início.
+ *
+ * Devolve informação, não recusa. Dois vendedores fora na mesma semana
+ * pode ser tranquilo numa loja e impossível noutra — quem sabe disso é
+ * quem está lá.
+ */
+export const conflitosDeFerias = (
+  inicio: string,
+  fim: string,
+  ignorarIds: string[] = []
+): Array<{ colaborador: Colaborador; justificativa: JustificativaAusencia }> => {
+  const aIgnorar = new Set(ignorarIds);
+
+  return ler()
+    .filter(
+      (j) =>
+        j.tipo === 'ferias' &&
+        j.estado !== 'recusada' &&
+        !aIgnorar.has(j.colaboradorId) &&
+        j.dataInicio <= fim &&
+        j.dataFim >= inicio
+    )
+    .map((justificativa) => ({
+      justificativa,
+      colaborador: bancoDados.obterColaboradorPorId(justificativa.colaboradorId),
+    }))
+    .filter(
+      (item): item is { colaborador: Colaborador; justificativa: JustificativaAusencia } =>
+        !!item.colaborador && servicoPonto.podeDecidirSobre(item.colaborador)
+    );
+};
+
+/** Quantos dias de férias esta pessoa já tem lançados no ano. */
+export const diasDeFeriasNoAno = (colaboradorId: string, ano: number): number =>
+  ler()
+    .filter(
+      (j) =>
+        j.colaboradorId === colaboradorId &&
+        j.tipo === 'ferias' &&
+        j.estado !== 'recusada' &&
+        j.dataInicio.slice(0, 4) === String(ano)
+    )
+    .reduce((total, j) => total + diasCorridos(j.dataInicio, j.dataFim), 0);
+
+/**
+ * Lança o MESMO período para várias pessoas.
+ *
+ * Como a escala de sábado, o lote não é tudo-ou-nada: quem escala cinco
+ * e esbarra na alçada de uma quer as outras quatro gravadas, e o que
+ * falhou volta com nome e motivo.
+ */
+export const salvarEscalaDeFerias = async (dados: {
+  colaboradorIds: string[];
+  dataInicio: string;
+  dataFim: string;
+  observacao?: string;
+}): Promise<{ aplicadas: number; falhas: Array<{ nome: string; erro: string }> }> => {
+  const falhas: Array<{ nome: string; erro: string }> = [];
+  let aplicadas = 0;
+
+  for (const colaboradorId of dados.colaboradorIds) {
+    const nome = bancoDados.obterColaboradorPorId(colaboradorId)?.nome || 'Colaborador';
+
+    const res = await lancarAusenciaPelaLideranca({
+      colaboradorId,
+      dataInicio: dados.dataInicio,
+      dataFim: dados.dataFim,
+      tipo: 'ferias',
+      observacao: dados.observacao,
+    });
+
+    if (res.sucesso) aplicadas += 1;
+    else falhas.push({ nome, erro: res.erro || 'Não foi possível lançar as férias.' });
+  }
+
+  return { aplicadas, falhas };
+};
+
+/**
+ * ===================================================================
  * A ESCALA DO MÊS, GRAVADA DE UMA VEZ
  * ===================================================================
  *

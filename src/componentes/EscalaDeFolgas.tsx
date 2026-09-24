@@ -30,8 +30,13 @@ import {
   decidirAusencia,
   assinarJustificativas,
   salvarEscalaDeFolgas,
+  salvarEscalaDeFerias,
+  conflitosDeFerias,
+  diasDeFeriasNoAno,
+  diasCorridos,
 } from '../servicos/justificativas';
 import { QuadroEscalaFolgas } from './QuadroEscalaFolgas';
+import { PainelEscalaFerias } from './PainelEscalaFerias';
 import { bancoDados } from '../servicos/bancoDados';
 import { ModalLancarEscala } from './ModalLancarEscala';
 import {
@@ -162,6 +167,79 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         .map((f) => `${f.nome} (${f.erro})`)
         .join(' · ')}`,
       true
+    );
+  };
+
+  const [aba, setAba] = useState<'sabados' | 'ferias'>('sabados');
+  const [salvandoFerias, setSalvandoFerias] = useState(false);
+
+  /**
+   * TODAS as férias da equipe, de qualquer ano.
+   *
+   * O painel recorta o ano que ele está mostrando; filtrar aqui obrigaria
+   * este componente a saber qual ano está aberto lá dentro — duas peças
+   * guardando o mesmo estado, e a que desatualiza primeiro mostra o ano
+   * errado.
+   */
+  const feriasDaEquipe = useMemo(() => {
+    void versao;
+    const idsDaEquipe = new Set(equipe.map((c) => c.id));
+    return lerJustificativas().filter(
+      (j) =>
+        j.tipo === 'ferias' &&
+        j.estado !== 'recusada' &&
+        idsDaEquipe.has(j.colaboradorId)
+    );
+  }, [equipe, versao]);
+
+  const gravarFerias = async (dados: {
+    colaboradorIds: string[];
+    dataInicio: string;
+    dataFim: string;
+    observacao?: string;
+  }) => {
+    setSalvandoFerias(true);
+    const res = await salvarEscalaDeFerias(dados);
+    setSalvandoFerias(false);
+    setVersao((v) => v + 1);
+
+    if (res.falhas.length === 0) {
+      mostrar(
+        `Férias lançadas para ${res.aplicadas} pessoa(s): ${formatarDataBR(
+          dados.dataInicio
+        )} a ${formatarDataBR(dados.dataFim)}.`
+      );
+      return;
+    }
+
+    // Como na escala de sábado: quem ficou de fora, e por quê
+    mostrar(
+      `${res.aplicadas} lançada(s). Ficaram de fora: ${res.falhas
+        .map((f) => `${f.nome} (${f.erro})`)
+        .join(' · ')}`,
+      true
+    );
+  };
+
+  /**
+   * Tira um período JÁ LANÇADO da escala.
+   *
+   * Vira recusado, e não apagado — férias é documento, e o que sai da
+   * escala precisa continuar auditável. É o mesmo caminho da folga
+   * retirada.
+   */
+  const tirarFerias = async (j: JustificativaAusencia) => {
+    const res = await decidirAusencia(
+      j.id,
+      false,
+      'Período retirado da escala pela liderança.'
+    );
+    setVersao((v) => v + 1);
+    mostrar(
+      res.sucesso
+        ? `Férias de ${nomeDe(j.colaboradorId)} retiradas da escala.`
+        : res.erro || 'Não foi possível retirar.',
+      !res.sucesso
     );
   };
 
@@ -429,6 +507,59 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         </div>
       )}
 
+      {/*
+        DUAS ESCALAS, DOIS RECORTES.
+
+        O sábado é direito MENSAL: a tela olha um mês, e o mês seguinte
+        não depende do anterior. Férias é do ANO — a pergunta do gestor é
+        "quem já tirou e quando", e ela só tem resposta olhando os doze
+        meses, senão ele autoriza julho sem lembrar que o mesmo setor
+        esvaziou em janeiro.
+
+        Ficam na mesma tela porque são a mesma decisão de cobertura, e
+        sob a mesma permissão: quem monta a escala da equipe monta as
+        duas. Separá-las em ferramentas diferentes criaria uma segunda
+        porta para o mesmo trabalho.
+      */}
+      <div className="flex gap-1.5">
+        {(
+          [
+            ['sabados', 'Folgas de sábado'],
+            ['ferias', 'Férias'],
+          ] as const
+        ).map(([chave, rotulo]) => (
+          <button
+            key={chave}
+            type="button"
+            onClick={() => setAba(chave)}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors border ${
+              aba === chave
+                ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] border-[var(--c-acento)]'
+                : 'bg-[var(--c-superficie)] text-[var(--c-texto-3)] border-[var(--c-borda)] hover:text-[var(--c-texto-2)]'
+            }`}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'ferias' && (
+        <PainelEscalaFerias
+          equipe={equipe}
+          ferias={feriasDaEquipe}
+          diasNoAno={diasDeFeriasNoAno}
+          conflitos={conflitosDeFerias}
+          diasDoPeriodo={diasCorridos}
+          salvando={salvandoFerias}
+          aoSalvar={gravarFerias}
+          aoRemover={(j) =>
+            j.estado === 'pendente' ? setRecusando(j) : tirarFerias(j)
+          }
+        />
+      )}
+
+      {aba === 'sabados' && (
+        <>
       {/* Navegação do mês */}
       <div className="flex items-center justify-center gap-3">
         <button
@@ -480,41 +611,14 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         raramente lembra sozinha.
       */}
       {/*
-      {/*
-        FÉRIAS, em bloco próprio.
+        FÉRIAS DO MÊS saíram daqui.
 
-        Não entra na tabela dos sábados porque não é um sábado: é um
-        período. Mas fica na mesma tela, logo abaixo, porque quem fecha a
-        escala do mês decide olhando quem vai estar fora — e férias é a
-        maior ausência que existe.
+        Eram uma lista do mês corrente, embaixo da escala de sábado. A
+        pergunta que ela respondia — "quem está fora agora" — é a menos
+        útil das duas: quem planeja precisa do ANO, e o ano ganhou aba
+        própria logo acima.
       */}
-      {feriasDoMes.length > 0 && (
-        <div className="rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-[var(--c-borda)] flex items-center gap-2">
-            <Palmtree className="w-4 h-4 text-emerald-600" />
-            <span className="text-xs font-bold text-[var(--c-texto)]">
-              Férias em {NOMES_DOS_MESES[mes]}
-            </span>
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 border border-emerald-500/20">
-              {feriasDoMes.length}
-            </span>
-          </div>
-          <div className="divide-y divide-[var(--c-borda)]">
-            {feriasDoMes.map((f) => (
-              <div
-                key={f.id}
-                className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap"
-              >
-                <span className="text-xs font-semibold text-[var(--c-texto)]">
-                  {nomeDe(f.colaboradorId)}
-                </span>
-                <span className="text-[11px] font-mono text-[var(--c-texto-2)]">
-                  {formatarDataBR(f.dataInicio)} a {formatarDataBR(f.dataFim)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+        </>
       )}
 
       {/*
