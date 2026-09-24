@@ -812,11 +812,123 @@ export interface ConfiguracaoSistema {
 
 export type PrioridadeAviso = 'geral' | 'atencao' | 'urgente';
 
+export const PRIORIDADES_AVISO: PrioridadeAviso[] = ['urgente', 'atencao', 'geral'];
+
+export const ROTULO_PRIORIDADE: Record<PrioridadeAviso, string> = {
+  urgente: 'Urgente',
+  atencao: 'Atenção',
+  geral: 'Geral',
+};
+
+/**
+ * O QUE SE PUBLICA NA CENTRAL DA DIREÇÃO.
+ *
+ * Era só aviso: um recado com data, que se lê e se esquece. Mas o que
+ * chega à loja não é só recado — é a tabela de preço, o passo a passo do
+ * fechamento de caixa, o formulário de férias. Essas coisas viviam no
+ * grupo do WhatsApp e sumiam na rolagem.
+ *
+ * São TRÊS TIPOS na mesma prateleira, porque quem procura não sabe de
+ * antemão se o que quer é aviso ou documento — sabe o assunto:
+ *
+ *  - `aviso` — o recado com data. Vale no dia e envelhece.
+ *  - `documento` — o arquivo que se guarda e se consulta. Não envelhece.
+ *  - `tutorial` — o passo a passo. Não envelhece, e é para quem chegou
+ *    agora tanto quanto para quem esqueceu.
+ */
+export type TipoPublicacao = 'aviso' | 'documento' | 'tutorial';
+
+export const TIPOS_PUBLICACAO: TipoPublicacao[] = ['aviso', 'documento', 'tutorial'];
+
+export const ROTULO_TIPO_PUBLICACAO: Record<TipoPublicacao, string> = {
+  aviso: 'Avisos',
+  documento: 'Documentos',
+  tutorial: 'Tutoriais',
+};
+
+/**
+ * ENVELHECE OU NÃO.
+ *
+ * Aviso antigo é ruído — ninguém quer o comunicado de inventário do ano
+ * passado no topo. Documento e tutorial são o contrário: o mais
+ * consultado costuma ser o mais antigo, e escondê-lo por idade seria
+ * esconder a tabela de preços que vale desde sempre.
+ *
+ * `Record` de propósito: tipo novo não compila sem que alguém decida.
+ */
+export const PUBLICACAO_ENVELHECE: Record<TipoPublicacao, boolean> = {
+  aviso: true,
+  documento: false,
+  tutorial: false,
+};
+
+/**
+ * A GAVETA. É o que a pessoa usa para achar sem saber o título.
+ *
+ * Lista fechada de propósito: categoria digitada à mão vira "RH",
+ * "Rh", "Recursos Humanos" e "rh " em quatro publicações, e nenhuma
+ * busca acha as quatro.
+ */
+export type CategoriaPublicacao =
+  | 'operacional'
+  | 'rh'
+  | 'comercial'
+  | 'institucional'
+  | 'seguranca';
+
+export const CATEGORIAS_PUBLICACAO: CategoriaPublicacao[] = [
+  'operacional',
+  'rh',
+  'comercial',
+  'institucional',
+  'seguranca',
+];
+
+export const ROTULO_CATEGORIA: Record<CategoriaPublicacao, string> = {
+  operacional: 'Operacional',
+  rh: 'RH',
+  comercial: 'Comercial',
+  institucional: 'Institucional',
+  seguranca: 'Segurança',
+};
+
+/**
+ * PARA QUEM VAI.
+ *
+ * Era um campo só, `lojaDestino`, com 'Todas' ou uma loja. Não dava
+ * para mandar ao setor de Balcão das cinco lojas, nem para três pessoas
+ * específicas — e um comunicado que chega a 89 pessoas quando interessa
+ * a 3 ensina as 89 a ignorar comunicado.
+ *
+ * Quatro alcances, e uma publicação pode ter vários:
+ *
+ *  - `rede` — todo mundo. O valor é ignorado.
+ *  - `loja` — uma unidade. O valor é o nome dela.
+ *  - `setor` — um setor, em todas as lojas. O valor é o nome dele.
+ *  - `pessoa` — o id de um colaborador.
+ */
+export type AlcanceDestino = 'rede' | 'loja' | 'setor' | 'pessoa';
+
+export interface DestinoPublicacao {
+  alcance: AlcanceDestino;
+  /** Nome da loja, nome do setor ou id da pessoa. Vazio quando `rede`. */
+  valor: string;
+}
+
+/** Quem leu uma publicação, e quando. */
+export interface LeituraPublicacao {
+  colaboradorId: string;
+  lidoEm: string;
+  confirmado: boolean;
+}
+
 export interface AvisoRede {
   id: string;
   titulo: string;
   conteudo: string;
   prioridade: PrioridadeAviso;
+  tipo: TipoPublicacao;
+  categoria: CategoriaPublicacao;
   autorId: string;
   autorNome: string;
   autorCargo: string;
@@ -824,7 +936,21 @@ export interface AvisoRede {
   horaFormatada: string;
   dataPorExtenso: string;
   fixadoNoTopo: boolean;
+  /**
+   * MANTIDO, e não substituído por `destinos`.
+   *
+   * São 24 publicações antigas gravadas só com ele. Trocar a coluna
+   * deixaria todas elas sem destino nenhum — ou seja, invisíveis para
+   * todo mundo no dia da migração. `alcanca()` lê as duas: `destinos`
+   * quando existe, este campo quando não.
+   */
   lojaDestino: Loja | 'Todas';
+  destinos?: DestinoPublicacao[];
+  /** O arquivo anexado — é o que faz "documento" ser documento. */
+  anexoCaminho?: string;
+  anexoNome?: string;
+  /** Exige ciência assinada: some da lista de quem leu sem confirmar. */
+  exigeConfirmacao?: boolean;
   lidoPorIds: string[];
   confirmacoesIds: string[];
 }

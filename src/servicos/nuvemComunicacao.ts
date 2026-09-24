@@ -15,14 +15,17 @@
 
 import {
   AvisoRede,
+  CategoriaPublicacao,
   Conversa,
   ConfiguracaoSistema,
+  DestinoPublicacao,
   Loja,
   Mensagem,
   PrioridadeAviso,
   RegistroAuditoria,
   TipoConversa,
   TipoMensagem,
+  TipoPublicacao,
 } from '../tipos';
 import { supabase } from './supabase';
 import { buscarTodasAsLinhas } from './paginacao';
@@ -203,6 +206,20 @@ interface LinhaAviso {
   loja_destino: string;
   fixado_no_topo: boolean;
   criado_em: string;
+  /**
+   * `null`, e não `undefined`, nas colunas novas.
+   *
+   * As 24 publicações que já existiam nascem com elas em branco, e a
+   * coluna em branco chega aqui como `null`. Tratar isso com `??` ou
+   * `!== undefined` deixaria o `null` passar — foi exatamente assim que
+   * a carga horária da Lyvia virou zero.
+   */
+  tipo: string | null;
+  categoria: string | null;
+  anexo_caminho: string | null;
+  anexo_nome: string | null;
+  exige_confirmacao: boolean | null;
+  destinos: DestinoPublicacao[] | null;
 }
 
 const paraLinhaMensagem = (m: Mensagem) => ({
@@ -266,6 +283,19 @@ const paraLinhaAviso = (a: AvisoRede) => ({
   loja_destino: a.lojaDestino,
   fixado_no_topo: a.fixadoNoTopo,
   criado_em: a.criadoEm,
+  tipo: a.tipo,
+  categoria: a.categoria,
+  anexo_caminho: a.anexoCaminho || null,
+  anexo_nome: a.anexoNome || null,
+  exige_confirmacao: !!a.exigeConfirmacao,
+  /**
+   * `null` quando não há destino escolhido, e não `[]`.
+   *
+   * Lista vazia gravada é indistinguível de "para ninguém", e é
+   * `destinosDe` quem decide o que vale quando não há nada — lendo
+   * `lojaDestino`, que é o que as publicações antigas têm.
+   */
+  destinos: a.destinos && a.destinos.length > 0 ? a.destinos : null,
 });
 
 /**
@@ -848,6 +878,20 @@ class PonteComunicacao {
           year: 'numeric',
         }),
         fixadoNoTopo: linha.fixado_no_topo,
+        /**
+         * A TRADUÇÃO ACONTECE AQUI, na borda, e não em cada tela.
+         *
+         * Publicação antiga não tem tipo nem categoria. Ela é um aviso
+         * operacional — era a única coisa que dava para publicar quando
+         * foi escrita. Deixar o campo vazio obrigaria toda tela a ter o
+         * seu próprio `|| 'aviso'`, e uma delas escolheria diferente.
+         */
+        tipo: (linha.tipo || 'aviso') as TipoPublicacao,
+        categoria: (linha.categoria || 'operacional') as CategoriaPublicacao,
+        anexoCaminho: linha.anexo_caminho || undefined,
+        anexoNome: linha.anexo_nome || undefined,
+        exigeConfirmacao: linha.exige_confirmacao === true,
+        destinos: linha.destinos || undefined,
         lojaDestino: linha.loja_destino as Loja | 'Todas',
         lidoPorIds: lidos.get(linha.id) || [],
         confirmacoesIds: confirmados.get(linha.id) || [],

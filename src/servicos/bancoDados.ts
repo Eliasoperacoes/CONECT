@@ -19,6 +19,7 @@ import {
 } from '../tipos';
 import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
+import { alcanca } from './mural';
 import {
   nuvemComunicacao,
   conversaJaEstaNoBanco,
@@ -36,6 +37,9 @@ import {
   TipoMensagem,
   AvisoRede,
   PrioridadeAviso,
+  TipoPublicacao,
+  CategoriaPublicacao,
+  DestinoPublicacao,
   Loja,
   Setor,
   RegistroAuditoria,
@@ -546,6 +550,8 @@ class BancoDadosConecta {
         conteudo:
           'Sistema interno de comunicação, rádio PTT e gestão de pessoas iniciado. Utilize o Painel ADM para cadastrar os colaboradores das 5 lojas, criar novos canais e gerenciar comunicados oficiais.',
         prioridade: 'urgente',
+        tipo: 'aviso',
+        categoria: 'institucional',
         autorId: COLABORADOR_ADMIN_ELIAS.id,
         autorNome: COLABORADOR_ADMIN_ELIAS.nome,
         autorCargo: COLABORADOR_ADMIN_ELIAS.cargo,
@@ -2838,18 +2844,28 @@ class BancoDadosConecta {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel >= NIVEL_TI) return this.obterAvisosRede();
 
-    return this.obterAvisosRede().filter(
-      (a) =>
-        a.lojaDestino === 'Todas' ||
-        a.lojaDestino === atual.loja ||
-        a.autorId === atual.id
-    );
+    /**
+     * A REGRA DE ALCANCE MORA EM `mural.ts`, e não aqui.
+     *
+     * Estava escrita nesta função — só `lojaDestino` — e não sabia de
+     * setor nem de pessoa. Uma publicação dirigida a três pessoas não
+     * chegaria a nenhuma delas, e chegaria à rede inteira se a loja
+     * fosse 'Todas'. Duas telas lendo critérios diferentes sobre quem vê
+     * o quê é como um comunicado de loja já apareceu na rede inteira.
+     */
+    return this.obterAvisosRede().filter((a) => alcanca(a, atual));
   }
 
   async criarAvisoRede(dados: {
     titulo: string;
     conteudo: string;
     prioridade: PrioridadeAviso;
+    tipo?: TipoPublicacao;
+    categoria?: CategoriaPublicacao;
+    destinos?: DestinoPublicacao[];
+    anexoCaminho?: string;
+    anexoNome?: string;
+    exigeConfirmacao?: boolean;
     lojaDestino?: Loja | 'Todas';
     fixadoNoTopo?: boolean;
   }): Promise<{ sucesso: boolean; aviso?: AvisoRede; erro?: string }> {
@@ -2870,6 +2886,8 @@ class BancoDadosConecta {
       titulo: dados.titulo.trim(),
       conteudo: dados.conteudo.trim(),
       prioridade: dados.prioridade || 'geral',
+      tipo: dados.tipo || 'aviso',
+      categoria: dados.categoria || 'operacional',
       autorId: atual.id,
       autorNome: atual.nome,
       autorCargo: atual.cargo,
@@ -2877,6 +2895,17 @@ class BancoDadosConecta {
       horaFormatada,
       dataPorExtenso: 'Hoje',
       fixadoNoTopo: !!dados.fixadoNoTopo,
+      destinos: dados.destinos,
+      anexoCaminho: dados.anexoCaminho,
+      anexoNome: dados.anexoNome,
+      exigeConfirmacao: !!dados.exigeConfirmacao,
+      /**
+       * `lojaDestino` continua sendo preenchido.
+       *
+       * Ele é o que as telas antigas leem, e o que sobra se `destinos`
+       * vier vazio. Deixá-lo de fora faria a publicação nova sumir de
+       * qualquer código que ainda não conheça `destinos`.
+       */
       lojaDestino: dados.lojaDestino || 'Todas',
       lidoPorIds: [atual.id],
       confirmacoesIds: [atual.id],
