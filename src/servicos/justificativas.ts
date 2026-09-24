@@ -461,3 +461,81 @@ export const diasCobertos = (justificativa: JustificativaAusencia): string[] =>
 
 /** A fila de FOLGAS, decidida na Escala de folgas. */
 export const pendenciasDeFolga = () => pendenciasParaDecidir({ tipo: 'folga' });
+
+/**
+ * ===================================================================
+ * A ESCALA DO MÊS, GRAVADA DE UMA VEZ
+ * ===================================================================
+ *
+ * A tela de escala monta o mês arrastando gente para os sábados. Isso é
+ * RASCUNHO até alguém apertar salvar — e o rascunho é local, porque
+ * gravar a cada arrastão encheria o banco de folga que o gestor ia
+ * desfazer no segundo seguinte.
+ *
+ * O LOTE NÃO É TUDO-OU-NADA, e é de propósito. Quem monta a escala de
+ * doze pessoas e esbarra num limite de mês numa delas quer as outras
+ * onze gravadas — não quer perder o trabalho inteiro por causa de uma.
+ * Então cada uma passa pela regra sozinha, e o que falhou volta com
+ * NOME e MOTIVO, para a tela dizer exatamente quem ficou de fora.
+ *
+ * Nenhuma regra nova mora aqui: cada adição chama
+ * `lancarAusenciaPelaLideranca`, que já carrega a alçada (é ela que faz
+ * a separação por loja), o limite de uma folga por mês e a trava de só
+ * sábado. Uma segunda cópia disso aqui divergiria no primeiro ajuste.
+ */
+export const salvarEscalaDeFolgas = async (alteracoes: {
+  adicionar: Array<{ colaboradorId: string; sabado: string }>;
+  remover: Array<{ justificativaId: string; motivo?: string }>;
+}): Promise<{
+  aplicadas: number;
+  falhas: Array<{ nome: string; erro: string }>;
+}> => {
+  const falhas: Array<{ nome: string; erro: string }> = [];
+  let aplicadas = 0;
+
+  /**
+   * REMOVE ANTES DE ADICIONAR.
+   *
+   * Trocar alguém de sábado é uma remoção e uma adição. Na ordem
+   * contrária, a adição esbarra na folga que ainda não saiu e o limite
+   * do mês recusa a própria troca que o gestor acabou de desenhar.
+   */
+  for (const { justificativaId, motivo } of alteracoes.remover) {
+    const alvo = ler().find((j) => j.id === justificativaId);
+    const nome =
+      bancoDados.obterColaboradorPorId(alvo?.colaboradorId || '')?.nome || 'Colaborador';
+
+    /**
+     * Sai como RECUSADA, e não apagada.
+     *
+     * `folgaDoMes` já ignora recusada, então o direito do mês volta a
+     * ficar livre — que é o que a troca precisa. E o registro continua
+     * no histórico: folga é documento, e documento que some não se
+     * audita depois.
+     */
+    const res = await decidirAusencia(
+      justificativaId,
+      false,
+      motivo?.trim() || 'Retirado da escala pela liderança.'
+    );
+
+    if (res.sucesso) aplicadas += 1;
+    else falhas.push({ nome, erro: res.erro || 'Não foi possível retirar da escala.' });
+  }
+
+  for (const { colaboradorId, sabado } of alteracoes.adicionar) {
+    const nome = bancoDados.obterColaboradorPorId(colaboradorId)?.nome || 'Colaborador';
+
+    const res = await lancarAusenciaPelaLideranca({
+      colaboradorId,
+      dataInicio: sabado,
+      dataFim: sabado,
+      tipo: 'folga_sabado',
+    });
+
+    if (res.sucesso) aplicadas += 1;
+    else falhas.push({ nome, erro: res.erro || 'Não foi possível marcar a folga.' });
+  }
+
+  return { aplicadas, falhas };
+};

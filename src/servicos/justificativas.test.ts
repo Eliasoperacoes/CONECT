@@ -80,6 +80,7 @@ const {
   diasCobertos,
   pendenciasDeFolga,
   lancarAusenciaPelaLideranca,
+  salvarEscalaDeFolgas,
 } = await import('./justificativas');
 
 beforeEach(() => {
@@ -653,4 +654,143 @@ test('QUEM NÃO RESPONDE POR NINGUÉM NÃO LANÇA AS PRÓPRIAS', async () => {
 
   expect(res.sucesso).toBe(false);
   expect(res.erro).toContain('não responde por esta pessoa');
+});
+
+// ============================================================
+// A ESCALA DO MÊS, GRAVADA DE UMA VEZ
+//
+// A tela monta o mês arrastando gente para os sábados. Isso é rascunho
+// até alguém salvar — gravar a cada arrastão encheria o banco de folga
+// que o gestor ia desfazer no segundo seguinte.
+//
+// 2026-09-19 e 2026-09-26 são sábados de setembro.
+// ============================================================
+
+test('salva várias folgas de uma vez', async () => {
+  logado = CHEFE;
+
+  const res = await salvarEscalaDeFolgas({
+    adicionar: [
+      { colaboradorId: ANA.id, sabado: '2026-09-19' },
+      { colaboradorId: CHEFE.id, sabado: '2026-09-26' },
+    ],
+    remover: [],
+  });
+
+  expect(res.aplicadas).toBe(2);
+  expect(res.falhas).toEqual([]);
+  expect(situacaoDoDia(ANA.id, '2026-09-19')).toBe('folga');
+  expect(situacaoDoDia(CHEFE.id, '2026-09-26')).toBe('folga');
+});
+
+test('o lote NÃO é tudo-ou-nada: o que passa, passa', async () => {
+  /**
+   * Quem monta a escala de doze pessoas e esbarra num limite de mês numa
+   * delas quer as outras onze gravadas — não quer perder o trabalho
+   * inteiro por causa de uma.
+   */
+  logado = CHEFE;
+  await lancarAusenciaPelaLideranca({
+    colaboradorId: ANA.id,
+    dataInicio: '2026-09-19',
+    dataFim: '2026-09-19',
+    tipo: 'folga_sabado',
+  });
+
+  // A Ana já tem folga no mês; o Chefe não
+  const res = await salvarEscalaDeFolgas({
+    adicionar: [
+      { colaboradorId: ANA.id, sabado: '2026-09-26' },
+      { colaboradorId: CHEFE.id, sabado: '2026-09-26' },
+    ],
+    remover: [],
+  });
+
+  expect(res.aplicadas).toBe(1);
+  expect(res.falhas).toHaveLength(1);
+  expect(res.falhas[0].nome).toBe('Ana');
+  expect(res.falhas[0].erro).toContain('já tem folga');
+
+  // E o que deu certo está lá
+  expect(situacaoDoDia(CHEFE.id, '2026-09-26')).toBe('folga');
+});
+
+test('TROCAR de sábado funciona: remove antes de adicionar', async () => {
+  /**
+   * Trocar alguém de dia é uma remoção e uma adição. Na ordem contrária,
+   * a adição esbarra na folga que ainda não saiu e o limite do mês recusa
+   * a própria troca que o gestor acabou de desenhar.
+   */
+  logado = CHEFE;
+  const posta = await lancarAusenciaPelaLideranca({
+    colaboradorId: ANA.id,
+    dataInicio: '2026-09-19',
+    dataFim: '2026-09-19',
+    tipo: 'folga_sabado',
+  });
+
+  const res = await salvarEscalaDeFolgas({
+    adicionar: [{ colaboradorId: ANA.id, sabado: '2026-09-26' }],
+    remover: [{ justificativaId: posta.justificativa!.id }],
+  });
+
+  expect(res.falhas).toEqual([]);
+  expect(situacaoDoDia(ANA.id, '2026-09-19')).toBe('normal');
+  expect(situacaoDoDia(ANA.id, '2026-09-26')).toBe('folga');
+});
+
+test('a folga retirada vira RECUSADA, e não some', async () => {
+  /**
+   * Folga é documento: o que sai da escala precisa continuar auditável.
+   * E `folgaDoMes` ignora recusada, então o direito do mês volta a ficar
+   * livre — que é o que a troca precisa.
+   */
+  logado = CHEFE;
+  const posta = await lancarAusenciaPelaLideranca({
+    colaboradorId: ANA.id,
+    dataInicio: '2026-09-19',
+    dataFim: '2026-09-19',
+    tipo: 'folga_sabado',
+  });
+
+  await salvarEscalaDeFolgas({
+    adicionar: [],
+    remover: [{ justificativaId: posta.justificativa!.id }],
+  });
+
+  logado = ANA;
+  const dela = minhasJustificativas().find((j) => j.id === posta.justificativa!.id);
+  expect(dela).toBeDefined();
+  expect(dela!.estado).toBe('recusada');
+  expect(dela!.motivoRecusa).toContain('escala');
+});
+
+test('a escala respeita a ALÇADA: ninguém escala quem não é seu', async () => {
+  /**
+   * A separação por loja vem daqui — `podeDecidirSobre` é a cadeia do
+   * organograma, e é ela que impede o gerente de uma loja montar a
+   * escala da outra. Uma segunda regra na tela divergiria desta.
+   */
+  logado = CHEFE;
+
+  const res = await salvarEscalaDeFolgas({
+    adicionar: [{ colaboradorId: OUTRO.id, sabado: '2026-09-19' }],
+    remover: [],
+  });
+
+  expect(res.aplicadas).toBe(0);
+  expect(res.falhas[0].erro).toContain('não responde por esta pessoa');
+});
+
+test('a escala recusa dia que não é SÁBADO', async () => {
+  logado = CHEFE;
+
+  // 2026-09-16 é uma quarta
+  const res = await salvarEscalaDeFolgas({
+    adicionar: [{ colaboradorId: ANA.id, sabado: '2026-09-16' }],
+    remover: [],
+  });
+
+  expect(res.aplicadas).toBe(0);
+  expect(res.falhas[0].erro).toContain('sábado');
 });

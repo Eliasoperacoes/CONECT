@@ -26,7 +26,12 @@ import {
 import { Colaborador, JustificativaAusencia } from '../tipos';
 import { servicoPonto, formatarDataBR } from '../servicos/ponto';
 import { lerJustificativas } from '../servicos/justificativasCache';
-import { decidirAusencia, assinarJustificativas } from '../servicos/justificativas';
+import {
+  decidirAusencia,
+  assinarJustificativas,
+  salvarEscalaDeFolgas,
+} from '../servicos/justificativas';
+import { QuadroEscalaFolgas } from './QuadroEscalaFolgas';
 import { bancoDados } from '../servicos/bancoDados';
 import { ModalLancarEscala } from './ModalLancarEscala';
 import {
@@ -123,6 +128,42 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         .sort((a, b) => a.nome.localeCompare(b.nome)),
     [colaboradorAtual.id]
   );
+
+  const [salvandoEscala, setSalvandoEscala] = useState(false);
+
+  /**
+   * Grava o rascunho do quadro.
+   *
+   * O resultado NÃO é um "salvo com sucesso" seco: o lote não é
+   * tudo-ou-nada, e quem montou a escala de doze pessoas precisa saber
+   * exatamente qual delas ficou de fora e por quê. Dizer só "algumas
+   * falharam" obrigaria a conferir as doze na mão.
+   */
+  const gravarEscala = async (alteracoes: {
+    adicionar: Array<{ colaboradorId: string; sabado: string }>;
+    remover: Array<{ justificativaId: string }>;
+  }) => {
+    setSalvandoEscala(true);
+    const res = await salvarEscalaDeFolgas(alteracoes);
+    setSalvandoEscala(false);
+    setVersao((v) => v + 1);
+
+    if (res.falhas.length === 0) {
+      mostrar(
+        res.aplicadas === 0
+          ? 'Nada a salvar.'
+          : `Escala salva: ${res.aplicadas} alteração(ões).`
+      );
+      return;
+    }
+
+    mostrar(
+      `${res.aplicadas} salva(s). Ficaram de fora: ${res.falhas
+        .map((f) => `${f.nome} (${f.erro})`)
+        .join(' · ')}`,
+      true
+    );
+  };
 
   /** A lista de quem não marcou começa fechada: são 23 nomes. */
   const [semFolgaAberta, setSemFolgaAberta] = useState(false);
@@ -412,148 +453,26 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
       </div>
 
       {/*
-        A ESCALA COMO ESCALA, e não como cartões soltos.
+        O QUADRO DA ESCALA.
 
-        Eram cartões numa grade que quebrava de linha: com 23 pessoas
-        escolhendo folga, uns ficariam altos, outros vazios, e a grade
-        desalinhava. Colunas lado a lado, de mesma altura, leem-se como um
-        quadro de escala — que é o que isto é.
+        Eram colunas de leitura: mostravam quem já tinha pedido folga e
+        davam os botões de aprovar e recusar. Montar a escala de doze
+        pessoas exigia abrir um formulário doze vezes.
 
-        Cada coluna diz o número que o gestor precisa: quantos folgam E
-        quantos ficam na loja. "3 de folga" sozinho não decide nada; "3 de
-        folga, 20 na loja" decide.
+        Agora arrasta. A regra de quem pode ser escalado por quem NÃO
+        veio junto — ela continua em `salvarEscalaDeFolgas`, que chama
+        `lancarAusenciaPelaLideranca`. Esta tela passa a equipe que a
+        alçada já filtrou e pergunta; o banco responde.
       */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 items-start">
-        {sabados.map((sabado) => {
-          const folgas = (porSabado.get(sabado) || []).filter(
-            (f) => f.estado !== 'recusada'
-          );
-          const ficam = Math.max(equipe.length - folgas.length, 0);
-          const proporcao = equipe.length
-            ? Math.round((folgas.length / equipe.length) * 100)
-            : 0;
-
-          const dia = sabado.slice(8, 10);
-          const mesCurto = NOMES_DOS_MESES[Number(sabado.slice(5, 7)) - 1].slice(0, 3);
-
-          return (
-            <div
-              key={sabado}
-              className="rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] overflow-hidden flex flex-col"
-            >
-              {/* Cabeçalho da coluna: o dia grande, como num calendário */}
-              <div className="px-3 pt-3 pb-2.5 border-b border-[var(--c-borda)]">
-                <div className="flex items-end justify-between gap-2">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-2xl font-extrabold leading-none text-[var(--c-texto)]">
-                      {dia}
-                    </span>
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
-                      {mesCurto}
-                    </span>
-                  </div>
-                  <span
-                    className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                      folgas.length === 0
-                        ? 'bg-[var(--c-superficie-2)] text-[var(--c-texto-3)]'
-                        : 'bg-[var(--c-acento-suave)] text-[var(--c-acento)]'
-                    }`}
-                  >
-                    {folgas.length} {folgas.length === 1 ? 'folga' : 'folgas'}
-                  </span>
-                </div>
-
-                <div className="mt-2 flex items-center gap-2">
-                  {/* Quanto da equipe sai neste sábado, de relance */}
-                  <div className="flex-1 h-1.5 rounded-full bg-[var(--c-superficie-2)] overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-[var(--c-acento)] transition-all"
-                      style={{ width: `${proporcao}%` }}
-                    />
-                  </div>
-                  <span className="text-[11px] text-[var(--c-texto-3)] whitespace-nowrap">
-                    {ficam} na loja
-                  </span>
-                </div>
-              </div>
-
-              {/*
-                A lista rola DENTRO da coluna.
-
-                Sem isto, um sábado com dez folgas esticaria a coluna e
-                deixaria as outras três com um vão embaixo — que é como a
-                grade de cartões desalinhava.
-              */}
-              <div className="p-2 flex flex-col gap-1 max-h-72 overflow-y-auto">
-                {folgas.length === 0 ? (
-                  <span className="px-1 py-3 text-xs text-[var(--c-texto-3)] italic text-center">
-                    Equipe completa
-                  </span>
-                ) : (
-                  folgas.map((f) => {
-                    const pessoa = bancoDados.obterColaboradorPorId(f.colaboradorId);
-                    const pendente = f.estado === 'pendente';
-
-                    return (
-                      <div
-                        key={f.id}
-                        className={`rounded-xl px-2 py-1.5 ${
-                          pendente
-                            ? 'bg-amber-500/10 border border-amber-500/30'
-                            : 'bg-[var(--c-canvas)]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          {pendente ? (
-                            <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                          ) : (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <span className="block text-xs font-semibold text-[var(--c-texto)] truncate">
-                              {pessoa?.nome || nomeDe(f.colaboradorId)}
-                            </span>
-                            {pessoa && (
-                              <span className="block text-[10px] text-[var(--c-texto-3)] truncate">
-                                {pessoa.setor}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/*
-                          A DECISÃO FICA AQUI, e não numa fila à parte.
-                          Autorizar folga é olhar a escala: quantos já estão
-                          de folga neste sábado, e quem. Numa fila solta o
-                          gestor decidiria sem ver nada disso.
-                        */}
-                        {pendente && podeDecidir(f) && (
-                          <div className="flex items-center gap-1 mt-1.5 pl-5">
-                            <button
-                              type="button"
-                              onClick={() => setRecusando(f)}
-                              className="flex-1 px-2 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-bold text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/30 transition-colors"
-                            >
-                              Recusar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => decidir(f, true)}
-                              className="flex-1 px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition-colors"
-                            >
-                              Aprovar
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <QuadroEscalaFolgas
+        equipe={equipe}
+        sabados={sabados}
+        porSabado={porSabado}
+        salvando={salvandoEscala}
+        aoSalvar={gravarEscala}
+        aoAprovar={(j) => decidir(j, true)}
+        aoRecusar={(j) => setRecusando(j)}
+      />
 
       {/*
         Quem ainda não marcou. É a cobrança que o gestor faz: folga é direito
