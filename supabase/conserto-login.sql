@@ -225,6 +225,12 @@ create trigger ao_criar_usuario_limpar_senha
   after insert on auth.users
   for each row execute function public.limpar_senha_de_ativacao();
 
+-- A API guarda o catálogo do banco em cache. Sem este aviso, a coluna
+-- (ou a função) existe no banco e o navegador continua recebendo
+-- "Could not find the column in the schema cache" — o defeito aparece
+-- no sistema, não aqui, e não há como ligar um ao outro.
+notify pgrst, 'reload schema';
+
 -- ============================================================
 -- CONFERÊNCIA
 --

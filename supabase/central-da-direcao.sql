@@ -75,6 +75,12 @@ alter table public.avisos_rede
 -- A regra, no banco, é a mesma de `alcanca()` no código:
 --   sou o autor, OU administro, OU um dos destinos me inclui.
 -- ------------------------------------------------------------
+-- `minha_loja` ainda não existia: as políticas de aviso liam pela tela
+create or replace function public.minha_loja()
+returns text language sql stable security definer set search_path = public as $$
+  select loja from public.colaboradores where auth_user_id = auth.uid() limit 1;
+$$;
+
 create or replace function public.aviso_me_alcanca(destinos jsonb, loja_destino text)
 returns boolean
 language sql
@@ -98,11 +104,6 @@ as $$
     end;
 $$;
 
--- `minha_loja` ainda não existia: as políticas de aviso liam pela tela
-create or replace function public.minha_loja()
-returns text language sql stable security definer set search_path = public as $$
-  select loja from public.colaboradores where auth_user_id = auth.uid() limit 1;
-$$;
 
 drop policy if exists avisos_leitura on public.avisos_rede;
 create policy avisos_leitura on public.avisos_rede

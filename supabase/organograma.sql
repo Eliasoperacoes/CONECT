@@ -155,6 +155,12 @@ as $$
     );
 $$;
 
+-- A API guarda o catálogo do banco em cache. Sem este aviso, a coluna
+-- (ou a função) existe no banco e o navegador continua recebendo
+-- "Could not find the column in the schema cache" — o defeito aparece
+-- no sistema, não aqui, e não há como ligar um ao outro.
+notify pgrst, 'reload schema';
+
 -- ============================================================
 -- CONFERÊNCIA — o que ficou valendo, com os próprios olhos
 -- ============================================================
