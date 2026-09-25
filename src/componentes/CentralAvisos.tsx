@@ -70,7 +70,6 @@ import {
   resumoDeLeitura,
 } from '../servicos/mural';
 import { enviarAnexo } from '../servicos/anexos';
-import { EditorTexto } from './EditorTexto';
 import { resumoCurto } from '../servicos/textoRico';
 import { NovaPublicacao } from './NovaPublicacao';
 import { PainelPublicacao } from './PainelPublicacao';

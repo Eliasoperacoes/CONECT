@@ -25,7 +25,7 @@ import {
   contarPorTipo,
   podeEditarPublicacao,
 } from './mural';
-import { imagensCitadas } from './textoRico';
+import { imagensCitadas, marcacaoDeCitacao } from './textoRico';
 
 /**
  * Os nomes precisam ser DISTINTOS NO PRIMEIRO NOME.
@@ -463,4 +463,89 @@ test('a mesma imagem citada duas vezes é assinada uma', () => {
   expect(
     imagensCitadas('![a](central/x.png) e de novo ![b](central/x.png)')
   ).toEqual(['central/x.png']);
+});
+
+// ============================================================
+// CITAR É ENDEREÇAR
+// ============================================================
+
+test('QUEM É CITADO NO TEXTO ALCANÇA A PUBLICAÇÃO', () => {
+  /**
+   * O comunicado é da loja de Descalvado, e o texto cita a Ana, que é
+   * de Pirassununga. Sem esta regra, a Ana receberia o recado do chat,
+   * clicaria, e não haveria nada para abrir — citar seria mandá-la
+   * bater numa porta trancada.
+   */
+  const p = publicacao({
+    destinos: [{ alcance: 'loja', valor: 'Descalvado' }],
+    conteudo: `Na sexta, ${marcacaoDeCitacao('Ana Prado', 'ana')} confere o caixa.`,
+  });
+
+  expect(alcanca(p, pessoa('ana', 'Pirassununga', 'Balcão'))).toBe(true);
+
+  // E ninguém mais de Pirassununga entra de carona
+  expect(alcanca(p, pessoa('dani', 'Pirassununga', 'RH'))).toBe(false);
+});
+
+test('quem é citado ENTRA NA CONTA de quem deveria ler', () => {
+  /**
+   * Não basta conseguir abrir: se o citado ficasse fora do público, o
+   * contador diria "2 de 2 leram" com a Ana sem ter lido — e o número
+   * que serve de prova estaria mentindo.
+   */
+  const p = publicacao({
+    autorId: 'elias',
+    destinos: [{ alcance: 'loja', valor: 'Descalvado' }],
+    conteudo: `${marcacaoDeCitacao('Ana Prado', 'ana')} confere o caixa.`,
+  });
+
+  const ids = publicoAlvo(p, rede).map((c) => c.id);
+  expect(ids).toContain('ana');
+  expect(ids).toContain('bruno');
+  expect(ids).toContain('carla');
+  expect(ids).not.toContain('elias'); // o autor nunca entra
+  expect(ids).not.toContain('dani');
+});
+
+test('escolhida E citada é uma pessoa só', () => {
+  /**
+   * Sem a limpeza, o cartão mostraria "Ana e Ana" e o contador
+   * cobraria a leitura dela em dobro.
+   */
+  const p = publicacao({
+    destinos: [{ alcance: 'pessoa', valor: 'ana' }],
+    conteudo: `${marcacaoDeCitacao('Ana Prado', 'ana')} confere o caixa.`,
+  });
+
+  expect(destinosDe(p).filter((d) => d.valor === 'ana')).toHaveLength(1);
+  expect(publicoAlvo(p, rede).filter((c) => c.id === 'ana')).toHaveLength(1);
+});
+
+test('a unidade de quem foi citado passa a interessar', () => {
+  /**
+   * É o filtro da coluna da esquerda. Filtrar por Pirassununga tem de
+   * mostrar o comunicado que cita alguém de Pirassununga — senão a
+   * publicação existe para a pessoa e some da unidade dela.
+   */
+  const p = publicacao({
+    destinos: [{ alcance: 'loja', valor: 'Descalvado' }],
+    conteudo: `${marcacaoDeCitacao('Ana Prado', 'ana')} confere o caixa.`,
+  });
+
+  expect(ehDaUnidade(p, 'Pirassununga', rede)).toBe(true);
+  expect(ehDaUnidade(p, 'São Carlos', rede)).toBe(false);
+});
+
+test('texto sem citação não mexe nos destinos', () => {
+  /**
+   * A regra só pode acrescentar quando há alguém citado. Uma publicação
+   * de loja não pode ganhar destino nenhum por um `@` de e-mail solto
+   * no meio do texto.
+   */
+  const p = publicacao({
+    destinos: [{ alcance: 'loja', valor: 'Descalvado' }],
+    conteudo: 'Dúvidas: compras@malachias.com',
+  });
+
+  expect(destinosDe(p)).toEqual([{ alcance: 'loja', valor: 'Descalvado' }]);
 });

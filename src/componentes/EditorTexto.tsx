@@ -40,6 +40,8 @@ import {
   aplicarMarcacao,
   aplicarPrefixo,
   imagensCitadas,
+  marcacaoDeCitacao,
+  casaComNome,
 } from '../servicos/textoRico';
 import { abrirDocumento } from '../servicos/rh';
 
@@ -65,7 +67,30 @@ interface Props {
    * quebrada.
    */
   aoSubirImagem?: (arquivo: File) => Promise<string | null>;
+  /**
+   * Quem pode ser citado com `@`.
+   *
+   * Vazio ou ausente, o `@` continua sendo só um `@` — é o que um
+   * endereço de e-mail digitado no meio do texto precisa.
+   */
+  pessoas?: PessoaCitavel[];
 }
+
+export interface PessoaCitavel {
+  id: string;
+  nome: string;
+  cargo?: string;
+  loja?: string;
+}
+
+/**
+ * QUANTOS NOMES A LISTA MOSTRA.
+ *
+ * São 89 colaboradores. Mostrar todos cobriria a tela inteira e
+ * tiraria de vista justamente o texto que está sendo escrito — quem
+ * não achou em seis nomes digita mais uma letra.
+ */
+const NOMES_NA_LISTA = 6;
 
 type Ferramenta = {
   chave: string;
@@ -204,10 +229,68 @@ export const EditorTexto: React.FC<Props> = ({
   linhas = 8,
   alturaCheia = false,
   aoSubirImagem,
+  pessoas = [],
 }) => {
   const campo = useRef<HTMLTextAreaElement>(null);
   const [vendo, setVendo] = useState(false);
   const [subindo, setSubindo] = useState(false);
+
+  /**
+   * A CITAÇÃO EM ANDAMENTO: o que foi digitado depois do `@` e onde o
+   * `@` começa.
+   *
+   * Guardar a POSIÇÃO, e não só o termo, é o que permite trocar o
+   * trecho certo quando o nome for escolhido — o cursor pode ter
+   * andado, e procurar o último `@` do texto acertaria o errado em
+   * quem cita duas pessoas na mesma frase.
+   */
+  const [citacao, setCitacao] = useState<{ termo: string; inicio: number } | null>(null);
+  const [escolhido, setEscolhido] = useState(0);
+
+  const candidatos =
+    citacao && pessoas.length > 0
+      ? pessoas.filter((p) => casaComNome(p.nome, citacao.termo)).slice(0, NOMES_NA_LISTA)
+      : [];
+
+  /**
+   * Abre a lista quando o cursor está logo depois de um `@` seguido de
+   * letras — e só então.
+   *
+   * O `@` precisa estar no COMEÇO DA PALAVRA (início do texto ou
+   * depois de um espaço): sem isso, `malachias@hotmail.com` abriria a
+   * lista de colegas no meio de um e-mail.
+   */
+  const conferirCitacao = (texto: string, cursor: number) => {
+    if (pessoas.length === 0) return setCitacao(null);
+
+    const ate = texto.slice(0, cursor);
+    const achado = ate.match(/(^|\s)@([^\s@[\]()]{0,30})$/);
+
+    if (!achado) return setCitacao(null);
+
+    setCitacao({ termo: achado[2], inicio: cursor - achado[2].length - 1 });
+    setEscolhido(0);
+  };
+
+  /** Troca o `@termo` pela marcação com o nome e o id. */
+  const citar = (pessoa: PessoaCitavel) => {
+    if (!citacao) return;
+
+    const alvo = campo.current;
+    const fim = alvo ? alvo.selectionEnd : citacao.inicio + citacao.termo.length + 1;
+    const marcacao = `${marcacaoDeCitacao(pessoa.nome, pessoa.id)} `;
+
+    aoMudar(valor.slice(0, citacao.inicio) + marcacao + valor.slice(fim));
+    setCitacao(null);
+
+    // O `setTimeout` de zero espera o React redesenhar: mexer na
+    // seleção antes disso é mexer no texto antigo
+    const depois = citacao.inicio + marcacao.length;
+    setTimeout(() => {
+      alvo?.focus();
+      alvo?.setSelectionRange(depois, depois);
+    }, 0);
+  };
 
   /**
    * OS ENDEREÇOS DAS IMAGENS, para a prévia mostrá-las.
@@ -302,6 +385,34 @@ export const EditorTexto: React.FC<Props> = ({
   };
 
   const aoTeclar = (evento: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    /**
+     * A LISTA DE NOMES RESPONDE PRIMEIRO.
+     *
+     * Enquanto ela está aberta, Enter escolhe o nome em vez de quebrar
+     * a linha, e as setas andam pela lista em vez de andar pelo texto.
+     * Fora isso, cada tecla volta a ser o que sempre foi.
+     */
+    if (citacao && candidatos.length > 0) {
+      if (evento.key === 'ArrowDown' || evento.key === 'ArrowUp') {
+        evento.preventDefault();
+        const passo = evento.key === 'ArrowDown' ? 1 : candidatos.length - 1;
+        setEscolhido((i) => (i + passo) % candidatos.length);
+        return;
+      }
+
+      if (evento.key === 'Enter' || evento.key === 'Tab') {
+        evento.preventDefault();
+        citar(candidatos[escolhido]);
+        return;
+      }
+
+      if (evento.key === 'Escape') {
+        evento.preventDefault();
+        setCitacao(null);
+        return;
+      }
+    }
+
     if (!evento.ctrlKey && !evento.metaKey) return;
 
     const ferramenta = FERRAMENTAS.find((f) => f.atalho === evento.key.toLowerCase());
@@ -425,17 +536,67 @@ export const EditorTexto: React.FC<Props> = ({
           }}
         />
       ) : (
-        <textarea
-          ref={campo}
-          value={valor}
-          onChange={(e) => aoMudar(e.target.value)}
-          onKeyDown={aoTeclar}
-          rows={alturaCheia ? undefined : linhas}
-          placeholder={placeholder}
-          className={`w-full px-3 py-2.5 text-sm bg-transparent text-[var(--c-texto)] focus:outline-none placeholder:text-[var(--c-texto-3)] leading-relaxed ${
-            alturaCheia ? 'flex-1 min-h-0 resize-none' : 'resize-y'
-          }`}
-        />
+        <div className={`relative flex flex-col ${alturaCheia ? 'flex-1 min-h-0' : ''}`}>
+          <textarea
+            ref={campo}
+            value={valor}
+            onChange={(e) => {
+              aoMudar(e.target.value);
+              conferirCitacao(e.target.value, e.target.selectionEnd);
+            }}
+            /**
+             * O clique e as setas também conferem: mover o cursor para
+             * dentro de um `@` já escrito reabre a lista, e sair dele
+             * fecha. Sem isto, a lista ficaria aberta sobre o texto
+             * depois de o cursor ter ido embora.
+             */
+            onClick={(e) => conferirCitacao(valor, e.currentTarget.selectionEnd)}
+            onKeyUp={(e) => conferirCitacao(valor, e.currentTarget.selectionEnd)}
+            onBlur={() => setCitacao(null)}
+            onKeyDown={aoTeclar}
+            rows={alturaCheia ? undefined : linhas}
+            placeholder={placeholder}
+            className={`w-full px-3 py-2.5 text-sm bg-transparent text-[var(--c-texto)] focus:outline-none placeholder:text-[var(--c-texto-3)] leading-relaxed ${
+              alturaCheia ? 'flex-1 min-h-0 resize-none' : 'resize-y'
+            }`}
+          />
+
+          {candidatos.length > 0 && (
+            <div className="absolute bottom-2 left-2 right-2 sm:right-auto sm:w-72 z-20 rounded-xl border border-[var(--c-borda)] bg-[var(--c-superficie)] shadow-xl overflow-hidden">
+              <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[var(--c-texto-3)] border-b border-[var(--c-borda)]">
+                Citar colega
+              </p>
+              {candidatos.map((p, i) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  /* `onMouseDown` com `preventDefault`: o clique comum
+                     tiraria o foco do campo antes de agir, e a posição
+                     do `@` se perderia junto */
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    citar(p);
+                  }}
+                  onMouseEnter={() => setEscolhido(i)}
+                  className={`w-full text-left px-3 py-2 flex items-baseline gap-2 transition-colors ${
+                    i === escolhido
+                      ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                      : 'text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)]'
+                  }`}
+                >
+                  <span className="text-sm font-semibold truncate">{p.nome}</span>
+                  <span
+                    className={`text-[11px] truncate ${
+                      i === escolhido ? 'opacity-80' : 'text-[var(--c-texto-3)]'
+                    }`}
+                  >
+                    {[p.cargo, p.loja].filter(Boolean).join(' · ')}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

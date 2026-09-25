@@ -19,6 +19,10 @@ import {
   aplicarMarcacao,
   aplicarPrefixo,
   resumoCurto,
+  marcacaoDeCitacao,
+  pessoasCitadas,
+  citadosNovos,
+  casaComNome,
 } from './textoRico';
 
 // ============================================================
@@ -447,4 +451,105 @@ test('imagem com endereço perigoso não vira imagem', () => {
    */
   expect(paraHtml('![x](javascript:alert(1))')).not.toContain('<img');
   expect(paraHtml('![x](data:text/html,<script>)')).not.toContain('<img');
+});
+
+// ============================================================
+// CITAR UMA PESSOA — `@[Nome](pessoa:id)`
+// ============================================================
+
+test('a citação é reconhecida ANTES do link', () => {
+  /**
+   * `@[Fabio](pessoa:c-12)` é um link `[Fabio](pessoa:c-12)` com um `@`
+   * na frente, e `pessoa:` não é http. A regra do link casaria primeiro,
+   * descartaria o endereço por não ser seguro e deixaria um `@` solto ao
+   * lado do nome — "avisei @ Fabio".
+   */
+  const html = paraHtml(`avisei ${marcacaoDeCitacao('Fabio Souza', 'c-12')} ontem`);
+
+  expect(html).toContain('tr-citado');
+  expect(html).toContain('@Fabio Souza');
+  expect(html).not.toContain('<a ');
+  // O id não vai para a tela: `c-12` não diz nada a quem lê
+  expect(html).not.toContain('c-12');
+});
+
+test('o `@` sozinho continua sendo um `@`', () => {
+  /**
+   * Um e-mail no meio de um comunicado é comum — "mande para
+   * compras@malachias.com". Ele não pode virar marcação nenhuma.
+   */
+  const html = paraHtml('escreva para compras@malachias.com hoje');
+
+  expect(html).not.toContain('tr-citado');
+  expect(html).toContain('compras@malachias.com');
+});
+
+test('quem o texto cita, sem repetir', () => {
+  const texto = [
+    `${marcacaoDeCitacao('Fabio', 'c-12')} confere o estoque,`,
+    `${marcacaoDeCitacao('Lyvia', 'c-30')} confere o caixa,`,
+    `e ${marcacaoDeCitacao('Fabio', 'c-12')} assina no fim.`,
+  ].join('\n');
+
+  expect(pessoasCitadas(texto)).toEqual(['c-12', 'c-30']);
+  expect(pessoasCitadas('')).toEqual([]);
+  expect(pessoasCitadas('nenhum nome aqui')).toEqual([]);
+});
+
+test('a edição só avisa quem PASSOU a ser citado', () => {
+  /**
+   * Avisar todo mundo de novo a cada edição pune quem já leu: corrigir
+   * uma vírgula mandaria o mesmo aviso pela segunda vez, e na terceira
+   * as pessoas param de abrir.
+   */
+  const antes = `${marcacaoDeCitacao('Fabio', 'c-12')} confere o estoque.`;
+  const depois = `${antes} ${marcacaoDeCitacao('Lyvia', 'c-30')} confere o caixa.`;
+
+  expect(citadosNovos(antes, depois)).toEqual(['c-30']);
+
+  // Só a vírgula mudou: ninguém é avisado de novo
+  expect(citadosNovos(antes, `${antes},`)).toEqual([]);
+});
+
+test('o nome com colchete não quebra a marcação', () => {
+  /**
+   * O nome entra entre colchetes. Um `]` dentro dele fecharia a
+   * marcação cedo, e o resto do id vazaria para a tela como texto.
+   */
+  const marcacao = marcacaoDeCitacao('Ana [RH] (matriz)', 'c-7');
+
+  expect(pessoasCitadas(marcacao)).toEqual(['c-7']);
+  expect(paraHtml(marcacao)).toContain('tr-citado');
+  expect(paraHtml(marcacao)).not.toContain('c-7');
+});
+
+test('o resumo mostra `@Nome`, e não a marcação inteira', () => {
+  /**
+   * É o que vai para o cartão da lista e para o recado do chat. Sem
+   * isto, o resumo sairia com `pessoa:c-12` no meio da frase.
+   */
+  const resumo = semFormatacao(`bom trabalho, ${marcacaoDeCitacao('Fabio', 'c-12')}!`);
+
+  expect(resumo).toBe('bom trabalho, @Fabio!');
+});
+
+test('o termo digitado acha o nome sem acento e pelo sobrenome', () => {
+  /**
+   * Quem escreve no celular não põe acento, e metade da empresa se
+   * chama pelo sobrenome.
+   */
+  expect(casaComNome('Fábio Souza', 'fab')).toBe(true);
+  expect(casaComNome('Fábio Souza', 'souza')).toBe(true);
+  expect(casaComNome('Fábio Souza', 'FÁB')).toBe(true);
+  expect(casaComNome('Fábio Souza', '')).toBe(true);
+
+  /**
+   * E casa no COMEÇO da palavra, não no meio: `@ouza` devolvendo
+   * "Fábio Souza" encheria a lista de nomes que não têm nada a ver com
+   * o que se digitou, e quem cita escolhe pelo que vê em primeiro
+   * lugar — o errado entraria por engano.
+   */
+  expect(casaComNome('Fábio Souza', 'ouza')).toBe(false);
+  expect(casaComNome('Fábio Souza', 'abio')).toBe(false);
+  expect(casaComNome('Fábio Souza', 'lyvia')).toBe(false);
 });

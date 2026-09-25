@@ -348,6 +348,13 @@ export const NovaPublicacao: React.FC<Props> = ({
                 aoMudar={setConteudo}
                 alturaCheia
                 aoSubirImagem={subirImagem}
+                /**
+                 * Só quem está na ativa pode ser citado: citar quem saiu
+                 * da empresa mandaria o aviso para uma conta que não
+                 * entra mais, e prenderia o contador de leitura abaixo
+                 * de 100% para sempre.
+                 */
+                pessoas={colaboradores.filter((c) => c.ativo !== false)}
                 placeholder={AJUDA[tipo]}
               />
             </div>

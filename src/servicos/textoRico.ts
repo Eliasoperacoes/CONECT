@@ -114,6 +114,20 @@ const dentroDaLinha = (
 
       return `<img src="${endereco}" alt="${descricao}" class="tr-imagem" loading="lazy" />`;
     })
+    /**
+     * A CITAÇÃO DE PESSOA, também antes do link.
+     *
+     * `@[Fabio](pessoa:c-12)` é um link `[Fabio](pessoa:c-12)` com um
+     * `@` na frente, e `pessoa:` não é http — a regra do link casaria
+     * primeiro, descartaria o endereço e deixaria um `@` solto ao lado
+     * do nome. Mesma armadilha da imagem, mesma solução: vir antes.
+     *
+     * Só o NOME aparece; o id fica na marcação. Mostrar `c-12` na tela
+     * não diz nada a ninguém, e é o id que faz o aviso chegar.
+     */
+    .replace(/@\[([^\]]+)\]\(pessoa:([^)]+)\)/g, (todo, nome: string) =>
+      `<span class="tr-citado">@${nome}</span>`
+    )
     // Marca-texto antes do negrito: `==x==` não colide, mas a ordem
     // deixa claro que ele é marcação de linha como as outras
     .replace(/==([^=]+)==/g, '<mark class="tr-marca">$1</mark>')
@@ -168,6 +182,84 @@ export const imagensCitadas = (texto: string): string[] => [
       .filter((c) => c && !/^https?:\/\//i.test(c))
   ),
 ];
+
+/**
+ * ===================================================================
+ * CITAR UMA PESSOA — `@[Nome](pessoa:id)`
+ * ===================================================================
+ *
+ * A sintaxe mora AQUI, nestas três funções, e em lugar nenhum mais.
+ * Quem insere (o editor), quem desenha (`dentroDaLinha`) e quem avisa
+ * (o banco) leem a mesma regra — escrevê-la à mão em três lugares é
+ * exatamente como a lista de setores divergiu entre duas telas.
+ *
+ * O NOME VAI JUNTO DO ID de propósito. Só o id (`@c-12`) deixaria o
+ * texto ilegível no banco, no resumo do chat e em qualquer lugar que
+ * não tenha a lista de colaboradores em mãos — e um dia alguém lê essa
+ * coluna direto no SQL Editor.
+ */
+
+/** Tira do nome o que quebraria a marcação: colchete, parêntese e `@`. */
+const nomeLimpo = (nome: string): string => nome.replace(/[[\]()@]/g, '').trim();
+
+/** A marcação de uma citação, pronta para entrar no texto. */
+export const marcacaoDeCitacao = (nome: string, id: string): string =>
+  `@[${nomeLimpo(nome) || 'colega'}](pessoa:${id})`;
+
+/**
+ * QUEM O TEXTO CITA — os ids, sem repetir.
+ *
+ * É o que transforma a citação em aviso de verdade: sem isto, `@Fabio`
+ * seria só uma palavra em azul, e o Fabio só descobriria que foi citado
+ * se por acaso abrisse a publicação.
+ */
+export const pessoasCitadas = (texto: string): string[] => [
+  ...new Set(
+    [...(texto || '').matchAll(/@\[[^\]]+\]\(pessoa:([^)]+)\)/g)]
+      .map((m) => m[1].trim())
+      .filter(Boolean)
+  ),
+];
+
+/**
+ * O TERMO DIGITADO APÓS O `@` CASA COM ESTA PESSOA?
+ *
+ * Sem acento dos dois lados: quem escreve `@fab` no celular não põe o
+ * acento, e "Fábio" sumiria da lista logo na terceira letra.
+ *
+ * Bate em qualquer PALAVRA do nome, e não só no começo: metade da
+ * empresa se chama pelo sobrenome, e `@souza` não pode devolver vazio.
+ */
+const semAcento = (texto: string): string =>
+  texto
+    .toLowerCase()
+    .normalize('NFD')
+    /* Os acentos, já separados da letra pelo NFD.
+       `\p{Diacritic}` e não a faixa `U+0300–U+036F` escrita à mão: a
+       faixa exige dois caracteres invisíveis no meio do código-fonte, e
+       caractere invisível escolhido sem cuidado já tornou ESTE arquivo
+       binário para o grep uma vez. */
+    .replace(/\p{Diacritic}/gu, '');
+
+export const casaComNome = (nome: string, termo: string): boolean => {
+  const alvo = semAcento(termo.trim());
+  if (!alvo) return true;
+
+  const partes = semAcento(nome).split(/\s+/);
+  return partes.some((p) => p.startsWith(alvo));
+};
+
+/**
+ * QUEM PASSOU A SER CITADO entre uma versão e outra.
+ *
+ * Numa edição, avisar todo mundo de novo seria punir quem já tinha
+ * lido: corrigir uma vírgula mandaria o mesmo aviso pela segunda vez a
+ * quinze pessoas, e na terceira vez elas param de abrir.
+ */
+export const citadosNovos = (antes: string, depois: string): string[] => {
+  const jaCitados = new Set(pessoasCitadas(antes));
+  return pessoasCitadas(depois).filter((id) => !jaCitados.has(id));
+};
 
 export const paraHtml = (texto: string, imagens: Record<string, string> = {}): string => {
   const linhas = escapar(texto || '').split('\n');
@@ -363,6 +455,17 @@ export const semFormatacao = (texto: string): string =>
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/~~([^~]+)~~/g, '$1')
+    /**
+     * O link vira o rótulo — e A CITAÇÃO VEM JUNTO, de graça:
+     * `@[Fabio](pessoa:c-12)` é esta mesma forma com um `@` na frente,
+     * e o `@` fica onde está. Sai `@Fabio`, que é o que o cartão e o
+     * recado do chat precisam mostrar.
+     *
+     * Uma troca só para os dois casos, de propósito: duas regras
+     * fazendo a mesma coisa é a duplicação que este projeto já pagou
+     * caro quatro vezes — e a segunda só seria notada no dia em que
+     * divergisse.
+     */
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/^#{1,3}\s+/gm, '')
     .replace(/^&gt;\s?/gm, '')

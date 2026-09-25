@@ -21,7 +21,7 @@ import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
 import { alcanca, podeEditarPublicacao } from './mural';
 import { lerLista } from './cacheDeLeitura';
-import { semFormatacao } from './textoRico';
+import { semFormatacao, pessoasCitadas, citadosNovos } from './textoRico';
 import {
   nuvemComunicacao,
   conversaJaEstaNoBanco,
@@ -2869,6 +2869,45 @@ class BancoDadosConecta {
     return this.obterAvisosRede().filter((a) => alcanca(a, atual));
   }
 
+  /**
+   * O RECADO DIRETO PARA QUEM FOI CITADO.
+   *
+   * Citar alguém no meio de um documento de duas páginas e esperar que
+   * ele repare é o mesmo que não citar. O aviso vai para a conversa
+   * individual — que é onde a notificação do celular aparece — e leva
+   * o `publicacaoId`, então o botão abre exatamente esta publicação.
+   *
+   * O AUTOR NUNCA RECEBE: citar a si mesmo ao escrever "combinei com
+   * @Fabio e comigo" mandaria um aviso de si para si.
+   *
+   * A falha de um envio não derruba os outros nem a publicação: o
+   * comunicado já está gravado, e uma conversa que não abriu não pode
+   * desfazer isso.
+   */
+  private async avisarCitados(aviso: AvisoRede, ids: string[]): Promise<void> {
+    const atual = this.obterColaboradorAtual();
+
+    for (const id of ids) {
+      if (id === atual.id) continue;
+
+      try {
+        const conversa = this.iniciarConversaCom(id);
+        await this.enviarMensagem(conversa.id, {
+          tipo: 'texto',
+          texto: [
+            `📌 ${atual.nome} citou você em "${aviso.titulo}".`,
+            aviso.exigeConfirmacao ? '⚠️ Esta publicação pede ciência.' : '',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          publicacaoId: aviso.id,
+        });
+      } catch {
+        /* Ver acima: o aviso que não saiu não desfaz a publicação */
+      }
+    }
+  }
+
   async criarAvisoRede(dados: {
     titulo: string;
     conteudo: string;
@@ -2978,6 +3017,8 @@ class BancoDadosConecta {
       /* É o que faz o botão do chat abrir ESTA publicação, e não a Central inteira */
       publicacaoId: novoAviso.id,
     });
+
+    await this.avisarCitados(novoAviso, pessoasCitadas(novoAviso.conteudo));
 
     this.registrarAuditoria('Publicação de Comunicado', 'aviso', `${atual.nome} publicou '${novoAviso.titulo}'.`);
     this.notificar();
@@ -3136,6 +3177,15 @@ class BancoDadosConecta {
 
     lista[indice] = editado;
     localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(lista));
+
+    /**
+     * SÓ QUEM PASSOU A SER CITADO recebe o recado.
+     *
+     * Avisar todo mundo de novo a cada edição punia quem já tinha
+     * lido: corrigir uma vírgula mandaria o mesmo aviso pela segunda
+     * vez, e na terceira as pessoas param de abrir.
+     */
+    await this.avisarCitados(editado, citadosNovos(original.conteudo, editado.conteudo));
 
     this.registrarAuditoria(
       'Publicação editada',

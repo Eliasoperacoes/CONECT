@@ -28,6 +28,7 @@ import {
   TipoPublicacao,
   NIVEL_TI,
 } from '../tipos';
+import { pessoasCitadas } from './textoRico';
 
 /**
  * Os destinos de uma publicação, já tratando a forma antiga.
@@ -36,14 +37,41 @@ import {
  * `lojaDestino`. Lê-las como "sem destino" as tornaria invisíveis para
  * todo mundo no dia da migração — então a conversão acontece aqui, uma
  * vez, e não espalhada por cada tela que precisa da lista.
+ *
+ * QUEM É CITADO NO TEXTO É DESTINO TAMBÉM.
+ *
+ * Citar alguém que não alcança a publicação seria mandá-lo bater numa
+ * porta trancada: o aviso chega, ele clica, e não há nada para abrir.
+ * Citar É endereçar.
+ *
+ * Mora aqui, e não em cada tela, porque `alcanca`, `publicoAlvo`,
+ * `ehDaUnidade` e `descreverDestinos` todos perguntam a esta função —
+ * acrescentar a regra em uma só delas é a mesma divergência que já
+ * escondeu comunicado de quem devia ler.
  */
 export const destinosDe = (publicacao: AvisoRede): DestinoPublicacao[] => {
-  if (publicacao.destinos && publicacao.destinos.length > 0) {
-    return publicacao.destinos;
-  }
-  return publicacao.lojaDestino && publicacao.lojaDestino !== 'Todas'
-    ? [{ alcance: 'loja', valor: publicacao.lojaDestino }]
-    : [{ alcance: 'rede', valor: '' }];
+  const escolhidos: DestinoPublicacao[] =
+    publicacao.destinos && publicacao.destinos.length > 0
+      ? publicacao.destinos
+      : publicacao.lojaDestino && publicacao.lojaDestino !== 'Todas'
+        ? [{ alcance: 'loja', valor: publicacao.lojaDestino }]
+        : [{ alcance: 'rede', valor: '' }];
+
+  const citados = pessoasCitadas(publicacao.conteudo || '');
+  if (citados.length === 0) return escolhidos;
+
+  // Escolhido E citado é uma pessoa só: sem isto o cartão mostraria o
+  // mesmo nome duas vezes e o contador cobraria a leitura em dobro
+  const jaEndereçados = new Set(
+    escolhidos.filter((d) => d.alcance === 'pessoa').map((d) => d.valor)
+  );
+
+  return [
+    ...escolhidos,
+    ...citados
+      .filter((id) => !jaEndereçados.has(id))
+      .map((id): DestinoPublicacao => ({ alcance: 'pessoa', valor: id })),
+  ];
 };
 
 /**
