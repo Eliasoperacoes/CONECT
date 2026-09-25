@@ -367,3 +367,73 @@ html, body {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Tabela: rola de lado no celular em vez de espremer as colunas.
+   Uma tabela de preços com quatro colunas em 390px fica ilegível se
+   cada coluna encolher para caber. */
+.texto-rico .tr-tabela-rolagem {
+  overflow-x: auto;
+  margin: 0 0 0.7rem;
+  border: 1px solid var(--c-borda);
+  border-radius: 0.6rem;
+}
+.texto-rico .tr-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.texto-rico .tr-tabela th,
+.texto-rico .tr-tabela td {
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--c-borda);
+  white-space: nowrap;
+}
+.texto-rico .tr-tabela th {
+  background: var(--c-superficie-2);
+  font-weight: 700;
+  color: var(--c-texto);
+}
+.texto-rico .tr-tabela tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Tarefa: a caixa some do marcador da lista e vira o próprio marcador */
+.texto-rico .tr-tarefas {
+  list-style: none;
+  padding-left: 0;
+}
+.texto-rico .tr-tarefa {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+.texto-rico .tr-caixa {
+  flex-shrink: 0;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.15rem;
+  border: 1.5px solid var(--c-borda-forte);
+  border-radius: 0.25rem;
+  font-size: 0.65rem;
+  line-height: 0.85rem;
+  text-align: center;
+  color: transparent;
+}
+.texto-rico .tr-caixa.tr-feita {
+  background: var(--c-acento);
+  border-color: var(--c-acento);
+  color: var(--c-sobre-acento);
+}
+.texto-rico .tr-risco {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+/* Marca-texto: amarelo que sobrevive ao tema escuro */
+.texto-rico .tr-marca {
+  background: rgba(250, 204, 21, 0.35);
+  color: inherit;
+  padding: 0 0.15rem;
+  border-radius: 0.2rem;
+}

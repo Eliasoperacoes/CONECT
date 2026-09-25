@@ -70,7 +70,7 @@ import {
 import { enviarAnexo } from '../servicos/anexos';
 import { EditorTexto } from './EditorTexto';
 import { semFormatacao } from '../servicos/textoRico';
-import { SeletorDestinos } from './SeletorDestinos';
+import { NovaPublicacao } from './NovaPublicacao';
 import { PainelPublicacao } from './PainelPublicacao';
 import { FotoPresenca } from './FotoPresenca';
 
@@ -598,186 +598,26 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
         />
       )}
 
+      {/*
+        A ESCRITA É TELA INTEIRA, e não uma janelinha.
+
+        Era um modal de 512px com tipo, título, editor, categoria,
+        prioridade, o seletor de destinos inteiro, anexo e duas caixas
+        de marcar. O campo do TEXTO — a razão de a tela existir —
+        sobrava espremido no meio, com uns poucos pixels de altura.
+
+        Modal serve para "tem certeza?", não para redigir meia página.
+      */}
       {formularioAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="bg-[var(--c-superficie)] w-full max-w-lg max-h-[90vh] rounded-2xl border border-[var(--c-borda)] shadow-xl flex flex-col overflow-hidden">
-            <header className="px-4 py-3 border-b border-[var(--c-borda)] flex items-center gap-3">
-              <span className="text-sm font-bold text-[var(--c-texto)] flex-1">
-                Nova publicação
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setFormularioAberto(false);
-                  setAviso(null);
-                }}
-                className="p-2 rounded-lg border border-[var(--c-borda)] text-[var(--c-texto-2)]"
-                aria-label="Fechar"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </header>
-
-            <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
-              <div className="flex items-center gap-1.5">
-                {TIPOS_PUBLICACAO.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTipoNovo(t)}
-                    className={`flex-1 px-2 py-2 rounded-xl text-xs font-bold border flex items-center justify-center gap-1.5 ${
-                      tipoNovo === t
-                        ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] border-[var(--c-acento)]'
-                        : 'bg-[var(--c-canvas)] text-[var(--c-texto-2)] border-[var(--c-borda)]'
-                    }`}
-                  >
-                    {ICONE_TIPO[t]}
-                    {ROTULO_TIPO_PUBLICACAO[t].replace(/s$/, '')}
-                  </button>
-                ))}
-              </div>
-
-              <input
-                type="text"
-                value={titulo}
-                onChange={(e) => setTitulo(e.target.value)}
-                placeholder="Título"
-                className="w-full px-3 py-2.5 text-sm font-semibold bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)]"
-              />
-
-              <EditorTexto
-                valor={conteudo}
-                aoMudar={setConteudo}
-                linhas={7}
-                placeholder="O que precisa ser dito. Quem lê está com pressa: comece pelo que muda."
-              />
-
-              <div className="grid grid-cols-2 gap-2">
-                <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
-                    Categoria
-                  </span>
-                  <select
-                    value={categoriaNova}
-                    onChange={(e) =>
-                      setCategoriaNova(e.target.value as CategoriaPublicacao)
-                    }
-                    className="px-2.5 py-2 text-xs bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)]"
-                  >
-                    {CATEGORIAS_PUBLICACAO.map((c) => (
-                      <option key={c} value={c}>
-                        {ROTULO_CATEGORIA[c]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="flex flex-col gap-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
-                    Prioridade
-                  </span>
-                  <select
-                    value={prioridadeNova}
-                    onChange={(e) =>
-                      setPrioridadeNova(e.target.value as PrioridadeAviso)
-                    }
-                    className="px-2.5 py-2 text-xs bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)]"
-                  >
-                    {PRIORIDADES_AVISO.map((p) => (
-                      <option key={p} value={p}>
-                        {ROTULO_PRIORIDADE[p]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div>
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)] mb-1.5">
-                  Para quem vai
-                </span>
-                <SeletorDestinos
-                  destinos={destinos}
-                  aoMudar={setDestinos}
-                  colaboradores={colaboradores}
-                />
-              </div>
-
-              <label className="flex items-center gap-2 p-2.5 rounded-xl border border-dashed border-[var(--c-borda)] cursor-pointer hover:border-[var(--c-acento)]/40">
-                <Upload className="w-4 h-4 text-[var(--c-texto-3)]" />
-                <span className="flex-1 text-xs text-[var(--c-texto-2)] truncate">
-                  {anexo ? anexo.nome : 'Anexar documento (PDF, imagem, planilha)'}
-                </span>
-                {anexo && (
-                  <span
-                    onClick={(e) => {
-                      e.preventDefault();
-                      setAnexo(null);
-                    }}
-                    className="p-1 text-[var(--c-texto-3)]"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </span>
-                )}
-                <input
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => {
-                    const arquivo = e.target.files?.[0];
-                    if (arquivo) escolherArquivo(arquivo);
-                  }}
-                />
-              </label>
-
-              <label className="flex items-center gap-2 text-xs text-[var(--c-texto-2)]">
-                <input
-                  type="checkbox"
-                  checked={exigeConfirmacao}
-                  onChange={(e) => setExigeConfirmacao(e.target.checked)}
-                  className="accent-[var(--c-acento)]"
-                />
-                Exigir ciência — quem recebe precisa confirmar que leu
-              </label>
-
-              <label className="flex items-center gap-2 text-xs text-[var(--c-texto-2)]">
-                <input
-                  type="checkbox"
-                  checked={fixar}
-                  onChange={(e) => setFixar(e.target.checked)}
-                  className="accent-[var(--c-acento)]"
-                />
-                Fixar no topo da lista
-              </label>
-
-              {aviso && (
-                <div className="px-3 py-2 rounded-xl bg-red-500/5 border border-red-500/25 text-xs text-red-700 dark:text-red-400">
-                  {aviso}
-                </div>
-              )}
-            </div>
-
-            <footer className="px-4 py-3 border-t border-[var(--c-borda)] flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setFormularioAberto(false);
-                  setAviso(null);
-                }}
-                className="px-3 py-2 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)]"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={salvando}
-                onClick={publicar}
-                className="px-4 py-2 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold disabled:opacity-40"
-              >
-                {salvando ? 'Publicando...' : 'Publicar'}
-              </button>
-            </footer>
-          </div>
-        </div>
+        <NovaPublicacao
+          colaboradorAtual={colaboradorAtual}
+          colaboradores={colaboradores}
+          aoFechar={() => setFormularioAberto(false)}
+          aoPublicar={(tipoPublicado: TipoPublicacao) => {
+            setFormularioAberto(false);
+            setTipoAtivo(tipoPublicado);
+          }}
+        />
       )}
     </div>
   );

@@ -98,10 +98,12 @@ test('O ANEXO SOBE ANTES DA PUBLICAÇÃO EXISTIR', async () => {
    * "documento" sem documento nenhum — pior do que não publicar,
    * porque quem procurar vai achar e não vai levar nada.
    */
-  const tela = semComentarios(await lerTela());
+  /* O formulário mudou de casa: a escrita virou tela inteira. */
+  const escrita = semComentarios(await Bun.file('src/componentes/NovaPublicacao.tsx').text());
 
-  const inicio = tela.indexOf('const publicar =');
-  const corpo = tela.slice(inicio, tela.indexOf('setTipoAtivo(tipoNovo)', inicio));
+  const inicio = escrita.indexOf('const publicar =');
+  expect(inicio).toBeGreaterThan(-1);
+  const corpo = escrita.slice(inicio, escrita.indexOf('aoPublicar(tipo)', inicio));
 
   expect(corpo.indexOf('enviarAnexo(')).toBeLessThan(
     corpo.indexOf('criarAvisoRede(')
@@ -116,9 +118,9 @@ test('publicar sem destino é RECUSADO', async () => {
    * alcança: ela existiria no banco e não apareceria para pessoa
    * nenhuma, nem para quem a escreveu procurar o erro.
    */
-  const tela = semComentarios(await lerTela());
-  expect(tela).toContain('if (destinos.length === 0)');
-  expect(tela).toContain('ninguém receberia');
+  const escrita = semComentarios(await Bun.file('src/componentes/NovaPublicacao.tsx').text());
+  expect(escrita).toContain('if (destinos.length === 0)');
+  expect(escrita).toContain('ninguém receberia');
 });
 
 // ============================================================
@@ -277,7 +279,17 @@ test('O CONTEÚDO É TEXTO, e a tela é que formata', async () => {
    */
   const tela = semComentarios(await lerTela());
   expect(tela).toContain('semFormatacao(p.conteudo)');
-  expect(tela).toContain('<EditorTexto');
+
+  /**
+   * O editor mora na TELA DE ESCRITA, e não mais na lista: a criação
+   * deixou de ser um modal de 512px, onde o campo do texto sobrava
+   * espremido entre os outros dez controles.
+   */
+  const escrita = semComentarios(
+    await Bun.file('src/componentes/NovaPublicacao.tsx').text()
+  );
+  expect(escrita).toContain('<EditorTexto');
+  expect(escrita).toContain('alturaCheia');
 
   const banco = semComentarios(await Bun.file('src/servicos/bancoDados.ts').text());
   expect(banco).toContain('semFormatacao(dados.conteudo)');
@@ -295,4 +307,55 @@ test('o script recarrega o esquema e confere', async () => {
   expect(sql).toContain('colunas_novas');
   expect(sql).toContain('politica_de_alcance');
   expect(sql).toContain('publicacoes_orfas');
+});
+
+test('O RÓTULO SINGULAR É ESCRITO, e não o plural sem o "s"', async () => {
+  /**
+   * A tela tirava o "s" com `replace(/s$/, '')` e o botão de criar
+   * saía escrito **"Tutoriai"** — porque português não faz singular
+   * tirando letra.
+   */
+  const { ROTULO_TIPO_PUBLICACAO_SINGULAR } = await import('../tipos');
+
+  expect(ROTULO_TIPO_PUBLICACAO_SINGULAR.tutorial).toBe('Tutorial');
+  expect(ROTULO_TIPO_PUBLICACAO_SINGULAR.aviso).toBe('Aviso');
+  expect(ROTULO_TIPO_PUBLICACAO_SINGULAR.documento).toBe('Documento');
+
+  const escrita = await Bun.file('src/componentes/NovaPublicacao.tsx').text();
+  expect(escrita).toContain('ROTULO_TIPO_PUBLICACAO_SINGULAR[t]');
+  expect(escrita).not.toContain("replace(/s$/");
+
+  const tela = await lerTela();
+  expect(tela).not.toContain("replace(/s$/");
+});
+
+test('"REDE" NO SELETOR NÃO SE CONFUNDE COM "TODA A REDE"', async () => {
+  /**
+   * "Rede" é uma unidade de verdade — Operações Centrais, com gerente e
+   * telefone — mas o nome colide com o "Toda a rede" logo acima: quem
+   * marcasse achava que mandava para as 89 pessoas e mandava para as
+   * poucas da central.
+   */
+  const seletor = await Bun.file('src/componentes/SeletorDestinos.tsx').text();
+  expect(seletor).toContain("loja.tipo === 'Central'");
+  expect(seletor).toContain('{loja.cidade}');
+});
+
+test('A ESCRITA É TELA INTEIRA, e não um modal', async () => {
+  /**
+   * O modal tinha 512px e dez controles; o campo do texto — a razão de
+   * a tela existir — sobrava espremido no meio. Modal serve para "tem
+   * certeza?", não para redigir meia página.
+   */
+  const escrita = await Bun.file('src/componentes/NovaPublicacao.tsx').text();
+
+  expect(escrita).toContain('fixed inset-0');
+  expect(escrita).toContain('lg:flex-row');
+  // O editor cresce com a tela, em vez de ter altura em linhas
+  expect(escrita).toContain('alturaCheia');
+
+  // E a lista não tem mais o formulário dentro dela
+  const lista = await lerTela();
+  expect(lista).toContain('<NovaPublicacao');
+  expect(lista).not.toContain('<textarea');
 });

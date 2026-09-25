@@ -129,6 +129,17 @@ export const SeletorDestinos: React.FC<Props> = ({
           <Building2 className="w-3 h-3" /> Unidades
         </span>
         <div className="flex flex-wrap gap-1.5">
+          {/*
+            "REDE" AQUI É A UNIDADE CENTRAL, e não todo mundo.
+
+            Ela é uma unidade de verdade — Operações Centrais, com
+            gerente e telefone —, mas o nome colide com o "Toda a rede"
+            logo acima: quem marcasse achava que estava mandando para as
+            89 pessoas e mandava para as poucas da central.
+
+            A cidade desfaz a confusão sem renomear a unidade, que é
+            como ela se chama no cadastro e em todo o resto do sistema.
+          */}
           {INFORMACOES_LOJAS.map((loja) => (
             <Chip
               key={loja.nome}
@@ -136,6 +147,9 @@ export const SeletorDestinos: React.FC<Props> = ({
               aoClicar={() => alternar('loja', loja.nome)}
             >
               {loja.nome}
+              {loja.tipo === 'Central' && (
+                <span className="opacity-60 font-normal">· {loja.cidade}</span>
+              )}
             </Chip>
           ))}
         </div>

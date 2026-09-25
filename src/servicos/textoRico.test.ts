@@ -279,3 +279,82 @@ test('o prefixo pega a linha inteira, mesmo com o cursor no meio dela', () => {
   const r = aplicarPrefixo('bom dia', 4, 4, '# ');
   expect(r.texto).toBe('# bom dia');
 });
+
+// ============================================================
+// AS FERRAMENTAS QUE FALTAVAM
+// ============================================================
+
+test('TABELA: cabeçalho, corpo, e a linha de traços não aparece', () => {
+  /**
+   * É o que um comunicado de preço, de escala ou de horário por loja
+   * precisa — sem ela essas três coisas viram lista de pares e não se
+   * comparam de relance.
+   *
+   * A linha `|---|---|` separa o título do conteúdo e não pode virar
+   * uma fileira de hífens no meio da tabela.
+   */
+  const html = paraHtml('| Loja | Horário |\n|---|---|\n| Descalvado | 09h |');
+
+  expect(html).toContain('<th>Loja</th>');
+  expect(html).toContain('<td>Descalvado</td>');
+  expect(html).not.toContain('---');
+
+  // Uma tabela só, aberta e fechada
+  expect((html.match(/<table/g) || []).length).toBe(1);
+  expect((html.match(/<\/table>/g) || []).length).toBe(1);
+});
+
+test('A TABELA FECHA quando o texto continua', () => {
+  /**
+   * Sem fechar, o parágrafo seguinte entrava como se fosse célula — e
+   * o resto do comunicado sumia dentro da tabela.
+   */
+  const html = paraHtml('| a | b |\n|---|---|\n| 1 | 2 |\n\nDepois da tabela.');
+
+  expect(html.indexOf('</table>')).toBeLessThan(html.indexOf('Depois da tabela'));
+  expect(html).toContain('<p class="tr-p">Depois da tabela.</p>');
+});
+
+test('a tabela rola de lado, em vez de espremer as colunas', () => {
+  /**
+   * Quatro colunas em 390px ficam ilegíveis se cada uma encolher para
+   * caber. Esta tela é lida no celular do balcão.
+   */
+  expect(paraHtml('| a | b |\n|---|---|\n| 1 | 2 |')).toContain('tr-tabela-rolagem');
+});
+
+test('ITEM PARA CONFERIR vira caixa, e não vira lista com colchetes', () => {
+  /**
+   * `- [ ] comprar` também casa com o padrão de lista comum. Sem tratar
+   * a tarefa ANTES, o item sairia escrito "[ ] comprar" — com os
+   * colchetes à mostra.
+   */
+  const html = paraHtml('- [ ] conferir caixa\n- [x] fechar gaveta');
+
+  expect(html).toContain('tr-tarefas');
+  expect(html).not.toContain('[ ]');
+  expect(html).not.toContain('[x]');
+
+  // A feita é riscada; a pendente, não
+  expect(html).toContain('tr-caixa tr-feita');
+  expect(html).toContain('class="tr-risco"');
+});
+
+test('marca-texto', () => {
+  expect(paraHtml('isto é ==urgente==')).toContain('<mark class="tr-marca">urgente</mark>');
+});
+
+test('a marcação nova também some do resumo', () => {
+  /**
+   * Cada marcação precisa do seu caso em `semFormatacao` — senão o
+   * cartão da lista sairia com `==` e `| a | b |` no meio.
+   */
+  expect(semFormatacao('isto é ==urgente==')).toBe('isto é urgente');
+  expect(semFormatacao('- [ ] conferir')).not.toContain('[ ]');
+
+  // A tabela vira as células, sem os canos nem a linha de traços
+  const daTabela = semFormatacao(['| Loja | Hora |', '|---|---|', '| Descalvado | 09h |'].join(String.fromCharCode(10)));
+  expect(daTabela).not.toContain('|');
+  expect(daTabela).not.toContain('---');
+  expect(daTabela).toContain('Descalvado');
+});

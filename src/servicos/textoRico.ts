@@ -92,6 +92,9 @@ const dentroDaLinha = (texto: string): string => {
   });
 
   const formatado = semCodigo
+    // Marca-texto antes do negrito: `==x==` não colide, mas a ordem
+    // deixa claro que ele é marcação de linha como as outras
+    .replace(/==([^=]+)==/g, '<mark class="tr-marca">$1</mark>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
     .replace(/~~([^~]+)~~/g, '<s>$1</s>')
@@ -129,6 +132,7 @@ export const paraHtml = (texto: string): string => {
   const partes: string[] = [];
 
   let listaAberta: 'ul' | 'ol' | null = null;
+  let tabelaAberta: 'cabecalho' | 'corpo' | null = null;
   let paragrafo: string[] = [];
 
   const fecharParagrafo = () => {
@@ -143,19 +147,73 @@ export const paraHtml = (texto: string): string => {
     listaAberta = null;
   };
 
+  /**
+   * A tabela fecha junto com o parágrafo e a lista: qualquer linha que
+   * não comece com `|` encerra a tabela. Sem isto, o texto que vem
+   * depois dela entraria como se fosse célula.
+   */
+  const fecharTabela = () => {
+    if (!tabelaAberta) return;
+    partes.push(tabelaAberta === 'cabecalho' ? '</thead></table></div>' : '</tbody></table></div>');
+    tabelaAberta = null;
+  };
+
   for (const linha of linhas) {
     const limpa = linha.trim();
 
     if (limpa === '') {
       fecharParagrafo();
       fecharLista();
+      fecharTabela();
       continue;
     }
 
     if (/^---+$/.test(limpa)) {
       fecharParagrafo();
       fecharLista();
+      fecharTabela();
       partes.push('<hr class="tr-hr"/>');
+      continue;
+    }
+
+    /**
+     * TABELA: linha que começa e termina com `|`.
+     *
+     * É o que um comunicado de preço, de escala ou de horário por loja
+     * precisa — sem ela, essas três coisas viram lista de pares e não
+     * se comparam de relance.
+     *
+     * A LINHA DE TRAÇOS (`|---|---|`) é o separador do cabeçalho e não
+     * vira linha nenhuma. Ela é o que distingue título de conteúdo, e
+     * mostrá-la deixaria uma fileira de hífens no meio da tabela.
+     */
+    if (/^\|.*\|$/.test(limpa)) {
+      fecharParagrafo();
+      fecharLista();
+
+      const celulas = limpa.slice(1, -1).split('|').map((c) => c.trim());
+      const ehSeparador = celulas.every((c) => /^:?-{2,}:?$/.test(c));
+
+      if (ehSeparador) {
+        // Fecha o cabeçalho e abre o corpo
+        if (tabelaAberta === 'cabecalho') {
+          partes.push('</thead><tbody>');
+          tabelaAberta = 'corpo';
+        }
+        continue;
+      }
+
+      if (!tabelaAberta) {
+        partes.push('<div class="tr-tabela-rolagem"><table class="tr-tabela"><thead>');
+        tabelaAberta = 'cabecalho';
+      }
+
+      const marca = tabelaAberta === 'cabecalho' ? 'th' : 'td';
+      partes.push(
+        `<tr>${celulas
+          .map((c) => `<${marca}>${dentroDaLinha(c)}</${marca}>`)
+          .join('')}</tr>`
+      );
       continue;
     }
 
@@ -163,6 +221,7 @@ export const paraHtml = (texto: string): string => {
     if (titulo) {
       fecharParagrafo();
       fecharLista();
+      fecharTabela();
       const nivel = titulo[1].length;
       partes.push(
         `<h${nivel + 2} class="tr-h${nivel}">${dentroDaLinha(titulo[2])}</h${nivel + 2}>`
@@ -174,7 +233,38 @@ export const paraHtml = (texto: string): string => {
     if (citacao) {
       fecharParagrafo();
       fecharLista();
+      fecharTabela();
       partes.push(`<blockquote class="tr-citacao">${dentroDaLinha(citacao[1])}</blockquote>`);
+      continue;
+    }
+
+    /**
+     * TAREFA, antes da lista comum: `- [ ] comprar` também casa com o
+     * padrão de lista, e sem esta ordem viraria um item escrito
+     * "[ ] comprar".
+     *
+     * É o que um tutorial de fechamento de caixa precisa: passo a passo
+     * que se confere, e não parágrafo que se lê.
+     */
+    const tarefa = limpa.match(/^[-*]\s+\[([ xX])\]\s+(.*)$/);
+    if (tarefa) {
+      fecharParagrafo();
+
+      if (listaAberta !== 'ul') {
+        fecharLista();
+        fecharTabela();
+        partes.push('<ul class="tr-lista tr-tarefas">');
+        listaAberta = 'ul';
+      }
+
+      const feita = tarefa[1].toLowerCase() === 'x';
+      partes.push(
+        `<li class="tr-tarefa"><span class="tr-caixa${
+          feita ? ' tr-feita' : ''
+        }">${feita ? '✓' : ''}</span><span${feita ? ' class="tr-risco"' : ''}>${dentroDaLinha(
+          tarefa[2]
+        )}</span></li>`
+      );
       continue;
     }
 
@@ -187,6 +277,7 @@ export const paraHtml = (texto: string): string => {
 
       if (listaAberta !== tipo) {
         fecharLista();
+        fecharTabela();
         partes.push(`<${tipo} class="tr-lista">`);
         listaAberta = tipo;
       }
@@ -200,6 +291,7 @@ export const paraHtml = (texto: string): string => {
 
   fecharParagrafo();
   fecharLista();
+  fecharTabela();
 
   return partes.join('');
 };
@@ -214,6 +306,7 @@ export const paraHtml = (texto: string): string => {
 export const semFormatacao = (texto: string): string =>
   (texto || '')
     .replace(/`([^`]+)`/g, '$1')
+    .replace(/==([^=]+)==/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/~~([^~]+)~~/g, '$1')
@@ -221,7 +314,24 @@ export const semFormatacao = (texto: string): string =>
     .replace(/^#{1,3}\s+/gm, '')
     .replace(/^&gt;\s?/gm, '')
     .replace(/^>\s?/gm, '')
+    /**
+     * A CAIXA DA TAREFA vira o marcador, e sai antes da lista comum —
+     * a regra de lista casaria primeiro e deixaria `[ ]` no texto.
+     */
+    .replace(/^[-*]\s+\[[ xX]\]\s+/gm, '• ')
     .replace(/^[-*]\s+/gm, '• ')
+    /**
+     * A TABELA vira as células separadas por espaço, e a linha de
+     * traços some. Sem isto o resumo do cartão sairia cheio de `|`.
+     */
+    .replace(/^\|[\s:|-]+\|$/gm, '')
+    .replace(/^\|(.+)\|$/gm, (todo, linha: string) =>
+      linha
+        .split('|')
+        .map((c) => c.trim())
+        .filter(Boolean)
+        .join(' · ')
+    )
     .replace(/^---+$/gm, '')
     .replace(/\n{2,}/g, ' · ')
     .replace(/\n/g, ' ')

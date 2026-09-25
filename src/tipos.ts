@@ -862,6 +862,21 @@ export const ROTULO_TIPO_PUBLICACAO: Record<TipoPublicacao, string> = {
 };
 
 /**
+ * O MESMO RÓTULO NO SINGULAR, escrito e não calculado.
+ *
+ * A aba diz "Tutoriais"; o botão de criar diz "Tutorial". A tela tirava
+ * o "s" com `replace(/s$/, '')` e escrevia **"Tutoriai"** — porque
+ * português não faz plural tirando letra.
+ *
+ * Duas palavras, duas entradas. Tipo novo não compila sem as duas.
+ */
+export const ROTULO_TIPO_PUBLICACAO_SINGULAR: Record<TipoPublicacao, string> = {
+  aviso: 'Aviso',
+  documento: 'Documento',
+  tutorial: 'Tutorial',
+};
+
+/**
  * ENVELHECE OU NÃO.
  *
  * Aviso antigo é ruído — ninguém quer o comunicado de inventário do ano

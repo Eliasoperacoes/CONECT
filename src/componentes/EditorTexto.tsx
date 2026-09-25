@@ -29,6 +29,9 @@ import {
   Minus,
   Eye,
   Pencil,
+  Highlighter,
+  CheckSquare,
+  Table,
 } from 'lucide-react';
 import { paraHtml, aplicarMarcacao, aplicarPrefixo } from '../servicos/textoRico';
 
@@ -37,6 +40,14 @@ interface Props {
   aoMudar: (texto: string) => void;
   placeholder?: string;
   linhas?: number;
+  /**
+   * Ocupa toda a altura que o pai der, em vez de um número fixo de
+   * linhas.
+   *
+   * Com altura em linhas, o campo fica do mesmo tamanho num monitor
+   * de 27" e num notebook — desperdiçando espaço lá e faltando aqui.
+   */
+  alturaCheia?: boolean;
 }
 
 type Ferramenta = {
@@ -117,6 +128,39 @@ const FERRAMENTAS: Ferramenta[] = [
     aplicar: (t, i, f) => aplicarMarcacao(t, i, f, '`', '`', 'código'),
   },
   {
+    chave: 'marca',
+    titulo: 'Marca-texto',
+    icone: <Highlighter className="w-3.5 h-3.5" />,
+    aplicar: (t, i, f) => aplicarMarcacao(t, i, f, '==', '==', 'em destaque'),
+  },
+  {
+    chave: 'tarefa',
+    titulo: 'Item para conferir',
+    icone: <CheckSquare className="w-3.5 h-3.5" />,
+    aplicar: (t, i, f) => aplicarPrefixo(t, i, f, '- [ ] '),
+  },
+  {
+    chave: 'tabela',
+    titulo: 'Tabela',
+    icone: <Table className="w-3.5 h-3.5" />,
+    /**
+     * Insere uma tabela PRONTA, com cabeçalho e duas linhas.
+     *
+     * Um botão que só escrevesse `|` deixaria quem não conhece a
+     * marcação sem saber o que fazer com ele — e a linha de traços,
+     * que é o que separa o cabeçalho, ninguém adivinha.
+     */
+    aplicar: (t, i, f) => {
+      const modelo =
+        '\n| Coluna | Coluna |\n|---|---|\n| valor | valor |\n| valor | valor |\n';
+      return {
+        texto: `${t.slice(0, f)}${modelo}${t.slice(f)}`,
+        inicio: f + 3,
+        fim: f + 9,
+      };
+    },
+  },
+  {
     chave: 'separador',
     titulo: 'Linha separadora',
     icone: <Minus className="w-3.5 h-3.5" />,
@@ -128,11 +172,20 @@ const FERRAMENTAS: Ferramenta[] = [
   },
 ];
 
+/**
+ * Onde a barra ganha um risco vertical.
+ *
+ * Onze botões em fila viram uma régua sem começo nem fim. Os grupos são
+ * os de sempre: ênfase | estrutura | blocos | inserir.
+ */
+const SEPARAR_ANTES = new Set(['titulo', 'lista', 'link', 'tabela']);
+
 export const EditorTexto: React.FC<Props> = ({
   valor,
   aoMudar,
   placeholder,
   linhas = 8,
+  alturaCheia = false,
 }) => {
   const campo = useRef<HTMLTextAreaElement>(null);
   const [vendo, setVendo] = useState(false);
@@ -171,11 +224,18 @@ export const EditorTexto: React.FC<Props> = ({
   };
 
   return (
-    <div className="rounded-xl border border-[var(--c-borda)] overflow-hidden bg-[var(--c-canvas)]">
+    <div
+      className={`rounded-xl border border-[var(--c-borda)] overflow-hidden bg-[var(--c-canvas)] flex flex-col ${
+        alturaCheia ? 'flex-1 min-h-0' : ''
+      }`}
+    >
       <div className="flex items-center gap-0.5 px-1.5 py-1 border-b border-[var(--c-borda)] bg-[var(--c-superficie)] flex-wrap">
         {FERRAMENTAS.map((f) => (
+          <React.Fragment key={f.chave}>
+            {SEPARAR_ANTES.has(f.chave) && (
+              <span className="w-px h-5 bg-[var(--c-borda)] mx-0.5 shrink-0" />
+            )}
           <button
-            key={f.chave}
             type="button"
             title={f.titulo}
             aria-label={f.titulo}
@@ -195,6 +255,7 @@ export const EditorTexto: React.FC<Props> = ({
           >
             {f.icone}
           </button>
+          </React.Fragment>
         ))}
 
         <div className="flex-1" />
@@ -222,8 +283,10 @@ export const EditorTexto: React.FC<Props> = ({
 
       {vendo ? (
         <div
-          className="px-3 py-2.5 text-sm text-[var(--c-texto)] texto-rico overflow-y-auto"
-          style={{ minHeight: `${linhas * 1.5}rem` }}
+          className={`px-3 py-2.5 text-sm text-[var(--c-texto)] texto-rico overflow-y-auto ${
+            alturaCheia ? 'flex-1 min-h-0' : ''
+          }`}
+          style={alturaCheia ? undefined : { minHeight: `${linhas * 1.5}rem` }}
           /**
            * O HTML vem de `paraHtml`, que escapa TODO o texto antes de
            * aplicar qualquer marcação. Depois disso não há um `<` no
@@ -242,9 +305,11 @@ export const EditorTexto: React.FC<Props> = ({
           value={valor}
           onChange={(e) => aoMudar(e.target.value)}
           onKeyDown={aoTeclar}
-          rows={linhas}
+          rows={alturaCheia ? undefined : linhas}
           placeholder={placeholder}
-          className="w-full px-3 py-2.5 text-sm bg-transparent text-[var(--c-texto)] resize-y focus:outline-none placeholder:text-[var(--c-texto-3)]"
+          className={`w-full px-3 py-2.5 text-sm bg-transparent text-[var(--c-texto)] focus:outline-none placeholder:text-[var(--c-texto-3)] leading-relaxed ${
+            alturaCheia ? 'flex-1 min-h-0 resize-none' : 'resize-y'
+          }`}
         />
       )}
     </div>
