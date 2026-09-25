@@ -16,7 +16,10 @@ import {
   TrendingDown,
   CalendarDays,
   Pencil,
-  Coffee,
+  ChevronDown,
+  ChevronUp,
+  Utensils,
+  UtensilsCrossed,
   LogIn,
   LogOut,
 } from 'lucide-react';
@@ -54,10 +57,37 @@ interface PropsAbaPonto {
   aoConsumirCodigo?: () => void;
 }
 
+/**
+ * "2026-09" vira "Setembro de 2026".
+ *
+ * Montado com `Date` no dia 15 de propósito: o dia 1 vira o último dia
+ * do mês anterior em fuso negativo, e o mês do seletor sairia trocado
+ * — o mesmo defeito que já apareceu no espelho de ponto.
+ */
+const nomeDoMes = (mes: string): string => {
+  const [ano, m] = mes.split('-');
+  const nome = new Date(Number(ano), Number(m) - 1, 15).toLocaleDateString('pt-BR', {
+    month: 'long',
+  });
+  return `${nome.charAt(0).toUpperCase()}${nome.slice(1)} de ${ano}`;
+};
+
+/**
+ * PRATO, E NÃO XÍCARA.
+ *
+ * As duas marcações do almoço vinham com um copo de café. O intervalo
+ * do balcão é a refeição — uma a duas horas —, e no celular, onde o
+ * ícone é maior do que o texto, a xícara dizia "pausa do cafezinho".
+ *
+ * Os talheres CRUZADOS marcam a saída: é a convenção de "parou". Os
+ * talheres postos marcam a volta. São o mesmo prato de propósito, e se
+ * distinguem pelo estado — dois ícones sem relação nenhuma obrigariam a
+ * ler o rótulo para saber qual é qual.
+ */
 const ICONE_MARCACAO: Record<TipoMarcacao, React.ComponentType<{ className?: string }>> = {
   entrada: LogIn,
-  saida_almoco: Coffee,
-  retorno_almoco: Coffee,
+  saida_almoco: UtensilsCrossed,
+  retorno_almoco: Utensils,
   saida: LogOut,
 };
 
@@ -120,13 +150,58 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
     [colaboradorAtual.id, versaoDados]
   );
 
+  /**
+   * O HISTÓRICO É POR MÊS, e não pelos últimos quinze dias.
+   *
+   * Quinze é um número sem significado nenhum para quem bate ponto: o
+   * que ele confere é o mês, que é o período do espelho e o do
+   * pagamento. Quinze dias cortam o mês ao meio — quem procurava o dia
+   * 3 no fim do mês simplesmente não o achava, e não havia como saber
+   * que faltava.
+   *
+   * Agora cada mês vem inteiro, com os seus 28, 30 ou 31 dias, e o
+   * seletor troca de mês.
+   */
+  const mesesComRegistro = useMemo(() => {
+    const meses = new Set(
+      servicoPonto
+        .obterDatasComRegistro(colaboradorAtual.id)
+        .map((data) => data.slice(0, 7))
+    );
+    // O mês corrente entra mesmo sem batida nenhuma: é onde a pessoa cai
+    meses.add(hoje.slice(0, 7));
+    return [...meses].sort((a, b) => b.localeCompare(a));
+  }, [colaboradorAtual.id, hoje, versaoDados]);
+
+  const [mesEscolhido, setMesEscolhido] = useState(() => hoje.slice(0, 7));
+
   const historico: JornadaDia[] = useMemo(() => {
     return servicoPonto
       .obterDatasComRegistro(colaboradorAtual.id)
-      .filter((data) => data !== hoje)
-      .slice(0, 15)
+      .filter((data) => data !== hoje && data.startsWith(mesEscolhido))
       .map((data) => servicoPonto.obterJornadaDoDia(colaboradorAtual.id, data));
-  }, [colaboradorAtual.id, hoje, versaoDados]);
+  }, [colaboradorAtual.id, hoje, mesEscolhido, versaoDados]);
+
+  /**
+   * COMEÇA RECOLHIDO.
+   *
+   * São até 31 linhas numa tela de celular — mais alto do que tudo o
+   * que vem acima somado, e empurrando para fora o botão de bater
+   * ponto, que é a razão de a pessoa abrir esta aba.
+   *
+   * Recolhido não esconde o que importa: o resumo do mês fica à vista.
+   */
+  const [historicoAberto, setHistoricoAberto] = useState(false);
+
+  /** O resumo do mês escolhido — é o que se lê com a lista fechada. */
+  const resumoDoMes = useMemo(
+    () => ({
+      dias: historico.length,
+      saldo: historico.reduce((t, j) => t + j.saldoMinutos, 0),
+      incompletos: historico.filter((j) => !j.completa).length,
+    }),
+    [historico]
+  );
 
   const aoRegistrar = (registro: RegistroPonto) => {
     setToast(`${ROTULO_MARCACAO[registro.tipo]} registrada às ${registro.horaFormatada}.`);
@@ -394,21 +469,81 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
         </div>
       </div>
 
-      {/* Histórico */}
+      {/* Histórico do mês */}
       <div className="mt-5">
-        <div className="px-4 py-2 flex items-center gap-2">
-          <CalendarDays className="w-3.5 h-3.5 text-[var(--c-texto-3)]" />
+        <div className="px-4 pb-2 flex items-center gap-2">
+          <CalendarDays className="w-3.5 h-3.5 text-[var(--c-texto-3)] shrink-0" />
           <span className="text-xs font-semibold text-[var(--c-texto-3)] uppercase tracking-wider">
             Dias anteriores
           </span>
+
+          <div className="flex-1" />
+
+          {/*
+            O SELETOR DE MÊS.
+
+            Nativo de propósito: no celular ele abre a roda do sistema,
+            que se gira com o polegar. Uma lista desenhada por mim seria
+            mais bonita e pior de usar com uma mão só.
+          */}
+          <select
+            value={mesEscolhido}
+            onChange={(e) => setMesEscolhido(e.target.value)}
+            aria-label="Mês"
+            className="px-2 py-1 text-[11px] font-bold bg-[var(--c-superficie)] border border-[var(--c-borda)] rounded-lg text-[var(--c-texto-2)]"
+          >
+            {mesesComRegistro.map((mes) => (
+              <option key={mes} value={mes}>
+                {nomeDoMes(mes)}
+              </option>
+            ))}
+          </select>
         </div>
 
-        {historico.length === 0 ? (
-          <p className="px-4 py-6 text-center text-xs text-[var(--c-texto-3)]">
-            Nenhum dia registrado ainda. Suas marcações aparecem aqui.
+        {/*
+          O cabeçalho que recolhe. Com a lista fechada ele é o resumo do
+          mês — dias, saldo e quantos ficaram incompletos —, que é o que
+          a pessoa vem conferir antes de olhar dia a dia.
+        */}
+        <button
+          type="button"
+          onClick={() => setHistoricoAberto((v) => !v)}
+          className="w-full px-4 py-2.5 border-y border-[var(--c-borda)] bg-[var(--c-superficie)] flex items-center gap-2 text-left active:bg-[var(--c-superficie-2)] transition-colors"
+        >
+          {historicoAberto ? (
+            <ChevronUp className="w-4 h-4 text-[var(--c-texto-3)] shrink-0" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-[var(--c-texto-3)] shrink-0" />
+          )}
+
+          <span className="text-xs font-bold text-[var(--c-texto)]">
+            {resumoDoMes.dias} {resumoDoMes.dias === 1 ? 'dia' : 'dias'}
+          </span>
+
+          {resumoDoMes.incompletos > 0 && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-amber-500/10 text-amber-700 border-amber-500/20">
+              {resumoDoMes.incompletos} incompleto
+              {resumoDoMes.incompletos === 1 ? '' : 's'}
+            </span>
+          )}
+
+          <div className="flex-1" />
+
+          <span
+            className={`text-xs font-bold tabular-nums ${
+              resumoDoMes.saldo >= 0 ? 'text-emerald-600' : 'text-red-600'
+            }`}
+          >
+            {formatarSaldo(resumoDoMes.saldo)}
+          </span>
+        </button>
+
+        {!historicoAberto ? null : historico.length === 0 ? (
+          <p className="px-4 py-6 text-center text-xs text-[var(--c-texto-3)] border-b border-[var(--c-borda)] bg-[var(--c-superficie)]">
+            Nenhum dia registrado em {nomeDoMes(mesEscolhido)}.
           </p>
         ) : (
-          <div className="divide-y divide-[var(--c-borda)] border-y border-[var(--c-borda)] bg-[var(--c-superficie)]">
+          <div className="divide-y divide-[var(--c-borda)] border-b border-[var(--c-borda)] bg-[var(--c-superficie)]">
             {historico.map((jornada) => (
               <div key={jornada.data} className="px-4 py-3 flex items-center gap-3">
                 <div className="flex-shrink-0">
