@@ -63,6 +63,8 @@ outra** — a do banco é a que vale de verdade.
 | `fichaColaborador.ts` | O que é a ficha de alguém | Espelho de ponto, CSV, quadro, aba Eu, aprovação |
 | `organograma.ts` | Alçada e cadeia | Aprovação, painel de gestão, visibilidade |
 | `ferramentas.ts` | Toda tela do sistema | Painel de permissões, barra de navegação |
+| `mural.ts` | Quem alcança uma publicação, quem devia ler, quem pode editar | Central, painel da publicação, chat, contador de leitura |
+| `textoRico.ts` | Como o texto de uma publicação é escapado, e a marcação de citar alguém | Leitura, resumo do cartão, recado do chat, campo ao vivo |
 
 **Campo novo entra uma vez.** Acrescentar à ficha em `fichaColaborador.ts`
 faz o campo aparecer no espelho, no quadro e na aba Eu sem tocar em nenhuma
@@ -249,6 +251,18 @@ desconta a tolerância do excedente (Súmula 366 do TST).
 | Ciclo no organograma | `podeSerResponsavelDe` (cria) e limite de profundidade (lê) | A tela entra em recursão e o navegador morre |
 | Corrigir marcação é do RH | `ajustarMarcacao` | Cinco pessoas alterando registro trabalhista |
 | Setor desconhecido na planilha **falha** | `resolverSetorDaPlanilha` | 32 pessoas foram para o Balcão em silêncio — e o setor decide quem aprova a jornada delas |
+| Texto escapado **antes** de qualquer marcação | `escapar` em `textoRico.ts`, usado também por `textoAoVivo.ts` | Um `<script>` no corpo de um comunicado roda na sessão de quem abre, com o Supabase em mãos |
+| Os sinais da marcação são **escondidos**, nunca apagados | `.tr-sinal { display: none }` no CSS, e `textoAoVivo.ts` | O campo ao vivo grava o `textContent`: sinal apagado é caractere que sai do documento de quem está escrevendo, em silêncio |
+| Editar publicação parte do original | `editarAviso` | Quem já leu e quem deu ciência são zerados, e a ciência é a prova de que a publicação existe para guardar |
+
+**Sobre o campo ao vivo.** A Central mostra o texto formatado enquanto se
+digita sem guardar HTML: os sinais (`**`, `## `, `- `) continuam dentro do
+campo e o CSS os esconde, então o texto de volta é o `textContent`,
+idêntico ao que entrou. Quem desenha para **ler** é `paraHtml` (descarta os
+sinais); quem desenha para **escrever** é `textoAoVivo` (preserva). São dois
+trabalhos, mas a segurança é uma: `escapar` e `enderecoSeguro` moram em
+`textoRico.ts` e os dois importam de lá. `textoAoVivo.test.ts` confere a
+igualdade caractere por caractere, com o cursor em cada linha.
 
 ---
 

@@ -375,3 +375,63 @@ tela filtra por algo que o contador ignora, o número mente.
 por uma lista (`SE_COMPROVA_COM_DOCUMENTO`, uma permissão, um tipo), o
 contador filtra pela mesma — nunca por uma condição parecida escrita ao
 lado.
+
+## Mutação que se conserta sozinha, e o teste que parece fraco
+
+Ao provar os testes da citação, uma mutação declarou o teste inútil e
+estava mentindo. A mutação fazia o desenho vazar o id da pessoa para a
+tela:
+
+```
+<span class="tr-citado">@Fabio Souza (@[Fabio Souza](pessoa:c-12))</span>
+```
+
+O teste conferia `not.toContain('c-12')` e passou. Fui atrás: a regra
+de **link**, que roda logo abaixo na mesma cadeia de trocas, achou o
+`[Fabio Souza](pessoa:c-12)` que a mutação acabara de injetar, viu que
+`pessoa:` não é um endereço seguro, e devolveu só o rótulo. O id
+desapareceu — a mutação se curou no caminho.
+
+O teste estava certo. A mutação é que testava outra coisa.
+
+**Sinal para procurar:** mutação cujo texto injetado ainda passa por
+regras adiante na mesma função. Em cadeia de `.replace`, tudo o que uma
+regra escreve é entrada das seguintes.
+
+**A regra:** mutação que passa não condena o teste na hora. Antes de
+escrever mais asserção, rode o caso mutado à mão e veja a saída. Se a
+saída estiver certa, a mutação é que estava errada — e a certa aqui foi
+mexer no *capture group*, não no texto.
+
+Aconteceu duas vezes na mesma rodada. A segunda mutação apagava a troca
+de `@[Nome](pessoa:id)` por `@Nome` no resumo do cartão, e o teste
+continuou verde: a regra de link, mais abaixo, já entregava exatamente
+`@Nome`. Ali a mutação estava certa e o **código** estava errado — eram
+duas regras fazendo o mesmo trabalho. A segunda saiu.
+
+**A regra:** mutação que passa com o código funcionando igual é código
+morto encontrado. Apague, e deixe o teste guardando o comportamento.
+
+## Faixa de caracteres invisíveis escrita à mão
+
+Escrevi a faixa de acentos combinantes num `replace`, como se escreve em
+qualquer lugar:
+
+```js
+.replace(/[\u0300-\u036f]/g, '')
+```
+
+O que entrou no arquivo foram os **dois caracteres de verdade**, não o
+escape — dois acentos soltos, invisíveis, no meio do código-fonte. Só
+apareceu num `od -c`.
+
+É o mesmo erro que já custou caro aqui uma vez: o marcador interno de
+`textoRico.ts` era o byte nulo, e o `grep` e o `git diff` passaram a
+tratar o arquivo como **binário**. O código sumia da revisão e da busca.
+
+**A regra:** nada de caractere invisível escolhido à mão. Quando a
+intenção é "qualquer acento", existe nome para isso —
+`/\p{Diacritic}/gu`, que se lê e não depende de o editor ter preservado
+dois bytes que ninguém vê. Para o resto, `String.fromCharCode` deixa o
+número à vista. E confira com `od -c` quando o arquivo tiver de conter
+um caractere especial de propósito.
