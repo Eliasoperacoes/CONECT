@@ -291,8 +291,34 @@ test('O CONTEÚDO É TEXTO, e a tela é que formata', async () => {
   expect(escrita).toContain('<EditorTexto');
   expect(escrita).toContain('alturaCheia');
 
+  /**
+   * O CHAT RECEBE O AVISO, NÃO A PUBLICAÇÃO.
+   *
+   * O conteúdo inteiro era despejado como mensagem. Três problemas: o
+   * comunicado de meia página empurrava a conversa da loja para cima;
+   * a formatação virava `##` e `**` soltos; e a publicação passava a
+   * existir em dois lugares, um deles sem anexo, sem ciência e sem
+   * lista de quem leu.
+   */
   const banco = semComentarios(await Bun.file('src/servicos/bancoDados.ts').text());
-  expect(banco).toContain('semFormatacao(dados.conteudo)');
+
+  expect(banco).not.toContain('semFormatacao(dados.conteudo)');
+  expect(banco).toContain('Abra a aba Central para ler e confirmar.');
+
+  /**
+   * Conferido no que é ENVIADO, e não só na existência do resumo.
+   *
+   * A primeira versão deste teste procurava `const resumo = [` — e
+   * continuava passando com `texto: dados.conteudo` logo abaixo, que é
+   * exatamente o defeito a evitar.
+   */
+  const envio = banco.slice(
+    banco.indexOf("this.enviarMensagem('grupo-avisos-da-rede'"),
+    banco.indexOf("this.enviarMensagem('grupo-avisos-da-rede'") + 200
+  );
+
+  expect(envio).toContain('texto: resumo,');
+  expect(envio).not.toContain('dados.conteudo');
 
   const painel = semComentarios(
     await Bun.file('src/componentes/PainelPublicacao.tsx').text()
@@ -358,4 +384,70 @@ test('A ESCRITA É TELA INTEIRA, e não um modal', async () => {
   const lista = await lerTela();
   expect(lista).toContain('<NovaPublicacao');
   expect(lista).not.toContain('<textarea');
+});
+
+// ============================================================
+// ONDE A PUBLICAÇÃO CHEGA
+// ============================================================
+
+test('A CENTRAL É ABA DE TODOS, e não sub-aba de Gerenciar', async () => {
+  /**
+   * O furo que isto fecha: a Central morava dentro de "Gerenciar",
+   * atrás da permissão `avisos_direcao`, que nasce na liderança.
+   * Publicava-se um comunicado para as 89 pessoas e umas 70 não tinham
+   * tela nenhuma onde vê-lo.
+   */
+  const { ABAS_PRINCIPAIS } = await import('../tipos');
+  expect(ABAS_PRINCIPAIS).toContain('central');
+
+  const app = await Bun.file('src/App.tsx').text();
+  expect(app).toMatch(/id: 'central',[\s\S]{0,80}visivel: true/);
+  expect(app).toContain('<CentralAvisos colaboradorAtual={colaboradorAtual} />');
+
+  // E não existe em dois lugares: saiu do painel de gestão
+  const painel = await Bun.file('src/componentes/PainelRede.tsx').text();
+  expect(painel).not.toContain('CentralAvisos');
+  expect(painel).not.toContain("lista.push('avisos')");
+});
+
+test('A ABA DIZ QUANTAS ESPERAM, com número', async () => {
+  /**
+   * Sem contador, a publicação chega e a pessoa só descobre se abrir a
+   * aba por conta própria — e um comunicado que depende disso não é
+   * comunicado, é arquivo.
+   *
+   * Número, e não bolinha: "3 para ler" faz abrir; um ponto vermelho
+   * só diz que existe alguma coisa.
+   */
+  const app = await Bun.file('src/App.tsx').text();
+
+  expect(app).toContain('const publicacoesNaoLidas = useMemo');
+  expect(app).toContain('.filter((p) => !(p.lidoPorIds || []).includes(colaboradorAtual.id))');
+  expect(app).toContain('contador: publicacoesNaoLidas');
+  expect(app).toContain("{aba.contador > 9 ? '9+' : aba.contador}");
+});
+
+test('GRUPOS SAIU DA BARRA e virou seção dentro de Conversas', async () => {
+  /**
+   * Grupo é conversa. Ocupava uma aba inteira para mostrar uma lista
+   * que cabe dentro de Conversas — e a pessoa tinha de lembrar em qual
+   * das duas abas estava a mensagem que procurava.
+   *
+   * Recolhido, o cabeçalho diz quantas não lidas há dentro: é o número
+   * que faz abrir. E nasce recolhido para não empurrar as conversas de
+   * gente para fora da primeira tela.
+   */
+  const { ABAS_PRINCIPAIS } = await import('../tipos');
+  expect(ABAS_PRINCIPAIS).not.toContain('grupos');
+
+  const app = await Bun.file('src/App.tsx').text();
+
+  expect(app).toContain('const [gruposAbertos, setGruposAbertos] = useState(false)');
+  expect(app).toContain('const naoLidasDosGrupos = grupos.reduce');
+  expect(app).toContain('{naoLidasDosGrupos > 0 && (');
+  expect(app).toContain('{gruposAbertos && (');
+
+  // A permissão de grupos continua existindo — o que saiu foi a aba
+  const catalogo = await Bun.file('src/servicos/ferramentas.ts').text();
+  expect(catalogo).toContain("chave: 'grupos'");
 });

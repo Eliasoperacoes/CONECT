@@ -749,10 +749,24 @@ export interface Conversa {
   ehSistemaPadrao?: boolean;
 }
 
-// Abas da barra inferior: Conversas | Grupos | Rede (painel) | Eu
+/**
+ * As abas da barra de baixo.
+ *
+ * GRUPOS SAIU, e CENTRAL entrou. As duas mudanças são a mesma:
+ *
+ * Grupo é conversa. Ocupava uma aba inteira para mostrar uma lista que
+ * cabe dentro de Conversas — e a pessoa tinha de lembrar em qual das
+ * duas abas estava a mensagem que procurava.
+ *
+ * A vaga foi para a CENTRAL, e isso conserta um furo grave: ela morava
+ * dentro de "Gerenciar", atrás da permissão `avisos_direcao`, que nasce
+ * na liderança. Publicava-se um comunicado para as 89 pessoas e umas 70
+ * não tinham tela nenhuma onde vê-lo. O sistema mandava para um lugar
+ * que a maior parte da rede não alcança.
+ */
 export const ABAS_PRINCIPAIS = [
   'conversas',
-  'grupos',
+  'central',
   'ponto',
   'painel',
   'eu',

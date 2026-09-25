@@ -34,7 +34,6 @@ import { bancoDados } from '../servicos/bancoDados';
 import { manterSeIgual } from '../servicos/igualdade';
 import { ondeParei, lembrarOndeParei } from '../servicos/navegacaoLembrada';
 import { servicoPonto } from '../servicos/ponto';
-import { CentralAvisos } from './CentralAvisos';
 import { PainelRH } from './PainelRH';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { Organograma } from './Organograma';
@@ -65,7 +64,6 @@ const SUB_ABAS = [
   'rh',
   'organograma',
   'aprovacoes',
-  'avisos',
 ] as const;
 
 type SubAbaPainel = (typeof SUB_ABAS)[number];
@@ -226,7 +224,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
       if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
     }
 
-    if (podeUsar('avisos_direcao', colaboradorAtual)) lista.push('avisos');
     return lista;
   }, [colaboradorAtual, temEquipe, podeVerBancoDeHoras, cuidaDeRh]);
 
@@ -456,24 +453,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               O que mudou foi o caminho.
             */}
 
-            {pode('avisos_direcao') && (
-            <button
-              type="button"
-              id="subaba-central-avisos"
-              onClick={() => setSubAbaAtiva('avisos')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all relative ${
-                subAbaAtiva === 'avisos'
-                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                  : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-              }`}
-            >
-              <Megaphone className="w-3.5 h-3.5" />
-              <span>Avisos & Direção</span>
-              {estatisticas.avisosUrgentes > 0 && (
-                <span className="w-2 h-2 rounded-full bg-red-500 ring-2 ring-[var(--c-superficie)]" />
-              )}
-            </button>
-            )}
           </div>
         </div>
       </header>
@@ -712,14 +691,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setSubAbaAtiva('avisos')}
-                className="px-4 py-2 rounded-lg bg-white text-blue-900 font-bold text-xs hover:bg-blue-50 active:scale-95 transition-all shadow-sm flex items-center gap-1.5 whitespace-nowrap"
-              >
-                <span>Acessar Central de Avisos</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
             </section>
           </div>
         )}
@@ -741,16 +712,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
 
         {subAbaAtiva === 'organograma' && (
           <Organograma colaboradorAtual={colaboradorAtual} />
-        )}
-
-
-        {/* SUB-ABA 4: CENTRAL DE AVISOS DA DIREÇÃO */}
-        {subAbaAtiva === 'avisos' && (
-          <CentralAvisos
-            colaboradorAtual={colaboradorAtual}
-            aoAbrirConversaAvisos={() => aoAbrirConversa('grupo-avisos-da-rede')}
-            aoAlternarParaGestor={aoAlternarParaGestor}
-          />
         )}
       </main>
     </div>

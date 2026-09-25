@@ -211,13 +211,20 @@ export const FERRAMENTAS: Ferramenta[] = [
     // Dani; quem realmente entra é quem cuida de pessoas.
     nivelPadrao: NIVEL_LIDER_SETOR,
   },
-  {
-    chave: 'avisos_direcao',
-    nome: 'Avisos & Direção',
-    descricao: 'Central de comunicados oficiais da rede.',
-    area: 'gestao',
-    nivelPadrao: NIVEL_LIDER_SETOR,
-  },
+  /**
+   * "AVISOS & DIREÇÃO" DEIXOU DE SER PERMISSÃO.
+   *
+   * A Central saiu de dentro de "Gerenciar" e virou aba própria, de
+   * todo mundo. Ela é onde a pessoa ENCONTRA o que foi publicado para
+   * ela — e exigir permissão para isso era publicar um comunicado para
+   * 89 pessoas e deixar umas 70 sem tela onde vê-lo.
+   *
+   * Quem PUBLICA continua restrito, por `publicaComunicado`. Ler o que
+   * foi endereçado a você não é privilégio.
+   *
+   * A chave sai do catálogo porque permissão sem tela é linha morta
+   * que alguém um dia lê como se valesse alguma coisa.
+   */
 
   // --- Administração do sistema ---
   {

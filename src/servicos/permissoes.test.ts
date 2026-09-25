@@ -326,7 +326,12 @@ test('as abas principais perguntam ao painel, não decidem sozinhas', async () =
    */
   const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
 
-  for (const aba of ['conversas', 'grupos', 'ponto']) {
+  /**
+   * "Grupos" saiu da barra — virou uma seção dentro de Conversas. A
+   * permissão `grupos` continua valendo lá dentro; o que deixou de
+   * existir é a ABA.
+   */
+  for (const aba of ['conversas', 'ponto']) {
     // A aba tem que consultar a permissão
     expect(app).toContain(`podeUsar('${aba}', colaboradorAtual)`);
     // E não pode ter voltado a decidir sozinha
@@ -334,6 +339,16 @@ test('as abas principais perguntam ao painel, não decidem sozinhas', async () =
       new RegExp(`id: '${aba}',[^}]*visivel: true`)
     );
   }
+
+  /**
+   * A CENTRAL É A EXCEÇÃO, e de propósito: `visivel: true`.
+   *
+   * Ela é onde a pessoa ENCONTRA o que foi publicado para ela. Exigir
+   * permissão para isso era publicar para 89 pessoas e deixar umas 70
+   * sem tela onde ver. Quem PUBLICA continua filtrado, por
+   * `publicaComunicado` dentro da tela.
+   */
+  expect(app).toMatch(/id: 'central',[\s\S]{0,80}visivel: true/);
 });
 
 test('quem perde todas as telas ainda chega no próprio perfil', () => {
@@ -662,22 +677,34 @@ test('a Central de Avisos e o canal usam a MESMA regra', async () => {
   expect(servico).not.toContain("if (conversaId === 'grupo-avisos-da-rede') {\n      return atual.nivel >= NIVEL_TI;");
 });
 
-test('a aba de avisos e a regra de publicar comecam no mesmo nivel', async () => {
+test('VER A CENTRAL NÃO É PERMISSÃO; PUBLICAR NELA É', async () => {
+  /**
+   * A REGRA MUDOU.
+   *
+   * Antes a Central era uma sub-aba de "Gerenciar", atrás da
+   * permissão `avisos_direcao`, que nascia na liderança. Publicava-se
+   * um comunicado para as 89 pessoas da rede e umas 70 não tinham tela
+   * nenhuma onde vê-lo — o sistema mandava para um lugar que a maior
+   * parte da rede não alcança.
+   *
+   * Agora ela é aba de todos, e a chave saiu do catálogo: permissão
+   * sem tela é linha morta. O que continua restrito é PUBLICAR.
+   */
   const catalogo = await Bun.file(
     new URL('./ferramentas.ts', import.meta.url)
   ).text();
   const tipos = await Bun.file(new URL('../tipos.ts', import.meta.url)).text();
 
-  /**
-   * Se a aba abrir num nível e a publicação começar em outro, volta a
-   * existir gente que vê a tela e não pode usá-la.
-   */
-  const inicio = catalogo.indexOf("chave: 'avisos_direcao'");
-  expect(catalogo.slice(inicio, inicio + 300)).toContain('nivelPadrao: NIVEL_LIDER_SETOR');
+  expect(catalogo).not.toContain("chave: 'avisos_direcao'");
 
   expect(tipos).toContain(
-    'export const publicaComunicado = (c: { nivel: number }): boolean =>\n  c.nivel >= NIVEL_LIDER_SETOR;'
+    ['export const publicaComunicado = (c: { nivel: number }): boolean =>', '  c.nivel >= NIVEL_LIDER_SETOR;'].join(String.fromCharCode(10))
   );
+
+  /* E a tela é quem pergunta, na hora de mostrar o botão de publicar */
+  const central = await Bun.file('src/componentes/CentralAvisos.tsx').text();
+  expect(central).toContain('publicaComunicado(colaboradorAtual)');
+  expect(central).toContain('{podeAdministrar && (');
 });
 
 /**
@@ -687,7 +714,7 @@ test('a aba de avisos e a regra de publicar comecam no mesmo nivel', async () =>
  * está reunido na tela de RH, e as outras abas seriam ruído ocupando o
  * lugar do que ele abre todo dia.
  */
-test('quem e do RH ve RH, Visao & Lojas e Avisos — e nada mais', async () => {
+test('quem e do RH ve RH e Visao & Lojas — e nada mais', async () => {
   const painel = await Bun.file(
     new URL('../componentes/PainelRede.tsx', import.meta.url)
   ).text();
@@ -699,7 +726,12 @@ test('quem e do RH ve RH, Visao & Lojas e Avisos — e nada mais', async () => {
   // As três de quem é do RH ficam FORA da guarda
   expect(lista).toContain("if (temRh) lista.push('rh');");
   expect(lista).toContain("lista.push('visao_geral')");
-  expect(lista).toContain("lista.push('avisos')");
+  /*
+    "Avisos" saiu daqui: a Central virou aba própria, de todo mundo.
+    Ela morava atrás de uma permissão de liderança, e assim 70 das 89
+    pessoas não tinham onde ver o que era publicado para elas.
+  */
+  expect(lista).not.toContain("lista.push('avisos')");
 
   // E as outras três ficam DENTRO dela
   const dentroDaGuarda = lista.slice(lista.indexOf('if (!ehDoRh(colaboradorAtual))'));

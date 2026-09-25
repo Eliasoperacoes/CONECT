@@ -17,6 +17,9 @@ import {
   LogOut,
   Clock,
   ClipboardList,
+  Megaphone,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { ABAS_PRINCIPAIS, AbaPrincipal, Colaborador, Conversa, Mensagem } from './tipos';
 
@@ -53,6 +56,7 @@ import { FaixaAvisoDirecao } from './componentes/FaixaAvisoDirecao';
 import { TelaConversa } from './componentes/TelaConversa';
 import { AbaEu } from './componentes/AbaEu';
 import { PainelRede } from './componentes/PainelRede';
+import { CentralAvisos } from './componentes/CentralAvisos';
 import { SinoNotificacoes } from './componentes/SinoNotificacoes';
 import type {
   DestinoNotificacao,
@@ -105,6 +109,8 @@ interface ItemNavegacao {
   alvo?: AbaPrincipal;
   acao?: () => void;
   exibeAviso?: boolean;
+  /** Quantas coisas esperam a pessoa nesta aba. */
+  contador?: number;
   classeFixa?: string;
 }
 
@@ -180,6 +186,20 @@ export default function App() {
    * lista a cada troca. A posição de cada janela sai daqui.
    */
   const [janelas, setJanelas] = useState<Array<{ id: string; encolhida: boolean }>>([]);
+
+  /**
+   * OS GRUPOS RECOLHEM, e nascem recolhidos.
+   *
+   * Eles entraram na lista de conversas, e numa loja com cinco canais
+   * mais o de avisos isso empurraria as conversas de gente para fora
+   * da primeira tela — que é o oposto do que se quis ao juntar as
+   * duas listas.
+   */
+  const [gruposAbertos, setGruposAbertos] = useState(false);
+
+  /** O que o cabeçalho diz RECOLHIDO: é o número que faz abrir. */
+  const naoLidasDosGrupos = grupos.reduce((soma, g) => soma + (g.naoLidas || 0), 0);
+
 
   /** A janela do topo, para o que ainda pensa em "a conversa aberta". */
   const conversaFlutuanteId = janelas.length > 0 ? janelas[janelas.length - 1].id : null;
@@ -375,6 +395,25 @@ export default function App() {
    * empurrão para se redesenhar.
    */
   const [versaoPreferencias, setVersaoPreferencias] = useState(0);
+
+  /**
+   * QUANTAS PUBLICAÇÕES AINDA NÃO LI.
+   *
+   * É o número na aba Central. Sem ele, a publicação chega e a pessoa
+   * só descobre se abrir a aba por conta própria — e um comunicado
+   * que depende disso não é comunicado, é arquivo.
+   *
+   * Conta o que ME ALCANÇA e eu não li: a lista já vem filtrada por
+   * destino, e a leitura é a mesma marca que a Central usa.
+   */
+  const publicacoesNaoLidas = useMemo(() => {
+    void versaoPreferencias;
+    if (!autenticado) return 0;
+    return bancoDados
+      .obterAvisosVisiveisParaUsuarioAtual()
+      .filter((p) => !(p.lidoPorIds || []).includes(colaboradorAtual.id))
+      .length;
+  }, [autenticado, colaboradorAtual.id, conversasIndividuais, versaoPreferencias]);
   const [avisoNaoLido, setAvisoNaoLido] = useState<Mensagem | null>(null);
 
   // Modais acionados pelo botão '+'
@@ -856,8 +895,18 @@ export default function App() {
       visivel: podeUsar('conversas', colaboradorAtual), alvo: 'conversas',
     },
     {
-      id: 'grupos', rotulo: 'Grupos', icone: Users,
-      visivel: podeUsar('grupos', colaboradorAtual), alvo: 'grupos',
+      /**
+       * A CENTRAL É DE TODO MUNDO.
+       *
+       * Ela morava dentro de "Gerenciar", atrás de uma permissão de
+       * liderança — publicava-se para as 89 pessoas e umas 70 não
+       * tinham onde ver. Aqui ela não passa por `podeUsar`: quem
+       * PUBLICA continua sendo filtrado lá dentro, mas quem RECEBE é
+       * qualquer um, e é para isso que a tela existe.
+       */
+      id: 'central', rotulo: 'Central', icone: Megaphone,
+      visivel: true, alvo: 'central',
+      contador: publicacoesNaoLidas,
     },
     {
       id: 'ponto', rotulo: 'Ponto', icone: Clock,
@@ -893,6 +942,7 @@ export default function App() {
 
   const totalNaoLidas = conversasIndividuais.reduce((soma, c) => soma + (c.naoLidas || 0), 0);
 
+
   /**
    * Aba mostrada na área principal do computador.
    *
@@ -901,7 +951,7 @@ export default function App() {
    * que é informação útil, em vez do aviso vazio de "escolha uma conversa".
    */
   const abaDesktop: AbaPrincipal =
-    abaAtiva === 'conversas' || abaAtiva === 'grupos'
+    abaAtiva === 'conversas'
       ? podeVerRede
         ? 'painel'
         : 'ponto'
@@ -910,9 +960,8 @@ export default function App() {
   // Determina visibilidade do botão flutuante '+'
   // Conversas: liberado para todos iniciarem bate-papo privado com colega
   // Grupos: liberado estritamente para o Administrador
-  const deveExibirBotaoMais =
-    (abaAtiva === 'conversas') ||
-    (abaAtiva === 'grupos' && ehAdmin);
+  /* Grupos deixou de ser aba: criar grupo mora dentro de Conversas */
+  const deveExibirBotaoMais = abaAtiva === 'conversas';
 
   return (
     <div className="w-full h-[100dvh] flex flex-col bg-[var(--c-canvas)] text-[var(--c-texto)] overflow-hidden">
@@ -1123,55 +1172,97 @@ export default function App() {
 
           {/* Conteúdo da Aba Ativa */}
           <div className="flex-1 overflow-y-auto">
-            {/* ABA 1: CONVERSAS (só conversas individuais) */}
-            {abaAtiva === 'conversas' && (
-              conversasIndividuais.length === 0 ? (
-                <div className="p-8 text-center text-[var(--c-texto-3)] text-xs space-y-3">
-                  <p>Nenhuma conversa individual iniciada ainda.</p>
-                  <button
-                    type="button"
-                    onClick={() => setModalNovaConversaAberto(true)}
-                    className="py-2 px-3.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-xs"
-                  >
-                    + Chamar um Colega
-                  </button>
-                </div>
-              ) : (
-                <div className="divide-y divide-[var(--c-borda)]">
-                  {conversasVisiveis.map((c) => (
-                    <ItemConversa
-                      key={c.id}
-                      conversa={c}
-                      selecionada={conversaAtivaId === c.id}
-                      aoClicar={() => abrirConversaEmTelaCheia(c.id)}
-                      colaboradorId={colaboradorAtual.id}
-                      aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
-                    />
-                  ))}
-                </div>
-              )
-            )}
+            {/*
+              CONVERSAS E GRUPOS NA MESMA ABA.
 
-            {/* ABA 2: GRUPOS (canais operacionais) */}
-            {abaAtiva === 'grupos' && (
-              grupos.length === 0 ? (
-                <div className="p-8 text-center text-[var(--c-texto-3)] text-xs">
-                  Nenhum grupo disponível.
-                </div>
-              ) : (
-                <div className="divide-y divide-[var(--c-borda)]">
-                  {gruposVisiveis.map((g) => (
-                    <ItemConversa
-                      key={g.id}
-                      conversa={g}
-                      selecionada={conversaAtivaId === g.id}
-                      aoClicar={() => abrirConversaEmTelaCheia(g.id)}
-                      colaboradorId={colaboradorAtual.id}
-                      aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
-                    />
-                  ))}
-                </div>
-              )
+              Grupo é conversa. Ocupava uma aba inteira da barra para
+              mostrar uma lista que cabe aqui — e a pessoa tinha de
+              lembrar em qual das duas abas estava a mensagem que
+              procurava.
+
+              Os grupos ficam numa seção que RECOLHE, para não roubar
+              o espaço das conversas: o cabeçalho continua dizendo
+              quantas não lidas há dentro, que é o que faz alguém
+              abrir.
+            */}
+            {abaAtiva === 'conversas' && (
+              <>
+                {conversasIndividuais.length === 0 && grupos.length === 0 ? (
+                  <div className="p-8 text-center text-[var(--c-texto-3)] text-xs space-y-3">
+                    <p>Nenhuma conversa iniciada ainda.</p>
+                    <button
+                      type="button"
+                      onClick={() => setModalNovaConversaAberto(true)}
+                      className="py-2 px-3.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-xs"
+                    >
+                      + Nova conversa
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="divide-y divide-[var(--c-borda)]">
+                      {conversasVisiveis.map((c) => (
+                        <ItemConversa
+                          key={c.id}
+                          conversa={c}
+                          selecionada={conversaAtivaId === c.id}
+                          aoClicar={() => abrirConversaEmTelaCheia(c.id)}
+                          colaboradorId={colaboradorAtual.id}
+                          aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
+                        />
+                      ))}
+                    </div>
+
+                    {gruposVisiveis.length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setGruposAbertos((v) => !v)
+                          }
+                          className="w-full px-4 py-2.5 border-y border-[var(--c-borda)] bg-[var(--c-superficie)] flex items-center gap-2 text-left active:bg-[var(--c-superficie-2)] transition-colors"
+                        >
+                          {gruposAbertos ? (
+                            <ChevronUp className="w-4 h-4 text-[var(--c-texto-3)] shrink-0" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-[var(--c-texto-3)] shrink-0" />
+                          )}
+                          <Users className="w-3.5 h-3.5 text-[var(--c-texto-3)] shrink-0" />
+                          <span className="text-xs font-bold uppercase tracking-wider text-[var(--c-texto-2)]">
+                            Grupos
+                          </span>
+                          <span className="text-[11px] text-[var(--c-texto-3)]">
+                            {gruposVisiveis.length}
+                          </span>
+
+                          <div className="flex-1" />
+
+                          {/* Recolhido, o número de não lidas é o que faz abrir */}
+                          {naoLidasDosGrupos > 0 && (
+                            <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-[11px] font-bold flex items-center justify-center">
+                              {naoLidasDosGrupos}
+                            </span>
+                          )}
+                        </button>
+
+                        {gruposAbertos && (
+                          <div className="divide-y divide-[var(--c-borda)]">
+                            {gruposVisiveis.map((g) => (
+                              <ItemConversa
+                                key={g.id}
+                                conversa={g}
+                                selecionada={conversaAtivaId === g.id}
+                                aoClicar={() => abrirConversaEmTelaCheia(g.id)}
+                                colaboradorId={colaboradorAtual.id}
+                                aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </>
             )}
 
             {/* ABA 3: PAINEL DA REDE & GESTÃO DE PESSOAS (No mobile) */}
@@ -1241,6 +1332,21 @@ export default function App() {
             {/* PONTO e EU: no celular moram aqui, na coluna única. No
                 computador vão para a área principal, que é larga — espremer
                 o banco de horas em 340px deixava metade da tela vazia. */}
+            {/*
+              A CENTRAL, no celular.
+
+              É a tela onde a pessoa encontra o que foi publicado para
+              ela — comunicado, documento, tutorial. Antes isso morava
+              dentro de "Gerenciar", que a maior parte da rede não
+              alcança: publicava-se para 89 e umas 70 não tinham onde
+              ver.
+            */}
+            {abaAtiva === 'central' && (
+              <div className="block md:hidden h-full overflow-y-auto">
+                <CentralAvisos colaboradorAtual={colaboradorAtual} />
+              </div>
+            )}
+
             {abaAtiva === 'ponto' && (
               <div className="block md:hidden h-full">
                 <AbaPonto
@@ -1326,6 +1432,14 @@ export default function App() {
                   {aba.exibeAviso && avisoNaoLido && (
                     <span className="absolute top-2 right-1/4 w-2 h-2 rounded-full bg-red-500 ring-2 ring-[var(--c-superficie)]" />
                   )}
+
+                  {/* Número, e não bolinha: "3 para ler" faz abrir; um
+                      ponto vermelho só diz que existe alguma coisa */}
+                  {!!aba.contador && aba.contador > 0 && (
+                    <span className="absolute top-0.5 right-1/4 translate-x-1/2 min-w-[17px] h-[17px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-[var(--c-superficie)]">
+                      {aba.contador > 9 ? '9+' : aba.contador}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -1355,6 +1469,10 @@ export default function App() {
                 secaoAlvo={secaoAlvo}
                 aoConsumirSecao={consumirSecaoAlvo}
               />
+            </div>
+          ) : abaDesktop === 'central' ? (
+            <div className="w-full h-full flex flex-col bg-[var(--c-canvas)] overflow-y-auto">
+              <CentralAvisos colaboradorAtual={colaboradorAtual} />
             </div>
           ) : abaDesktop === 'ponto' ? (
             <div className="w-full max-w-[900px] h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">

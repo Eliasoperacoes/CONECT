@@ -42,6 +42,8 @@ import {
   TipoPublicacao,
   CategoriaPublicacao,
   DestinoPublicacao,
+  ROTULO_TIPO_PUBLICACAO_SINGULAR,
+  ROTULO_CATEGORIA,
   Loja,
   Setor,
   RegistroAuditoria,
@@ -2946,15 +2948,30 @@ class BancoDadosConecta {
     localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(lista));
 
     /**
-     * Publica no grupo "Avisos da Rede" — SEM A MARCAÇÃO.
+     * O CHAT RECEBE O AVISO, NÃO A PUBLICAÇÃO.
      *
-     * O chat mostra texto simples. Mandar o conteúdo cru faria a
-     * mensagem sair com `##` e `**` no meio, e quem lê no celular veria
-     * os sinais em vez da ênfase que eles deviam dar.
+     * Antes o conteúdo inteiro era despejado como mensagem. Três
+     * problemas: o comunicado de meia página empurrava a conversa da
+     * loja para cima; a formatação virava `##` e `**` soltos; e a
+     * publicação passava a existir em dois lugares, um deles sem
+     * anexo, sem ciência e sem lista de quem leu.
+     *
+     * Agora vai um recado curto — o que é, de quem, de que categoria —
+     * e o lugar onde se lê inteiro. A publicação mora na Central, que
+     * desde agora é aba de todo mundo.
      */
+    const resumo = [
+      `📢 ${ROTULO_TIPO_PUBLICACAO_SINGULAR[novoAviso.tipo].toUpperCase()}: ${dados.titulo.trim()}`,
+      `${ROTULO_CATEGORIA[novoAviso.categoria]} · publicado por ${atual.nome}`,
+      novoAviso.exigeConfirmacao ? '⚠️ Pede ciência de quem recebe.' : '',
+      'Abra a aba Central para ler e confirmar.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
     await this.enviarMensagem('grupo-avisos-da-rede', {
       tipo: 'texto',
-      texto: `📢 [${dados.titulo.trim().toUpperCase()}]\n${semFormatacao(dados.conteudo)}`,
+      texto: resumo,
     });
 
     this.registrarAuditoria('Publicação de Comunicado', 'aviso', `${atual.nome} publicou '${novoAviso.titulo}'.`);
