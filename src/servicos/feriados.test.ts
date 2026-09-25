@@ -162,6 +162,7 @@ test('O CACHE SÓ IMPORTA FOLHAS', async () => {
     '../tipos',
     './feriadosNacionais',
     './feriadosMunicipais',
+    './cacheDeLeitura',
   ]);
 
   /**
@@ -169,7 +170,7 @@ test('O CACHE SÓ IMPORTA FOLHAS', async () => {
    * decorativa. `../tipos` é permitido a elas: é declaração, não serviço,
    * e não importa ninguém de volta.
    */
-  for (const folha of ['feriadosNacionais', 'feriadosMunicipais']) {
+  for (const folha of ['feriadosNacionais', 'feriadosMunicipais', 'cacheDeLeitura']) {
     const fonteDaFolha = await Bun.file(`src/servicos/${folha}.ts`).text();
     const deQuemImporta = [...fonteDaFolha.matchAll(/from\s+'([^']+)'/g)].map(
       (m) => m[1]

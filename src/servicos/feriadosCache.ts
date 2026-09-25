@@ -19,6 +19,7 @@
 import { Feriado, Loja, INFORMACOES_LOJAS } from '../tipos';
 import { feriadosNacionaisDe } from './feriadosNacionais';
 import { feriadosLocaisDe, cidadeDaLoja } from './feriadosMunicipais';
+import { lerLista } from './cacheDeLeitura';
 
 export const CHAVE_FERIADOS = 'conecta_v4_feriados';
 
@@ -34,15 +35,11 @@ export const assinarFeriados = (ouvinte: () => void): (() => void) => {
   };
 };
 
-export const lerFeriados = (): Feriado[] => {
-  try {
-    const bruto = localStorage.getItem(CHAVE_FERIADOS);
-    const lido = bruto ? JSON.parse(bruto) : [];
-    return Array.isArray(lido) ? (lido as Feriado[]) : [];
-  } catch {
-    return [];
-  }
-};
+/**
+ * Lida 4.984 vezes para montar "Equipe & Ponto": duas por dia apurado.
+ * `lerLista` guarda o resultado e só reparseia quando o texto muda.
+ */
+export const lerFeriados = (): Feriado[] => lerLista<Feriado>(CHAVE_FERIADOS);
 
 export const gravarFeriados = (lista: Feriado[]): void => {
   localStorage.setItem(CHAVE_FERIADOS, JSON.stringify(lista));

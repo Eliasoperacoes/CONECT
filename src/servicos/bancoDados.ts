@@ -20,6 +20,7 @@ import {
 import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
 import { alcanca } from './mural';
+import { lerLista } from './cacheDeLeitura';
 import {
   nuvemComunicacao,
   conversaJaEstaNoBanco,
@@ -847,17 +848,23 @@ class BancoDadosConecta {
 
   // --- COLABORADORES ---
 
+  /**
+   * Lida 2.672 vezes para montar "Equipe & Ponto". O `JSON.parse` sai do
+   * caminho por `lerLista`, que só reparseia quando o texto muda.
+   *
+   * O `.map` FICA, e não entra no cache: ele devolve objetos novos a
+   * cada chamada, e é isso que impede uma tela de alterar sem querer a
+   * ficha que outra está lendo. São 89 itens — o custo é irrelevante
+   * perto do parse de 3 MB que ele acompanhava.
+   */
   obterColaboradores(): Colaborador[] {
-    try {
-      const bruto = localStorage.getItem(CHAVE_COLABORADORES);
-      const lista: Colaborador[] = bruto ? JSON.parse(bruto) : [COLABORADOR_ADMIN_ELIAS];
-      return lista.map((c) => ({
-        ...c,
-        foto: c.foto && !c.foto.includes('unsplash.com') ? c.foto : FOTO_PADRAO_LOGO_EMPRESA,
-      }));
-    } catch {
-      return [COLABORADOR_ADMIN_ELIAS];
-    }
+    const lista = lerLista<Colaborador>(CHAVE_COLABORADORES);
+    if (lista.length === 0) return [COLABORADOR_ADMIN_ELIAS];
+
+    return lista.map((c) => ({
+      ...c,
+      foto: c.foto && !c.foto.includes('unsplash.com') ? c.foto : FOTO_PADRAO_LOGO_EMPRESA,
+    }));
   }
 
   obterColaboradorPorId(id: string): Colaborador | undefined {

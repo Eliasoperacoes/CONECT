@@ -72,6 +72,7 @@ import { feriadoEm } from './feriadosCache';
 import { montarDocumento } from './documento';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
+import { lerLista } from './cacheDeLeitura';
 
 const CHAVE_REGISTROS_PONTO = 'conecta_v4_registros_ponto';
 const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
@@ -524,14 +525,15 @@ class ServicoPonto {
 
   // --- REGISTROS ---
 
+  /**
+   * Esta função é chamada 2.759 vezes para montar "Equipe & Ponto" —
+   * uma por pessoa, por dia. Fazia `JSON.parse` de 3,1 MB em cada uma:
+   * 32 dos 33 segundos que a tela levava para abrir.
+   *
+   * `lerLista` guarda o resultado e só reparseia quando o texto muda.
+   */
   private lerRegistros(): RegistroPonto[] {
-    try {
-      const bruto = localStorage.getItem(CHAVE_REGISTROS_PONTO);
-      const lista = bruto ? JSON.parse(bruto) : [];
-      return Array.isArray(lista) ? lista : [];
-    } catch {
-      return [];
-    }
+    return lerLista<RegistroPonto>(CHAVE_REGISTROS_PONTO);
   }
 
   private gravarRegistros(registros: RegistroPonto[]): void {
@@ -1202,13 +1204,7 @@ class ServicoPonto {
   // --- APURAÇÃO DO DIA E APROVAÇÃO ---
 
   private lerAjustes(): AjusteJornada[] {
-    try {
-      const bruto = localStorage.getItem(CHAVE_AJUSTES);
-      const lista = bruto ? JSON.parse(bruto) : [];
-      return Array.isArray(lista) ? lista : [];
-    } catch {
-      return [];
-    }
+    return lerLista<AjusteJornada>(CHAVE_AJUSTES);
   }
 
   private gravarAjustes(ajustes: AjusteJornada[]): void {

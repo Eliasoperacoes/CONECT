@@ -59,7 +59,21 @@ test('o cache das ausências não importa NADA além de tipos', async () => {
    * A regra é de onde se importa, não de como se formata.
    */
   const imports = [...fonte.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
-  expect(imports).toEqual(['../tipos']);
+  expect(imports).toEqual(['../tipos', './cacheDeLeitura']);
+
+  /**
+   * `cacheDeLeitura` entrou porque este arquivo era lido 968 vezes para
+   * montar os números do RH, refazendo o `JSON.parse` em cada uma.
+   *
+   * Ele é aceitável aqui pelo mesmo motivo que `../tipos`: é FOLHA —
+   * não importa ninguém, então não pode fechar ciclo com ninguém. A
+   * regra continua sendo essa, e não uma lista de nomes permitidos.
+   */
+  const doCache = await Bun.file(
+    new URL('./cacheDeLeitura.ts', import.meta.url)
+  ).text();
+
+  expect([...doCache.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1])).toEqual([]);
 });
 
 test('quem entrega dado do banco não importa serviço de regra', async () => {

@@ -25,6 +25,7 @@ import {
   SituacaoDoDia,
   SITUACAO_POR_TIPO,
 } from '../tipos';
+import { lerLista } from './cacheDeLeitura';
 
 export const CHAVE_JUSTIFICATIVAS = 'conecta_v4_justificativas_ausencia';
 
@@ -40,15 +41,12 @@ export const assinarJustificativas = (ouvinte: () => void): (() => void) => {
   };
 };
 
-export const lerJustificativas = (): JustificativaAusencia[] => {
-  try {
-    const bruto = localStorage.getItem(CHAVE_JUSTIFICATIVAS);
-    const lista = bruto ? JSON.parse(bruto) : [];
-    return Array.isArray(lista) ? lista : [];
-  } catch {
-    return [];
-  }
-};
+/**
+ * Lida 968 vezes para montar os números do RH. `lerLista` guarda o
+ * resultado e só reparseia quando o texto muda.
+ */
+export const lerJustificativas = (): JustificativaAusencia[] =>
+  lerLista<JustificativaAusencia>(CHAVE_JUSTIFICATIVAS);
 
 export const gravarJustificativas = (lista: JustificativaAusencia[]): void => {
   try {
