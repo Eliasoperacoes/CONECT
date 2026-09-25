@@ -462,3 +462,195 @@ html, body {
   border: 1px solid var(--c-borda);
   margin: 0.6rem 0;
 }
+
+/* ============================================================
+   O CAMPO QUE MOSTRA O TEXTO JÁ FORMATADO
+   ============================================================
+
+   Aqui a formatação é feita SEM tirar os sinais do texto: os `**`, o
+   `## `, o `- ` continuam dentro do campo, dentro de spans `.tr-sinal`,
+   e é este CSS que os esconde. Esconder não é apagar — `textContent`
+   devolve o escondido também, e é assim que o texto volta idêntico ao
+   que entrou.
+
+   Mexer no `display` de `.tr-sinal` é mexer no que é GRAVADO. Ver
+   src/servicos/textoAoVivo.ts. */
+
+.tr-vivo {
+  position: relative;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* O aviso de campo vazio. `::before` não entra no `textContent`, então
+   ele não corre o risco de ser gravado junto. */
+.tr-vivo[data-vazio]:not([data-vazio=''])::before {
+  content: attr(data-vazio);
+  position: absolute;
+  color: var(--c-texto-3);
+  pointer-events: none;
+}
+
+/* OS SINAIS: sumidos, e de volta na linha onde o cursor está.
+
+   Esmaecidos, e não coloridos: eles servem para quem está editando
+   achar o `**` que precisa apagar, e não para disputar a atenção com o
+   texto. Sem eles à vista na linha ativa, apagar marcação é procurar no
+   escuro — e o cursor não pode parar dentro do que não é desenhado. */
+.tr-vivo .tr-sinal {
+  display: none;
+}
+
+.tr-vivo .tr-l-ativa .tr-sinal {
+  display: inline;
+  color: var(--c-texto-3);
+  opacity: 0.55;
+  font-weight: 400;
+}
+
+/* Cada linha é um bloco. A altura mínima segura a linha vazia, que é o
+   que separa um parágrafo do outro. */
+.tr-vivo .tr-l {
+  min-height: 1.5em;
+}
+
+.tr-vivo .tr-l-h1 {
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1.3;
+  margin-top: 0.5rem;
+}
+
+.tr-vivo .tr-l-h2 {
+  font-size: 1.12rem;
+  font-weight: 700;
+  line-height: 1.35;
+  margin-top: 0.4rem;
+}
+
+.tr-vivo .tr-l-h3 {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* A LISTA: o marcador vem daqui, e não do texto.
+
+   Um `•` escrito no desenho entraria no `textContent` e seria gravado
+   dentro do documento — e a passada seguinte o leria como texto, somando
+   um ponto a cada vez. */
+.tr-vivo .tr-l-item,
+.tr-vivo .tr-l-tarefa,
+.tr-vivo .tr-l-numero {
+  padding-left: 1.5rem;
+  position: relative;
+}
+
+.tr-vivo .tr-l-item::before {
+  content: '•';
+  position: absolute;
+  left: 0.5rem;
+  color: var(--c-acento);
+  font-weight: 700;
+}
+
+.tr-vivo .tr-numero-visto {
+  position: absolute;
+  left: 0;
+  width: 1.3rem;
+  text-align: right;
+  color: var(--c-acento);
+  font-weight: 700;
+}
+
+/* A caixa da tarefa: desenho puro, texto nenhum. O `[ ]` continua no
+   texto, como sinal. */
+.tr-vivo .tr-caixa-viva {
+  position: absolute;
+  left: 0.15rem;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.22rem;
+  border: 1.5px solid var(--c-borda-forte, var(--c-borda));
+  border-radius: 0.25rem;
+  display: inline-block;
+}
+
+.tr-vivo .tr-l-feita .tr-caixa-viva {
+  background: var(--c-acento);
+  border-color: var(--c-acento);
+}
+
+.tr-vivo .tr-l-feita .tr-caixa-viva::before {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  font-size: 0.7rem;
+  line-height: 0.95rem;
+  text-align: center;
+  color: var(--c-sobre-acento);
+}
+
+.tr-vivo .tr-l-feita {
+  color: var(--c-texto-3);
+  text-decoration: line-through;
+}
+
+.tr-vivo .tr-l-citacao {
+  border-left: 3px solid var(--c-acento);
+  padding-left: 0.7rem;
+  color: var(--c-texto-2);
+  font-style: italic;
+}
+
+/* A régua: quando os sinais somem, a linha fica sem nada dentro — então
+   o traço é a borda dela. */
+.tr-vivo .tr-l-regua {
+  border-bottom: 1px solid var(--c-borda);
+  margin: 0.5rem 0;
+}
+
+.tr-vivo .tr-l-ativa.tr-l-regua {
+  border-bottom-color: transparent;
+}
+
+/* TABELA: monospace, com as barras à vista.
+
+   Uma `<table>` de verdade aqui seria o pior lugar: o cursor dentro de
+   célula em campo editável é onde os navegadores mais divergem, e
+   tabela que come o Enter trava quem escreve. Quem LÊ a publicação vê a
+   tabela de verdade — `paraHtml` a desenha. */
+.tr-vivo .tr-l-tabela {
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-size: 0.82rem;
+  background: var(--c-superficie-2);
+  padding: 0.1rem 0.4rem;
+  color: var(--c-texto-2);
+}
+
+/* A imagem que ainda não foi assinada. O texto vem daqui, e não do
+   desenho: no desenho ele seria gravado no documento. */
+.tr-vivo .tr-imagem-faltando::before {
+  content: '🖼 imagem';
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border: 1px dashed var(--c-borda);
+  border-radius: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--c-texto-3);
+}
+
+/* Dentro do campo a imagem é pequena: ela está ali para se conferir que
+   é o print certo, e não para ocupar a tela de quem ainda escreve. */
+.tr-vivo .tr-imagem {
+  max-height: 11rem;
+  width: auto;
+  margin: 0.3rem 0;
+}
+
+/* O link não é clicável enquanto se edita: clicar levaria a pessoa
+   embora no meio da frase que ela está escrevendo. */
+.tr-vivo .tr-link {
+  color: var(--c-acento);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

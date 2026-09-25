@@ -44,6 +44,7 @@ import {
   casaComNome,
 } from '../servicos/textoRico';
 import { abrirDocumento } from '../servicos/rh';
+import { SuperficieAoVivo, CampoAoVivo } from './SuperficieAoVivo';
 
 interface Props {
   valor: string;
@@ -232,8 +233,45 @@ export const EditorTexto: React.FC<Props> = ({
   pessoas = [],
 }) => {
   const campo = useRef<HTMLTextAreaElement>(null);
-  const [vendo, setVendo] = useState(false);
+  const campoVivo = useRef<CampoAoVivo>(null);
   const [subindo, setSubindo] = useState(false);
+
+  /**
+   * DOIS MODOS, e o de ver a marcação existe como SAÍDA.
+   *
+   * O campo ao vivo mostra o texto formatado, que é o que se pediu. Mas
+   * ele é um campo editável de verdade, e campo editável é onde os
+   * navegadores mais divergem — se um celular do balcão se comportar
+   * mal, quem está escrevendo precisa de um caminho que sempre
+   * funcionou. É este: o campo de texto puro, com a marcação à vista.
+   *
+   * Os dois gravam exatamente a mesma coisa, porque é a mesma string.
+   */
+  const [modo, setModo] = useState<'vivo' | 'marcacao'>('vivo');
+
+  /** Onde está o cursor, qualquer que seja o campo em uso. */
+  const selecaoAgora = (): { inicio: number; fim: number } => {
+    if (modo === 'vivo') return campoVivo.current?.selecao() ?? { inicio: 0, fim: 0 };
+
+    const alvo = campo.current;
+    return alvo
+      ? { inicio: alvo.selectionStart, fim: alvo.selectionEnd }
+      : { inicio: valor.length, fim: valor.length };
+  };
+
+  /**
+   * Devolve o cursor para onde ele estava.
+   *
+   * O `setTimeout` de zero espera o React redesenhar: mexer na seleção
+   * antes disso é mexer no texto antigo.
+   */
+  const devolverCursor = (inicio: number, fim: number) => {
+    setTimeout(() => {
+      if (modo === 'vivo') return campoVivo.current?.definirSelecao(inicio, fim);
+      campo.current?.focus();
+      campo.current?.setSelectionRange(inicio, fim);
+    }, 0);
+  };
 
   /**
    * A CITAÇÃO EM ANDAMENTO: o que foi digitado depois do `@` e onde o
@@ -276,36 +314,28 @@ export const EditorTexto: React.FC<Props> = ({
   const citar = (pessoa: PessoaCitavel) => {
     if (!citacao) return;
 
-    const alvo = campo.current;
-    const fim = alvo ? alvo.selectionEnd : citacao.inicio + citacao.termo.length + 1;
+    const fim = selecaoAgora().fim || citacao.inicio + citacao.termo.length + 1;
     const marcacao = `${marcacaoDeCitacao(pessoa.nome, pessoa.id)} `;
 
     aoMudar(valor.slice(0, citacao.inicio) + marcacao + valor.slice(fim));
     setCitacao(null);
-
-    // O `setTimeout` de zero espera o React redesenhar: mexer na
-    // seleção antes disso é mexer no texto antigo
-    const depois = citacao.inicio + marcacao.length;
-    setTimeout(() => {
-      alvo?.focus();
-      alvo?.setSelectionRange(depois, depois);
-    }, 0);
+    devolverCursor(
+      citacao.inicio + marcacao.length,
+      citacao.inicio + marcacao.length
+    );
   };
 
   /**
-   * OS ENDEREÇOS DAS IMAGENS, para a prévia mostrá-las.
+   * OS ENDEREÇOS DAS IMAGENS, para o campo mostrá-las.
    *
-   * O caminho no balde não abre sozinho: o Supabase exige um
-   * endereço assinado, e assinar é uma ida à rede. Sem isto, a aba
-   * "Como vai ficar" mostraria a legenda no lugar da foto — e quem
-   * está escrevendo não teria como conferir se inseriu a imagem
-   * certa.
+   * O caminho no balde não abre sozinho: o Supabase exige um endereço
+   * assinado, e assinar é uma ida à rede. Sem isto, apareceria a
+   * legenda no lugar da foto — e quem está escrevendo um procedimento
+   * não teria como conferir se inseriu o print certo.
    */
   const [enderecos, setEnderecos] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (!vendo) return;
-
     let vivo = true;
     const faltando = imagensCitadas(valor).filter((c) => !enderecos[c]);
     if (faltando.length === 0) return;
@@ -324,7 +354,7 @@ export const EditorTexto: React.FC<Props> = ({
     return () => {
       vivo = false;
     };
-  }, [vendo, valor, enderecos]);
+  }, [valor, enderecos]);
 
   /**
    * Sobe a imagem e INSERE ONDE O CURSOR ESTAVA.
@@ -336,8 +366,7 @@ export const EditorTexto: React.FC<Props> = ({
   const inserirImagem = async (arquivo: File) => {
     if (!aoSubirImagem) return;
 
-    const alvo = campo.current;
-    const onde = alvo ? alvo.selectionEnd : valor.length;
+    const onde = selecaoAgora().fim || valor.length;
 
     setSubindo(true);
     const caminho = await aoSubirImagem(arquivo);
@@ -364,27 +393,19 @@ export const EditorTexto: React.FC<Props> = ({
   /**
    * Aplica e DEVOLVE O CURSOR para onde ele estava.
    *
-   * Sem o `setSelectionRange`, cada clique na barra manda o cursor para
-   * o fim do texto — e quem está formatando o meio de um parágrafo
-   * perde o lugar a cada palavra em negrito.
-   *
-   * O `setTimeout` de zero espera o React redesenhar: mexer na seleção
-   * antes disso é mexer no texto antigo.
+   * Sem isso, cada clique na barra manda o cursor para o fim do texto —
+   * e quem está formatando o meio de um parágrafo perde o lugar a cada
+   * palavra em negrito.
    */
   const usar = (ferramenta: Ferramenta) => {
-    const alvo = campo.current;
-    if (!alvo) return;
+    const { inicio, fim } = selecaoAgora();
+    const resultado = ferramenta.aplicar(valor, inicio, fim);
 
-    const resultado = ferramenta.aplicar(valor, alvo.selectionStart, alvo.selectionEnd);
     aoMudar(resultado.texto);
-
-    setTimeout(() => {
-      alvo.focus();
-      alvo.setSelectionRange(resultado.inicio, resultado.fim);
-    }, 0);
+    devolverCursor(resultado.inicio, resultado.fim);
   };
 
-  const aoTeclar = (evento: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const aoTeclar = (evento: React.KeyboardEvent<HTMLElement>) => {
     /**
      * A LISTA DE NOMES RESPONDE PRIMEIRO.
      *
@@ -438,7 +459,6 @@ export const EditorTexto: React.FC<Props> = ({
             type="button"
             title={f.titulo}
             aria-label={f.titulo}
-            disabled={vendo}
             /**
              * `onMouseDown` com `preventDefault`, e não `onClick`.
              *
@@ -471,7 +491,7 @@ export const EditorTexto: React.FC<Props> = ({
           <label
             title={subindo ? 'Enviando...' : 'Inserir imagem'}
             className={`p-1.5 rounded-lg text-[var(--c-texto-2)] hover:bg-[var(--c-superficie-2)] hover:text-[var(--c-texto)] transition-colors ${
-              vendo || subindo ? 'opacity-30' : 'cursor-pointer'
+              subindo ? 'opacity-30' : 'cursor-pointer'
             }`}
           >
             {subindo ? (
@@ -483,7 +503,7 @@ export const EditorTexto: React.FC<Props> = ({
               type="file"
               accept="image/*"
               className="hidden"
-              disabled={vendo || subindo}
+              disabled={subindo}
               onChange={(e) => {
                 const arquivo = e.target.files?.[0];
                 if (arquivo) inserirImagem(arquivo);
@@ -496,47 +516,58 @@ export const EditorTexto: React.FC<Props> = ({
 
         <div className="flex-1" />
 
+        {/*
+          A SAÍDA, e não um modo de igual importância.
+
+          O campo ao vivo é o normal. Este botão existe porque campo
+          editável é onde os navegadores mais divergem — se um celular
+          do balcão se comportar mal, quem está escrevendo precisa de um
+          caminho que sempre funcionou. Os dois gravam a mesma string.
+        */}
         <button
           type="button"
-          onClick={() => setVendo((v) => !v)}
+          title={
+            modo === 'vivo'
+              ? 'Ver a marcação do texto'
+              : 'Voltar ao texto formatado'
+          }
+          onClick={() => setModo((m) => (m === 'vivo' ? 'marcacao' : 'vivo'))}
           className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors ${
-            vendo
+            modo === 'marcacao'
               ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
               : 'text-[var(--c-texto-2)] hover:bg-[var(--c-superficie-2)]'
           }`}
         >
-          {vendo ? (
+          {modo === 'marcacao' ? (
             <>
-              <Pencil className="w-3 h-3" /> Escrever
+              <Eye className="w-3 h-3" /> Formatado
             </>
           ) : (
             <>
-              <Eye className="w-3 h-3" /> Como vai ficar
+              <Pencil className="w-3 h-3" /> Marcação
             </>
           )}
         </button>
       </div>
 
-      {vendo ? (
-        <div
-          className={`px-3 py-2.5 text-sm text-[var(--c-texto)] texto-rico overflow-y-auto ${
-            alturaCheia ? 'flex-1 min-h-0' : ''
-          }`}
-          style={alturaCheia ? undefined : { minHeight: `${linhas * 1.5}rem` }}
-          /**
-           * O HTML vem de `paraHtml`, que escapa TODO o texto antes de
-           * aplicar qualquer marcação. Depois disso não há um `<` no
-           * conteúdo, e as tags que saem de lá são só as que ele mesmo
-           * escreveu.
-           */
-          dangerouslySetInnerHTML={{
-            __html:
-              paraHtml(valor, enderecos) ||
-              '<p class="tr-p" style="opacity:.5">Nada escrito ainda.</p>',
-          }}
-        />
-      ) : (
-        <div className={`relative flex flex-col ${alturaCheia ? 'flex-1 min-h-0' : ''}`}>
+      <div className={`relative flex flex-col ${alturaCheia ? 'flex-1 min-h-0' : ''}`}>
+        {modo === 'vivo' ? (
+          <SuperficieAoVivo
+            campoRef={campoVivo}
+            valor={valor}
+            aoMudar={(texto) => {
+              aoMudar(texto);
+              /* O `@` acompanha a digitação também aqui: a lista de
+                 nomes não pode existir só num dos dois campos */
+              conferirCitacao(texto, campoVivo.current?.selecao().fim ?? texto.length);
+            }}
+            imagens={enderecos}
+            placeholder={placeholder}
+            alturaCheia={alturaCheia}
+            linhas={linhas}
+            aoTeclar={aoTeclar}
+          />
+        ) : (
           <textarea
             ref={campo}
             value={valor}
@@ -560,8 +591,14 @@ export const EditorTexto: React.FC<Props> = ({
               alturaCheia ? 'flex-1 min-h-0 resize-none' : 'resize-y'
             }`}
           />
+        )}
 
-          {candidatos.length > 0 && (
+        {/*
+          A LISTA DE NOMES fica FORA da escolha de campo: ela serve aos
+          dois. Duplicá-la em cada um é como a lista de setores divergiu
+          entre duas telas.
+        */}
+        {candidatos.length > 0 && (
             <div className="absolute bottom-2 left-2 right-2 sm:right-auto sm:w-72 z-20 rounded-xl border border-[var(--c-borda)] bg-[var(--c-superficie)] shadow-xl overflow-hidden">
               <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[var(--c-texto-3)] border-b border-[var(--c-borda)]">
                 Citar colega
@@ -594,10 +631,9 @@ export const EditorTexto: React.FC<Props> = ({
                   </span>
                 </button>
               ))}
-            </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

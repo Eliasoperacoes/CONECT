@@ -42,7 +42,7 @@
  */
 
 /** Tira o poder de qualquer HTML que venha no texto. */
-const escapar = (texto: string): string =>
+export const escapar = (texto: string): string =>
   texto
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -57,7 +57,7 @@ const escapar = (texto: string): string =>
  * na sessão de quem clica — e ela atravessaria o escape, porque o
  * endereço vai para dentro de um atributo que nós mesmos escrevemos.
  */
-const enderecoSeguro = (bruto: string): string | null => {
+export const enderecoSeguro = (bruto: string): string | null => {
   const limpo = bruto.trim();
   return /^https?:\/\//i.test(limpo) ? limpo : null;
 };

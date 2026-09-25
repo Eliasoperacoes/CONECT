@@ -700,3 +700,153 @@ test('AS COLUNAS DA ESQUERDA RECOLHEM, uma a uma', async () => {
   expect(tela).toContain("alternarColuna('categorias')");
   expect(tela).toContain("{!colunasFechadas.has('unidades') && (");
 });
+
+// ============================================================
+// O CAMPO QUE MOSTRA O TEXTO JÁ FORMATADO
+// ============================================================
+
+test('O EDITOR ESCREVE NO CAMPO AO VIVO, e não no campo cru', async () => {
+  /**
+   * Era um campo de texto com uma aba "Como vai ficar" do lado. Quem
+   * escrevia via `**assim**` e conferia depois — e quem não conhecia a
+   * marcação não descobria que ela existia.
+   */
+  const editor = semComentarios(await Bun.file('src/componentes/EditorTexto.tsx').text());
+
+  expect(editor).toContain('<SuperficieAoVivo');
+  expect(editor).toContain('campoRef={campoVivo}');
+  expect(editor).toContain("useState<'vivo' | 'marcacao'>('vivo')");
+});
+
+test('a SAÍDA para o campo cru continua existindo', async () => {
+  /**
+   * Campo editável é onde os navegadores mais divergem. Se um celular
+   * do balcão se comportar mal, quem está escrevendo precisa de um
+   * caminho que sempre funcionou — e é o mesmo texto, então nada se
+   * perde na troca.
+   */
+  const editor = semComentarios(await Bun.file('src/componentes/EditorTexto.tsx').text());
+
+  expect(editor).toContain('<textarea');
+  expect(editor).toContain("setModo((m) => (m === 'vivo' ? 'marcacao' : 'vivo'))");
+});
+
+test('A BARRA E O `@` SERVEM AOS DOIS CAMPOS', async () => {
+  /**
+   * O jeito errado seria a barra saber mexer só no campo de texto, e a
+   * lista de nomes existir só nele. Seriam duas implementações da mesma
+   * coisa, e a segunda divergiria — é a duplicação que este projeto já
+   * pagou quatro vezes.
+   *
+   * Então a seleção é perguntada a UMA função, que sabe qual campo está
+   * em uso, e a lista de nomes fica fora da escolha de campo.
+   */
+  const editor = semComentarios(await Bun.file('src/componentes/EditorTexto.tsx').text());
+
+  expect(editor).toContain('const selecaoAgora = ()');
+  expect(editor).toContain('const devolverCursor = (');
+
+  // A barra e a imagem usam a função, e não `selectionStart` na mão
+  const usos = editor.match(/selecaoAgora\(\)/g) || [];
+  expect(usos.length).toBeGreaterThanOrEqual(3);
+
+  /**
+   * A lista de nomes é desenhada UMA VEZ. Duas ocorrências seriam uma
+   * cópia por campo — e a segunda divergiria na primeira correção.
+   */
+  expect((editor.match(/\{candidatos\.length > 0 && \(/g) || []).length).toBe(1);
+
+  /* E a barra é desenhada uma vez também, fora da escolha de campo */
+  expect((editor.match(/FERRAMENTAS\.map/g) || []).length).toBe(1);
+});
+
+test('ENTER E COLAR SÃO TRATADOS POR NÓS, o resto é do navegador', async () => {
+  /**
+   * Cada navegador quebra a linha do seu jeito — um cria um `<div>`
+   * irmão, outro aninha. Aninhado, duas linhas viram uma na leitura de
+   * volta e a quebra SE PERDE do documento. Colar traz o HTML da
+   * origem, com fonte e cor do Word.
+   *
+   * O resto NÃO se intercepta: a digitação por deslize e a correção
+   * automática do Android dependem do comportamento nativo, e este
+   * sistema abre no celular do balcão.
+   */
+  const campo = semComentarios(
+    await Bun.file('src/componentes/SuperficieAoVivo.tsx').text()
+  );
+
+  expect(campo).toContain("if (evento.key === 'Enter'");
+  expect(campo).toContain('onPaste=');
+  expect(campo).toContain("e.clipboardData.getData('text/plain')");
+
+  // E o desfazer é nosso, porque refazer o desenho apaga o do navegador
+  expect(campo).toContain("evento.key.toLowerCase() === 'z'");
+  expect(campo).toContain('desfazer.current');
+});
+
+test('O DESENHO ESPERA A PAUSA, e não redesenha a cada tecla', async () => {
+  /**
+   * Refazer o desenho no meio da digitação briga com o navegador, e
+   * cada refeito precisa recolocar o cursor — o que aparece como letra
+   * saltando de lugar.
+   */
+  const campo = semComentarios(
+    await Bun.file('src/componentes/SuperficieAoVivo.tsx').text()
+  );
+
+  /**
+   * A espera tem de ser A DO RELÓGIO, e não um `setTimeout` de zero
+   * qualquer: zero devolve o controle ao navegador mas redesenha na
+   * tecla seguinte do mesmo jeito.
+   */
+  expect(campo).toMatch(
+    /relogio\.current = setTimeout\([\s\S]{0,500}\}, PAUSA_ATE_REDESENHAR\);/
+  );
+  expect(campo).toContain('const PAUSA_ATE_REDESENHAR = 250;');
+
+  /* E a tecla anterior cancela o relógio: sem isto, dez teclas em
+     sequência marcam dez redesenhos, e os nove primeiros caem no meio
+     da digitação */
+  expect(campo).toContain('clearTimeout(relogio.current)');
+
+  /* Quem digita marca o desenho como em dia SEM desenhar — é isso que
+     impede o efeito do React de redesenhar por conta */
+  expect(campo).toContain('desenhado.current = { texto, ativa: linhaAtiva.current };');
+});
+
+test('O CSS ESCONDE OS SINAIS, e os reacende na linha do cursor', async () => {
+  /**
+   * É este par de regras que sustenta a ideia toda: o texto parece
+   * formatado porque os sinais estão ESCONDIDOS, e não apagados —
+   * `textContent` devolve o escondido, e é dele que vem o que é gravado.
+   *
+   * Uma regra que apagasse o sinal de verdade (`content: ''`) ou que o
+   * deixasse sempre à vista quebraria ou o documento ou a promessa.
+   */
+  const css = await Bun.file('src/index.css').text();
+
+  expect(css).toMatch(/\.tr-vivo \.tr-sinal\s*\{\s*display:\s*none;/);
+  expect(css).toMatch(/\.tr-vivo \.tr-l-ativa \.tr-sinal\s*\{[^}]*display:\s*inline;/);
+
+  /**
+   * E o marcador da lista vem do CSS. Um `•` no desenho entraria no
+   * `textContent` e seria GRAVADO — a passada seguinte o leria como
+   * texto, somando um ponto a cada vez.
+   */
+  expect(css).toMatch(/\.tr-vivo \.tr-l-item::before\s*\{\s*content:\s*'•'/);
+  expect(css).toContain('.tr-vivo .tr-caixa-viva');
+});
+
+test('o campo ao vivo NÃO tem um segundo desenhador de texto', async () => {
+  /**
+   * `paraHtml` desenha para quem LÊ e descarta os sinais; `textoAoVivo`
+   * desenha para quem ESCREVE e os preserva. São dois trabalhos, e está
+   * certo que sejam duas funções — mas a SEGURANÇA não pode ser duas:
+   * `escapar` e `enderecoSeguro` vêm de um lugar só.
+   */
+  const aoVivo = semComentarios(await Bun.file('src/servicos/textoAoVivo.ts').text());
+
+  expect(aoVivo).toContain("import { escapar, enderecoSeguro } from './textoRico'");
+  expect(aoVivo).not.toContain('const escapar =');
+  expect(aoVivo).not.toContain('const enderecoSeguro =');
+});
