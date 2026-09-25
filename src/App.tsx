@@ -42,6 +42,7 @@ const ESPACO_ENTRE_JANELAS = 12;
  */
 const MAXIMO_JANELAS_ABERTAS = 3;
 import { bancoDados } from './servicos/bancoDados';
+import { manterSeIgual } from './servicos/igualdade';
 import {
   ondeParei,
   lembrarOndeParei,
@@ -380,15 +381,37 @@ export default function App() {
   const [modalNovaConversaAberto, setModalNovaConversaAberto] = useState(false);
   const [modalCriarGrupoAberto, setModalCriarGrupoAberto] = useState(false);
 
-  // Carrega e sincroniza dados
+  /**
+   * Carrega e sincroniza dados — SÓ TROCANDO O QUE MUDOU DE VERDADE.
+   *
+   * Isto roda a cada notificação do banco, e são 34 lugares que
+   * notificam: presença, mensagem que chega, sincronização da nuvem.
+   *
+   * O problema é que `obterColaboradores()` lê do `localStorage` com
+   * `JSON.parse` e ainda faz `.map(c => ({ ...c }))` — devolve objetos
+   * NOVOS toda vez, mesmo sem um byte ter mudado. React compara por
+   * identidade, então a aplicação inteira redesenhava sozinha várias
+   * vezes por minuto.
+   *
+   * O sintoma não parecia isso: "o clique não pega de primeira" nas
+   * abas de dentro. O navegador só emite `click` quando o `mousedown` e
+   * o `mouseup` caem no MESMO elemento — se o redesenho acontece entre
+   * os dois, o clique não existe.
+   */
   const recarregarDados = () => {
-    const atual = bancoDados.obterColaboradorAtual();
-    setColaboradorAtual(atual);
+    setColaboradorAtual((anterior) =>
+      manterSeIgual(anterior, bancoDados.obterColaboradorAtual())
+    );
     // No modo rede a sessão do banco é a fonte da verdade
     if (!usandoNuvem()) setAutenticado(bancoDados.estaAutenticado());
-    setConversasIndividuais(bancoDados.obterConversasIndividuais());
-    setGrupos(bancoDados.obterGrupos());
-    setAvisoNaoLido(bancoDados.obterAvisoDirecaoNaoLido());
+
+    setConversasIndividuais((anterior) =>
+      manterSeIgual(anterior, bancoDados.obterConversasIndividuais())
+    );
+    setGrupos((anterior) => manterSeIgual(anterior, bancoDados.obterGrupos()));
+    setAvisoNaoLido((anterior) =>
+      manterSeIgual(anterior, bancoDados.obterAvisoDirecaoNaoLido())
+    );
   };
 
   useEffect(() => {

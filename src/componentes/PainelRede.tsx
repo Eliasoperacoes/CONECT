@@ -31,6 +31,7 @@ import { podeUsar } from '../servicos/permissoes';
 import { pendenciasParaDecidir as pendenciasDeAusencia } from '../servicos/justificativas';
 import { pendenciasDeFolga } from '../servicos/justificativas';
 import { bancoDados } from '../servicos/bancoDados';
+import { manterSeIgual } from '../servicos/igualdade';
 import { ondeParei, lembrarOndeParei } from '../servicos/navegacaoLembrada';
 import { servicoPonto } from '../servicos/ponto';
 import { CentralAvisos } from './CentralAvisos';
@@ -82,8 +83,20 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
   );
   const [estatisticas, setEstatisticas] = useState(bancoDados.obterEstatisticasRede());
 
+  /**
+   * O MESMO CUIDADO DO APP: só trocar o que mudou de verdade.
+   *
+   * `obterEstatisticasRede()` monta um objeto novo a cada chamada, e
+   * isto roda a cada notificação do banco. Com o objeto novo, este
+   * painel e tudo dentro dele redesenhavam sozinhos várias vezes por
+   * minuto — e um redesenho entre o `mousedown` e o `mouseup` engole o
+   * clique, que foi como o defeito apareceu: "a aba não pega de
+   * primeira".
+   */
   const atualizar = () => {
-    setEstatisticas(bancoDados.obterEstatisticasRede());
+    setEstatisticas((anterior) =>
+      manterSeIgual(anterior, bancoDados.obterEstatisticasRede())
+    );
   };
 
   useEffect(() => {
