@@ -292,3 +292,24 @@ pensado para o corredor dos fundos e o galpão, onde o celular perde sinal.
 
 Dado do Supabase **não** é guardado: ponto e conversa servidos do cache
 seriam informação errada apresentada como certa.
+
+### Os prints da caixa de instalação
+
+`screenshots` é o que o Android mostra ao perguntar se a pessoa quer
+instalar, e o que a Play Store exibe na ficha. É a única coisa que ela vê
+antes de decidir.
+
+Não é gerado por script: seria propaganda de uma tela que não existe. Tire
+dois prints do sistema rodando, salve em `public/` e rode:
+
+```bash
+bun scripts/registrar-screenshots.ts
+```
+
+| Arquivo | Como | Sugestão de tela |
+|---|---|---|
+| `public/print-celular.png` | em pé (~390x844) | a aba Ponto |
+| `public/print-computador.png` | deitado (~1280x800) | o painel de gestão |
+
+O script lê o tamanho **do arquivo** e recusa print na orientação errada.
+`sizes` digitado à mão e errado faz o Android descartar o print em silêncio.

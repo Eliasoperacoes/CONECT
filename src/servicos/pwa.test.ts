@@ -55,6 +55,27 @@ test('OS TRÊS ÍCONES, e o maskable não é luxo', async () => {
   expect(icones.some((i) => (i.purpose || '').includes('maskable'))).toBe(true);
 });
 
+test('SE HÁ SCREENSHOT DECLARADO, O ARQUIVO EXISTE', async () => {
+  /**
+   * `screenshots` é o que o Android mostra na caixa de instalação — é a
+   * única coisa que a pessoa vê antes de decidir instalar. Declarado e
+   * ausente, a caixa aparece com um retângulo vazio, o que é pior do
+   * que aparecer sem print nenhum.
+   *
+   * O campo ainda não existe: os prints saem do sistema rodando, e
+   * `scripts/registrar-screenshots.ts` os declara com o tamanho LIDO do
+   * arquivo — `sizes` errado faz o Android recusar em silêncio.
+   */
+  const m = await lerManifesto();
+  const prints = (m.screenshots || []) as Array<{ src: string; sizes: string; form_factor?: string }>;
+
+  for (const print of prints) {
+    expect(await Bun.file(`public${print.src}`).exists()).toBe(true);
+    expect(print.sizes).toMatch(/^\d+x\d+$/);
+    expect(print.form_factor).toBeTruthy();
+  }
+});
+
 test('TODO ÍCONE DECLARADO EXISTE NO REPOSITÓRIO', async () => {
   /**
    * Declarado e ausente é pior que ausente: o navegador tenta, falha em
@@ -184,6 +205,46 @@ test('O REWRITE NÃO PODE ENGOLIR O ASSETLINKS', async () => {
         c.key === 'Content-Type' && c.value === 'application/json'
     )
   ).toBe(true);
+});
+
+test('O TRABALHADOR É REGISTRADO PELO HTML, não pelo React', async () => {
+  /**
+   * O PWABuilder analisou o site e respondeu "did not find a Service
+   * Worker" com o arquivo servido corretamente: o registro morava num
+   * `useEffect` do App, ou seja, só depois do pacote baixar e o React
+   * montar. Ele lê a página; não espera o React.
+   *
+   * E não é só a nota: quem abre SEM SINAL não chega a montar o React,
+   * então o trabalhador que serviria a página guardada nunca era
+   * registrado — justamente quando ele faz falta.
+   */
+  const html = await Bun.file('index.html').text();
+
+  expect(html).toContain("navigator.serviceWorker.register('/sw-avisos.js')");
+  expect(html).toContain("window.addEventListener('load'");
+
+  /**
+   * No `load`, e não antes: registrar cedo disputa banda com o próprio
+   * pacote do sistema, e a primeira abertura fica mais lenta.
+   */
+  const trecho = html.slice(html.indexOf("'serviceWorker' in navigator"));
+  expect(trecho.indexOf("addEventListener('load'")).toBeLessThan(
+    trecho.indexOf('serviceWorker.register')
+  );
+
+  // E falhar em registrar não pode derrubar a página
+  expect(trecho).toContain('.catch(');
+});
+
+test('o registro no React CONTINUA, e não é duplicata', async () => {
+  /**
+   * `prepararAvisos` precisa do registro para pedir permissão e mostrar
+   * o aviso. Com a mesma URL, o navegador devolve o registro que já
+   * existe — tirar essa chamada quebraria a notificação para ganhar
+   * nada.
+   */
+  const notificacoes = await Bun.file('src/servicos/notificacoes.ts').text();
+  expect(notificacoes).toContain("navigator.serviceWorker.register('/sw-avisos.js')");
 });
 
 test('a página aponta para o manifesto e tem cor de tema', async () => {

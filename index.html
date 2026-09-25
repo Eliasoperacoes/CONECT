@@ -25,6 +25,36 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!--
+      O TRABALHADOR É REGISTRADO AQUI, e não dentro do React.
+
+      Estava num `useEffect` do App — ou seja, só depois do pacote baixar,
+      o React montar e o efeito correr. Três consequências:
+
+        1. O PWABuilder analisou o site e respondeu "did not find a
+           Service Worker". Ele lê a página; não espera o React.
+        2. Quem abre sem sinal não chega a montar o React, então o
+           trabalhador que serviria a página guardada nunca era
+           registrado — justamente quando ele faz falta.
+        3. Se o pacote falhar em carregar, não há offline nenhum.
+
+      No `load` de propósito: registrar antes disputa banda com o próprio
+      pacote do sistema, e a primeira abertura fica mais lenta.
+
+      `prepararAvisos()` continua chamando `register` no React. Não é
+      duplicata: com a mesma URL, o navegador devolve o registro que já
+      existe — e é de lá que sai a permissão de aviso.
+    -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw-avisos.js').catch(function (erro) {
+            // Sem trabalhador o sistema funciona: perde offline e aviso
+            console.error('Falha ao registrar o trabalhador:', erro);
+          });
+        });
+      }
+    </script>
   </body>
 </html>
 
