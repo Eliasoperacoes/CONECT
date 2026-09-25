@@ -21,6 +21,7 @@ import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
 import { alcanca } from './mural';
 import { lerLista } from './cacheDeLeitura';
+import { semFormatacao } from './textoRico';
 import {
   nuvemComunicacao,
   conversaJaEstaNoBanco,
@@ -2921,7 +2922,21 @@ class BancoDadosConecta {
     if (usandoNuvem()) {
       const res = await nuvemComunicacao.salvarAviso(novoAviso);
       if (!res.sucesso) {
-        return { sucesso: false, erro: 'Falha ao publicar o comunicado no banco.' };
+        /**
+         * A MENSAGEM DO BANCO VAI PARA A TELA, inteira.
+         *
+         * Antes saía "Falha ao publicar o comunicado no banco" — que
+         * não diz se faltou coluna, se a permissão recusou ou se a
+         * internet caiu. São três consertos diferentes, e o único
+         * lugar onde a diferença aparecia era o console do navegador.
+         *
+         * É o mesmo aprendizado do login: "Login ou senha incorretos"
+         * escondia o único caminho que resolvia.
+         */
+        return {
+          sucesso: false,
+          erro: res.erro || 'Falha ao publicar o comunicado no banco.',
+        };
       }
       await nuvemComunicacao.marcarLeituraAviso(novoAviso.id, atual.id, true);
     }
@@ -2930,10 +2945,16 @@ class BancoDadosConecta {
     lista.unshift(novoAviso);
     localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(lista));
 
-    // Publica no grupo "Avisos da Rede"
+    /**
+     * Publica no grupo "Avisos da Rede" — SEM A MARCAÇÃO.
+     *
+     * O chat mostra texto simples. Mandar o conteúdo cru faria a
+     * mensagem sair com `##` e `**` no meio, e quem lê no celular veria
+     * os sinais em vez da ênfase que eles deviam dar.
+     */
     await this.enviarMensagem('grupo-avisos-da-rede', {
       tipo: 'texto',
-      texto: `📢 [${dados.titulo.trim().toUpperCase()}]\n${dados.conteudo.trim()}`,
+      texto: `📢 [${dados.titulo.trim().toUpperCase()}]\n${semFormatacao(dados.conteudo)}`,
     });
 
     this.registrarAuditoria('Publicação de Comunicado', 'aviso', `${atual.nome} publicou '${novoAviso.titulo}'.`);
@@ -2999,7 +3020,15 @@ class BancoDadosConecta {
       localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(lista));
 
       if (usandoNuvem()) {
-        nuvemComunicacao.salvarAviso(lista[indice]).catch(() => {});
+        /**
+         * `atualizarAviso`, e não `salvarAviso`: a publicação já existe.
+         *
+         * Com `salvarAviso` virando insert simples, mandar aqui daria
+         * 23505 toda vez — e o tratamento do 23505 como sucesso
+         * esconderia o fato de que fixar nunca chegou ao banco. A
+         * fixação voltaria sozinha na próxima sincronização.
+         */
+        nuvemComunicacao.atualizarAviso(lista[indice]).catch(() => {});
       }
 
       this.notificar();

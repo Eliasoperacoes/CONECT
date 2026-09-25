@@ -34,6 +34,7 @@ import {
 } from '../tipos';
 import { resumoDeLeitura, descreverDestinos } from '../servicos/mural';
 import { abrirDocumento } from '../servicos/rh';
+import { TextoFormatado } from './EditorTexto';
 import { FotoPresenca } from './FotoPresenca';
 
 interface Props {
@@ -140,9 +141,11 @@ export const PainelPublicacao: React.FC<Props> = ({
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-          <p className="text-sm text-[var(--c-texto)] leading-relaxed whitespace-pre-wrap break-words">
-            {publicacao.conteudo}
-          </p>
+          {/* O inteiro teor, com a formatação que quem escreveu deu */}
+          <TextoFormatado
+            texto={publicacao.conteudo}
+            className="text-sm text-[var(--c-texto)]"
+          />
 
           {publicacao.anexoCaminho && (
             <div className="flex items-center gap-2 p-3 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)]">

@@ -903,16 +903,49 @@ class PonteComunicacao {
     return true;
   }
 
+  /**
+   * INSERT SIMPLES, e não `upsert`.
+   *
+   * `upsert` vira `ON CONFLICT`, e o Postgres precisa LER a linha em
+   * conflito para decidir o que fazer com ela. A política de leitura de
+   * `avisos_rede` filtra por destino, então essa leitura pode não
+   * enxergar nada — e o banco responde "violates row-level security"
+   * numa publicação que a permissão de INSERT autorizava.
+   *
+   * É o mesmo defeito que já custou quatro tentativas às cegas no
+   * envio de mensagem. O padrão da casa é insert comum, tratando o
+   * 23505 (chave repetida) como o que ele é: a linha já está lá.
+   *
+   * Publicação nova tem id recém-criado, então 23505 aqui só acontece
+   * quando a gravação anterior foi adiante e a resposta se perdeu no
+   * caminho — e nesse caso repetir não é erro, é a mesma publicação.
+   */
   async salvarAviso(aviso: AvisoRede): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+
+    const { error } = await supabase.from('avisos_rede').insert(paraLinhaAviso(aviso));
+
+    if (error) {
+      if (error.code === '23505') return { sucesso: true };
+
+      console.error('Falha ao salvar aviso:', error.message);
+      return { sucesso: false, erro: await explicarRecusa(error) };
+    }
+    return { sucesso: true };
+  }
+
+  /** Atualiza uma publicação que JÁ existe — fixar, editar. */
+  async atualizarAviso(aviso: AvisoRede): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
 
     const { error } = await supabase
       .from('avisos_rede')
-      .upsert(paraLinhaAviso(aviso), { onConflict: 'id' });
+      .update(paraLinhaAviso(aviso))
+      .eq('id', aviso.id);
 
     if (error) {
-      console.error('Falha ao salvar aviso:', error.message);
-      return { sucesso: false, erro: error.message };
+      console.error('Falha ao atualizar aviso:', error.message);
+      return { sucesso: false, erro: await explicarRecusa(error) };
     }
     return { sucesso: true };
   }

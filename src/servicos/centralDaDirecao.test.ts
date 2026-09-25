@@ -206,6 +206,88 @@ test('QUEM VÊ A LISTA DE LEITURA', async () => {
   expect(sql).toContain('alter table public.avisos_leitura enable row level security');
 });
 
+test('PUBLICAR É INSERT SIMPLES, e não upsert', async () => {
+  /**
+   * Publicar falhava. `upsert` vira `ON CONFLICT`, e o Postgres precisa
+   * LER a linha em conflito para decidir o que fazer com ela — a
+   * política de leitura de `avisos_rede` filtra por destino, então essa
+   * leitura pode não enxergar nada e o banco responde "violates
+   * row-level security" numa publicação que o INSERT autorizava.
+   *
+   * É o mesmo defeito que já custou quatro tentativas às cegas no envio
+   * de mensagem. O padrão da casa é insert comum tratando o 23505.
+   */
+  const ponte = semComentarios(
+    await Bun.file('src/servicos/nuvemComunicacao.ts').text()
+  );
+
+  const corpo = ponte.slice(
+    ponte.indexOf('async salvarAviso'),
+    ponte.indexOf('async atualizarAviso')
+  );
+
+  expect(corpo).toContain(".from('avisos_rede').insert(");
+  expect(corpo).not.toContain('upsert');
+  expect(corpo).toContain("error.code === '23505'");
+});
+
+test('FIXAR usa update, e não o insert', async () => {
+  /**
+   * A publicação já existe. Com `salvarAviso` virando insert, mandar
+   * fixar por lá daria 23505 toda vez — e o tratamento do 23505 como
+   * sucesso esconderia que a fixação nunca chegou ao banco. Ela
+   * voltaria sozinha na sincronização seguinte.
+   */
+  const banco = semComentarios(await Bun.file('src/servicos/bancoDados.ts').text());
+  expect(banco).toContain('nuvemComunicacao.atualizarAviso(lista[indice])');
+
+  const ponte = semComentarios(
+    await Bun.file('src/servicos/nuvemComunicacao.ts').text()
+  );
+  const corpo = ponte.slice(ponte.indexOf('async atualizarAviso'));
+  expect(corpo).toContain(".update(paraLinhaAviso(aviso))");
+  expect(corpo).toContain(".eq('id', aviso.id)");
+});
+
+test('O ERRO DO BANCO CHEGA À TELA, inteiro', async () => {
+  /**
+   * Saía "Falha ao publicar o comunicado no banco" — que não diz se
+   * faltou coluna, se a permissão recusou ou se a internet caiu. São
+   * três consertos diferentes, e a diferença só aparecia no console.
+   *
+   * É o mesmo aprendizado do login: "Login ou senha incorretos"
+   * escondia o único caminho que resolvia.
+   */
+  const banco = semComentarios(await Bun.file('src/servicos/bancoDados.ts').text());
+
+  const inicio = banco.indexOf('const res = await nuvemComunicacao.salvarAviso');
+  const corpo = banco.slice(inicio, inicio + 400);
+
+  expect(corpo).toContain('erro: res.erro ||');
+});
+
+test('O CONTEÚDO É TEXTO, e a tela é que formata', async () => {
+  /**
+   * A coluna `conteudo` já tem 24 publicações dentro, e `casaComBusca`
+   * procura a palavra DENTRO dela. Guardar HTML tornaria as 24 antigas
+   * lixo e faria a busca achar `<strong>`.
+   *
+   * O cartão e a mensagem que vai ao chat saem SEM a marcação: com
+   * ela, a linha viraria "## Inventário **sexta**".
+   */
+  const tela = semComentarios(await lerTela());
+  expect(tela).toContain('semFormatacao(p.conteudo)');
+  expect(tela).toContain('<EditorTexto');
+
+  const banco = semComentarios(await Bun.file('src/servicos/bancoDados.ts').text());
+  expect(banco).toContain('semFormatacao(dados.conteudo)');
+
+  const painel = semComentarios(
+    await Bun.file('src/componentes/PainelPublicacao.tsx').text()
+  );
+  expect(painel).toContain('<TextoFormatado');
+});
+
 test('o script recarrega o esquema e confere', async () => {
   const sql = await lerSql();
 

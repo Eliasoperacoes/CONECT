@@ -275,3 +275,95 @@ html, body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ============================================================
+   TEXTO COM FORMATAÇÃO — o que `textoRico.ts` produz
+
+   As classes têm prefixo `tr-` e são escritas por lá, nunca pelo que a
+   pessoa digita: o texto é escapado antes de qualquer marcação, então
+   não há como um comunicado trazer classe própria.
+
+   Medidas apertadas de propósito. Isto aparece dentro de um cartão e
+   dentro de um modal no celular — as margens de um documento solto
+   empurrariam o conteúdo para fora da primeira dobra.
+   ============================================================ */
+.texto-rico {
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.texto-rico .tr-p {
+  margin: 0 0 0.6rem;
+}
+.texto-rico > :last-child {
+  margin-bottom: 0;
+}
+
+.texto-rico .tr-h1 {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin: 0.9rem 0 0.4rem;
+  color: var(--c-texto);
+}
+.texto-rico .tr-h2 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0.8rem 0 0.35rem;
+  color: var(--c-texto);
+}
+.texto-rico .tr-h3 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  margin: 0.7rem 0 0.3rem;
+  color: var(--c-texto-2);
+}
+.texto-rico > .tr-h1:first-child,
+.texto-rico > .tr-h2:first-child,
+.texto-rico > .tr-h3:first-child {
+  margin-top: 0;
+}
+
+.texto-rico .tr-lista {
+  margin: 0 0 0.6rem;
+  padding-left: 1.25rem;
+}
+.texto-rico ul.tr-lista {
+  list-style: disc;
+}
+.texto-rico ol.tr-lista {
+  list-style: decimal;
+}
+.texto-rico .tr-lista li {
+  margin-bottom: 0.2rem;
+}
+
+/* A barra à esquerda é o que faz a citação se ler como citação sem
+   precisar de aspas, que se confundem com as do próprio texto */
+.texto-rico .tr-citacao {
+  margin: 0 0 0.6rem;
+  padding: 0.35rem 0 0.35rem 0.75rem;
+  border-left: 3px solid var(--c-acento);
+  color: var(--c-texto-2);
+  font-style: italic;
+}
+
+.texto-rico .tr-codigo {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  background: var(--c-superficie-2);
+  border: 1px solid var(--c-borda);
+  border-radius: 0.3rem;
+  padding: 0.05rem 0.3rem;
+}
+
+.texto-rico .tr-hr {
+  border: 0;
+  border-top: 1px solid var(--c-borda);
+  margin: 0.9rem 0;
+}
+
+.texto-rico .tr-link {
+  color: var(--c-acento);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

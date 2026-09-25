@@ -68,6 +68,8 @@ import {
   resumoDeLeitura,
 } from '../servicos/mural';
 import { enviarAnexo } from '../servicos/anexos';
+import { EditorTexto } from './EditorTexto';
+import { semFormatacao } from '../servicos/textoRico';
 import { SeletorDestinos } from './SeletorDestinos';
 import { PainelPublicacao } from './PainelPublicacao';
 import { FotoPresenca } from './FotoPresenca';
@@ -508,8 +510,15 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
                       <span className="block text-sm font-bold text-[var(--c-texto)] leading-snug truncate">
                         {p.titulo}
                       </span>
+                      {/*
+                        O resumo do cartão vai SEM MARCAÇÃO.
+
+                        Com ela, a linha sairia "## Inventário **sexta**" —
+                        e o cartão existe justamente para se ler de relance.
+                        O texto formatado aparece ao abrir.
+                      */}
                       <span className="block text-xs text-[var(--c-texto-3)] leading-snug line-clamp-2 mt-0.5">
-                        {p.conteudo}
+                        {semFormatacao(p.conteudo)}
                       </span>
 
                       <div className="flex items-center gap-3 flex-wrap mt-1.5 text-[10px] text-[var(--c-texto-3)]">
@@ -636,12 +645,11 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
                 className="w-full px-3 py-2.5 text-sm font-semibold bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)]"
               />
 
-              <textarea
-                value={conteudo}
-                onChange={(e) => setConteudo(e.target.value)}
-                rows={5}
+              <EditorTexto
+                valor={conteudo}
+                aoMudar={setConteudo}
+                linhas={7}
                 placeholder="O que precisa ser dito. Quem lê está com pressa: comece pelo que muda."
-                className="w-full px-3 py-2.5 text-sm bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)] resize-none focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)]"
               />
 
               <div className="grid grid-cols-2 gap-2">

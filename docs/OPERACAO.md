@@ -90,6 +90,7 @@ esquema.
 
 | Arquivo | Quando usar |
 |---|---|
+| `conferir-central.sql` | **Não altera nada.** Publicar na Central falhou — diz se a causa é coluna faltando, política ou nível |
 | `central-da-direcao.sql` | **Rode uma vez.** Dá à Central da Direção tipo, categoria, destinos e anexo, e põe o filtro de quem vê o quê no banco |
 | `resetar-senha-inicial.sql` | **Rode uma vez.** Cria a função do botão "Resetar para a senha padrão", na ficha do colaborador |
 | `resetar-acesso.sql` | Pessoa não entra e não lembra a senha, e o botão não está à mão |
