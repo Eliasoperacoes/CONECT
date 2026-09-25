@@ -8,14 +8,22 @@ import {
   Users,
   Check,
   ShieldCheck,
+  IdCard,
+  CircleDot,
+  Settings,
   Sliders,
   Building2,
   Phone,
   Camera,
 } from 'lucide-react';
-import { Colaborador, EstadoPresenca } from '../tipos';
+import { Colaborador, EstadoPresenca, ROTULO_PRESENCA } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA } from '../servicos/bancoDados';
-import { PreferenciaTema, definirTema, obterTemaSalvo } from '../servicos/tema';
+import {
+  PreferenciaTema,
+  definirTema,
+  obterTemaSalvo,
+  ROTULO_TEMA,
+} from '../servicos/tema';
 import {
   PermissaoAviso,
   definirSom,
@@ -31,6 +39,7 @@ import { FichaColaborador } from './FichaColaborador';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 import { versaoLegivel } from '../servicos/versao';
 import { MeusDocumentos } from './MeusDocumentos';
+import { SecaoRecolhivel } from './SecaoRecolhivel';
 
 interface PropsAbaEu {
   colaboradorAtual: Colaborador;
@@ -147,23 +156,35 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
         </div>
       </div>
 
-      {/* Os dados do próprio cadastro, como saem no espelho de ponto e em
-          qualquer documento. É aqui que a pessoa percebe o que falta e
-          pede para o RH corrigir — por isso os campos em branco aparecem. */}
-      <div className="mt-4 px-4">
-        <span className="text-xs font-bold text-[var(--c-texto-3)] block mb-2">
-          Meus dados cadastrais
-        </span>
-        <FichaColaborador
-          colaborador={colaboradorAtual}
-          responsavel={
-            colaboradorAtual.responsavelId
-              ? bancoDados.obterColaboradorPorId(colaboradorAtual.responsavelId)
-              : null
-          }
-          mostrarVazios
-        />
-      </div>
+      {/*
+        A FICHA É CONSULTA, e por isso nasce fechada.
+
+        São os dados como saem no espelho de ponto e em qualquer
+        documento — é aqui que a pessoa percebe o que falta e pede ao RH
+        para corrigir, e por isso os campos em branco aparecem. Mas não
+        há um botão sequer: ninguém volta aqui depois de conferir uma
+        vez, e aberta ela era o bloco mais alto da aba.
+
+        O resumo diz o cargo e a loja, que é o que responde "é a minha
+        ficha mesmo?" sem precisar abrir.
+      */}
+      <SecaoRecolhivel
+        titulo="Meus dados"
+        icone={<IdCard className="w-5 h-5" />}
+        resumo={`${colaboradorAtual.cargo} · ${colaboradorAtual.loja}`}
+      >
+        <div className="p-4">
+          <FichaColaborador
+            colaborador={colaboradorAtual}
+            responsavel={
+              colaboradorAtual.responsavelId
+                ? bancoDados.obterColaboradorPorId(colaboradorAtual.responsavelId)
+                : null
+            }
+            mostrarVazios
+          />
+        </div>
+      </SecaoRecolhivel>
 
       {/* Atalho ao Painel ADM exclusivo para Administrador (Elias) */}
       {ehAdmin && aoAbrirAdmin && (
@@ -199,18 +220,35 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
       */}
       <MeusDocumentos colaboradorAtual={colaboradorAtual} />
 
-      {/* 2. Presença */}
-      <div className="mt-4 bg-[var(--c-superficie)] border-y border-[var(--c-borda)]">
-        <div className="px-4 py-2 text-xs font-semibold text-[var(--c-texto-3)] uppercase tracking-wider">
-          Presença
-        </div>
+      {/*
+        PRESENÇA: o resumo mostra o estado atual, que é a única coisa que
+        se quer saber com a seção fechada — e mudá-lo é raro.
+      */}
+      <SecaoRecolhivel
+        titulo="Presença"
+        icone={<CircleDot className="w-5 h-5" />}
+        resumo={ROTULO_PRESENCA[colaboradorAtual.presenca] || 'Disponível'}
+      >
         <div className="divide-y divide-[var(--c-borda)]">
+          {/*
+            O NOME vem de `ROTULO_PRESENCA`; aqui ficam só a cor e a
+            consequência. Escrever "Ocupado" de novo nesta lista era a
+            segunda cópia — e o resumo do cabeçalho seria a terceira.
+          */}
           {(
             [
-              { valor: 'disponivel', rotulo: 'Disponível', cor: 'bg-[var(--c-ok)]' },
-              { valor: 'ocupado', rotulo: 'Ocupado (vira recado de voz)', cor: 'bg-[var(--c-atencao)]' },
-              { valor: 'ausente', rotulo: 'Ausente (vira recado de voz)', cor: 'bg-[var(--c-texto-3)]' },
-              { valor: 'desconectado', rotulo: 'Desconectado', cor: 'bg-[var(--c-borda-forte)]' },
+              { valor: 'disponivel', consequencia: '', cor: 'bg-[var(--c-ok)]' },
+              {
+                valor: 'ocupado',
+                consequencia: ' (vira recado de voz)',
+                cor: 'bg-[var(--c-atencao)]',
+              },
+              {
+                valor: 'ausente',
+                consequencia: ' (vira recado de voz)',
+                cor: 'bg-[var(--c-texto-3)]',
+              },
+              { valor: 'desconectado', consequencia: '', cor: 'bg-[var(--c-borda-forte)]' },
             ] as const
           ).map((item) => {
             const selecionado = colaboradorAtual.presenca === item.valor;
@@ -224,20 +262,32 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
               >
                 <div className="flex items-center gap-3">
                   <span className={`w-3 h-3 rounded-full ${item.cor}`} />
-                  <span className="text-sm text-[var(--c-texto)]">{item.rotulo}</span>
+                  <span className="text-sm text-[var(--c-texto)]">
+                    {ROTULO_PRESENCA[item.valor]}
+                    {item.consequencia}
+                  </span>
                 </div>
                 {selecionado && <Check className="w-4 h-4 text-[var(--c-acento)]" />}
               </button>
             );
           })}
         </div>
-      </div>
+      </SecaoRecolhivel>
 
-      {/* 3. Notificações */}
-      <div className="mt-4 bg-[var(--c-superficie)] border-y border-[var(--c-borda)]">
-        <div className="px-4 py-2 text-xs font-semibold text-[var(--c-texto-3)] uppercase tracking-wider">
-          Notificações e Sons
-        </div>
+      {/*
+        TEMA, SONS E AVISOS VIRARAM UMA SEÇÃO SÓ: "Preferências".
+
+        Eram três blocos separados — "Notificações e Sons", "Tema" e
+        "Avisos de Mensagem" —, e os três respondem à mesma pergunta:
+        como este aparelho se comporta. Separados, ocupavam três
+        cabeçalhos para o que cabe num, e ninguém sabia em qual procurar
+        o som da mensagem.
+      */}
+      <SecaoRecolhivel
+        titulo="Preferências"
+        icone={<Settings className="w-5 h-5" />}
+        resumo={`${ROTULO_TEMA[temaEscolhido]} · ${comSom ? 'com som' : 'sem som'}`}
+      >
         <div className="px-4 py-3 flex items-center justify-between min-h-[52px]">
           <div className="flex items-center gap-3">
             <Bell className="w-5 h-5 text-[var(--c-texto-2)]" />
@@ -254,11 +304,8 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
             className="w-5 h-5 accent-[var(--c-acento)] cursor-pointer"
           />
         </div>
-      </div>
 
-      {/* 4. Tema */}
-      <div className="mt-4 bg-[var(--c-superficie)] border-y border-[var(--c-borda)]">
-        <div className="px-4 py-2 text-xs font-semibold text-[var(--c-texto-3)] uppercase tracking-wider">
+        <div className="px-4 pt-3 text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
           Tema
         </div>
         <div className="p-3 grid grid-cols-3 gap-2">
@@ -285,11 +332,9 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
             </button>
           ))}
         </div>
-      </div>
-      {/* 5. Avisos de mensagem */}
-      <div className="mt-4 bg-[var(--c-superficie)] border-y border-[var(--c-borda)]">
-        <div className="px-4 py-2 text-xs font-semibold text-[var(--c-texto-3)] uppercase tracking-wider">
-          Avisos de Mensagem
+
+        <div className="px-4 pt-1 text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
+          Avisos de mensagem
         </div>
 
         <div className="p-3 space-y-2.5">
@@ -381,15 +426,15 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
             </p>
           )}
         </div>
-      </div>
-
+      </SecaoRecolhivel>
 
       {/* 5. Alternância de Colaborador (Exclusivo para testes do Administrador) */}
       {ehAdmin && (
-        <div className="mt-4 bg-[var(--c-superficie)] border-y border-[var(--c-borda)]">
-          <div className="px-4 py-2 text-xs font-semibold text-[var(--c-texto-3)] uppercase tracking-wider">
-            Hierarquia e Demonstração (Admin)
-          </div>
+        <SecaoRecolhivel
+          titulo="Demonstração (Admin)"
+          icone={<Users className="w-5 h-5" />}
+          resumo="Alternar colaborador"
+        >
           <button
             type="button"
             id="botao-alternar-colaborador"
@@ -409,7 +454,7 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
             </div>
             <span className="text-xs text-[var(--c-acento)] font-medium">Trocar</span>
           </button>
-        </div>
+        </SecaoRecolhivel>
       )}
 
       {/* 6. Sair */}

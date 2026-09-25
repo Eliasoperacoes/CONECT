@@ -10,6 +10,13 @@ export type PreferenciaTema = 'sistema' | 'claro' | 'escuro';
 const CHAVE_TEMA = 'conecta_v4_tema';
 const TEMAS_VALIDOS: PreferenciaTema[] = ['sistema', 'claro', 'escuro'];
 
+/** Como cada tema se chama na tela. Mora aqui porque o tipo mora aqui. */
+export const ROTULO_TEMA: Record<PreferenciaTema, string> = {
+  sistema: 'Automático',
+  claro: 'Claro',
+  escuro: 'Escuro',
+};
+
 /** Lê a preferência salva neste dispositivo. Padrão: acompanhar o sistema. */
 export const obterTemaSalvo = (): PreferenciaTema => {
   if (typeof window === 'undefined') return 'sistema';

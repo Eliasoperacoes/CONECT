@@ -17,6 +17,7 @@
 import React, { useEffect, useState } from 'react';
 import { Receipt, AlertTriangle, Download, Check, Clock } from 'lucide-react';
 import { Colaborador, Holerite, Advertencia, ROTULO_ADVERTENCIA } from '../tipos';
+import { SecaoRecolhivel } from './SecaoRecolhivel';
 import {
   listarHolerites,
   listarAdvertencias,
@@ -80,10 +81,17 @@ export const MeusDocumentos: React.FC<Props> = ({ colaboradorAtual }) => {
   return (
     <>
       {holerites.length > 0 && (
-        <div className="mt-4 bg-[var(--c-superficie)] border-y border-[var(--c-borda)]">
-          <div className="px-4 py-2 text-xs font-semibold text-[var(--c-texto-3)] uppercase tracking-wider">
-            Meus holerites
-          </div>
+        /*
+          O holerite mais recente é o que se procura — o resumo diz qual
+          é, e quantos há guardados. Com doze meses publicados, a lista
+          aberta seria doze linhas de coisa antiga na frente da única
+          que interessa.
+        */
+        <SecaoRecolhivel
+          titulo="Holerites"
+          icone={<Receipt className="w-5 h-5" />}
+          resumo={`${holerites.length} · último em ${porExtenso(holerites[0].competencia)}`}
+        >
           <div className="divide-y divide-[var(--c-borda)]">
             {holerites.map((h) => (
               <button
@@ -100,19 +108,29 @@ export const MeusDocumentos: React.FC<Props> = ({ colaboradorAtual }) => {
               </button>
             ))}
           </div>
-        </div>
+        </SecaoRecolhivel>
       )}
 
       {advertencias.length > 0 && (
-        <div className="mt-4 bg-[var(--c-superficie)] border-y border-[var(--c-borda)]">
-          <div className="px-4 py-2 text-xs font-semibold text-[var(--c-texto-3)] uppercase tracking-wider flex items-center gap-2">
-            Advertências
-            {semCiencia.length > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-700 dark:text-amber-400 normal-case tracking-normal">
-                {semCiencia.length} sem ciência
-              </span>
-            )}
-          </div>
+        /*
+          ADVERTÊNCIA SEM CIÊNCIA NASCE ABERTA.
+
+          É a única seção desta aba que pede uma ação da pessoa, e com
+          prazo. Recolhida, ela viraria mais uma linha entre as outras —
+          e "não vi" é exatamente a defesa que a ciência existe para
+          tirar de cena. Com todas assinadas, recolhe como o resto.
+        */
+        <SecaoRecolhivel
+          titulo="Advertências"
+          icone={<AlertTriangle className="w-5 h-5" />}
+          abertaDeInicio={semCiencia.length > 0}
+          alerta={semCiencia.length > 0}
+          resumo={
+            semCiencia.length > 0
+              ? `${semCiencia.length} sem ciência`
+              : `${advertencias.length} registrada${advertencias.length === 1 ? '' : 's'}`
+          }
+        >
 
           <div className="divide-y divide-[var(--c-borda)]">
             {advertencias.map((a) => (
@@ -173,7 +191,7 @@ export const MeusDocumentos: React.FC<Props> = ({ colaboradorAtual }) => {
               </div>
             ))}
           </div>
-        </div>
+        </SecaoRecolhivel>
       )}
     </>
   );

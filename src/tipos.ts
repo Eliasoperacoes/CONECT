@@ -152,6 +152,21 @@ export const publicaComunicado = (c: { nivel: number }): boolean =>
 
 export type EstadoPresenca = 'disponivel' | 'ocupado' | 'ausente' | 'desconectado';
 
+/**
+ * COMO CADA PRESENÇA SE CHAMA NA TELA.
+ *
+ * Estava escrito dentro da aba "Eu", na lista de botões — e a bolinha
+ * colorida do resto do sistema não tinha nome nenhum. Quem queria dizer
+ * "ocupado" noutra tela escrevia de novo, e a segunda escrita diverge
+ * na primeira mudança.
+ */
+export const ROTULO_PRESENCA: Record<EstadoPresenca, string> = {
+  disponivel: 'Disponível',
+  ocupado: 'Ocupado',
+  ausente: 'Ausente',
+  desconectado: 'Desconectado',
+};
+
 export interface Colaborador {
   id: string;
   nome: string;
