@@ -437,3 +437,15 @@ html, body {
   padding: 0 0.15rem;
   border-radius: 0.2rem;
 }
+
+/* Imagem no corpo: largura total do bloco, altura livre. Um procedimento
+   com print de tela precisa que o print seja legível, e no celular isso
+   quer dizer ocupar a largura inteira. */
+.texto-rico .tr-imagem {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.6rem;
+  border: 1px solid var(--c-borda);
+  margin: 0.6rem 0;
+}

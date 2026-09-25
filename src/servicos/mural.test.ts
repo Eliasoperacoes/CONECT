@@ -23,7 +23,9 @@ import {
   ordenarPublicacoes,
   casaComBusca,
   contarPorTipo,
+  podeEditarPublicacao,
 } from './mural';
+import { imagensCitadas } from './textoRico';
 
 /**
  * Os nomes precisam ser DISTINTOS NO PRIMEIRO NOME.
@@ -398,4 +400,67 @@ test('contar por tipo devolve os três, mesmo zerados', () => {
   ]);
 
   expect(contagem).toEqual({ aviso: 2, documento: 1, tutorial: 0 });
+});
+
+// ============================================================
+// QUEM EDITA
+// ============================================================
+
+test('EDITAR É DO AUTOR, e não de quem pode publicar', () => {
+  /**
+   * Se fosse de quem publica, um líder reescreveria o comunicado da
+   * direção — que continuaria assinado por ela. É o contrário de uma
+   * publicação servir de prova.
+   */
+  const p = publicacao({ autorId: 'elias' });
+
+  const autor = pessoa('elias', 'Pirassununga', 'TI', { nivel: 5 });
+  const lider = pessoa('bruno', 'Descalvado', 'Balcão', { nivel: 2 });
+  const gerente = pessoa('carla', 'Descalvado', 'RH', { nivel: 3 });
+
+  expect(podeEditarPublicacao(p, autor)).toBe(true);
+  expect(podeEditarPublicacao(p, lider)).toBe(false);
+  expect(podeEditarPublicacao(p, gerente)).toBe(false);
+});
+
+test('o TI edita qualquer uma', () => {
+  /**
+   * É a saída quando quem publicou saiu da empresa e o procedimento
+   * ficou com o horário errado.
+   */
+  const p = publicacao({ autorId: 'quem-saiu' });
+  const ti = pessoa('elias', 'Pirassununga', 'TI', { nivel: 5 });
+
+  expect(podeEditarPublicacao(p, ti)).toBe(true);
+});
+
+// ============================================================
+// IMAGEM NO CORPO
+// ============================================================
+
+test('as imagens do corpo são listadas para assinar', () => {
+  /**
+   * O caminho no balde não abre sozinho: o Supabase exige um endereço
+   * ASSINADO, e assinar é uma ida à rede. Quem desenha resolve antes e
+   * passa o mapa — `paraHtml` continua sendo função pura.
+   */
+  const caminhos = imagensCitadas(
+    'veja ![a foto](central/img-1.png) e ![outra](central/img-2.png)'
+  );
+
+  expect(caminhos).toEqual(['central/img-1.png', 'central/img-2.png']);
+});
+
+test('endereço externo NÃO entra na lista de assinar', () => {
+  /**
+   * `https://` já abre. Pedir assinatura dele seria uma ida à rede para
+   * um caminho que o balde não conhece.
+   */
+  expect(imagensCitadas('![x](https://exemplo.com/foto.png)')).toEqual([]);
+});
+
+test('a mesma imagem citada duas vezes é assinada uma', () => {
+  expect(
+    imagensCitadas('![a](central/x.png) e de novo ![b](central/x.png)')
+  ).toEqual(['central/x.png']);
 });

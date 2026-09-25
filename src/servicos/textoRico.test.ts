@@ -404,3 +404,47 @@ test('o resumo também tira a marcação', () => {
   expect(curto).not.toContain('**');
   expect(curto).not.toContain('`');
 });
+
+test('IMAGEM SEM ASSINATURA NÃO VIRA <img> QUEBRADA', () => {
+  /**
+   * O caminho no balde não abre sozinho. Se o endereço não veio — rede
+   * caiu, arquivo apagado, assinatura vencida — o que aparece é a
+   * DESCRIÇÃO, e não um retângulo com ícone de foto partida.
+   *
+   * A legenda ao menos diz o que falta; o retângulo não diz nada.
+   */
+  const semAssinar = paraHtml('![print do caixa](central/x.png)');
+
+  expect(semAssinar).not.toContain('<img');
+  expect(semAssinar).toContain('print do caixa');
+
+  // Com a assinatura, vira imagem de verdade
+  const assinada = paraHtml('![print do caixa](central/x.png)', {
+    'central/x.png': 'https://assinado/x.png',
+  });
+  expect(assinada).toContain('<img src="https://assinado/x.png"');
+  expect(assinada).toContain('alt="print do caixa"');
+});
+
+test('a imagem é reconhecida ANTES do link', () => {
+  /**
+   * `![x](y)` é um link `[x](y)` com um `!` na frente. A regra do link
+   * casaria primeiro e a imagem viraria um link com uma exclamação
+   * solta ao lado.
+   */
+  const html = paraHtml('![foto](https://exemplo.com/a.png)');
+
+  expect(html).toContain('<img');
+  expect(html).not.toContain('<a ');
+  expect(html).not.toContain('!');
+});
+
+test('imagem com endereço perigoso não vira imagem', () => {
+  /**
+   * `src` também é atributo que nós escrevemos. Um `javascript:` ali
+   * não roda em `<img src>` nos navegadores atuais, mas o caminho para
+   * o atributo é o mesmo do link — e ele já foi explorado assim.
+   */
+  expect(paraHtml('![x](javascript:alert(1))')).not.toContain('<img');
+  expect(paraHtml('![x](data:text/html,<script>)')).not.toContain('<img');
+});

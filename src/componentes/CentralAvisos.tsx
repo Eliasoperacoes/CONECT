@@ -36,6 +36,7 @@ import {
   Building2,
   Paperclip,
   ChevronRight,
+  ChevronDown,
   FileText,
   BookOpen,
   Eye,
@@ -65,6 +66,7 @@ import {
   descreverDestinos,
   ehDaUnidade,
   ordenarPublicacoes,
+  podeEditarPublicacao,
   resumoDeLeitura,
 } from '../servicos/mural';
 import { enviarAnexo } from '../servicos/anexos';
@@ -151,6 +153,34 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
   const [prioridade, setPrioridade] = useState<PrioridadeAviso | 'todas'>('todas');
   const [aberta, setAberta] = useState<AvisoRede | null>(null);
   const [formularioAberto, setFormularioAberto] = useState(false);
+
+  /**
+   * A publicação aberta para EDITAR.
+   *
+   * A mesma tela de escrever serve para as duas coisas: os campos
+   * são os mesmos, e duas telas iguais divergem no primeiro ajuste.
+   */
+  const [editando, setEditando] = useState<AvisoRede | null>(null);
+
+  /**
+   * AS COLUNAS DA ESQUERDA RECOLHEM, uma a uma.
+   *
+   * Com os seis rótulos de categoria e as sete unidades, a coluna
+   * chega a treze linhas — e quem já sabe em que unidade procura não
+   * precisa das categorias à vista, nem o contrário.
+   *
+   * Guardamos as FECHADAS, e não as abertas: categoria nova entra
+   * aberta, e não invisível.
+   */
+  const [colunasFechadas, setColunasFechadas] = useState<Set<string>>(() => new Set());
+
+  const alternarColuna = (chave: string) =>
+    setColunasFechadas((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(chave)) novo.delete(chave);
+      else novo.add(chave);
+      return novo;
+    });
 
   // Campos do formulário
   const [titulo, setTitulo] = useState('');
@@ -420,9 +450,21 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
           </div>
 
           <div className="hidden lg:block">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)] px-2.5 mb-1">
+            <button
+              type="button"
+              onClick={() => alternarColuna('unidades')}
+              className="w-full px-2.5 mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)] hover:text-[var(--c-texto-2)] transition-colors"
+            >
+              {colunasFechadas.has('unidades') ? (
+                <ChevronRight className="w-3 h-3 shrink-0" />
+              ) : (
+                <ChevronDown className="w-3 h-3 shrink-0" />
+              )}
               Unidades
-            </span>
+            </button>
+
+            {!colunasFechadas.has('unidades') && (
+              <>
             <LinhaFiltro
               ligado={unidade === 'todas'}
               aoClicar={() => setUnidade('todas')}
@@ -440,12 +482,26 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
                 contagem={contarUnidade(loja.nome)}
               />
             ))}
+              </>
+            )}
           </div>
 
           <div className="hidden lg:block">
-            <span className="block text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)] px-2.5 mb-1">
+            <button
+              type="button"
+              onClick={() => alternarColuna('categorias')}
+              className="w-full px-2.5 mb-1 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)] hover:text-[var(--c-texto-2)] transition-colors"
+            >
+              {colunasFechadas.has('categorias') ? (
+                <ChevronRight className="w-3 h-3 shrink-0" />
+              ) : (
+                <ChevronDown className="w-3 h-3 shrink-0" />
+              )}
               Categorias
-            </span>
+            </button>
+
+            {!colunasFechadas.has('categorias') && (
+              <>
             <LinhaFiltro
               ligado={categoria === 'todas'}
               aoClicar={() => setCategoria('todas')}
@@ -463,6 +519,8 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
                 contagem={doTipo.filter((p) => p.categoria === cat).length}
               />
             ))}
+              </>
+            )}
           </div>
         </aside>
 
@@ -682,6 +740,19 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
             bancoDados.removerAviso(aberta.id);
             setAberta(null);
           }}
+          /**
+           * Só o autor e o TI recebem o botão. A trava de verdade está
+           * em `editarAviso` — botão escondido se contorna pelo
+           * console, e é lá que a regra tem de morar.
+           */
+          aoEditar={
+            podeEditarPublicacao(aberta, colaboradorAtual)
+              ? () => {
+                  setEditando(aberta);
+                  setAberta(null);
+                }
+              : undefined
+          }
           aoFechar={() => setAberta(null)}
         />
       )}
@@ -696,13 +767,19 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
 
         Modal serve para "tem certeza?", não para redigir meia página.
       */}
-      {formularioAberto && (
+      {(formularioAberto || editando) && (
         <NovaPublicacao
+          key={editando?.id ?? 'nova'}
           colaboradorAtual={colaboradorAtual}
           colaboradores={colaboradores}
-          aoFechar={() => setFormularioAberto(false)}
+          publicacaoAEditar={editando}
+          aoFechar={() => {
+            setFormularioAberto(false);
+            setEditando(null);
+          }}
           aoPublicar={(tipoPublicado: TipoPublicacao) => {
             setFormularioAberto(false);
+            setEditando(null);
             setTipoAtivo(tipoPublicado);
           }}
         />

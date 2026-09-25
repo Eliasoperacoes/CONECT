@@ -19,7 +19,7 @@ import {
 } from '../tipos';
 import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
-import { alcanca } from './mural';
+import { alcanca, podeEditarPublicacao } from './mural';
 import { lerLista } from './cacheDeLeitura';
 import { semFormatacao } from './textoRico';
 import {
@@ -3055,6 +3055,96 @@ class BancoDadosConecta {
 
       this.notificar();
     }
+  }
+
+  /**
+   * EDITA UMA PUBLICAÇÃO JÁ FEITA.
+   *
+   * Um procedimento operacional muda: o horário do inventário, o passo
+   * que saiu errado, a tabela de preço do mês seguinte. Sem editar, a
+   * saída era apagar e publicar de novo — e isso apaga junto QUEM JÁ
+   * LEU e quem já deu ciência, que é justamente a prova que a
+   * publicação existe para guardar.
+   *
+   * QUEM EDITA: o autor, ou quem administra. Não é quem tem permissão
+   * de publicar — isso deixaria um líder reescrever o comunicado da
+   * direção, que continuaria assinado por ela.
+   *
+   * A LEITURA NÃO É ZERADA de propósito. Quem leu, leu — e um texto
+   * corrigido não desfaz isso. Para um conteúdo que muda de verdade, o
+   * certo é publicar de novo, e é o que o "exige ciência" existe para
+   * marcar.
+   */
+  async editarAviso(
+    avisoId: string,
+    dados: {
+      titulo: string;
+      conteudo: string;
+      prioridade: PrioridadeAviso;
+      categoria: CategoriaPublicacao;
+      destinos?: DestinoPublicacao[];
+      exigeConfirmacao?: boolean;
+      anexoCaminho?: string;
+      anexoNome?: string;
+    }
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    const atual = this.obterColaboradorAtual();
+    const lista = this.obterAvisosRede();
+    const indice = lista.findIndex((a) => a.id === avisoId);
+
+    if (indice === -1) return { sucesso: false, erro: 'Publicação não encontrada.' };
+
+    const original = lista[indice];
+    if (!podeEditarPublicacao(original, atual)) {
+      return {
+        sucesso: false,
+        erro: 'Só quem publicou pode editar. Peça a quem assinou, ou ao TI.',
+      };
+    }
+
+    if (!dados.titulo.trim() || !dados.conteudo.trim()) {
+      return { sucesso: false, erro: 'Título e conteúdo são obrigatórios.' };
+    }
+
+    const editado: AvisoRede = {
+      ...original,
+      titulo: dados.titulo.trim(),
+      conteudo: dados.conteudo.trim(),
+      prioridade: dados.prioridade,
+      categoria: dados.categoria,
+      destinos: dados.destinos,
+      exigeConfirmacao: !!dados.exigeConfirmacao,
+      anexoCaminho: dados.anexoCaminho,
+      anexoNome: dados.anexoNome,
+      /**
+       * `lojaDestino` acompanha, como na criação: é o que o código
+       * antigo lê, e dois campos de destino em desacordo é como um
+       * comunicado aparece numa tela e não noutra.
+       */
+      lojaDestino:
+        dados.destinos && dados.destinos.length === 1 && dados.destinos[0].alcance === 'loja'
+          ? (dados.destinos[0].valor as Loja)
+          : 'Todas',
+    };
+
+    if (usandoNuvem()) {
+      const res = await nuvemComunicacao.atualizarAviso(editado);
+      if (!res.sucesso) {
+        return { sucesso: false, erro: res.erro || 'Não foi possível salvar.' };
+      }
+    }
+
+    lista[indice] = editado;
+    localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(lista));
+
+    this.registrarAuditoria(
+      'Publicação editada',
+      'aviso',
+      `${atual.nome} editou '${editado.titulo}'.`
+    );
+    this.notificar();
+
+    return { sucesso: true };
   }
 
   async removerAviso(avisoId: string): Promise<{ sucesso: boolean; erro?: string }> {

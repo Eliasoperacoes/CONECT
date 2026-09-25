@@ -83,7 +83,10 @@ const enderecoSeguro = (bruto: string): string | null => {
  */
 const MARCA = '\uE000';
 
-const dentroDaLinha = (texto: string): string => {
+const dentroDaLinha = (
+  texto: string,
+  imagens: Record<string, string> = {}
+): string => {
   const trechosDeCodigo: string[] = [];
 
   const semCodigo = texto.replace(/`([^`]+)`/g, (todo, conteudo: string) => {
@@ -92,6 +95,25 @@ const dentroDaLinha = (texto: string): string => {
   });
 
   const formatado = semCodigo
+    /**
+     * A IMAGEM VEM ANTES DO LINK, e de propósito.
+     *
+     * `![x](y)` é um link `[x](y)` com um `!` na frente: a regra do
+     * link casaria primeiro e a imagem viraria um link com uma
+     * exclamação solta ao lado.
+     *
+     * Caminho que não foi assinado não vira `<img>`: mostra a descrição
+     * como texto. Uma imagem quebrada no meio de um procedimento é pior
+     * do que a legenda dela — a legenda ao menos diz o que falta.
+     */
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (todo, descricao: string, caminho: string) => {
+      const limpo = caminho.trim();
+      const endereco = /^https?:\/\//i.test(limpo) ? enderecoSeguro(limpo) : imagens[limpo];
+
+      if (!endereco) return descricao || '(imagem)';
+
+      return `<img src="${endereco}" alt="${descricao}" class="tr-imagem" loading="lazy" />`;
+    })
     // Marca-texto antes do negrito: `==x==` não colide, mas a ordem
     // deixa claro que ele é marcação de linha como as outras
     .replace(/==([^=]+)==/g, '<mark class="tr-marca">$1</mark>')
@@ -127,7 +149,27 @@ const dentroDaLinha = (texto: string): string => {
  * quebra de linha: quem escreve um endereço em três linhas espera as
  * três linhas, e não um parágrafo só.
  */
-export const paraHtml = (texto: string): string => {
+/**
+ * OS CAMINHOS DE IMAGEM QUE O TEXTO CITA.
+ *
+ * A imagem é escrita como `![descrição](caminho/no/balde.png)`, e o
+ * caminho não abre sozinho: o Supabase exige um endereço ASSINADO, que
+ * vence, e assinar é uma ida à rede.
+ *
+ * Por isso quem desenha resolve ANTES: pede a lista com esta função,
+ * assina cada uma, e passa o mapa para `paraHtml`. O renderizador
+ * continua sendo uma função pura — assinar dentro dele exigiria torná-lo
+ * assíncrono, e um renderizador assíncrono é uma tela que pisca.
+ */
+export const imagensCitadas = (texto: string): string[] => [
+  ...new Set(
+    [...(texto || '').matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)]
+      .map((m) => m[1].trim())
+      .filter((c) => c && !/^https?:\/\//i.test(c))
+  ),
+];
+
+export const paraHtml = (texto: string, imagens: Record<string, string> = {}): string => {
   const linhas = escapar(texto || '').split('\n');
   const partes: string[] = [];
 
@@ -137,7 +179,7 @@ export const paraHtml = (texto: string): string => {
 
   const fecharParagrafo = () => {
     if (paragrafo.length === 0) return;
-    partes.push(`<p class="tr-p">${dentroDaLinha(paragrafo.join('<br/>'))}</p>`);
+    partes.push(`<p class="tr-p">${dentroDaLinha(paragrafo.join('<br/>'), imagens)}</p>`);
     paragrafo = [];
   };
 
@@ -211,7 +253,7 @@ export const paraHtml = (texto: string): string => {
       const marca = tabelaAberta === 'cabecalho' ? 'th' : 'td';
       partes.push(
         `<tr>${celulas
-          .map((c) => `<${marca}>${dentroDaLinha(c)}</${marca}>`)
+          .map((c) => `<${marca}>${dentroDaLinha(c, imagens)}</${marca}>`)
           .join('')}</tr>`
       );
       continue;
@@ -224,7 +266,7 @@ export const paraHtml = (texto: string): string => {
       fecharTabela();
       const nivel = titulo[1].length;
       partes.push(
-        `<h${nivel + 2} class="tr-h${nivel}">${dentroDaLinha(titulo[2])}</h${nivel + 2}>`
+        `<h${nivel + 2} class="tr-h${nivel}">${dentroDaLinha(titulo[2], imagens)}</h${nivel + 2}>`
       );
       continue;
     }
@@ -234,7 +276,7 @@ export const paraHtml = (texto: string): string => {
       fecharParagrafo();
       fecharLista();
       fecharTabela();
-      partes.push(`<blockquote class="tr-citacao">${dentroDaLinha(citacao[1])}</blockquote>`);
+      partes.push(`<blockquote class="tr-citacao">${dentroDaLinha(citacao[1], imagens)}</blockquote>`);
       continue;
     }
 
@@ -262,7 +304,8 @@ export const paraHtml = (texto: string): string => {
         `<li class="tr-tarefa"><span class="tr-caixa${
           feita ? ' tr-feita' : ''
         }">${feita ? '✓' : ''}</span><span${feita ? ' class="tr-risco"' : ''}>${dentroDaLinha(
-          tarefa[2]
+          tarefa[2],
+          imagens
         )}</span></li>`
       );
       continue;
@@ -282,7 +325,7 @@ export const paraHtml = (texto: string): string => {
         listaAberta = tipo;
       }
 
-      partes.push(`<li>${dentroDaLinha((item || numerado)![1])}</li>`);
+      partes.push(`<li>${dentroDaLinha((item || numerado)![1], imagens)}</li>`);
       continue;
     }
 
@@ -306,6 +349,16 @@ export const paraHtml = (texto: string): string => {
 export const semFormatacao = (texto: string): string =>
   (texto || '')
     .replace(/`([^`]+)`/g, '$1')
+    /**
+     * A IMAGEM VIRA A DESCRIÇÃO DELA, e sai antes do link.
+     *
+     * `![foto](x.png)` é um link com `!` na frente: a regra do link
+     * casaria primeiro e o resumo sairia com uma exclamação solta —
+     * "veja !a foto aqui".
+     */
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, (todo, descricao: string) =>
+      descricao ? `[${descricao}]` : '[imagem]'
+    )
     .replace(/==([^=]+)==/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')

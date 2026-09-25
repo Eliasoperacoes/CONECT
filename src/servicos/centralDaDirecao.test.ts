@@ -584,3 +584,119 @@ test('NO CELULAR, OS FILTROS NÃO OCUPAM A TELA', async () => {
   // E as listas longas só aparecem a partir do computador
   expect((tela.match(/<div className="hidden lg:block">/g) || []).length).toBe(2);
 });
+
+// ============================================================
+// EDITAR, IMAGEM E COLUNAS
+// ============================================================
+
+test('EDITAR NÃO APAGA QUEM JÁ LEU', async () => {
+  /**
+   * Sem editar, a saída era apagar e publicar de novo — e isso apaga
+   * junto quem leu e quem deu ciência, que é justamente a prova que a
+   * publicação existe para guardar.
+   *
+   * A edição parte do original com `...original`: as listas de leitura
+   * vêm junto, intactas.
+   */
+  const banco = semComentarios(await Bun.file('src/servicos/bancoDados.ts').text());
+
+  const inicio = banco.indexOf('async editarAviso');
+  expect(inicio).toBeGreaterThan(-1);
+
+  const corpo = banco.slice(inicio, banco.indexOf('async removerAviso', inicio));
+
+  expect(corpo).toContain('...original,');
+  expect(corpo).not.toContain('lidoPorIds: []');
+  expect(corpo).not.toContain('confirmacoesIds: []');
+
+  // E atualiza, em vez de inserir de novo
+  expect(corpo).toContain('nuvemComunicacao.atualizarAviso(editado)');
+});
+
+test('a trava de editar mora no SERVIÇO, e a tela pergunta', async () => {
+  /**
+   * Botão escondido se contorna pelo console. Quem esconde e quem
+   * recusa a gravação precisam concordar, então é a mesma função.
+   */
+  const banco = semComentarios(await Bun.file('src/servicos/bancoDados.ts').text());
+  expect(banco).toContain('if (!podeEditarPublicacao(original, atual))');
+
+  const tela = semComentarios(await lerTela());
+  expect(tela).toContain('podeEditarPublicacao(aberta, colaboradorAtual)');
+  expect(tela).not.toContain('colaboradorAtual.nivel >=');
+});
+
+test('EDITAR E CRIAR SÃO A MESMA TELA', async () => {
+  /**
+   * Os campos são os mesmos, e duas telas iguais divergem no primeiro
+   * ajuste — foi assim que a lista de setores acabou escrita em dois
+   * lugares.
+   */
+  const escrita = semComentarios(
+    await Bun.file('src/componentes/NovaPublicacao.tsx').text()
+  );
+
+  expect(escrita).toContain('publicacaoAEditar?: AvisoRede | null;');
+  expect(escrita).toContain('const res = editando');
+  expect(escrita).toContain('bancoDados.editarAviso(editando.id, {');
+
+  /**
+   * E o React REMONTA a tela ao trocar o que se edita: os campos nascem
+   * do estado inicial, então sem `key` a segunda publicação abriria com
+   * o texto da primeira.
+   */
+  const central = semComentarios(await lerTela());
+  expect(central).toContain("key={editando?.id ?? 'nova'}");
+});
+
+test('o ANEXO EXISTENTE sobrevive a uma edição de texto', async () => {
+  /**
+   * Ao editar, o campo de arquivo nasce vazio — e tratar vazio como
+   * "sem anexo" apagaria o documento de quem só veio corrigir uma
+   * palavra.
+   */
+  const escrita = semComentarios(
+    await Bun.file('src/componentes/NovaPublicacao.tsx').text()
+  );
+
+  expect(escrita).toContain('const [anexoExistente, setAnexoExistente] = useState(');
+  expect(escrita).toContain('let anexoCaminho: string | undefined = anexoExistente?.caminho;');
+});
+
+test('A IMAGEM DO CORPO É ASSINADA ANTES DE DESENHAR', async () => {
+  /**
+   * O caminho no balde não abre sozinho. Assinar dentro do renderizador
+   * exigiria torná-lo assíncrono, e um renderizador assíncrono é uma
+   * tela que pisca.
+   */
+  const painel = semComentarios(
+    await Bun.file('src/componentes/PainelPublicacao.tsx').text()
+  );
+
+  expect(painel).toContain('imagensCitadas(publicacao.conteudo)');
+  expect(painel).toContain('imagens={imagens}');
+
+  // E a tela de escrita sobe a imagem para o mesmo balde
+  const escrita = semComentarios(
+    await Bun.file('src/componentes/NovaPublicacao.tsx').text()
+  );
+  expect(escrita).toContain('aoSubirImagem={subirImagem}');
+  expect(escrita).toContain("enviarAnexo(dataUrl, 'central', id, arquivo.name)");
+});
+
+test('AS COLUNAS DA ESQUERDA RECOLHEM, uma a uma', async () => {
+  /**
+   * Com os seis rótulos de categoria e as sete unidades, a coluna chega
+   * a treze linhas — e quem já sabe em que unidade procura não precisa
+   * das categorias à vista.
+   *
+   * Guardamos as FECHADAS: categoria nova entra aberta, e não
+   * invisível.
+   */
+  const tela = semComentarios(await lerTela());
+
+  expect(tela).toContain('const [colunasFechadas, setColunasFechadas] = useState<Set<string>>');
+  expect(tela).toContain("alternarColuna('unidades')");
+  expect(tela).toContain("alternarColuna('categorias')");
+  expect(tela).toContain("{!colunasFechadas.has('unidades') && (");
+});

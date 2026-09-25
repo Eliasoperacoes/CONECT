@@ -14,7 +14,7 @@
  * `textoRico.ts`: é o que mantém as 24 publicações antigas válidas e a
  * busca achando palavra que está DENTRO do documento.
  */
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Bold,
   Italic,
@@ -32,8 +32,16 @@ import {
   Highlighter,
   CheckSquare,
   Table,
+  ImagePlus,
+  Loader2,
 } from 'lucide-react';
-import { paraHtml, aplicarMarcacao, aplicarPrefixo } from '../servicos/textoRico';
+import {
+  paraHtml,
+  aplicarMarcacao,
+  aplicarPrefixo,
+  imagensCitadas,
+} from '../servicos/textoRico';
+import { abrirDocumento } from '../servicos/rh';
 
 interface Props {
   valor: string;
@@ -48,6 +56,15 @@ interface Props {
    * de 27" e num notebook — desperdiçando espaço lá e faltando aqui.
    */
   alturaCheia?: boolean;
+  /**
+   * Sobe uma imagem e devolve o CAMINHO dela no balde.
+   *
+   * Quem envia é quem sabe onde guardar, e é lá que a permissão de
+   * escrita mora. O editor só insere a marcação com o caminho que
+   * voltar — e `null` deixa o texto intacto, sem inserir imagem
+   * quebrada.
+   */
+  aoSubirImagem?: (arquivo: File) => Promise<string | null>;
 }
 
 type Ferramenta = {
@@ -186,9 +203,80 @@ export const EditorTexto: React.FC<Props> = ({
   placeholder,
   linhas = 8,
   alturaCheia = false,
+  aoSubirImagem,
 }) => {
   const campo = useRef<HTMLTextAreaElement>(null);
   const [vendo, setVendo] = useState(false);
+  const [subindo, setSubindo] = useState(false);
+
+  /**
+   * OS ENDEREÇOS DAS IMAGENS, para a prévia mostrá-las.
+   *
+   * O caminho no balde não abre sozinho: o Supabase exige um
+   * endereço assinado, e assinar é uma ida à rede. Sem isto, a aba
+   * "Como vai ficar" mostraria a legenda no lugar da foto — e quem
+   * está escrevendo não teria como conferir se inseriu a imagem
+   * certa.
+   */
+  const [enderecos, setEnderecos] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!vendo) return;
+
+    let vivo = true;
+    const faltando = imagensCitadas(valor).filter((c) => !enderecos[c]);
+    if (faltando.length === 0) return;
+
+    Promise.all(faltando.map((c) => abrirDocumento(c).then((url) => [c, url] as const)))
+      .then((pares) => {
+        if (!vivo) return;
+        setEnderecos((atual) => {
+          const novo = { ...atual };
+          for (const [caminho, url] of pares) if (url) novo[caminho] = url;
+          return novo;
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      vivo = false;
+    };
+  }, [vendo, valor, enderecos]);
+
+  /**
+   * Sobe a imagem e INSERE ONDE O CURSOR ESTAVA.
+   *
+   * A seleção é lida ANTES de subir: o envio demora, e nesse tempo o
+   * campo perdeu o foco — inserir depois, pela seleção do momento,
+   * jogaria a imagem para o começo do texto.
+   */
+  const inserirImagem = async (arquivo: File) => {
+    if (!aoSubirImagem) return;
+
+    const alvo = campo.current;
+    const onde = alvo ? alvo.selectionEnd : valor.length;
+
+    setSubindo(true);
+    const caminho = await aoSubirImagem(arquivo);
+    setSubindo(false);
+
+    if (!caminho) return;
+
+    /**
+     * A descrição sai do nome do arquivo, sem a extensão.
+     *
+     * É o `alt` da imagem: o que quem não a enxerga lê, e o que aparece
+     * se ela não carregar. "print-caixa" diz alguma coisa;
+     * "IMG_20260925_103344.jpg" não diz nada, mas ainda é melhor do que
+     * campo vazio.
+     */
+    const descricao = arquivo.name.replace(/\.[^.]+$/, '');
+
+    const quebra = String.fromCharCode(10);
+    const marcacao = quebra + quebra + '![' + descricao + '](' + caminho + ')' + quebra;
+
+    aoMudar(valor.slice(0, onde) + marcacao + valor.slice(onde));
+  };
 
   /**
    * Aplica e DEVOLVE O CURSOR para onde ele estava.
@@ -258,6 +346,43 @@ export const EditorTexto: React.FC<Props> = ({
           </React.Fragment>
         ))}
 
+        {/*
+          A IMAGEM É UM <label>, e não um botão.
+
+          O seletor de arquivo do navegador só abre a partir de um
+          `<input type="file">` — um botão que o acionasse por código
+          seria bloqueado em parte dos celulares.
+
+          Só aparece quando há para onde subir: sem `aoSubirImagem`, o
+          botão inseriria uma marcação apontando para lugar nenhum.
+        */}
+        {aoSubirImagem && (
+          <label
+            title={subindo ? 'Enviando...' : 'Inserir imagem'}
+            className={`p-1.5 rounded-lg text-[var(--c-texto-2)] hover:bg-[var(--c-superficie-2)] hover:text-[var(--c-texto)] transition-colors ${
+              vendo || subindo ? 'opacity-30' : 'cursor-pointer'
+            }`}
+          >
+            {subindo ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <ImagePlus className="w-3.5 h-3.5" />
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={vendo || subindo}
+              onChange={(e) => {
+                const arquivo = e.target.files?.[0];
+                if (arquivo) inserirImagem(arquivo);
+                // Limpa para a MESMA imagem poder ser escolhida de novo
+                e.target.value = '';
+              }}
+            />
+          </label>
+        )}
+
         <div className="flex-1" />
 
         <button
@@ -295,7 +420,7 @@ export const EditorTexto: React.FC<Props> = ({
            */
           dangerouslySetInnerHTML={{
             __html:
-              paraHtml(valor) ||
+              paraHtml(valor, enderecos) ||
               '<p class="tr-p" style="opacity:.5">Nada escrito ainda.</p>',
           }}
         />
@@ -317,12 +442,14 @@ export const EditorTexto: React.FC<Props> = ({
 };
 
 /** O texto formatado, como ele aparece para quem lê. */
-export const TextoFormatado: React.FC<{ texto: string; className?: string }> = ({
-  texto,
-  className = '',
-}) => (
+export const TextoFormatado: React.FC<{
+  texto: string;
+  className?: string;
+  /** Caminho do balde -> endereço assinado. Ver `imagensCitadas`. */
+  imagens?: Record<string, string>;
+}> = ({ texto, className = '', imagens = {} }) => (
   <div
     className={`texto-rico ${className}`}
-    dangerouslySetInnerHTML={{ __html: paraHtml(texto) }}
+    dangerouslySetInnerHTML={{ __html: paraHtml(texto, imagens) }}
   />
 );

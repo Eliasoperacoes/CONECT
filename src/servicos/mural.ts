@@ -26,6 +26,7 @@ import {
   LeituraPublicacao,
   PUBLICACAO_ENVELHECE,
   TipoPublicacao,
+  NIVEL_TI,
 } from '../tipos';
 
 /**
@@ -93,6 +94,22 @@ export const publicoAlvo = (
   todos.filter(
     (c) => c.ativo !== false && c.id !== publicacao.autorId && alcanca(publicacao, c)
   );
+
+/**
+ * QUEM PODE EDITAR ESTA PUBLICAÇÃO.
+ *
+ * O autor, ou quem administra o sistema. NÃO é quem tem permissão de
+ * publicar: isso deixaria um líder reescrever o comunicado da direção,
+ * que continuaria assinado por ela.
+ *
+ * Mora aqui, e não na tela, porque quem esconde o botão e quem recusa a
+ * gravação precisam concordar. Botão escondido se contorna pelo
+ * console; a recusa do serviço, não.
+ */
+export const podeEditarPublicacao = (
+  publicacao: AvisoRede,
+  pessoa: Colaborador
+): boolean => publicacao.autorId === pessoa.id || pessoa.nivel >= NIVEL_TI;
 
 export interface ResumoDeLeitura {
   /** Quem deveria ler, sem o autor. */

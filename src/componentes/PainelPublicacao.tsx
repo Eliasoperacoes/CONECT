@@ -13,7 +13,7 @@
  * leu não necessariamente assinou. Numa publicação que exige ciência, só
  * a segunda conta — e por isso a barra mede uma ou outra conforme o caso.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   X,
   Paperclip,
@@ -25,6 +25,7 @@ import {
   Pin,
   Trash2,
   ShieldCheck,
+  Pencil,
 } from 'lucide-react';
 import {
   AvisoRede,
@@ -34,6 +35,7 @@ import {
 } from '../tipos';
 import { resumoDeLeitura, descreverDestinos } from '../servicos/mural';
 import { abrirDocumento } from '../servicos/rh';
+import { imagensCitadas } from '../servicos/textoRico';
 import { TextoFormatado } from './EditorTexto';
 import { FotoPresenca } from './FotoPresenca';
 
@@ -45,6 +47,14 @@ interface Props {
   aoConfirmar: () => void;
   aoFixar: () => void;
   aoExcluir: () => void;
+  /**
+   * Abre esta publicação para editar.
+   *
+   * Opcional: só quem pode editar recebe. A trava de verdade está em
+   * `editarAviso`, no serviço — botão escondido se contorna pelo
+   * console.
+   */
+  aoEditar?: () => void;
   aoFechar: () => void;
 }
 
@@ -62,10 +72,38 @@ export const PainelPublicacao: React.FC<Props> = ({
   aoConfirmar,
   aoFixar,
   aoExcluir,
+  aoEditar,
   aoFechar,
 }) => {
   const [abaLeitura, setAbaLeitura] = useState<'leram' | 'faltam'>('faltam');
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
+
+  /**
+   * As imagens do corpo, assinadas.
+   *
+   * O caminho no balde não abre sozinho. Sem isto, um procedimento
+   * com print de tela mostraria a legenda no lugar da foto.
+   */
+  const [imagens, setImagens] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let vivo = true;
+    const caminhos = imagensCitadas(publicacao.conteudo);
+    if (caminhos.length === 0) return;
+
+    Promise.all(caminhos.map((c) => abrirDocumento(c).then((url) => [c, url] as const)))
+      .then((pares) => {
+        if (!vivo) return;
+        const mapa: Record<string, string> = {};
+        for (const [caminho, url] of pares) if (url) mapa[caminho] = url;
+        setImagens(mapa);
+      })
+      .catch(() => {});
+
+    return () => {
+      vivo = false;
+    };
+  }, [publicacao.id, publicacao.conteudo]);
 
   const resumo = useMemo(
     () => resumoDeLeitura(publicacao, colaboradores),
@@ -144,6 +182,7 @@ export const PainelPublicacao: React.FC<Props> = ({
           {/* O inteiro teor, com a formatação que quem escreveu deu */}
           <TextoFormatado
             texto={publicacao.conteudo}
+            imagens={imagens}
             className="text-sm text-[var(--c-texto)]"
           />
 
@@ -306,6 +345,24 @@ export const PainelPublicacao: React.FC<Props> = ({
               <Pin className="w-3.5 h-3.5" />
               {publicacao.fixadoNoTopo ? 'Desafixar' : 'Fixar no topo'}
             </button>
+
+            {/*
+              EDITAR, em vez de apagar e refazer.
+
+              Apagar e publicar de novo apaga junto QUEM JÁ LEU e quem
+              deu ciência — que é justamente a prova que a publicação
+              existe para guardar.
+            */}
+            {aoEditar && (
+              <button
+                type="button"
+                onClick={aoEditar}
+                className="px-3 py-2 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] flex items-center gap-1.5"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Editar
+              </button>
+            )}
 
             <div className="flex-1" />
 
