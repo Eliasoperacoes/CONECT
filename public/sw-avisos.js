@@ -12,13 +12,97 @@
  * Aqui ele só cuida do clique no aviso.
  */
 
+/**
+ * O CACHE DA CASCA, e só dela.
+ *
+ * O aviso acima continua valendo: este trabalhador NÃO serve versão
+ * velha. A estratégia é REDE PRIMEIRO — com sinal, a resposta vem
+ * sempre do servidor, e o cache só é reescrito depois que ela chega.
+ * O guardado só aparece quando a rede falha.
+ *
+ * Por que passou a existir: o celular do balcão perde sinal no
+ * corredor dos fundos e dentro do galpão. Sem isto, abrir o CONECTA lá
+ * dava a página de erro do navegador — e a pessoa concluía que o
+ * sistema caiu. Com isto, ela abre e vê os dados que já tinha.
+ *
+ * O nome do cache leva a versão: publicação nova descarta o cache
+ * inteiro da anterior em `activate`, em vez de deixar arquivo velho
+ * conviver com arquivo novo.
+ */
+const CACHE = 'conecta-casca-v1';
+
 self.addEventListener('install', () => {
   // Assume o lugar do anterior sem esperar as abas abertas fecharem
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (evento) => {
-  evento.waitUntil(self.clients.claim());
+  evento.waitUntil(
+    (async () => {
+      const nomes = await caches.keys();
+      await Promise.all(
+        nomes.filter((n) => n !== CACHE).map((n) => caches.delete(n))
+      );
+      await self.clients.claim();
+    })()
+  );
+});
+
+/**
+ * REDE PRIMEIRO, cache como rede de segurança.
+ *
+ * Só navegação (abrir o aplicativo) e os arquivos do próprio pacote.
+ * Chamada ao Supabase NÃO passa por aqui: dado de ponto e de conversa
+ * servido do cache seria dado errado apresentado como certo — e este
+ * sistema decide hora trabalhada.
+ */
+self.addEventListener('fetch', (evento) => {
+  const pedido = evento.request;
+
+  if (pedido.method !== 'GET') return;
+
+  const endereco = new URL(pedido.url);
+  // Outro domínio (Supabase, fontes): passa direto, sem tocar
+  if (endereco.origin !== self.location.origin) return;
+  // O carimbo da versão precisa vir do servidor, sempre: é ele que
+  // avisa que saiu publicação nova
+  if (endereco.pathname === '/versao.json') return;
+
+  const ehNavegacao =
+    pedido.mode === 'navigate' || pedido.destination === 'document';
+
+  const ehDoPacote =
+    endereco.pathname.startsWith('/assets/') ||
+    endereco.pathname.endsWith('.png') ||
+    endereco.pathname.endsWith('.svg') ||
+    endereco.pathname === '/manifest.json';
+
+  if (!ehNavegacao && !ehDoPacote) return;
+
+  evento.respondWith(
+    (async () => {
+      try {
+        const daRede = await fetch(pedido);
+        // Só guarda resposta boa: página de erro em cache é pior que nada
+        if (daRede && daRede.ok) {
+          const copia = daRede.clone();
+          caches.open(CACHE).then((c) => c.put(pedido, copia)).catch(() => {});
+        }
+        return daRede;
+      } catch {
+        const guardado = await caches.match(pedido);
+        if (guardado) return guardado;
+
+        // Navegação sem rede e sem cache do endereço exato: devolve a
+        // casca, que é a mesma para qualquer caminho neste sistema
+        if (ehNavegacao) {
+          const casca = await caches.match('/index.html');
+          if (casca) return casca;
+        }
+        throw new Error('sem rede e sem cópia guardada');
+      }
+    })()
+  );
 });
 
 self.addEventListener('notificationclick', (evento) => {

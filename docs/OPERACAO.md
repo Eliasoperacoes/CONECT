@@ -235,3 +235,60 @@ select exists (
      and prosrc ilike '%Login nao cadastrado na rede%'
 ) as gatilho_correto;
 ```
+
+---
+
+## Gerar o APK no PWABuilder
+
+O CONECTA é um site instalável. O [pwabuilder.com](https://pwabuilder.com)
+lê o endereço publicado e devolve um APK nativo — uma casca Android que abre
+o site em tela cheia, sem barra de navegador.
+
+### Antes de subir o endereço
+
+```bash
+bun scripts/conferir-pwa.ts https://SEU-ENDERECO.vercel.app
+```
+
+Ele confere **o que está no ar**, e não o repositório — que é o que o
+PWABuilder vê. O defeito que ele pega antes de todos: o `vercel.json`
+reescreve `/(.*)` para `/index.html`, então um arquivo que não esteja no
+pacote publicado responde **a página, com status 200**. Um `manifest.json`
+que devolve HTML e não dá erro é o tipo de coisa que se procura por uma
+tarde inteira.
+
+Dá para pôr `CONECTA_URL` no `.env` para não repetir o endereço.
+
+### Os passos
+
+1. **Gerar o pacote.** No PWABuilder, cole o endereço → *Package for stores*
+   → *Android*. Anote o **Package ID** que ele mostrar.
+2. **Conferir o Package ID.** Ele precisa bater com o
+   `public/.well-known/assetlinks.json`, que hoje está como
+   `br.com.malachias.conecta`. Se você mudar num lado, mude no outro.
+3. **Pegar o fingerprint.** O zip do PWABuilder vem com `assetlinks.json`
+   pronto, contendo o SHA-256 da chave de assinatura.
+4. **Colar o fingerprint** em `public/.well-known/assetlinks.json`, no lugar
+   de `SUBSTITUA_PELO_FINGERPRINT_DO_PWABUILDER`, e publicar.
+5. **Conferir de novo:** `bun scripts/conferir-pwa.ts <endereço>` tem que
+   dizer "servido e preenchido".
+
+### Por que o passo 4 não é opcional
+
+Sem o `assetlinks.json` respondendo certo, o Android **abre o aplicativo com
+a barra do navegador por cima** — parece um atalho, não um aplicativo. E o
+erro é silencioso: nada avisa, nem no celular nem no PWABuilder.
+
+Guarde a chave de assinatura (`signing.keystore` e a senha) que o PWABuilder
+gera. **Sem ela não dá para publicar atualização do APK** — só um aplicativo
+novo, e quem já instalou não recebe.
+
+### O que o aplicativo faz sem sinal
+
+O trabalhador de segundo plano (`public/sw-avisos.js`) guarda a casca do
+sistema com estratégia **rede primeiro**: com sinal, a resposta vem sempre do
+servidor; sem sinal, abre com o que já tinha em vez da página de erro. Foi
+pensado para o corredor dos fundos e o galpão, onde o celular perde sinal.
+
+Dado do Supabase **não** é guardado: ponto e conversa servidos do cache
+seriam informação errada apresentada como certa.

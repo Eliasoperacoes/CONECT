@@ -3,11 +3,17 @@
   "name": "CONECTA — Malachias Autopeças",
   "short_name": "CONECTA",
   "description": "Comunicador interno da Malachias Autopeças: conversas, grupos, ponto e gestão de pessoas.",
+  "lang": "pt-BR",
+  "dir": "ltr",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
   "background_color": "#0E1216",
   "theme_color": "#2563EB",
+  "categories": ["business", "productivity"],
+  "prefer_related_applications": false,
   "icons": [
     {
       "src": "/icone-192.png",
@@ -32,6 +38,22 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Bater ponto",
+      "short_name": "Ponto",
+      "description": "Registrar entrada, almoço ou saída",
+      "url": "/?atalho=ponto",
+      "icons": [{ "src": "/icone-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Conversas",
+      "short_name": "Conversas",
+      "description": "Abrir o chat da rede",
+      "url": "/?atalho=conversas",
+      "icons": [{ "src": "/icone-192.png", "sizes": "192x192" }]
     }
   ],
   "handle_links": "preferred",

@@ -295,6 +295,24 @@ export default function App() {
         setCodigoDoCartaz(doCartaz);
         setAbaAtiva('ponto');
       }
+
+      /**
+       * CHEGOU PELO ATALHO DO ÍCONE.
+       *
+       * No celular, segurar o ícone do aplicativo abre os atalhos que o
+       * manifesto declara — "Bater ponto" e "Conversas". Eles chegam
+       * aqui como `?atalho=`, e sem este trecho abririam o sistema na
+       * última aba usada, como um toque comum: o atalho seria enfeite.
+       *
+       * Sai da barra de endereços junto, senão a aba lembrada perderia
+       * para ele a cada recarga.
+       */
+      const atalho = endereco.searchParams.get('atalho');
+      if (atalho && (ABAS_PRINCIPAIS as readonly string[]).includes(atalho)) {
+        endereco.searchParams.delete('atalho');
+        window.history.replaceState({}, '', endereco.toString());
+        setAbaAtiva(atalho as AbaPrincipal);
+      }
     } catch {
       // Endereço estranho: não vale derrubar a abertura do sistema por isso
     }
