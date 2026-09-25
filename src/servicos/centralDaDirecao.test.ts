@@ -451,3 +451,57 @@ test('GRUPOS SAIU DA BARRA e virou seção dentro de Conversas', async () => {
   const catalogo = await Bun.file('src/servicos/ferramentas.ts').text();
   expect(catalogo).toContain("chave: 'grupos'");
 });
+
+test('CLICAR NA CENTRAL LEVA À CENTRAL', async () => {
+  /**
+   * O defeito: a aba aparecia, a pessoa clicava e nada acontecia.
+   *
+   * `abaAtiva` filtra a escolha por `podeUsar(aba)` — e `podeUsar`
+   * responde NÃO para qualquer chave fora do catálogo, o que está
+   * certo: erro de digitação numa tela não pode virar tela aberta.
+   *
+   * Só que `central` saiu do catálogo de propósito, junto com a
+   * permissão. Então o filtro devolvia a pessoa para o painel a cada
+   * clique — a aba existia e não levava a lugar nenhum.
+   *
+   * "Painel" sempre esteve na mesma situação (ele é a soma de várias
+   * ferramentas), e por isso tinha uma exceção escrita à mão. Agora as
+   * duas estão na mesma lista.
+   */
+  const app = semComentarios(await Bun.file('src/App.tsx').text());
+
+  expect(app).toContain(
+    "const ABAS_SEM_FERRAMENTA: AbaPrincipal[] = ['painel', 'central'];"
+  );
+  expect(app).toContain('!ABAS_SEM_FERRAMENTA.includes(abaAtivaEscolhida)');
+
+  /**
+   * E toda aba da barra que NÃO está no catálogo precisa estar nessa
+   * lista — senão o próximo a entrar repete o defeito sem ninguém
+   * perceber, porque ele é silencioso: nada quebra, a aba só não abre.
+   */
+  const { ABAS_PRINCIPAIS } = await import('../tipos');
+  const { FERRAMENTAS } = await import('./ferramentas');
+  const noCatalogo = new Set(FERRAMENTAS.map((f) => f.chave));
+
+  const semFerramenta = ABAS_PRINCIPAIS.filter((a) => !noCatalogo.has(a));
+  for (const aba of semFerramenta) {
+    expect(app).toContain(`'${aba}'`);
+    expect(
+      app.includes(`ABAS_SEM_FERRAMENTA: AbaPrincipal[] = ['painel', 'central']`) &&
+        (['painel', 'central'] as string[]).includes(aba)
+    ).toBe(true);
+  }
+});
+
+test('a Central é desenhada nas DUAS larguras', async () => {
+  /**
+   * Celular e computador têm caminhos separados no App — a aba que só
+   * aparece num dos dois é a que a pessoa jura que sumiu.
+   */
+  const app = await Bun.file('src/App.tsx').text();
+
+  expect(app).toContain("{abaAtiva === 'central' && (");
+  expect(app).toContain("abaDesktop === 'central' ?");
+  expect((app.match(/<CentralAvisos colaboradorAtual=\{colaboradorAtual\} \/>/g) || []).length).toBe(2);
+});

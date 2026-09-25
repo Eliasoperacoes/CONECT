@@ -725,9 +725,29 @@ export default function App() {
    * React inteiro — tela branca, sem erro de compilação. Já aconteceu
    * antes neste arquivo, e há teste cobrando.
    */
+  /**
+   * AS ABAS SEM FERRAMENTA NO CATÁLOGO.
+   *
+   * `podeUsar` responde NÃO para qualquer chave que não esteja no
+   * catálogo — e está certo: erro de digitação numa tela não pode virar
+   * tela aberta. Mas isso vale para as abas que TÊM ferramenta.
+   *
+   * "Painel" nunca teve (ele é a soma de várias), e a Central deixou de
+   * ter de propósito: ler o que foi endereçado a você não é privilégio.
+   *
+   * SEM ESTA LISTA, clicar em Central não fazia nada: a aba aparecia,
+   * a pessoa clicava, e o filtro abaixo a devolvia para o painel —
+   * porque `podeUsar('central', ...)` é `false` por a chave não existir.
+   */
+  const ABAS_SEM_FERRAMENTA: AbaPrincipal[] = ['painel', 'central'];
+
   const abaAtiva: AbaPrincipal = (() => {
     if (abaAtivaEscolhida === 'painel' && !podeVerRede) return 'eu';
-    if (abaAtivaEscolhida !== 'painel' && !podeUsar(abaAtivaEscolhida, colaboradorAtual)) {
+
+    if (
+      !ABAS_SEM_FERRAMENTA.includes(abaAtivaEscolhida) &&
+      !podeUsar(abaAtivaEscolhida, colaboradorAtual)
+    ) {
       if (podeVerRede) return 'painel';
       return podeUsar('conversas', colaboradorAtual) ? 'conversas' : 'eu';
     }
@@ -1071,6 +1091,14 @@ export default function App() {
                   {aba.id === 'conversas' && totalNaoLidas > 0 && (
                     <span className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
                       {totalNaoLidas}
+                    </span>
+                  )}
+
+                  {/* O mesmo número da barra do celular. Sem ele, no
+                      computador a publicação chega e nada avisa. */}
+                  {!!aba.contador && aba.contador > 0 && (
+                    <span className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                      {aba.contador > 9 ? '9+' : aba.contador}
                     </span>
                   )}
                 </button>
