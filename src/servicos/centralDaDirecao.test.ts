@@ -278,7 +278,12 @@ test('O CONTEÚDO É TEXTO, e a tela é que formata', async () => {
    * ela, a linha viraria "## Inventário **sexta**".
    */
   const tela = semComentarios(await lerTela());
-  expect(tela).toContain('semFormatacao(p.conteudo)');
+  /*
+    O cartão corta o texto por CARACTERE, e não só com line-clamp:
+    a classe disputava o  com  e perdia, e um
+    procedimento de dez páginas saía inteiro dentro do cartão.
+  */
+  expect(tela).toContain('resumoCurto(p.conteudo)');
 
   /**
    * O editor mora na TELA DE ESCRITA, e não mais na lista: a criação
@@ -402,7 +407,8 @@ test('A CENTRAL É ABA DE TODOS, e não sub-aba de Gerenciar', async () => {
 
   const app = await Bun.file('src/App.tsx').text();
   expect(app).toMatch(/id: 'central',[\s\S]{0,80}visivel: true/);
-  expect(app).toContain('<CentralAvisos colaboradorAtual={colaboradorAtual} />');
+  expect(app).toContain('<CentralAvisos');
+  expect(app).toContain('publicacaoAAbrir={publicacaoAAbrir}');
 
   // E não existe em dois lugares: saiu do painel de gestão
   const painel = await Bun.file('src/componentes/PainelRede.tsx').text();
@@ -503,5 +509,78 @@ test('a Central é desenhada nas DUAS larguras', async () => {
 
   expect(app).toContain("{abaAtiva === 'central' && (");
   expect(app).toContain("abaDesktop === 'central' ?");
-  expect((app.match(/<CentralAvisos colaboradorAtual=\{colaboradorAtual\} \/>/g) || []).length).toBe(2);
+  /* Uma para o celular, outra para o computador */
+  expect((app.match(/<CentralAvisos/g) || []).length).toBe(2);
+});
+
+test('O RECADO DO CHAT TEM BOTÃO, e ele abre A publicação', async () => {
+  /**
+   * Sem o botão, a mensagem dizia "abra a aba Central" e a pessoa tinha
+   * de sair da conversa, trocar de aba e procurar qual das publicações
+   * era. Com dez avisos na semana, isso é procurar — e um recado que
+   * obriga a procurar não chega.
+   *
+   * O id vai junto: o botão abre ELA, e não a Central inteira.
+   */
+  const banco = semComentarios(await Bun.file('src/servicos/bancoDados.ts').text());
+  expect(banco).toContain('publicacaoId: novoAviso.id,');
+
+  const chat = semComentarios(
+    await Bun.file('src/componentes/TelaConversa.tsx').text()
+  );
+  expect(chat).toContain('{msg.publicacaoId && aoAbrirPublicacao && (');
+  expect(chat).toContain('Abrir publicação');
+
+  const app = semComentarios(await Bun.file('src/App.tsx').text());
+  expect(app).toContain('const abrirPublicacao = useCallback');
+  expect(app).toContain("setAbaAtiva('central');");
+});
+
+test('o pedido de abrir é CONSUMIDO', async () => {
+  /**
+   * Pedido que não se limpa reabre a mesma publicação a cada desenho e
+   * prende a pessoa nela — foi o que já aconteceu com o alvo do sino.
+   */
+  const central = semComentarios(await lerTela());
+
+  expect(central).toContain('aoConsumirPublicacao?.();');
+
+  const app = semComentarios(await Bun.file('src/App.tsx').text());
+  expect(app).toContain('aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}');
+});
+
+test('a coluna do recado NÃO apaga a mensagem junto', async () => {
+  /**
+   * `on delete set null`: publicação apagada deixa o recado como texto
+   * comum, e o botão some. Com CASCADE, a mensagem sumiria do meio da
+   * conversa — o tipo de coisa que faz as pessoas desconfiarem do
+   * sistema.
+   */
+  const sql = semComentarios(await Bun.file('supabase/aviso-no-chat.sql').text());
+
+  expect(sql).toContain('add column if not exists publicacao_id text');
+  expect(sql).toContain('on delete set null');
+  expect(sql).not.toContain('on delete cascade');
+  expect(sql).toContain("notify pgrst, 'reload schema'");
+});
+
+test('NO CELULAR, OS FILTROS NÃO OCUPAM A TELA', async () => {
+  /**
+   * A coluna da esquerda empilhava uma busca, sete unidades e seis
+   * categorias — treze linhas de filtro antes da primeira publicação.
+   * Numa tela de 390px isso é rolar duas vezes para chegar ao que se
+   * veio ler.
+   *
+   * Viram dois seletores nativos, com a contagem no rótulo — que é o
+   * que a coluna do computador mostra ao lado de cada linha.
+   */
+  const tela = await lerTela();
+
+  expect(tela).toContain('<div className="grid grid-cols-2 gap-2 lg:hidden">');
+  expect(tela).toContain('aria-label="Unidade"');
+  expect(tela).toContain('aria-label="Categoria"');
+  expect(tela).toContain('({contarUnidade(loja.nome)})');
+
+  // E as listas longas só aparecem a partir do computador
+  expect((tela.match(/<div className="hidden lg:block">/g) || []).length).toBe(2);
 });

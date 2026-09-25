@@ -30,6 +30,7 @@ import {
   Pencil,
   Reply,
   Mic,
+  Megaphone,
 } from 'lucide-react';
 import {
   Conversa,
@@ -54,6 +55,14 @@ interface PropsTelaConversa {
   conversa: Conversa;
   colaboradorAtual: Colaborador;
   aoVoltar: () => void;
+  /**
+   * Abre uma publicação da Central, a partir do recado no chat.
+   *
+   * Opcional porque quem monta a tela decide se há para onde ir: numa
+   * janela de conversa flutuante, por exemplo, trocar de aba por baixo
+   * seria uma surpresa.
+   */
+  aoAbrirPublicacao?: (publicacaoId: string) => void;
 }
 
 /**
@@ -130,6 +139,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   conversa,
   colaboradorAtual,
   aoVoltar,
+  aoAbrirPublicacao,
 }) => {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [textoMensagem, setTextoMensagem] = useState('');
@@ -1200,6 +1210,29 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       <p className="whitespace-pre-wrap break-words leading-relaxed text-base sm:text-sm">
                         {msg.texto}
                       </p>
+                    )}
+
+                    {/*
+                      O RECADO DA CENTRAL VEM COM BOTÃO.
+
+                      Sem ele, a mensagem diz "abra a aba Central" e a
+                      pessoa tem de sair da conversa, trocar de aba e
+                      procurar qual das publicações era. Com dez avisos
+                      na semana, isso é procurar — e um recado que
+                      obriga a procurar não chega.
+
+                      O botão leva o ID da publicação, então abre ELA, e
+                      não a Central inteira.
+                    */}
+                    {msg.publicacaoId && aoAbrirPublicacao && (
+                      <button
+                        type="button"
+                        onClick={() => aoAbrirPublicacao(msg.publicacaoId!)}
+                        className="mt-2 w-full px-3 py-2 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center justify-center gap-1.5 hover:brightness-110 transition-all"
+                      >
+                        <Megaphone className="w-3.5 h-3.5" />
+                        Abrir publicação
+                      </button>
                     )}
 
                     {/* Edição acontece no próprio balão, para a pessoa ver o

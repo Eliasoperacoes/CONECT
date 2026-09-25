@@ -18,6 +18,7 @@ import {
   semFormatacao,
   aplicarMarcacao,
   aplicarPrefixo,
+  resumoCurto,
 } from './textoRico';
 
 // ============================================================
@@ -357,4 +358,49 @@ test('a marcação nova também some do resumo', () => {
   expect(daTabela).not.toContain('|');
   expect(daTabela).not.toContain('---');
   expect(daTabela).toContain('Descalvado');
+});
+
+test('O RESUMO DO CARTÃO CABE NUM CARTÃO', () => {
+  /**
+   * `semFormatacao` tira a marcação, mas devolve o texto INTEIRO — e um
+   * procedimento operacional de dez páginas continua tendo dez páginas.
+   * O cartão da lista saiu com o documento todo dentro, e a tela ficou
+   * com cara de site que não carregou.
+   *
+   * O corte é no TEXTO, e não só no CSS: `line-clamp` disputava o
+   * `display` com `block` e perdia.
+   */
+  const longo = 'palavra '.repeat(200);
+  const curto = resumoCurto(longo);
+
+  expect(curto.length).toBeLessThan(240);
+  expect(curto.endsWith('…')).toBe(true);
+
+  // Texto que já cabe não é cortado nem ganha reticência
+  expect(resumoCurto('Inventário na sexta.')).toBe('Inventário na sexta.');
+});
+
+test('o corte cai num espaço, e não no meio da palavra', () => {
+  /**
+   * "peças comprad…" parece defeito; "peças…" parece resumo.
+   *
+   * O caso precisa ter uma palavra CRUZANDO o limite. A primeira
+   * versão deste teste usava "a a a a…", onde todo corte cai num
+   * espaço de qualquer jeito — e a mutação que desligava a busca pelo
+   * espaço passava batida.
+   */
+  const texto = 'abcdefghij '.repeat(4) + 'superlongapalavra';
+  const curto = resumoCurto(texto, 50);
+
+  // O corte cai no espaço dos 44, e não dentro de "superlonga..."
+  expect(curto).not.toContain('super');
+  expect(curto).toBe('abcdefghij abcdefghij abcdefghij abcdefghij…');
+});
+
+test('o resumo também tira a marcação', () => {
+  const curto = resumoCurto('## Título\n\nTexto **forte** e `código`.');
+
+  expect(curto).not.toContain('#');
+  expect(curto).not.toContain('**');
+  expect(curto).not.toContain('`');
 });

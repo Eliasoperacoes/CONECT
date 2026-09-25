@@ -698,6 +698,18 @@ export interface Mensagem {
   anexoCaminho?: string;
   ehAvisoDirecao?: boolean;
   /**
+   * A PUBLICAÇÃO QUE ESTE RECADO ANUNCIA.
+   *
+   * O chat recebe um aviso curto — o que é, de quem, de que categoria —
+   * e um botão que abre a publicação inteira. Sem o id, o botão só
+   * conseguiria levar à Central e deixar a pessoa procurar qual das
+   * publicações era; com dez avisos na semana, isso é procurar.
+   *
+   * Opcional porque só o recado da Central tem. Toda outra mensagem do
+   * sistema continua sem ele.
+   */
+  publicacaoId?: string;
+  /**
    * Ainda subindo. So no aparelho — nunca vai para o banco.
    *
    * Aparece assim que a pessoa aperta enviar. Sem isso, a tela ficava parada

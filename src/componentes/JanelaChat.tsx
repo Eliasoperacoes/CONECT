@@ -46,6 +46,8 @@ interface PropsJanelaChat {
    * empilhar janelas em tela cheia esconderia umas às outras sem aviso.
    */
   visivelNoCelular?: boolean;
+  /** Abre uma publicação da Central, a partir do recado no chat. */
+  aoAbrirPublicacao?: (publicacaoId: string) => void;
 }
 
 export const JanelaChat: React.FC<PropsJanelaChat> = ({
@@ -55,6 +57,7 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
   direita = 372,
   aoEncolher,
   visivelNoCelular = true,
+  aoAbrirPublicacao,
 }) => {
   const estilo = { '--direita': `${direita}px` } as React.CSSProperties;
 
@@ -100,6 +103,7 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
           conversa={conversa}
           colaboradorAtual={colaboradorAtual}
           aoVoltar={aoFechar}
+          aoAbrirPublicacao={aoAbrirPublicacao}
         />
       </div>
     </div>

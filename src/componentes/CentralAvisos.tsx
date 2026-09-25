@@ -69,13 +69,21 @@ import {
 } from '../servicos/mural';
 import { enviarAnexo } from '../servicos/anexos';
 import { EditorTexto } from './EditorTexto';
-import { semFormatacao } from '../servicos/textoRico';
+import { resumoCurto } from '../servicos/textoRico';
 import { NovaPublicacao } from './NovaPublicacao';
 import { PainelPublicacao } from './PainelPublicacao';
 import { FotoPresenca } from './FotoPresenca';
 
 interface PropsCentralAvisos {
   colaboradorAtual: Colaborador;
+  /**
+   * A publicação a abrir assim que a tela montar.
+   *
+   * Vem do botão no recado do chat. Sem isto, o botão levaria à
+   * Central e deixaria a pessoa procurar qual das publicações era.
+   */
+  publicacaoAAbrir?: string | null;
+  aoConsumirPublicacao?: () => void;
   aoAbrirConversaAvisos?: () => void;
   aoAlternarParaGestor?: () => void;
 }
@@ -132,6 +140,8 @@ const LinhaFiltro: React.FC<{
 
 export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
   colaboradorAtual,
+  publicacaoAAbrir,
+  aoConsumirPublicacao,
 }) => {
   const [versao, setVersao] = useState(0);
   const [tipoAtivo, setTipoAtivo] = useState<TipoPublicacao>('aviso');
@@ -181,6 +191,32 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
     void versao;
     return bancoDados.obterAvisosVisiveisParaUsuarioAtual();
   }, [versao, colaboradorAtual.id]);
+
+  /**
+   * ABRE A PUBLICAÇÃO QUE O CHAT PEDIU.
+   *
+   * Espera a lista existir: o pedido chega junto com a montagem da
+   * tela, e procurar numa lista ainda vazia acharia nada.
+   *
+   * O alvo é CONSUMIDO assim que abre. Pedido que não se limpa reabre
+   * a mesma publicação a cada desenho e prende a pessoa nela — foi o
+   * que já aconteceu com o alvo do sino.
+   *
+   * Se não achar — publicação apagada, ou destino que deixou de
+   * alcançar a pessoa — a tela abre normalmente, e o alvo é limpo do
+   * mesmo jeito.
+   */
+  useEffect(() => {
+    if (!publicacaoAAbrir || minhas.length === 0) return;
+
+    const alvo = minhas.find((p) => p.id === publicacaoAAbrir);
+    if (alvo) {
+      setTipoAtivo(alvo.tipo);
+      bancoDados.confirmarLeituraAviso(alvo.id);
+      setAberta(alvo);
+    }
+    aoConsumirPublicacao?.();
+  }, [publicacaoAAbrir, minhas, aoConsumirPublicacao]);
 
   /**
    * Os contadores da coluna da esquerda contam DENTRO DO TIPO ABERTO.
@@ -341,7 +377,49 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
             />
           </div>
 
-          <div>
+          {/*
+            NO CELULAR, DOIS SELETORES NO LUGAR DE TREZE LINHAS.
+
+            A coluna da esquerda empilhava uma busca, sete unidades e
+            seis categorias — treze linhas de filtro antes da primeira
+            publicação. Numa tela de 390px isso é rolar duas vezes para
+            chegar ao que se veio ler.
+
+            Nativos de propósito: abrem a roda do sistema, que se gira
+            com o polegar. E levam a CONTAGEM no rótulo, que é o que a
+            coluna do computador mostra ao lado de cada linha.
+          */}
+          <div className="grid grid-cols-2 gap-2 lg:hidden">
+            <select
+              value={unidade}
+              onChange={(e) => setUnidade(e.target.value)}
+              aria-label="Unidade"
+              className="w-full px-2 py-2 text-xs bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)]"
+            >
+              <option value="todas">Todas as unidades ({doTipo.length})</option>
+              {INFORMACOES_LOJAS.map((loja) => (
+                <option key={loja.nome} value={loja.nome}>
+                  {loja.nome} ({contarUnidade(loja.nome)})
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={categoria}
+              onChange={(e) => setCategoria(e.target.value as CategoriaPublicacao | 'todas')}
+              aria-label="Categoria"
+              className="w-full px-2 py-2 text-xs bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)]"
+            >
+              <option value="todas">Todas as categorias ({doTipo.length})</option>
+              {CATEGORIAS_PUBLICACAO.map((cat) => (
+                <option key={cat} value={cat}>
+                  {ROTULO_CATEGORIA[cat]} ({doTipo.filter((p) => p.categoria === cat).length})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="hidden lg:block">
             <span className="block text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)] px-2.5 mb-1">
               Unidades
             </span>
@@ -364,7 +442,7 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
             ))}
           </div>
 
-          <div>
+          <div className="hidden lg:block">
             <span className="block text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)] px-2.5 mb-1">
               Categorias
             </span>
@@ -511,14 +589,24 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
                         {p.titulo}
                       </span>
                       {/*
-                        O resumo do cartão vai SEM MARCAÇÃO.
+                        O RESUMO É CORTADO NO TEXTO, e não só no CSS.
 
-                        Com ela, a linha sairia "## Inventário **sexta**" —
-                        e o cartão existe justamente para se ler de relance.
-                        O texto formatado aparece ao abrir.
+                        Tinha `block` junto de `line-clamp-2`: as duas
+                        definem `display`, e o `block` ganhou. O clamp
+                        virou enfeite, e um procedimento de dez páginas
+                        saiu inteiro dentro do cartão — a tela ficou com
+                        cara de site que não carregou.
+
+                        Cortar por caractere não depende de folha de
+                        estilo nenhuma. O clamp continua, para o caso de
+                        o corte cair no meio de uma linha larga.
+
+                        Sem marcação, também: com ela a linha sairia
+                        "## Inventário **sexta**", e o cartão existe
+                        justamente para se ler de relance.
                       */}
-                      <span className="block text-xs text-[var(--c-texto-3)] leading-snug line-clamp-2 mt-0.5">
-                        {semFormatacao(p.conteudo)}
+                      <span className="text-xs text-[var(--c-texto-3)] leading-snug line-clamp-2 mt-0.5">
+                        {resumoCurto(p.conteudo)}
                       </span>
 
                       <div className="flex items-center gap-3 flex-wrap mt-1.5 text-[10px] text-[var(--c-texto-3)]">

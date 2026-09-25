@@ -338,6 +338,33 @@ export const semFormatacao = (texto: string): string =>
     .trim();
 
 /**
+ * O RESUMO QUE CABE NUM CARTÃO.
+ *
+ * `semFormatacao` tira a marcação, mas devolve o texto INTEIRO — e um
+ * procedimento operacional de dez páginas continua tendo dez páginas.
+ * O cartão da lista saiu com o documento todo dentro, e a tela ficou
+ * com cara de site que não carregou.
+ *
+ * Cortar aqui, no texto, e não só no CSS: `line-clamp` depende de a
+ * folha de estilo estar certa e de nenhuma outra classe disputar o
+ * `display` — foi exatamente isso que falhou (`block` ganhou do
+ * clamp). Duzentos e vinte caracteres são duas linhas cheias em
+ * qualquer largura.
+ *
+ * Corta em espaço, não no meio da palavra: "peças comprad…" parece
+ * defeito; "peças…" parece resumo.
+ */
+export const resumoCurto = (texto: string, limite = 220): string => {
+  const limpo = semFormatacao(texto);
+  if (limpo.length <= limite) return limpo;
+
+  const cortado = limpo.slice(0, limite);
+  const ultimoEspaco = cortado.lastIndexOf(' ');
+
+  return `${(ultimoEspaco > limite * 0.6 ? cortado.slice(0, ultimoEspaco) : cortado).trimEnd()}…`;
+};
+
+/**
  * Envolve o pedaço escolhido com a marcação, ou insere um exemplo.
  *
  * É o que os botões da barra chamam. Devolve também onde a seleção

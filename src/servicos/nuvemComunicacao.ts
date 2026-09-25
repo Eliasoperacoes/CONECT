@@ -192,6 +192,7 @@ interface LinhaMensagem {
   fixada_em: string | null;
   fixada_por_id: string | null;
   anexo_caminho: string | null;
+  publicacao_id: string | null;
   criado_em: string;
 }
 
@@ -223,6 +224,7 @@ interface LinhaAviso {
 }
 
 const paraLinhaMensagem = (m: Mensagem) => ({
+  publicacao_id: m.publicacaoId ?? null,
   id: m.id,
   conversa_id: m.conversaId,
   remetente_id: m.remetenteId,
@@ -488,6 +490,7 @@ class PonteComunicacao {
         ehEncaminhada: linha.eh_encaminhada || undefined,
         respondendoA: linha.responde_a || undefined,
         ehAvisoDirecao: linha.eh_aviso_direcao || undefined,
+        publicacaoId: linha.publicacao_id || undefined,
         editadaEm: linha.editada_em || undefined,
         fixadaEm: linha.fixada_em || undefined,
         fixadaPorId: linha.fixada_por_id || undefined,

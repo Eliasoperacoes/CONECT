@@ -2191,6 +2191,8 @@ class BancoDadosConecta {
       legenda?: string;
       ehEncaminhada?: boolean;
       respondendoA?: string;
+      /** A publicação da Central que este recado anuncia. */
+      publicacaoId?: string;
     }
   ): Promise<{ sucesso: boolean; mensagem?: Mensagem; erro?: string }> {
     if (!this.podePublicarNaConversa(conversaId)) {
@@ -2221,6 +2223,7 @@ class BancoDadosConecta {
       ehEncaminhada: !!conteudo.ehEncaminhada,
       respondendoA: conteudo.respondendoA,
       ehAvisoDirecao: conversaId === 'grupo-avisos-da-rede',
+      publicacaoId: conteudo.publicacaoId,
     };
 
     const conversas = this.obterTodasConversas();
@@ -2972,6 +2975,8 @@ class BancoDadosConecta {
     await this.enviarMensagem('grupo-avisos-da-rede', {
       tipo: 'texto',
       texto: resumo,
+      /* É o que faz o botão do chat abrir ESTA publicação, e não a Central inteira */
+      publicacaoId: novoAviso.id,
     });
 
     this.registrarAuditoria('Publicação de Comunicado', 'aviso', `${atual.nome} publicou '${novoAviso.titulo}'.`);

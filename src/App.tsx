@@ -170,6 +170,21 @@ export default function App() {
   const consumirSecaoAlvo = useCallback(() => setSecaoAlvo(null), []);
   /** O código do cartaz de ponto, quando a pessoa chegou por ele. */
   const [codigoDoCartaz, setCodigoDoCartaz] = useState<string | null>(null);
+
+  /**
+   * A publicação que o botão do chat pediu para abrir.
+   *
+   * Mesmo padrão do código do cartaz: a Central consome e limpa. Sem
+   * limpar, ela reabriria a mesma publicação a cada desenho.
+   */
+  const [publicacaoAAbrir, setPublicacaoAAbrir] = useState<string | null>(null);
+
+  /** Troca para a Central e manda abrir a publicação. */
+  const abrirPublicacao = useCallback((publicacaoId: string) => {
+    setPublicacaoAAbrir(publicacaoId);
+    setAbaAtiva('central');
+    setConversaAtivaId(null);
+  }, []);
   const [colaboradorAtual, setColaboradorAtual] = useState<Colaborador>(
     bancoDados.obterColaboradorAtual()
   );
@@ -1371,7 +1386,11 @@ export default function App() {
             */}
             {abaAtiva === 'central' && (
               <div className="block md:hidden h-full overflow-y-auto">
-                <CentralAvisos colaboradorAtual={colaboradorAtual} />
+                <CentralAvisos
+                  colaboradorAtual={colaboradorAtual}
+                  publicacaoAAbrir={publicacaoAAbrir}
+                  aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}
+                />
               </div>
             )}
 
@@ -1486,6 +1505,7 @@ export default function App() {
                 conversa={conversaAtiva}
                 colaboradorAtual={colaboradorAtual}
                 aoVoltar={() => setConversaAtivaId(null)}
+                aoAbrirPublicacao={abrirPublicacao}
               />
             </div>
           ) : abaDesktop === 'painel' ? (
@@ -1500,7 +1520,11 @@ export default function App() {
             </div>
           ) : abaDesktop === 'central' ? (
             <div className="w-full h-full flex flex-col bg-[var(--c-canvas)] overflow-y-auto">
-              <CentralAvisos colaboradorAtual={colaboradorAtual} />
+              <CentralAvisos
+                  colaboradorAtual={colaboradorAtual}
+                  publicacaoAAbrir={publicacaoAAbrir}
+                  aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}
+                />
             </div>
           ) : abaDesktop === 'ponto' ? (
             <div className="w-full max-w-[900px] h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
@@ -1625,6 +1649,12 @@ export default function App() {
             visivelNoCelular={indice === posicoesDasJanelas.length - 1}
             aoEncolher={() => alternarEncolhida(janela.id)}
             aoFechar={() => fecharJanela(janela.id)}
+            /* Fecha a janela ao ir para a publicação: deixá-la aberta
+               por cima da Central esconderia o que se foi ler */
+            aoAbrirPublicacao={(id) => {
+              fecharJanela(janela.id);
+              abrirPublicacao(id);
+            }}
           />
         );
       })}
