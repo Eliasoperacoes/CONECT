@@ -1718,7 +1718,7 @@ class ServicoPonto {
     data: string,
     dadosDoColaborador?: { motivo?: string; anexoCaminho?: string },
     corrigidoPor?: Colaborador
-  ): Promise<{ criou: boolean; ajuste?: AjusteJornada }> {
+  ): Promise<{ criou: boolean; ajuste?: AjusteJornada; erro?: string }> {
     const jornada = this.obterJornadaDoDia(colaboradorId, data);
     if (!jornada.completa) return { criou: false };
 
@@ -1773,7 +1773,7 @@ class ServicoPonto {
         existente && (existente.estado === 'pendente' || !!corrigidoPor);
 
       if (precisaReescrever) {
-        await this.gravarAjusteCorrigido({
+        const res = await this.gravarAjusteCorrigido({
           ...existente!,
           minutos: 0,
           minutosTrabalhados: jornada.minutosTrabalhados,
@@ -1784,6 +1784,8 @@ class ServicoPonto {
           aprovadorNome: corrigidoPor?.nome || 'Tolerância automática',
           decididoEm: new Date().toISOString(),
         });
+
+        if (!res.sucesso) return { criou: false, erro: res.erro };
       }
       return { criou: false };
     }
@@ -1897,15 +1899,20 @@ class ServicoPonto {
          * — com o número de antes da correção. Dois lugares mostrando
          * dias diferentes do mesmo dia, e nenhum sinal de que algo falhou.
          *
-         * O aviso não chega ao usuário por aqui (esta função roda em
-         * cadeia, atrás de outras telas), mas para de sumir: quem for
-         * investigar encontra o motivo do banco no console.
+         * E AGORA O MOTIVO SOBE, além de ir ao console.
+         *
+         * Dizia aqui que o aviso "não chega ao usuário por aqui, porque
+         * esta função roda em cadeia atrás de outras telas". Era
+         * verdade e virou desculpa: `reapurarPeriodo` chama esta função
+         * em laço e é a tela que o RH usa justamente quando o saldo
+         * está errado. Sem o motivo, ela dizia "0 dias mudaram de
+         * valor" — a mesma frase de quando não havia nada a mudar.
          */
         console.error(
           `Apuração de ${data} de ${colaboradorId} NÃO foi gravada:`,
           res.erro
         );
-        return { criou: false };
+        return { criou: false, erro: res.erro };
       }
     }
 
@@ -1927,12 +1934,30 @@ class ServicoPonto {
    * Foi exatamente isso que aconteceu com a correção do sábado: a tela
    * dizia "corrigido" e a fila seguia com o débito de antes.
    */
-  private async gravarAjusteCorrigido(ajuste: AjusteJornada): Promise<void> {
+  private async gravarAjusteCorrigido(
+    ajuste: AjusteJornada
+  ): Promise<{ sucesso: boolean; erro?: string }> {
     if (usandoNuvem()) {
       const res = await nuvem.salvarAjuste(ajuste);
       if (!res.sucesso) {
+        /**
+         * A RECUSA SOBE. Não morre no console.
+         *
+         * Aqui só se escrevia `console.error` e voltava. A tela dizia
+         * "0 dias mudaram de valor", que é o que ela também diz quando
+         * não havia nada para mudar — e quem reapurava concluía que o
+         * saldo estava certo.
+         *
+         * Foi assim que os −47h50 ficaram impossíveis de desfazer: a
+         * reescrita batia na trava `minutos > 0` do banco, porque
+         * zerar uma apuração grava exatamente ZERO. O banco recusava,
+         * o console guardava o motivo, e ninguém olha console.
+         *
+         * É o terceiro erro deste sistema por resposta de banco
+         * engolida. O `aviso-no-chat` e o login foram os outros dois.
+         */
         console.error(`Apuração de ${ajuste.data} não foi reescrita:`, res.erro);
-        return;
+        return { sucesso: false, erro: res.erro };
       }
     }
 
@@ -1940,6 +1965,7 @@ class ServicoPonto {
     lista.push(ajuste);
     this.gravarAjustes(lista);
     this.notificar();
+    return { sucesso: true };
   }
 
   /**
@@ -2372,23 +2398,47 @@ class ServicoPonto {
     }
 
     let dias = 0;
+    /**
+     * O DIA QUE O BANCO RECUSOU TAMBÉM SE CONTA.
+     *
+     * Sem isto, reapurar terminava dizendo "0 dias mudaram de valor" —
+     * exatamente o que ele diz quando não havia nada a mudar. Quem
+     * reapurava um saldo errado concluía que o saldo estava certo.
+     *
+     * E havia o que recusar: zerar uma apuração grava `minutos = 0`, e o
+     * banco tinha `check (minutos > 0)`. A reescrita batia na trava,
+     * voltava calada, e os −47h50 não saíam de lá por caminho nenhum.
+     */
+    const recusados: string[] = [];
+
     for (const data of listarDatasDoPeriodo(dataInicio, dataFim)) {
       // Dia que ainda não fechou não se apura: ele não acabou
       if (data >= dataDeHoje()) continue;
 
       const antes = this.obterAjusteDoDia(colaboradorId, data);
-      await this.apurarDia(colaboradorId, data, undefined, atual);
+      const res = await this.apurarDia(colaboradorId, data, undefined, atual);
       const depois = this.obterAjusteDoDia(colaboradorId, data);
 
-      if ((antes?.minutos ?? 0) !== (depois?.minutos ?? 0)) dias += 1;
+      if (res.erro) recusados.push(`${formatarDataBR(data)}: ${res.erro}`);
+      else if ((antes?.minutos ?? 0) !== (depois?.minutos ?? 0)) dias += 1;
     }
 
     bancoDados.registrarAuditoria(
       'Reapuração de Período',
       'seguranca',
-      `${atual.nome} reapurou ${formatarDataBR(dataInicio)} a ${formatarDataBR(dataFim)} de ${colaborador.nome}. ${dias} dia(s) mudaram de valor.`
+      `${atual.nome} reapurou ${formatarDataBR(dataInicio)} a ${formatarDataBR(dataFim)} de ${colaborador.nome}. ${dias} dia(s) mudaram de valor.${
+        recusados.length ? ` ${recusados.length} dia(s) RECUSADOS pelo banco.` : ''
+      }`
     );
     this.notificar();
+
+    if (recusados.length > 0) {
+      return {
+        sucesso: false,
+        dias,
+        erro: `O banco recusou ${recusados.length} dia(s). Primeiro: ${recusados[0]}`,
+      };
+    }
 
     return { sucesso: true, dias };
   }
