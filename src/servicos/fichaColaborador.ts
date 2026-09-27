@@ -12,7 +12,7 @@
  * chama `montarFicha` e mostra; quem precisa de um bloco pronto para
  * documento chama `linhasDeIdentificacao`. Campo novo entra uma vez só.
  */
-import { Colaborador, ROTULO_NIVEL, turnoDe, minutosDoTurno } from '../tipos';
+import { Colaborador, ROTULO_NIVEL, turnoDe, minutosDeDiaUtilDe } from '../tipos';
 
 export interface CampoDaFicha {
   /** Chave estável — serve de `key` no React e de coluna em exportação */
@@ -76,9 +76,15 @@ export const montarFicha = (
     {
       chave: 'jornada',
       rotulo: 'Jornada diária',
-      valor: formatarJornada(
-        minutosDoTurno(turnoDe(c))
-      ),
+      /**
+       * O MESMO NÚMERO QUE O ESPELHO PREVÊ.
+       *
+       * Era `minutosDoTurno(turnoDe(c))`, o turno — e o espelho cobra a
+       * FICHA quando ela tem jornada própria. A ficha da estagiária de
+       * 4h45 dizia 5h00, e o espelho dela previa 4h45: a ficha
+       * desmentindo o documento que ela assina.
+       */
+      valor: formatarJornada(minutosDeDiaUtilDe(c)),
     },
     // O turno não é enfeite: é dele que sai o horário cobrado na batida e o
     // previsto do dia. Num espelho de ponto, é o que explica o saldo.

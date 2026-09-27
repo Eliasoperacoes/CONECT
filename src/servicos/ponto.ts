@@ -52,6 +52,7 @@ import {
   trabalhaNoSabado,
   temIntervaloNoDia,
   cargaSemanalDe,
+  minutosDeDiaUtilDe,
 } from '../tipos';
 import { bancoDados } from './bancoDados';
 import { podeUsar } from './permissoes';
@@ -810,7 +811,17 @@ class ServicoPonto {
        */
       if (turno.perfil !== 'estagio') return MINUTOS_SABADO;
 
-      const uteis = minutosDoTurno(turno) * 5;
+      /**
+       * A SOBRA SE CONTA COM O MESMO DIA ÚTIL QUE O DIA ÚTIL COBRA.
+       *
+       * Era `minutosDoTurno(turno) * 5` — o TURNO. E o dia útil, trinta
+       * linhas abaixo, cobrava a FICHA. Para quem tem jornada própria os
+       * dois números eram diferentes, e a semana não fechava: a
+       * estagiária de 4h45 na ficha com turno de 5h somava 27h45 de
+       * previsto numa semana que o sistema dizia ser de 29h. 1h15 sem
+       * dono, toda semana.
+       */
+      const uteis = minutosDeDiaUtilDe(colaborador) * 5;
       return Math.max(0, cargaSemanalDe(colaborador) - uteis);
     }
 
@@ -838,22 +849,6 @@ class ServicoPonto {
      * efeito que sempre foi a intenção dele.
      */
     /**
-     * `!= null` PEGA O NULL E O UNDEFINED, e a diferença não é estilo.
-     *
-     * Escrevi `!== undefined` aqui. O banco guarda `null` desde a migração
-     * que limpou a jornada automática — e `null !== undefined` é
-     * verdadeiro. A função devolvia `null`, que vira ZERO na subtração.
-     *
-     * No espelho da Lyvia isso apareceu como saldo +4h45 em todo dia
-     * útil: ela trabalhava 4h45 contra previsto nenhum. O sábado escapou
-     * porque nem entra neste ramo, e por isso só ele mostrava um número
-     * plausível — o que tornou o erro mais confuso, não menos.
-     */
-    if (colaborador?.cargaHorariaDiariaMinutos != null && !ehSabado(data)) {
-      return colaborador.cargaHorariaDiariaMinutos;
-    }
-
-    /**
      * ===============================================================
      * O PREVISTO DO DIA É O RELÓGIO DO TURNO. NADA DE RATEIO.
      * ===============================================================
@@ -880,8 +875,13 @@ class ServicoPonto {
      * O dia útil prevê o relógio do turno, e o SÁBADO carrega a
      * diferença — é o dia flexível da escala, e a conta dele está lá em
      * cima. Nenhum dia útil vira número quebrado por causa do contrato.
+     *
+     * A FICHA AINDA VENCE O TURNO, e quem sabe disso é
+     * `minutosDeDiaUtilDe` — a mesma função que a sobra do sábado e a
+     * carga semanal consultam. Esta decisão morava aqui, escrita à mão, e
+     * os outros quatro lugares que a repetiam discordavam dela.
      */
-    return minutosDoTurno(turnoDe(colaborador));
+    return minutosDeDiaUtilDe(colaborador);
   }
 
   /**
@@ -949,7 +949,16 @@ class ServicoPonto {
 
       const jornada = this.obterJornadaDoDia(colaboradorId, data);
       minutosTrabalhados += jornada.minutosTrabalhados;
-      minutosPrevistos += jornada.minutosPrevistos;
+      /**
+       * O PREVISTO EFETIVO, e não o cheio.
+       *
+       * A pausa paga do estágio já saiu dele. Somando o cheio, esta
+       * função dizia −1h15 na semana da Lyvia enquanto o espelho dela
+       * dizia 0h00 nos cinco dias — dois números para a mesma semana, na
+       * mesma tela, porque a regra da pausa existia em um só dos dois
+       * lugares.
+       */
+      minutosPrevistos += jornada.minutosPrevistosEfetivos;
 
       /**
        * Pendência é batida que FALTA num dia que já passou — não é dia
@@ -1171,15 +1180,42 @@ class ServicoPonto {
      * E vale uma vez por dia, porque a pausa é uma por dia: quem tem
      * almoço de 1h30 não entra aqui, o almoço dele é batido e descontado.
      */
+    /**
+     * ===============================================================
+     * A PAUSA ABATE O PREVISTO, e não o saldo.
+     * ===============================================================
+     *
+     * Era `saldo = diferença + abatimento`, com o abatimento entrando
+     * SÓ no saldo. Isso escondia o abatimento de todo mundo que refaz a
+     * conta a partir de `minutosPrevistos` — e são dois:
+     *
+     *  - `apurarSemana` somava o previsto CHEIO e subtraía o
+     *    trabalhado. A aba Ponto da Lyvia dizia −1h15 na semana
+     *    enquanto o espelho dela dizia 0h00 em todos os cinco dias.
+     *  - `apurarDia` refazia `trabalhado − previsto` e criava um DÉBITO
+     *    de 15 minutos por dia no banco de horas. Cinco por semana,
+     *    aprovados em lote, para sempre. É a origem aritmética dos
+     *    −47h50 dela: 15 minutos × cerca de 190 dias.
+     *
+     * Descontando do previsto, o número que sai daqui é o mesmo para
+     * quem soma o saldo e para quem refaz a subtração. Uma conta, um
+     * resultado — que é o que faltava.
+     *
+     * SÓ VALE PARA DIA TRABALHADO. Num dia sem batida nenhuma a
+     * diferença é o previsto inteiro, e sem esta guarda a pausa
+     * perdoaria 15 minutos de um dia em que a pessoa não veio.
+     */
     const pausa = minutosPausaDoTurno(turnoDe(colaborador));
-
-    const diferenca = minutosTrabalhados - minutosPrevistos;
+    const faltando = minutosPrevistos - minutosTrabalhados;
     const abatidoPelaPausa =
-      diferenca < 0 ? Math.min(pausa, Math.abs(diferenca)) : 0;
+      minutosTrabalhados > 0 && faltando > 0 ? Math.min(pausa, faltando) : 0;
+
+    const minutosPrevistosEfetivos = minutosPrevistos - abatidoPelaPausa;
 
     // Dia sem nenhuma marcação em fim de semana não é falta nem saldo negativo;
     // dia útil sem jornada fechada também não gera saldo até o RH tratar.
-    const saldoMinutos = minutosTrabalhados > 0 ? diferenca + abatidoPelaPausa : 0;
+    const saldoMinutos =
+      minutosTrabalhados > 0 ? minutosTrabalhados - minutosPrevistosEfetivos : 0;
 
     return {
       data,
@@ -1188,6 +1224,8 @@ class ServicoPonto {
       minutosTrabalhados,
       minutosIntervalo,
       minutosPrevistos,
+      minutosPrevistosEfetivos,
+      abatidoPelaPausa,
       saldoMinutos,
       completa,
       emAndamento,
@@ -1684,7 +1722,24 @@ class ServicoPonto {
     const jornada = this.obterJornadaDoDia(colaboradorId, data);
     if (!jornada.completa) return { criou: false };
 
-    const diferenca = jornada.minutosTrabalhados - jornada.minutosPrevistos;
+    /**
+     * A DIFERENÇA É A QUE O ESPELHO MOSTRA. Não se refaz aqui.
+     *
+     * Era `jornada.minutosTrabalhados - jornada.minutosPrevistos`, o
+     * previsto CHEIO — sem a pausa paga que o espelho já havia abatido.
+     * O efeito era o pior de todos, porque esta função GRAVA:
+     *
+     *   espelho da Lyvia .......... 0h00 no dia
+     *   apurarDia ................. débito de 0h15, todo dia
+     *
+     * Cinco por semana, aprovados em lote por quem confia no sistema, e
+     * nenhum deles aparecendo no documento que a pessoa confere. É a
+     * origem aritmética dos −47h50: 15 minutos por cerca de 190 dias.
+     *
+     * `saldoMinutos` é a única resposta da casa para "quanto sobrou ou
+     * faltou neste dia" — quem grava tem de usar a mesma que quem mostra.
+     */
+    const diferenca = jornada.saldoMinutos;
     const existente = this.obterAjusteDoDia(colaboradorId, data);
 
     /**

@@ -42,7 +42,7 @@ import {
   ORDEM_MARCACOES,
   ROTULO_MARCACAO,
   turnoDe,
-  minutosDoTurno,
+  minutosDeDiaUtilDe,
   INFORMACOES_LOJAS,
   ehMarcacaoCorrigida,
   ehMarcacaoPreenchida,
@@ -1003,13 +1003,20 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                 </p>
                 <p className="text-[11px] text-[var(--c-texto-3)] mt-0.5">
                   {/*
-                    O MESMO NÚMERO QUE O ESPELHO USA.
-                    Mostrava a carga da ficha enquanto o saldo era apurado
-                    pelo turno — o cabeçalho dizia 8h10 e as linhas cobravam
-                    outra coisa. Cabeçalho que discorda da tabela embaixo
-                    dele é pior do que cabeçalho nenhum.
+                    O MESMO NÚMERO QUE O ESPELHO USA — agora de verdade.
+
+                    Este comentário já dizia isso, e o código dizia outra
+                    coisa: mostrava `minutosDoTurno(turnoDe(...))`, o
+                    TURNO, enquanto as linhas embaixo cobravam a FICHA.
+                    Para a estagiária de 4h45 na ficha com turno de 5h, o
+                    cabeçalho dizia 5h00 e a tabela previa 4h45.
+
+                    Cabeçalho que discorda da tabela embaixo dele é pior
+                    do que cabeçalho nenhum. Quem responde é
+                    `minutosDeDiaUtilDe`, a mesma função que o espelho
+                    consulta.
                   */}
-                  Jornada diária: {formatarMinutos(minutosDoTurno(turnoDe(detalhe.colaborador)))}
+                  Jornada diária: {formatarMinutos(minutosDeDiaUtilDe(detalhe.colaborador))}
                   {' · '}
                   {turnoDe(detalhe.colaborador).nome}
                 </p>

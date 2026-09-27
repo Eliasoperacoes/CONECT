@@ -554,6 +554,45 @@ export const ehDeEstagio = (colaborador?: {
   (colaborador?.cargo || '').toLowerCase().includes('estagi');
 
 /**
+ * ===================================================================
+ * QUANTO É UM DIA ÚTIL DESTA PESSOA. Uma pergunta, uma resposta.
+ * ===================================================================
+ *
+ * A ficha vence o turno; sem ficha, vale o relógio do turno.
+ *
+ * Isto já estava escrito em CINCO lugares, e eles discordavam entre si.
+ * O estrago era visível e ninguém sabia de onde vinha:
+ *
+ *  - `cargaPrevistaEmMinutos` cobrava do dia útil o número da FICHA...
+ *  - ...mas o sábado do estágio calculava a sobra da semana pelo TURNO,
+ *    então a semana não fechava: sobravam 1h15 sem dono.
+ *  - `cargaSemanalDe` também somava pelo TURNO, e dizia que a semana da
+ *    pessoa era 29h enquanto o espelho previa 27h45.
+ *  - O cabeçalho do Banco de Horas mostrava o TURNO — com um comentário
+ *    dizendo "o mesmo número que o espelho usa", que não era verdade: o
+ *    cabeçalho dizia 5h e as linhas embaixo cobravam 4h45.
+ *  - A ficha do colaborador, igual.
+ *
+ * Cabeçalho que discorda da tabela embaixo dele é pior do que cabeçalho
+ * nenhum — e foi por aí que o saldo da Lyvia ficou impossível de
+ * explicar.
+ *
+ * `!= null` PEGA O NULL E O UNDEFINED, e a diferença não é estilo: o
+ * banco guarda `null` desde a migração que limpou a jornada automática,
+ * e `null !== undefined` é verdadeiro. Com `!==` a função devolveria
+ * `null`, que vira ZERO na subtração.
+ */
+export const minutosDeDiaUtilDe = (colaborador?: {
+  cargaHorariaDiariaMinutos?: number | null;
+  turno?: string;
+  setor?: string;
+  cargo?: string;
+}): number =>
+  colaborador?.cargaHorariaDiariaMinutos != null
+    ? colaborador.cargaHorariaDiariaMinutos
+    : minutosDoTurno(turnoDe(colaborador));
+
+/**
  * A carga da semana desta pessoa.
  *
  * SAI DO TURNO DELA, e não de uma constante por setor. Era
@@ -564,29 +603,42 @@ export const ehDeEstagio = (colaborador?: {
  * ao sábado. Quem tem carga própria na ficha continua vencendo tudo isso
  * — é o contrato individual, e ele manda.
  *
- * O que cada turno fecha por semana:
+ * O que cada turno fecha por semana — MEDIDO, e não de memória: estes
+ * números saem de `minutosDoTurno` rodando sobre `TURNOS`.
  *
  *   A / B  8h10 × 5 + 4h de sábado  = 44h50
- *   E1     5h45 × 5                 = 28h45
+ *   E0     6h00 × 5                 = 30h00
+ *   E1     6h00 × 5                 = 30h00   (a pausa de 15min fica DENTRO)
  *   E2     5h00 × 5                 = 25h00
- *   E3     4h45 × 5                 = 23h45
+ *   E3     5h00 × 5                 = 25h00   (a pausa de 15min fica DENTRO)
+ *
+ * A tabela aqui dizia E1 5h45, E2 5h00 e E3 4h45 — os números de ANTES
+ * de o Elias decidir que a pausa do estágio é paga. O texto de
+ * `minutosDoTurno` já explicava a decisão, e esta tabela ficou para trás
+ * contando a versão velha. Comentário errado engana quem vem depois.
  *
  * Quem faz E2 ou E3 e vem ao sábado soma as 4h dele — é o caso que o
  * Elias descreveu, de quem compensa no sábado o que não fecha na semana.
+ *
+ * O DIA ÚTIL VEM DE `minutosDeDiaUtilDe`, e não do turno direto: quem
+ * tem jornada própria na ficha tem de ter a semana somada com ELA, senão
+ * esta função diz 29h e o espelho da mesma pessoa prevê 27h45.
  */
 export const cargaSemanalDe = (colaborador?: {
-  cargaSemanalMinutos?: number;
+  cargaSemanalMinutos?: number | null;
+  cargaHorariaDiariaMinutos?: number | null;
   turno?: string;
   trabalhaSabado?: boolean;
   setor?: string;
   cargo?: string;
 }): number => {
-  if (colaborador?.cargaSemanalMinutos !== undefined) {
+  // `!= null`: ver `minutosDeDiaUtilDe`. Era `!== undefined`, e o banco
+  // guarda `null` — a função devolvia `null`, que vira zero na conta.
+  if (colaborador?.cargaSemanalMinutos != null) {
     return colaborador.cargaSemanalMinutos;
   }
 
-  const turno = turnoDe(colaborador);
-  const uteis = minutosDoTurno(turno) * 5;
+  const uteis = minutosDeDiaUtilDe(colaborador) * 5;
 
   return uteis + (trabalhaNoSabado(colaborador) ? MINUTOS_SABADO : 0);
 };
@@ -1105,8 +1157,21 @@ export interface JornadaDia {
   marcacoes: Partial<Record<TipoMarcacao, RegistroPonto>>;
   minutosTrabalhados: number;
   minutosIntervalo: number;
+  /** O contrato do dia, limpo — é o que o cabeçalho e a ficha mostram. */
   minutosPrevistos: number;
-  saldoMinutos: number; // trabalhados - previstos
+  /**
+   * O previsto DEPOIS da pausa que o dia absorveu.
+   *
+   * Quem soma a semana soma ESTE, e não o de cima: é o que faz
+   * `trabalhado − previsto` dar o mesmo número que a soma dos saldos. Com
+   * o previsto cheio, a aba Ponto da Lyvia dizia −1h15 numa semana em que
+   * o espelho dela dizia 0h00 todos os dias.
+   */
+  minutosPrevistosEfetivos: number;
+  /** Quanto da pausa paga cobriu o que faltou no dia. Zero fora do estágio. */
+  abatidoPelaPausa: number;
+  /** `trabalhados − previstosEfetivos`, e ZERO em dia que não fechou. */
+  saldoMinutos: number;
   completa: boolean; // as quatro marcações registradas
   emAndamento: boolean; // começou e ainda não encerrou
 }
