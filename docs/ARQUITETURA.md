@@ -63,6 +63,8 @@ outra** — a do banco é a que vale de verdade.
 | `fichaColaborador.ts` | O que é a ficha de alguém | Espelho de ponto, CSV, quadro, aba Eu, aprovação |
 | `organograma.ts` | Alçada e cadeia | Aprovação, painel de gestão, visibilidade |
 | `ferramentas.ts` | Toda tela do sistema | Painel de permissões, barra de navegação |
+| `minutosDeDiaUtilDe` (`tipos.ts`) | Quanto é um dia útil desta pessoa — a ficha vence o turno | Previsto do dia, sobra do sábado, carga semanal, cabeçalho do Banco de Horas, ficha |
+| `obterJornadaDoDia().saldoMinutos` | Quanto sobrou ou faltou NESTE dia | Espelho, CSV, Banco de Horas, aba Ponto, `apurarSemana`, `apurarDia` |
 | `mural.ts` | Quem alcança uma publicação, quem devia ler, quem pode editar | Central, painel da publicação, chat, contador de leitura |
 | `textoRico.ts` | Como o texto de uma publicação é escapado, e a marcação de citar alguém | Leitura, resumo do cartão, recado do chat, campo ao vivo |
 
@@ -254,6 +256,17 @@ desconta a tolerância do excedente (Súmula 366 do TST).
 | Texto escapado **antes** de qualquer marcação | `escapar` em `textoRico.ts`, usado também por `textoAoVivo.ts` | Um `<script>` no corpo de um comunicado roda na sessão de quem abre, com o Supabase em mãos |
 | Os sinais da marcação são **escondidos**, nunca apagados | `.tr-sinal { display: none }` no CSS, e `textoAoVivo.ts` | O campo ao vivo grava o `textContent`: sinal apagado é caractere que sai do documento de quem está escrevendo, em silêncio |
 | Editar publicação parte do original | `editarAviso` | Quem já leu e quem deu ciência são zerados, e a ciência é a prova de que a publicação existe para guardar |
+| Ninguém refaz `trabalhado − previsto` | `saldoMinutos` é a única resposta | Três lugares faziam essa conta com regras diferentes: o espelho dizia 0h00, a aba Ponto −1h15 e o banco de horas GRAVAVA um débito de 15min por dia. São os −47h50 da Lyvia |
+| A pausa paga abate o PREVISTO, não o saldo | `minutosPrevistosEfetivos` | Abatendo só o saldo, quem refaz a conta a partir do previsto não vê o abatimento — e volta a cobrar os 15 minutos |
+| Dia sem batida é PENDÊNCIA, não débito | `apurarSemana` só soma dia que fechou | A mesma ausência conta duas vezes (como hora e como pendência), o espelho discorda, e o débito some sozinho quando o RH lança o atestado |
+
+**O banco de horas tem uma conta só.** `obterJornadaDoDia().saldoMinutos`
+responde "quanto sobrou ou faltou neste dia", e todo o resto soma essa
+resposta: `apurarSemana` (aba Ponto, ciclo, saldo da rede), `apurarDia`
+(o que grava no banco), o espelho, o CSV e o HTML. Quem precisar do
+número por outro caminho está criando a quarta divergência.
+`bancoDeHorasUmaConta.test.ts` cobra CONCORDÂNCIA, e não valor esperado —
+a suíte tinha 924 testes verdes com as três contas discordando.
 
 **Sobre o campo ao vivo.** A Central mostra o texto formatado enquanto se
 digita sem guardar HTML: os sinais (`**`, `## `, `- `) continuam dentro do

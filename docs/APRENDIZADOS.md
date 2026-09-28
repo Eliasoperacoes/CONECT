@@ -435,3 +435,89 @@ intenção é "qualquer acento", existe nome para isso —
 dois bytes que ninguém vê. Para o resto, `String.fromCharCode` deixa o
 número à vista. E confira com `od -c` quando o arquivo tiver de conter
 um caractere especial de propósito.
+
+## Teste de valor esperado não pega número que discorda de si mesmo
+
+A suíte tinha **924 testes verdes** enquanto o banco de horas respondia
+"quanto sobrou ou faltou neste dia" em três lugares, com três regras
+diferentes, e os três apareciam na tela. Sobre as mesmas batidas de uma
+estagiária que entra 13:15 num turno que começa 13:00:
+
+| Onde | Dizia |
+|---|---|
+| Espelho de ponto, CSV, Banco de Horas | 0h00 |
+| Aba Ponto, saldo da semana | −1h15 |
+| O que era **gravado** no banco de horas | débito de 0h15 **por dia** |
+
+O terceiro é o que machuca, porque grava: cinco débitos por semana,
+aprovados em lote por quem confia no sistema, nenhum deles aparecendo no
+documento que a pessoa confere. Era a origem aritmética dos −47h50 que
+ninguém conseguia explicar — 15 minutos × cerca de 190 dias.
+
+**Por que os 924 não pegaram:** todos eram testes de *valor esperado*, e
+eu escrevi cada asserção com o número que o código já dava. Um teste
+desses passa com as três contas discordando — ele só conhece uma delas.
+
+**A regra:** onde o sistema responde a mesma pergunta por caminhos
+diferentes, o teste cobra **concordância**, não valor:
+
+```
+expect(apurarSemana(...).saldoMinutos).toBe(somaDosSaldosDoEspelho());
+expect(somaDosPrevistosDaSemana()).toBe(cargaSemanalDe(pessoa));
+```
+
+Não há número escrito à mão nas duas linhas. Elas continuam valendo
+quando a carga da rede mudar, e quebram no dia em que os dois caminhos
+divergirem.
+
+**Sinal para procurar:** a mesma subtração escrita em mais de um lugar.
+`grep -n "trabalhados - .*previstos"` achou as três em vinte segundos —
+o difícil não era encontrar, era desconfiar.
+
+## A mutação achou o buraco do meu próprio teste
+
+Escrevi seis testes para "reapurar avisa quando o banco recusa". Todos
+verdes. A mutação de reverter o conserto — pôr `gravarAjusteCorrigido`
+de volta a engolir a recusa — **não quebrou nenhum**.
+
+Fui ver: meus seis testes exercitavam o dia COM diferença, que grava um
+número positivo e passa pela trava do banco. O caminho que estava
+barrado era o outro — o dia que passou a fechar certo e precisa ter a
+apuração **reescrita com zero**, que era exatamente o que a trava
+`check (minutos > 0)` recusava.
+
+Ou seja: eu havia testado tudo **menos** o caminho que estava quebrado.
+E tinha certeza de ter coberto o assunto, porque a contagem de testes
+dizia seis.
+
+**A regra:** a mutação não confere o conserto, confere se o teste sabe
+que o conserto existe. Reverter cada linha alterada, uma por uma, é o
+que separa "escrevi teste sobre o assunto" de "escrevi teste sobre a
+linha". Se uma reversão passa, o teste não visita aquela linha — por
+mais que o nome dele diga o contrário.
+
+## Comentário que afirma o que o código não faz
+
+No cabeçalho do Banco de Horas:
+
+```jsx
+{/* O MESMO NÚMERO QUE O ESPELHO USA.
+    Mostrava a carga da ficha enquanto o saldo era apurado pelo turno —
+    o cabeçalho dizia 8h10 e as linhas cobravam outra coisa. */}
+Jornada diária: {formatarMinutos(minutosDoTurno(turnoDe(colaborador)))}
+```
+
+O comentário descreve um conserto que a linha embaixo dele desfaz: ela
+pergunta ao **turno**, e o espelho cobra a **ficha**. Para a estagiária
+de 4h45 o cabeçalho dizia 5h00 sobre uma tabela de 4h45.
+
+O comentário estava certo quando foi escrito. O código mudou de lado
+depois, e o comentário virou uma afirmação falsa em letras garrafais —
+que é pior do que comentário nenhum: ele **desliga a desconfiança** de
+quem passa ali. Eu li aquele bloco três vezes procurando o defeito em
+outro lugar.
+
+**A regra:** comentário que afirma uma igualdade (`o mesmo número que`,
+`igual ao`, `sempre bate com`) ganha um teste que cobra a igualdade. Se
+a afirmação vale a pena escrever, vale a pena verificar — e sem o teste
+ela sobrevive à mudança que a torna mentira.
