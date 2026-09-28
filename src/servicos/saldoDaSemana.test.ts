@@ -82,6 +82,46 @@ const DIA_UTIL = 490;
 /** O sábado vai só até as 12h. */
 const SABADO_MIN = 240;
 
+const CHAVE_REGISTROS = 'conecta_v4_registros_ponto';
+
+/**
+ * Batidas de verdade, postas direto no armazenamento.
+ *
+ * ESTE ARQUIVO NÃO TINHA COMO REGISTRAR BATIDA, e isso moldou as
+ * asserções dele: todas descreviam a semana de quem não bateu nada. Era
+ * o cenário certo para o defeito das quatro mil horas, e o errado para
+ * tudo o mais — dia sem batida deixou de ser débito, e sem poder bater
+ * não havia como testar a semana de quem trabalha.
+ */
+const bater = (quem: string, data: string, horas: Record<string, string>) => {
+  const atuais = JSON.parse(localStorage.getItem(CHAVE_REGISTROS) || '[]');
+  for (const [tipo, hora] of Object.entries(horas)) {
+    atuais.push({
+      id: `r-${quem}-${data}-${tipo}`,
+      colaboradorId: quem,
+      data,
+      tipo,
+      horario: new Date(`${data}T${hora}:00`).toISOString(),
+      loja: 'Pirassununga',
+      origem: 'qr',
+    });
+  }
+  localStorage.setItem(CHAVE_REGISTROS, JSON.stringify(atuais));
+};
+
+/** O sábado cumprido: 08:00 às 12:00, direto. */
+const baterSabado = (quem = 'ana') =>
+  bater(quem, SABADO, { entrada: '08:00', saida: '12:00' });
+
+/** Um dia útil cumprido à risca: 07:30–12:30 / 14:00–17:10 são 8h10. */
+const baterDiaUtil = (data: string, quem = 'ana', saida = '17:10') =>
+  bater(quem, data, {
+    entrada: '07:30',
+    saida_almoco: '12:30',
+    retorno_almoco: '14:00',
+    saida,
+  });
+
 beforeEach(() => {
   armazenamento.clear();
   equipe = [ANA, GERENTE];
@@ -94,13 +134,15 @@ beforeEach(() => {
 
 test('na SEGUNDA de manhã a semana inteira NÃO é devida', () => {
   setSystemTime(new Date(`${SEGUNDA}T09:00:00`));
+  baterSabado();
 
   const semana = servicoPonto.apurarSemana('ana', SEGUNDA);
 
   /**
    * Era aqui que nascia o −3924h33: os sete dias cobrados de uma vez, a
-   * semana que nem tinha começado. Agora só o sábado que fechou pesa — o
-   * domingo não tem previsto, e de segunda em diante nada aconteceu.
+   * semana que nem tinha começado. Agora entra só o sábado, que ela
+   * trabalhou e fechou — o domingo não tem previsto, e de segunda em
+   * diante nada aconteceu ainda.
    */
   expect(semana.minutosPrevistos).toBe(SABADO_MIN);
 
@@ -110,21 +152,31 @@ test('na SEGUNDA de manhã a semana inteira NÃO é devida', () => {
 
 test('o previsto entra dia a dia, conforme a semana anda', () => {
   setSystemTime(new Date(`${QUARTA}T09:00:00`));
+  baterSabado();
+  baterDiaUtil(SEGUNDA);
+  baterDiaUtil(TERCA);
 
-  // Fecharam: sábado (4h), domingo (nada), segunda e terça (8h10 cada)
+  // Cumpridos e fechados: sábado (4h), segunda e terça (8h10 cada)
   const semana = servicoPonto.apurarSemana('ana', QUARTA);
   expect(semana.minutosPrevistos).toBe(SABADO_MIN + DIA_UTIL * 2);
+  expect(semana.minutosTrabalhados).toBe(SABADO_MIN + DIA_UTIL * 2);
+  expect(semana.saldoMinutos).toBe(0);
 });
 
 test('o dia de HOJE não é cobrado enquanto está em andamento', () => {
+  baterSabado();
+  baterDiaUtil(SEGUNDA);
+  // Na terça ela entrou e ainda está lá: uma batida só
+  bater('ana', TERCA, { entrada: '07:30' });
+
   setSystemTime(new Date(`${TERCA}T09:00:00`));
   const deManha = servicoPonto.apurarSemana('ana', TERCA).minutosPrevistos;
 
   setSystemTime(new Date(`${TERCA}T23:00:00`));
   const aNoite = servicoPonto.apurarSemana('ana', TERCA).minutosPrevistos;
 
-  // Quem entrou às 8h e ainda está trabalhando não deve as 8h10 do dia:
-  // o previsto da terça só entra quando a terça acabar
+  // Quem entrou às 7h30 e ainda está trabalhando não deve as 8h10 do dia:
+  // o previsto da terça só entra quando a terça fechar
   expect(deManha).toBe(SABADO_MIN + DIA_UTIL);
   expect(aNoite).toBe(SABADO_MIN + DIA_UTIL);
 });
@@ -159,17 +211,51 @@ test('dia que ainda não fechou não é pendência', () => {
   expect(servicoPonto.apurarSemana('ana', SEGUNDA).diasComPendencia).toEqual([SABADO]);
 });
 
-test('"sem bater" e o saldo passam a contar os MESMOS dias', () => {
+test('DIA SEM BATIDA É PENDÊNCIA, e não hora devida', () => {
   setSystemTime(new Date(`${QUARTA}T09:00:00`));
 
   const semana = servicoPonto.apurarSemana('ana', QUARTA);
 
   /**
-   * A contradição do print, presa num teste: não dá para dever horas de
-   * dias que, segundo o outro número, não têm batida faltando.
+   * A contradição do print, presa num teste — e agora resolvida pelo
+   * outro lado.
+   *
+   * Antes a mesma ausência aparecia DUAS VEZES na tela: como −8h10 de
+   * saldo e como "dia com batida faltando". E o espelho da pessoa, que é
+   * o documento trabalhista, dizia 0h00 naquele dia. Três versões do
+   * mesmo dia.
+   *
+   * Decisão do Elias: dia sem batida é pendência. A ausência continua à
+   * vista — três dias aqui, em âmbar na aba Ponto e no topo da relação do
+   * ciclo —, mas não vira hora que a pessoa vá tentar compensar
+   * trabalhando.
    */
   expect(semana.diasComPendencia).toHaveLength(3);
-  expect(semana.saldoMinutos).toBe(-(SABADO_MIN + DIA_UTIL * 2));
+  expect(semana.saldoMinutos).toBe(0);
+  expect(semana.minutosPrevistos).toBe(0);
+});
+
+test('o saldo da semana É a soma dos saldos do espelho', () => {
+  /**
+   * A propriedade que sustenta tudo: a aba Ponto e o espelho de ponto
+   * mostravam números diferentes da mesma semana. Aqui a igualdade é
+   * cobrada com um débito de verdade no meio — quem saiu 40 minutos mais
+   * cedo numa terça.
+   */
+  setSystemTime(new Date(`${QUARTA}T09:00:00`));
+  baterSabado();
+  baterDiaUtil(SEGUNDA);
+  baterDiaUtil(TERCA, 'ana', '16:30');
+
+  const semana = servicoPonto.apurarSemana('ana', QUARTA);
+
+  const doEspelho = [SABADO, SEGUNDA, TERCA].reduce(
+    (t, d) => t + servicoPonto.obterJornadaDoDia('ana', d).saldoMinutos,
+    0
+  );
+
+  expect(semana.saldoMinutos).toBe(doEspelho);
+  expect(semana.saldoMinutos).toBe(-40);
 });
 
 // ---------------------------------------------------------------
@@ -192,11 +278,25 @@ test('quem NÃO bate ponto fica fora da relação do banco de horas', () => {
 test('o saldo somado da rede não carrega a carga de quem não bate', () => {
   setSystemTime(new Date(`${QUARTA}T09:00:00`));
 
+  /**
+   * A Ana tem um débito de VERDADE: saiu 40 minutos mais cedo na terça.
+   *
+   * Antes este teste comparava contra a carga de dias não batidos —
+   * `-(SABADO_MIN + DIA_UTIL * 2)` —, e por isso passaria mesmo se o
+   * gerente entrasse na conta com zero. Com um débito real de uma pessoa
+   * só, a soma da rede tem de ser exatamente o dela: incluir o gerente
+   * (que nunca bate, e por isso "deve" a semana inteira) mudaria o
+   * número na hora.
+   */
+  baterSabado();
+  baterDiaUtil(SEGUNDA);
+  baterDiaUtil(TERCA, 'ana', '16:30');
+
   const ciclo = servicoPonto.relacaoSemanalDaEquipe(QUARTA);
   const saldoDaRede = ciclo.linhas.reduce((t, l) => t + l.saldoMinutos, 0);
 
-  // Só a Ana deve os dias fechados; o gerente não deve nada
-  expect(saldoDaRede).toBe(-(SABADO_MIN + DIA_UTIL * 2));
+  expect(saldoDaRede).toBe(-40);
+  expect(saldoDaRede).toBe(servicoPonto.apurarSemana('ana', QUARTA).saldoMinutos);
 });
 
 test('gerente que PRECISA bater volta para a relação', () => {

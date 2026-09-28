@@ -948,17 +948,43 @@ class ServicoPonto {
       if (data >= hoje) continue;
 
       const jornada = this.obterJornadaDoDia(colaboradorId, data);
-      minutosTrabalhados += jornada.minutosTrabalhados;
+
       /**
-       * O PREVISTO EFETIVO, e não o cheio.
+       * ===============================================================
+       * SÓ DIA QUE FECHOU JORNADA ENTRA NA CONTA DE HORAS.
+       * ===============================================================
        *
-       * A pausa paga do estágio já saiu dele. Somando o cheio, esta
-       * função dizia −1h15 na semana da Lyvia enquanto o espelho dela
-       * dizia 0h00 nos cinco dias — dois números para a mesma semana, na
-       * mesma tela, porque a regra da pausa existia em um só dos dois
-       * lugares.
+       * Dia sem batida nenhuma é PENDÊNCIA DE BATIDA, e não débito de
+       * hora. Decisão do Elias, e ela desfaz a última das quatro
+       * divergências do banco de horas.
+       *
+       * Somava o previsto cheio de um dia em que ninguém bateu nada. A
+       * mesma ausência aparecia DUAS VEZES na tela — como −8h10 e como
+       * "1 dia com batida faltando" — e o espelho da pessoa, que é o
+       * documento trabalhista, dizia 0h00 naquele dia. Três versões do
+       * mesmo dia.
+       *
+       * E era um débito que sumia sozinho: no instante em que o RH
+       * lançava o atestado, `cargaPrevistaEmMinutos` zerava o previsto e
+       * as 8h10 desapareciam do saldo. Número que se mexe por um motivo
+       * que a pessoa não vê é número em que ela para de acreditar.
+       *
+       * A ausência NÃO fica invisível: ela continua em
+       * `diasComPendencia`, que ordena a relação do ciclo e aparece em
+       * âmbar na aba Ponto, com "avise seu responsável". Falta de batida
+       * a pessoa resolve avisando; falta de hora se resolve trabalhando.
+       * Dizer as duas como débito faz ela tentar compensar uma hora que
+       * trabalhou e esqueceu de registrar.
+       *
+       * O PREVISTO É O EFETIVO, com a pausa paga já descontada — é o que
+       * faz `trabalhado − previsto` dar exatamente a soma dos saldos
+       * diários. Com o previsto cheio, esta função dizia −1h15 na semana
+       * da Lyvia enquanto o espelho dela dizia 0h00 nos cinco dias.
        */
-      minutosPrevistos += jornada.minutosPrevistosEfetivos;
+      if (jornada.minutosTrabalhados > 0) {
+        minutosTrabalhados += jornada.minutosTrabalhados;
+        minutosPrevistos += jornada.minutosPrevistosEfetivos;
+      }
 
       /**
        * Pendência é batida que FALTA num dia que já passou — não é dia
