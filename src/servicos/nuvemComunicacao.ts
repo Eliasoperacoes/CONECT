@@ -274,6 +274,27 @@ const paraLinhaConversa = (c: Conversa) => ({
   atualizado_em: c.atualizadoEm,
 });
 
+/**
+ * A LINHA DA AUDITORIA, no mesmo formato dos outros mapeadores.
+ *
+ * Estava montada à mão dentro de `registrarAuditoria`. Funcionava, e
+ * ficava FORA do conferidor de prontidão — que descobre as colunas
+ * lendo os `paraLinha*` deste arquivo e do `nuvem.ts`.
+ *
+ * Uma tabela de fora do conferidor é uma tabela que pode quebrar sem
+ * aviso no dia em que ganhar coluna nova, que é exatamente como o chat
+ * da rede parou. E esta guarda quem alterou o quê num sistema de ponto:
+ * é a última que pode falhar calada.
+ */
+const paraLinhaAuditoria = (r: RegistroAuditoria) => ({
+  id: r.id,
+  data_hora: r.dataHora,
+  usuario_nome: r.usuarioNome,
+  acao: r.acao,
+  categoria: r.categoria,
+  detalhes: r.detalhes,
+});
+
 const paraLinhaAviso = (a: AvisoRede) => ({
   id: a.id,
   titulo: a.titulo,
@@ -1197,14 +1218,7 @@ class PonteComunicacao {
   async registrarAuditoria(registro: RegistroAuditoria): Promise<void> {
     if (!supabase) return;
 
-    const { error } = await supabase.from('auditoria').insert({
-      id: registro.id,
-      data_hora: registro.dataHora,
-      usuario_nome: registro.usuarioNome,
-      acao: registro.acao,
-      categoria: registro.categoria,
-      detalhes: registro.detalhes,
-    });
+    const { error } = await supabase.from('auditoria').insert(paraLinhaAuditoria(registro));
 
     if (error) console.error('Falha ao gravar auditoria:', error.message);
   }

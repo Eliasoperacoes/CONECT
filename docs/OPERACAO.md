@@ -91,6 +91,8 @@ esquema.
 | Arquivo | Quando usar |
 |---|---|
 | `conferir-central.sql` | **Não altera nada.** Publicar na Central falhou — diz se a causa é coluna faltando, política ou nível |
+| `conferir-prontidao.sql` | **Não altera nada. Rode antes de abrir o sistema para mais gente.** Confere se o banco tem TODA coluna que o código manda (é o que teria pego o `publicacao_id` antes de o chat parar), se as tabelas que o sistema escreve têm política de INSERT e UPDATE, e mostra o retrato do que já está lá dentro |
+| `zerar-saldo-sem-ponto.sql` | **ALTERA.** Antes de abrir para a loja: apaga as apurações de quem não tem marcação de ponto nenhuma, para ninguém entrar no sistema vendo um débito de dia que não trabalhou. Não toca em quem já bateu ponto |
 | `conferir-sabado.sql` | **Não altera nada.** O sábado de alguém previu zero e o que a pessoa trabalhou virou hora extra — separa as duas causas: `trabalha_sabado` desligado na ficha (cadastro errado) ou folga aprovada naquele dia (previsto zero está certo) |
 | `conferir-tolerancia.sql` | **Não altera nada.** Saldo de alguém não bate com o que a pessoa diz ter trabalhado — mostra quanto do saldo dela veio de minutos que a tolerância aprovou sozinha (art. 58 §1º da CLT manda não descontá-los) |
 | `aviso-no-chat.sql` | **Rode uma vez.** Dá ao recado do chat o id da publicação, para o botão "Abrir publicação" levar à certa |
