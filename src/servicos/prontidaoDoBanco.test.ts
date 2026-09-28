@@ -176,31 +176,98 @@ test('A COLUNA QUE PAROU O CHAT está na lista', async () => {
   expect(sql).toContain("('mensagens', 'publicacao_id')");
 });
 
-test('o conferidor olha as tabelas que o sistema ESCREVE', async () => {
-  /**
-   * A consulta de políticas não sai de mapeador nenhum, então nenhum
-   * teste acima a alcança. Esta lista é o outro risco de rollout: RLS
-   * ligada sem política de UPDATE não dá erro — o update afeta ZERO
-   * linhas e devolve sucesso. A tela diz "salvo" e o banco não mudou.
-   */
-  const sql = semComentarios(await Bun.file('supabase/conferir-prontidao.sql').text());
+/**
+ * O QUE O CÓDIGO FAZ EM CADA TABELA, lido do código.
+ *
+ * `upsert` pede TRÊS: ele vira `ON CONFLICT` no Postgres, que precisa
+ * enxergar a linha em conflito para decidir se insere ou atualiza — e
+ * foi por não enxergar que a gravação de conversa quebrou uma vez.
+ */
+const operacoesNoCodigo = async (): Promise<Set<string>> => {
+  const pares = new Set<string>();
 
-  for (const tabela of [
-    'colaboradores',
-    'registros_ponto',
-    'ajustes_jornada',
-    'justificativas_ausencia',
-    'mensagens',
-    'conversas',
-    'participantes',
-    'avisos_rede',
-    'auditoria',
-  ]) {
-    expect(sql).toContain(`('${tabela}')`);
+  for (const arquivo of ['src/servicos/nuvem.ts', 'src/servicos/nuvemComunicacao.ts']) {
+    const fonte = await Bun.file(arquivo).text();
+
+    for (const achado of fonte.matchAll(/from\(['"]([a-z_]+)['"]\)([\s\S]{0,220})/g)) {
+      const [, tabela, depois] = achado;
+      const juntar = (...cmds: string[]) => cmds.forEach((c) => pares.add(`${tabela}.${c}`));
+
+      if (/\.upsert\(/.test(depois)) juntar('INSERT', 'UPDATE', 'SELECT');
+      else if (/\.update\(/.test(depois)) juntar('UPDATE');
+      else if (/\.insert\(/.test(depois)) juntar('INSERT');
+      else if (/\.delete\(/.test(depois)) juntar('DELETE');
+      else if (/\.select\(/.test(depois)) juntar('SELECT');
+    }
   }
 
-  expect(sql).toContain('tem_update');
-  expect(sql).toContain('relrowsecurity');
+  return pares;
+};
+
+test('O CONFERIDOR COBRA A POLÍTICA DE CADA OPERAÇÃO QUE O CÓDIGO FAZ', async () => {
+  /**
+   * O outro risco de rollout: RLS ligada sem política de UPDATE não dá
+   * erro — o update afeta ZERO linhas e devolve sucesso. A tela diz
+   * "salvo" e o banco não mudou.
+   *
+   * A lista sai do código, como a das colunas, e pelo mesmo motivo:
+   * lista copiada envelhece, e a que envelhece dá "tudo certo"
+   * justamente sobre o que vai quebrar.
+   */
+  const sql = semComentarios(await Bun.file('supabase/conferir-prontidao.sql').text());
+  const noCodigo = await operacoesNoCodigo();
+
+  expect(noCodigo.size).toBeGreaterThan(30);
+
+  const faltando = [...noCodigo].filter(
+    (par) => !sql.includes(`('${par.split('.')[0]}', '${par.split('.')[1]}')`)
+  );
+  expect(faltando).toEqual([]);
+});
+
+test('o conferidor NÃO cobra política que o código não usa', async () => {
+  /**
+   * ISTO ACONTECEU, e o Elias viu na tela.
+   *
+   * A versão anterior cobrava insert e update de TODA tabela, e
+   * acusava `auditoria` com "ATENÇÃO · update NÃO". Só que a auditoria
+   * recebe apenas insert e select — não ter política de UPDATE ali é a
+   * coisa CERTA: registro de auditoria que se edita não é auditoria.
+   *
+   * Aviso errado ensina a ignorar aviso, e junto vai o dia em que o
+   * aviso estiver certo. É o mesmo defeito do cartão que levava a uma
+   * tela onde o item não estava.
+   */
+  const sql = semComentarios(await Bun.file('supabase/conferir-prontidao.sql').text());
+  const noCodigo = await operacoesNoCodigo();
+
+  const noSql = [...sql.matchAll(/^ {2}\('([a-z_]+)', '(SELECT|INSERT|UPDATE|DELETE)'\)/gm)].map(
+    (m) => `${m[1]}.${m[2]}`
+  );
+
+  expect(noSql.length).toBeGreaterThan(30);
+  expect(noSql.filter((par) => !noCodigo.has(par))).toEqual([]);
+
+  /**
+   * A LÓGICA DAS DUAS SEÇÕES, e não só as listas.
+   *
+   * Achei isto por mutação: trocar `not exists` por `exists` na seção
+   * 2 não quebrava teste nenhum — e a consulta passaria a acusar toda
+   * tabela que TEM política, dizendo que falta. O mesmo na seção 1 com
+   * `is null`: acusaria toda coluna que existe.
+   *
+   * As duas seções valem pela AUSÊNCIA de linhas, então uma lógica
+   * invertida não devolve zero resultado: devolve tudo, e o rollout
+   * para por um defeito que não existe. Aviso errado ensina a ignorar
+   * aviso.
+   */
+  expect(sql).toContain('where c.column_name is null');
+  expect(sql).toMatch(/where c\.relrowsecurity\s*\n\s*and not exists \(/);
+
+  // O caso concreto, nomeado: a auditoria não pode ser cobrada de UPDATE
+  expect(noCodigo.has('auditoria.INSERT')).toBe(true);
+  expect(noCodigo.has('auditoria.UPDATE')).toBe(false);
+  expect(noSql).not.toContain('auditoria.UPDATE');
 });
 
 test('ZERAR SALDO só alcança quem NÃO tem marcação nenhuma', async () => {

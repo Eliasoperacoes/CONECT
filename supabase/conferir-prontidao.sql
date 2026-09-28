@@ -157,29 +157,52 @@ with esperadas (tabela, coluna) as (values
   ('avisos_rede', 'tipo'),
   ('avisos_rede', 'titulo')),
 
-politicas as (
-  select
-    t.tabela,
-    c.relrowsecurity as rls,
-    count(*) filter (where p.cmd in ('INSERT', 'ALL')) > 0 as tem_insert,
-    count(*) filter (where p.cmd in ('UPDATE', 'ALL')) > 0 as tem_update,
-    count(*) filter (where p.cmd in ('SELECT', 'ALL')) > 0 as tem_select,
-    count(p.polname) as quantas
-    from (values
-      ('colaboradores'), ('registros_ponto'), ('ajustes_jornada'),
-      ('justificativas_ausencia'), ('mensagens'), ('conversas'),
-      ('participantes'), ('avisos_rede'), ('auditoria')
-    ) as t(tabela)
-    join pg_class c on c.relname = t.tabela
-     and c.relnamespace = 'public'::regnamespace
-    left join (
-      select polrelid, polname,
-             case polcmd when 'r' then 'SELECT' when 'a' then 'INSERT'
-                         when 'w' then 'UPDATE' when 'd' then 'DELETE'
-                         else 'ALL' end as cmd
-        from pg_policy
-    ) p on p.polrelid = c.oid
-   group by t.tabela, c.relrowsecurity
+operacoes (tabela, comando) as (values
+  ('ajustes_jornada', 'INSERT'),
+  ('ajustes_jornada', 'SELECT'),
+  ('ajustes_jornada', 'UPDATE'),
+  ('auditoria', 'INSERT'),
+  ('auditoria', 'SELECT'),
+  ('avisos_leitura', 'INSERT'),
+  ('avisos_leitura', 'SELECT'),
+  ('avisos_leitura', 'UPDATE'),
+  ('avisos_rede', 'DELETE'),
+  ('avisos_rede', 'INSERT'),
+  ('avisos_rede', 'SELECT'),
+  ('avisos_rede', 'UPDATE'),
+  ('codigos_ponto_loja', 'INSERT'),
+  ('codigos_ponto_loja', 'SELECT'),
+  ('codigos_ponto_loja', 'UPDATE'),
+  ('colaboradores', 'DELETE'),
+  ('colaboradores', 'INSERT'),
+  ('colaboradores', 'SELECT'),
+  ('colaboradores', 'UPDATE'),
+  ('configuracoes', 'SELECT'),
+  ('configuracoes', 'UPDATE'),
+  ('conversas', 'DELETE'),
+  ('conversas', 'INSERT'),
+  ('conversas', 'SELECT'),
+  ('feriados', 'DELETE'),
+  ('feriados', 'INSERT'),
+  ('feriados', 'SELECT'),
+  ('feriados', 'UPDATE'),
+  ('justificativas_ausencia', 'INSERT'),
+  ('justificativas_ausencia', 'SELECT'),
+  ('justificativas_ausencia', 'UPDATE'),
+  ('leituras_mensagem', 'INSERT'),
+  ('leituras_mensagem', 'SELECT'),
+  ('leituras_mensagem', 'UPDATE'),
+  ('mensagens', 'DELETE'),
+  ('mensagens', 'INSERT'),
+  ('mensagens', 'SELECT'),
+  ('mensagens', 'UPDATE'),
+  ('participantes', 'INSERT'),
+  ('participantes', 'SELECT'),
+  ('participantes', 'UPDATE'),
+  ('registros_ponto', 'DELETE'),
+  ('registros_ponto', 'INSERT'),
+  ('registros_ponto', 'SELECT'),
+  ('registros_ponto', 'UPDATE')
 )
 
 select ordem, secao, item, valor, observacao from (
@@ -198,16 +221,45 @@ select ordem, secao, item, valor, observacao from (
 
   union all
 
-  -- 2. AS POLÍTICAS DE ESCRITA
-  select 2, '2. POLÍTICA', p.tabela,
-         case when p.tem_insert and p.tem_update then 'ok'
-              else 'ATENÇÃO' end,
-         'rls ' || case when p.rls then 'ligada' else 'DESLIGADA' end ||
-         ' · insert ' || case when p.tem_insert then 'sim' else 'NÃO' end ||
-         ' · update ' || case when p.tem_update then 'sim' else 'NÃO' end ||
-         ' · select ' || case when p.tem_select then 'sim' else 'NÃO' end ||
-         ' · ' || p.quantas || ' política(s)'
-    from politicas p
+  /*
+    2. FALTA POLÍTICA PARA O QUE O CÓDIGO FAZ?
+
+    Nenhuma linha aqui é o resultado esperado, como na seção 1.
+
+    A lista `operacoes` vem do CÓDIGO: cada `from('tabela').insert/
+    update/upsert/delete` vira um par. Um `upsert` pede três — ele é
+    `ON CONFLICT` no Postgres, e exige enxergar a linha em conflito
+    para decidir se insere ou atualiza.
+
+    COBRA SÓ O QUE O CÓDIGO USA, e essa precisão não é preciosismo.
+    A versão anterior cobrava insert e update de toda tabela, e
+    acusava `auditoria` com "ATENÇÃO · update NÃO" — quando a
+    auditoria só recebe insert e select, e não ter política de UPDATE
+    ali é a coisa CERTA: registro de auditoria que se edita não é
+    auditoria.
+
+    Aviso que está errado ensina a ignorar aviso, e junto com ele vai
+    o dia em que o aviso estiver certo.
+  */
+  select 2, '2. FALTA POLÍTICA', o.tabela || ' · ' || o.comando,
+         'CRIAR POLÍTICA',
+         'o código faz ' || lower(o.comando) || ' nesta tabela e não há ' ||
+         'política que permita'
+    from operacoes o
+    join pg_class c on c.relname = o.tabela
+     and c.relnamespace = 'public'::regnamespace
+   where c.relrowsecurity
+     and not exists (
+       select 1
+         from pg_policy p
+        where p.polrelid = c.oid
+          and (
+            p.polcmd = '*'
+            or p.polcmd = case o.comando
+                 when 'SELECT' then 'r' when 'INSERT' then 'a'
+                 when 'UPDATE' then 'w' when 'DELETE' then 'd' end
+          )
+     )
 
   union all
 
