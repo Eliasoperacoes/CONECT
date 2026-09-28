@@ -177,24 +177,54 @@ test('A COLUNA QUE PAROU O CHAT está na lista', async () => {
 });
 
 /**
+ * TODO ARQUIVO QUE FALA COM TABELA.
+ *
+ * Eram dois, e faltavam duas tabelas INTEIRAS no conferidor:
+ * `holerites` e `advertencias`, que vivem em `rh.ts`. Uma lista de
+ * arquivos escrita à mão tem o mesmo defeito da lista de colunas — ela
+ * envelhece, e o que fica de fora é justamente o que ninguém olha.
+ */
+const ARQUIVOS_QUE_ESCREVEM = [
+  'src/servicos/nuvem.ts',
+  'src/servicos/nuvemComunicacao.ts',
+  'src/servicos/rh.ts',
+  'src/servicos/supabase.ts',
+];
+
+/**
  * O QUE O CÓDIGO FAZ EM CADA TABELA, lido do código.
  *
- * `upsert` pede TRÊS: ele vira `ON CONFLICT` no Postgres, que precisa
- * enxergar a linha em conflito para decidir se insere ou atualiza — e
- * foi por não enxergar que a gravação de conversa quebrou uma vez.
+ * `upsert` vira `ON CONFLICT` no Postgres, que precisa ENXERGAR a linha
+ * em conflito — por isso pede SELECT além de INSERT. Foi por não
+ * enxergar que a gravação de conversa quebrou uma vez.
+ *
+ * E AQUI HÁ UMA DIFERENÇA QUE EU TINHA ERRADO:
+ *
+ *   `ignoreDuplicates: true`  ->  ON CONFLICT DO NOTHING
+ *   sem ele                   ->  ON CONFLICT DO UPDATE
+ *
+ * O primeiro não atualiza nada, então NÃO precisa de política de
+ * UPDATE. Tratar os dois igual fez o conferidor acusar
+ * `leituras_mensagem · UPDATE` — e o Elias foi conferir uma política
+ * que não faltava.
+ *
+ * Segunda vez que este conferidor gritou lobo (a primeira foi a
+ * auditoria). Aviso errado ensina a ignorar aviso.
  */
 const operacoesNoCodigo = async (): Promise<Set<string>> => {
   const pares = new Set<string>();
 
-  for (const arquivo of ['src/servicos/nuvem.ts', 'src/servicos/nuvemComunicacao.ts']) {
+  for (const arquivo of ARQUIVOS_QUE_ESCREVEM) {
     const fonte = await Bun.file(arquivo).text();
 
-    for (const achado of fonte.matchAll(/from\(['"]([a-z_]+)['"]\)([\s\S]{0,220})/g)) {
+    for (const achado of fonte.matchAll(/from\(['"]([a-z_]+)['"]\)([\s\S]{0,260})/g)) {
       const [, tabela, depois] = achado;
       const juntar = (...cmds: string[]) => cmds.forEach((c) => pares.add(`${tabela}.${c}`));
 
-      if (/\.upsert\(/.test(depois)) juntar('INSERT', 'UPDATE', 'SELECT');
-      else if (/\.update\(/.test(depois)) juntar('UPDATE');
+      if (/\.upsert\(/.test(depois)) {
+        juntar('INSERT', 'SELECT');
+        if (!/ignoreDuplicates:\s*true/.test(depois)) juntar('UPDATE');
+      } else if (/\.update\(/.test(depois)) juntar('UPDATE');
       else if (/\.insert\(/.test(depois)) juntar('INSERT');
       else if (/\.delete\(/.test(depois)) juntar('DELETE');
       else if (/\.select\(/.test(depois)) juntar('SELECT');
@@ -203,6 +233,33 @@ const operacoesNoCodigo = async (): Promise<Set<string>> => {
 
   return pares;
 };
+
+test('NENHUM ARQUIVO QUE FALA COM TABELA fica de fora', async () => {
+  /**
+   * A lista de arquivos é o único lugar escrito à mão nesta cadeia, e
+   * foi por ela que `holerites` e `advertencias` passaram meses sem
+   * conferência nenhuma: elas vivem em `rh.ts`, que não estava na
+   * lista.
+   *
+   * Este teste varre a pasta de serviços e exige que todo arquivo com
+   * `.from('tabela')` esteja sendo lido.
+   */
+  const { readdirSync } = await import('node:fs');
+  const esquecidos: string[] = [];
+
+  for (const nome of readdirSync('src/servicos')) {
+    if (!nome.endsWith('.ts') || nome.includes('.test.')) continue;
+
+    const caminho = `src/servicos/${nome}`;
+    const fonte = await Bun.file(caminho).text();
+
+    if (/\.from\(['"][a-z_]+['"]\)/.test(fonte) && !ARQUIVOS_QUE_ESCREVEM.includes(caminho)) {
+      esquecidos.push(caminho);
+    }
+  }
+
+  expect(esquecidos).toEqual([]);
+});
 
 test('O CONFERIDOR COBRA A POLÍTICA DE CADA OPERAÇÃO QUE O CÓDIGO FAZ', async () => {
   /**
