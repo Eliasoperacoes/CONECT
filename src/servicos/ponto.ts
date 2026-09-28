@@ -53,6 +53,7 @@ import {
   temIntervaloNoDia,
   cargaSemanalDe,
   minutosDeDiaUtilDe,
+  ROTULO_SITUACAO,
 } from '../tipos';
 import { bancoDados } from './bancoDados';
 import { podeUsar } from './permissoes';
@@ -185,6 +186,24 @@ export const marcacoesEsperadas = (
    * Meio expediente continua esperando entrada e saída: a pessoa veio,
    * só que menos tempo.
    */
+  /**
+   * DIA ABONADO NÃO ESPERA BATIDA NENHUMA.
+   *
+   * Folga de sábado, atestado, férias, falta justificada: o dia foi
+   * abonado, e `cargaPrevistaEmMinutos` já zera o previsto dele.
+   *
+   * Faltava a outra metade. Como esta função continuava esperando as
+   * batidas, o espelho imprimia `--:--` nas quatro colunas do dia de
+   * folga — e `--:--` num documento de ponto tem UM significado só:
+   * "deveria ter batido e não bateu". O direito da pessoa aparecia no
+   * papel como esquecimento dela.
+   *
+   * É o mesmo cuidado que o feriado e o domingo já tinham, e que a
+   * folga não tinha — apesar de a folga de sábado ser mensal e valer
+   * para a rede inteira.
+   */
+  if (colaborador && situacaoDoDia(colaborador.id, data) !== 'normal') return [];
+
   const feriado = feriadoEm(data, colaborador?.loja);
   if (feriado) return feriado.minutosPrevistos > 0 ? ['entrada', 'saida'] : [];
 
@@ -232,6 +251,22 @@ export const motivoSemMarcacao = (
   colaborador?: Colaborador
 ): string | null => {
   if (marcacoesEsperadas(data, colaborador).includes(tipo)) return null;
+
+  /**
+   * A FOLGA APARECE NO ESPELHO, com o nome dela.
+   *
+   * Vem ANTES do feriado e do sábado de propósito: a folga de sábado é
+   * um sábado, e escrever "Sábado" ali diria a metade errada da
+   * verdade — o dia não foi um sábado comum, foi o direito mensal da
+   * pessoa, e é isso que o holerite precisa mostrar.
+   *
+   * Atestado, férias e falta justificada saem pelo mesmo caminho, com
+   * o rótulo de cada um.
+   */
+  if (colaborador) {
+    const situacao = situacaoDoDia(colaborador.id, data);
+    if (situacao !== 'normal') return ROTULO_SITUACAO[situacao];
+  }
 
   const feriado = feriadoEm(data, colaborador?.loja);
   if (feriado) return feriado.nome;
@@ -2703,8 +2738,25 @@ class ServicoPonto {
      * justamente esse cruzamento manual que gera erro em documento
      * trabalhista.
      */
+    /**
+     * A ÚLTIMA COLUNA É O RASTRO QUE SAIU DO PAPEL.
+     *
+     * O espelho impresso deixou de trazer a relação de marcações
+     * lançadas pelo RH — no papel ela empurrava as assinaturas para uma
+     * segunda folha. Mas o rastro não podia sumir junto: é documento
+     * trabalhista, e "quem lançou este horário" é a pergunta que uma
+     * fiscalização faz.
+     *
+     * Aqui ele cabe. Coluna a mais numa planilha não custa folha, e é
+     * neste arquivo que quem audita trabalha.
+     *
+     * SÓ O QUE FOGE DO NORMAL entra: a marcação batida no QR pela
+     * própria pessoa deixa a célula vazia. Escrever "QR" em quatro
+     * colunas de todos os dias é o ruído que já tinha derrubado esta
+     * informação da grade impressa uma vez.
+     */
     const linhas: string[] = [
-      'Colaborador;Matricula;CNPJ;Cargo;Loja;Setor;Data;Entrada;Saida almoco;Retorno almoco;Saida;Trabalhado;Previsto;Saldo do dia',
+      'Colaborador;Matricula;CNPJ;Cargo;Loja;Setor;Data;Entrada;Saida almoco;Retorno almoco;Saida;Trabalhado;Previsto;Saldo do dia;Lancamentos manuais',
     ];
 
     const todos = this.obterResumoDoPeriodo(dataInicio, dataFim);
@@ -2716,6 +2768,16 @@ class ServicoPonto {
       for (const jornada of resumo.jornadas) {
         const temAlgo = Object.keys(jornada.marcacoes).length > 0;
         if (!temAlgo) continue;
+
+        const lancadasPorOutro = ORDEM_MARCACOES.map((t) => jornada.marcacoes[t])
+          .filter((r): r is RegistroPonto => !!r)
+          .filter((r) => !this.foiBatidaPelaPessoa(r))
+          .map((r) => `${ROTULO_MARCACAO[r.tipo]}: ${this.descreverOrigem(r)}`)
+          .join(' | ')
+          /* O separador do arquivo é `;`, e a justificativa é texto
+             livre — um ponto e vírgula digitado ali partiria a linha em
+             duas colunas no meio da planilha de quem abrir */
+          .replace(/;/g, ',');
 
         linhas.push(
           [
@@ -2733,6 +2795,7 @@ class ServicoPonto {
             formatarMinutos(jornada.minutosTrabalhados),
             formatarMinutos(jornada.minutosPrevistos),
             formatarSaldo(jornada.saldoMinutos),
+            lancadasPorOutro,
           ].join(';')
         );
       }
@@ -2741,7 +2804,7 @@ class ServicoPonto {
     return linhas.join('\n');
   }
 
-  /** Origem da marcação, por extenso, para o espelho impresso. */
+  /** Origem da marcação, por extenso, para a coluna de lançamentos do CSV. */
   private descreverOrigem(registro: RegistroPonto): string {
     const quem = registro.ajustadoPorNome || 'RH';
     const porque = registro.justificativa ? `: ${registro.justificativa}` : '';
@@ -2836,43 +2899,31 @@ class ServicoPonto {
         );
 
         /**
-         * AS ORIGENS SAÍRAM DA GRADE E VIRARAM RODAPÉ.
+         * A ORIGEM DE CADA MARCAÇÃO NÃO SAI NESTE PAPEL.
          *
-         * "Origem das marcações" era uma coluna com até quatro frases por
-         * dia — "Entrada: QR — Pirassununga | Saída almoço: QR — ...". Ela
-         * quebrava linha, cada dia virava três ou quatro alturas, e o mês
-         * de 31 dias não cabia na folha de pé: o espelho de uma pessoa
-         * saía em duas páginas.
+         * Passou por duas formas antes desta. Primeiro era uma COLUNA da
+         * grade, com até quatro frases por dia — "Entrada: QR —
+         * Pirassununga | Saída almoço: QR — ...". Ela quebrava linha,
+         * cada dia virava três ou quatro alturas, e o mês de 31 dias não
+         * cabia na folha de pé: o espelho saía em duas páginas.
          *
-         * E o que ela dizia na esmagadora maioria dos dias era "QR",
-         * repetido quatro vezes — a informação que menos precisa estar
-         * ali, porque é o normal.
+         * Depois virou uma coluna estreita de número com a relação por
+         * extenso no rodapé. Melhor, e ainda assim: num mês movimentado
+         * a lista passava de vinte linhas e empurrava as assinaturas
+         * para a segunda folha — pelo mesmo motivo de antes, só que
+         * embaixo.
          *
-         * Agora a grade tem uma coluna estreita de nota, e só os dias que
-         * FOGEM do normal — correção, preenchimento — ganham número e
-         * aparecem embaixo, por extenso. O que interessa a quem confere o
-         * documento fica mais visível, não menos.
+         * Agora sai de vez, por decisão do Elias. O RASTRO FICA, em três
+         * lugares melhores que o rodapé de um impresso:
+         *
+         *   · o `*` ao lado do horário lançado pelo RH
+         *   · o CSV do período, com a origem de CADA marcação
+         *   · a Auditoria, com quem lançou, quando e por quê
+         *
+         * O que saiu foi a repetição no papel, e não o registro.
          */
-        const notas: string[] = [];
-
         const linhas = dias
           .map((j) => {
-            const foraDoComum = ORDEM_MARCACOES.map((t) => j.marcacoes[t])
-              .filter((r): r is RegistroPonto => !!r)
-              .filter((r) => !this.foiBatidaPelaPessoa(r));
-
-            let nota = '';
-            if (foraDoComum.length > 0) {
-              notas.push(
-                `<li><strong>${formatarDataBR(j.data)}</strong> — ${escapar(
-                  foraDoComum
-                    .map((r) => `${ROTULO_MARCACAO[r.tipo]}: ${this.descreverOrigem(r)}`)
-                    .join(' | ')
-                )}</li>`
-              );
-              nota = String(notas.length);
-            }
-
             /**
              * O QUE O DIA ESPERA, e não as quatro colunas sempre.
              *
@@ -2929,7 +2980,6 @@ class ServicoPonto {
               <td class="num ${j.saldoMinutos < 0 ? 'neg' : ''}">${
                 j.minutosTrabalhados === 0 ? '—' : formatarSaldo(j.saldoMinutos)
               }</td>
-              <td class="nota-ref">${nota}</td>
             </tr>`;
           })
           .join('');
@@ -2961,7 +3011,6 @@ class ServicoPonto {
                 <th>Trabalhado</th>
                 <th>Previsto</th>
                 <th>Saldo</th>
-                <th>Nota</th>
               </tr>
             </thead>
             <tbody>${linhas}</tbody>
@@ -2990,16 +3039,25 @@ class ServicoPonto {
             </tr>
           </table>
 
-          ${
-            notas.length > 0
-              ? `<div class="notas">
-            <strong>Notas — marcações que não foram batidas pela pessoa</strong>
-            <ol>${notas.join('')}</ol>
-          </div>`
-              : `<p class="nota">
-            Todas as marcações do período foram batidas pelo próprio colaborador.
-          </p>`
-          }
+          ${/*
+            A RELAÇÃO DE NOTAS SAIU DO PAPEL — decisão do Elias.
+
+            Era um bloco no rodapé listando, dia a dia, cada marcação que
+            não foi batida pela própria pessoa: "12/09 — Entrada:
+            corrigido por Rita | Saída: preenchido pelo turno". Num mês
+            movimentado a lista passava de vinte linhas e empurrava as
+            assinaturas para uma segunda folha.
+
+            O RASTRO NÃO SE PERDEU, e é por isso que dá para tirar:
+
+              · o `*` continua ao lado do horário lançado pelo RH
+              · o CSV do período traz a origem de CADA marcação
+              · a Auditoria guarda quem lançou, quando e por quê
+
+            Ou seja, o que saiu foi a REPETIÇÃO no papel, não o registro.
+            Quem precisar auditar tem dois lugares melhores que o rodapé
+            de um espelho impresso.
+          */ ''}
 
           <div class="assinaturas">
             <div><span class="linha"></span>Assinatura do colaborador</div>

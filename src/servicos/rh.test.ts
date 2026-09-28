@@ -301,26 +301,62 @@ test('os holerites abrem com as lojas RECOLHIDAS', async () => {
   expect(aba).not.toContain('const [recolhidas,');
 });
 
-test('o espelho cabe numa folha: a origem virou nota de rodapé', async () => {
+test('O ESPELHO CABE NUMA FOLHA: a origem saiu do papel', async () => {
   /**
-   * "Origem das marcações" era uma coluna com até quatro frases por dia.
-   * Ela quebrava linha, cada dia virava três ou quatro alturas, e o mês
-   * de 31 dias não fechava na folha de pé — o espelho de uma pessoa saía
-   * em duas páginas.
+   * A origem das marcações passou por três formas neste documento, e
+   * cada uma caiu pelo mesmo motivo — altura.
    *
-   * Na grade sobrou uma coluna de NÚMERO, que não quebra. O texto foi
-   * para um rodapé que cresce uma vez por documento, e não uma vez por
-   * dia — e só com os dias que fogem do normal.
+   *  1. COLUNA com até quatro frases por dia ("Entrada: QR —
+   *     Pirassununga | ..."). Quebrava linha, cada dia virava três ou
+   *     quatro alturas, e o mês de 31 dias saía em duas páginas.
+   *  2. COLUNA DE NÚMERO com a relação por extenso no rodapé. Melhor,
+   *     mas num mês movimentado a lista passava de vinte linhas e
+   *     empurrava as assinaturas para a segunda folha.
+   *  3. Fora do papel, por decisão do Elias.
+   *
+   * O rastro não sumiu: ele mudou de documento, e o teste do CSV logo
+   * abaixo cobra isso. Espelho é para conferir e assinar; auditoria de
+   * lançamento é planilha.
    */
   const fonte = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
   const espelho = fonte.slice(fonte.indexOf('gerarHtmlEspelho'));
 
-  expect(espelho).toContain('<th>Nota</th>');
   expect(espelho).not.toContain('<th>Origem das marcações</th>');
-  expect(espelho).toContain('class="nota-ref"');
+  expect(espelho).not.toContain('<th>Nota</th>');
+  expect(espelho).not.toContain('class="nota-ref"');
+  expect(espelho).not.toContain('marcações que não foram batidas pela pessoa');
+
+  // O `*` FICA: é o rastro mínimo de que aquele horário não foi batido
+  // pela pessoa, e ele não ocupa linha nenhuma
+  expect(espelho).toContain("ehMarcacaoCorrigida(reg.metodo) ? ' *' : ''");
 
   // A data e o dia da semana na MESMA linha: dobrar 31 alturas decide a página
   expect(espelho).not.toContain('<td class="dia">${formatarDataBR(j.data)}<br>');
+});
+
+test('O CSV RECEBEU o rastro que saiu do espelho', async () => {
+  /**
+   * Isto não é enfeite de simetria: "quem lançou este horário" é a
+   * pergunta que uma fiscalização faz, e tirar do papel sem pôr em
+   * lugar nenhum seria apagar a resposta.
+   *
+   * Vai para o CSV porque é ali que quem audita trabalha, e porque
+   * coluna a mais numa planilha não custa folha.
+   */
+  const fonte = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+  const csv = fonte.slice(
+    fonte.indexOf('gerarCsvDoPeriodo'),
+    fonte.indexOf('private descreverOrigem')
+  );
+
+  expect(csv).toContain('Lancamentos manuais');
+  expect(csv).toContain('this.descreverOrigem(r)');
+  // Só o que foge do normal: "QR" em quatro colunas todo dia é o ruído
+  // que já derrubou esta informação da grade impressa uma vez
+  expect(csv).toContain('!this.foiBatidaPelaPessoa(r)');
+  // O separador é `;` e a justificativa é texto livre: um `;` digitado
+  // ali partiria a linha em duas colunas no meio da planilha
+  expect(csv).toContain("replace(/;/g, ',')");
 });
 
 test('o espelho não chama de QR o que ninguém bateu', async () => {
@@ -333,10 +369,23 @@ test('o espelho não chama de QR o que ninguém bateu', async () => {
    * uma batida que não houve.
    */
   const fonte = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+  /**
+   * Fatiar pela DEFINIÇÃO, e não pela primeira menção.
+   *
+   * Isto dizia `indexOf('descreverOrigem')` até `indexOf('foiBatidaPelaPessoa')`.
+   * No dia em que o CSV passou a CHAMAR as duas — acima das
+   * definições, porque `gerarCsvDoPeriodo` vem antes —, o fim do corte
+   * passou a cair ANTES do começo e o trecho virou string vazia. O
+   * teste não acusou nada: `''` não contém as marcas, então ele falhou;
+   * mas poderia ter passado, e teria passado se as asserções fossem
+   * `not.toContain`.
+   */
   const trecho = fonte.slice(
-    fonte.indexOf('descreverOrigem'),
-    fonte.indexOf('foiBatidaPelaPessoa')
+    fonte.indexOf('private descreverOrigem'),
+    fonte.indexOf('private foiBatidaPelaPessoa')
   );
+
+  expect(trecho.length).toBeGreaterThan(200);
 
   expect(trecho).toContain("metodo === 'ajuste_lider'");
   expect(trecho).toContain("metodo === 'preenchimento_turno'");

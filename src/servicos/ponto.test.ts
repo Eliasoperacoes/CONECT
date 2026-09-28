@@ -141,7 +141,7 @@ mock.module('./nuvem', () => ({
   },
 }));
 
-const { servicoPonto, dataDeHoje, marcacoesEsperadas } = await import(
+const { servicoPonto, dataDeHoje, marcacoesEsperadas, motivoSemMarcacao } = await import(
   './ponto'
 );
 
@@ -1586,6 +1586,75 @@ test('ausência aprovada zera o previsto do dia', async () => {
   expect(
     servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-19').saldoMinutos
   ).toBe(0);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('A FOLGA APARECE NO ESPELHO, com o nome dela', async () => {
+  /**
+   * Pedido do Elias: "a folga deve aparecer no espelho do holerite".
+   *
+   * O previsto já era zerado, mas essa era só metade:
+   * `marcacoesEsperadas` continuava esperando entrada e saída no dia de
+   * folga, e o espelho imprimia `--:--` nas colunas — que num documento
+   * de ponto tem UM significado só: "deveria ter batido e não bateu".
+   *
+   * O direito mensal da pessoa aparecia no papel como esquecimento dela.
+   */
+  equipe = [GESTOR, DO_TURNO_A];
+  armazenamento.setItem(
+    'conecta_v4_justificativas_ausencia',
+    JSON.stringify([
+      {
+        id: 'f9', colaboradorId: DO_TURNO_A.id, dataInicio: '2026-09-19',
+        dataFim: '2026-09-19', tipo: 'folga_sabado', estado: 'aprovada',
+        criadoEm: new Date().toISOString(),
+      },
+    ])
+  );
+
+  // Nenhuma batida é cobrada no dia de folga
+  expect(marcacoesEsperadas('2026-09-19', DO_TURNO_A as any)).toEqual([]);
+
+  // E a célula vazia diz POR QUE está vazia
+  expect(motivoSemMarcacao('2026-09-19', 'entrada', DO_TURNO_A as any)).toBe('Folga');
+  expect(motivoSemMarcacao('2026-09-19', 'saida', DO_TURNO_A as any)).toBe('Folga');
+
+  /**
+   * "Folga" e não "Sábado": a folga de sábado É um sábado, e o rótulo
+   * genérico diria a metade errada da verdade. O holerite precisa mostrar
+   * que o dia foi o direito mensal, e não um sábado comum.
+   */
+  expect(motivoSemMarcacao('2026-09-19', 'entrada', DO_TURNO_A as any)).not.toBe('Sábado');
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('ATESTADO E FÉRIAS saem com o rótulo de cada um', async () => {
+  /**
+   * A guarda do teste acima: se o rótulo fosse fixo em 'Folga', todo dia
+   * abonado sairia como folga — e um mês de férias apareceria no espelho
+   * como trinta folgas de sábado.
+   */
+  equipe = [GESTOR, DO_TURNO_A];
+  armazenamento.setItem(
+    'conecta_v4_justificativas_ausencia',
+    JSON.stringify([
+      {
+        id: 'f10', colaboradorId: DO_TURNO_A.id, dataInicio: '2026-09-21',
+        dataFim: '2026-09-21', tipo: 'atestado', estado: 'aprovada',
+        criadoEm: new Date().toISOString(),
+      },
+      {
+        id: 'f11', colaboradorId: DO_TURNO_A.id, dataInicio: '2026-09-22',
+        dataFim: '2026-09-22', tipo: 'ferias', estado: 'aprovada',
+        criadoEm: new Date().toISOString(),
+      },
+    ])
+  );
+
+  expect(motivoSemMarcacao('2026-09-21', 'entrada', DO_TURNO_A as any)).toBe('Atestado');
+  expect(motivoSemMarcacao('2026-09-22', 'entrada', DO_TURNO_A as any)).toBe('Férias');
 
   armazenamento.removeItem('conecta_v4_justificativas_ausencia');
 });
