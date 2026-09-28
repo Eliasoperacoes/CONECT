@@ -91,6 +91,7 @@ esquema.
 | Arquivo | Quando usar |
 |---|---|
 | `conferir-central.sql` | **Não altera nada.** Publicar na Central falhou — diz se a causa é coluna faltando, política ou nível |
+| `conferir-sabado.sql` | **Não altera nada.** O sábado de alguém previu zero e o que a pessoa trabalhou virou hora extra — separa as duas causas: `trabalha_sabado` desligado na ficha (cadastro errado) ou folga aprovada naquele dia (previsto zero está certo) |
 | `conferir-tolerancia.sql` | **Não altera nada.** Saldo de alguém não bate com o que a pessoa diz ter trabalhado — mostra quanto do saldo dela veio de minutos que a tolerância aprovou sozinha (art. 58 §1º da CLT manda não descontá-los) |
 | `aviso-no-chat.sql` | **Rode uma vez.** Dá ao recado do chat o id da publicação, para o botão "Abrir publicação" levar à certa |
 | `central-da-direcao.sql` | **Rode uma vez.** Dá à Central da Direção tipo, categoria, destinos e anexo, e põe o filtro de quem vê o quê no banco |
