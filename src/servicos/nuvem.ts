@@ -28,7 +28,13 @@ import {
   EstadoAjuste,
   SENHA_PADRAO_PRIMEIRO_ACESSO,
 } from '../tipos';
-import { supabase, usandoNuvem, loginParaEmailInterno, normalizarLogin } from './supabase';
+import {
+  supabase,
+  usandoNuvem,
+  loginParaEmailInterno,
+  normalizarLogin,
+} from './supabase';
+import { explicarRecusaDoBanco } from './recusaDoBanco';
 import { nuvemComunicacao } from './nuvemComunicacao';
 /**
  * A folha, e não `justificativas`: aquele arquivo importa `ponto`, que
@@ -58,6 +64,59 @@ const CHAVE_COLABORADOR_ATUAL = 'conecta_v4_colaborador_atual';
 const CHAVE_REGISTROS_PONTO = 'conecta_v4_registros_ponto';
 const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
 const CHAVE_AJUSTES = 'conecta_v4_ajustes_jornada';
+
+/**
+ * ===================================================================
+ * A JANELA DO PONTO — por que o cache não pode ser "tudo"
+ * ===================================================================
+ *
+ * `sincronizarPonto` baixava TODAS as marcações da rede e as gravava no
+ * `localStorage`. Com as 8 pessoas do piloto isso eram 314 linhas, 80
+ * KB, e funcionava. Medido para as 89:
+ *
+ *     89 pessoas × 4 batidas × 22 dias = 7.832 marcações POR MÊS
+ *
+ *     mês    marcações    localStorage
+ *       1        7.832        1,96 MB
+ *       3       23.496        5,87 MB   <- estoura o limite de ~5 MB
+ *      12       93.984       23,48 MB
+ *
+ * O `localStorage` do navegador guarda ~5 MB. Passado disso, `setItem`
+ * LANÇA — e `sincronizarPonto` roda DENTRO de `registrarMarcacaoPorCodigo`,
+ * antes de cada batida. O terceiro mês de uso derrubaria o bater ponto.
+ *
+ * A RLS já poupa a maioria: cada pessoa só enxerga as próprias
+ * marcações, o que dá ~1.000 linhas por ano. Quem carrega a rede inteira
+ * é o RH e a gestão — justamente quem abre o Banco de Horas todo dia.
+ *
+ * E APAGAR NÃO É SAÍDA: marcação de ponto é documento trabalhista, e a
+ * regra da casa é que ela não se apaga em hipótese alguma. O que muda é
+ * o quanto o APARELHO guarda de cada vez.
+ *
+ * Então o cache cobre uma JANELA. O padrão cobre o mês corrente e o
+ * anterior, que é o que a aba Ponto e a apuração da semana precisam. O
+ * Banco de Horas pede o período que está mostrando.
+ */
+const DIAS_DA_JANELA_PADRAO = 62;
+
+/** AAAA-MM-DD de hoje, no fuso do aparelho. */
+const hojeLocal = (): string => {
+  const d = new Date();
+  const doisDigitos = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${doisDigitos(d.getMonth() + 1)}-${doisDigitos(d.getDate())}`;
+};
+
+const diasAtras = (dias: number): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - dias);
+  const doisDigitos = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${doisDigitos(d.getMonth() + 1)}-${doisDigitos(d.getDate())}`;
+};
+
+export interface JanelaDoPonto {
+  inicio: string;
+  fim: string;
+}
 
 /** Linha da tabela `colaboradores`, como ela vem do banco. */
 interface LinhaColaborador {
@@ -768,12 +827,49 @@ class PonteNuvem {
    * filtrado pela RLS: o colaborador recebe só as próprias marcações, o RH e
    * o Administrador recebem a rede inteira.
    */
-  async sincronizarPonto(): Promise<boolean> {
+  /**
+   * A janela que o cache cobre AGORA.
+   *
+   * Vive na memória, e não no `localStorage`, de propósito: cada sessão
+   * começa no padrão. Guardá-la faria a janela que o RH abriu uma vez
+   * para consultar um mês antigo valer para sempre, naquele aparelho, e
+   * o cache voltaria a crescer sem ninguém pedir.
+   */
+  private janelaDoPonto: JanelaDoPonto | null = null;
+
+  /** A janela em vigor — o padrão, ou a última que alguém pediu. */
+  obterJanelaDoPonto(): JanelaDoPonto {
+    return (
+      this.janelaDoPonto || {
+        inicio: diasAtras(DIAS_DA_JANELA_PADRAO),
+        fim: hojeLocal(),
+      }
+    );
+  }
+
+  /**
+   * @param periodo O trecho a carregar. Sem ele, mantém a janela em
+   * vigor — é o que as chamadas de rotina fazem, inclusive a que roda
+   * antes de cada batida.
+   */
+  async sincronizarPonto(periodo?: JanelaDoPonto): Promise<boolean> {
     if (!supabase) return false;
+
+    if (periodo) this.janelaDoPonto = periodo;
+    const janela = this.obterJanelaDoPonto();
 
     const [registros, codigos] = await Promise.all([
       buscarTodasAsLinhas<LinhaRegistroPonto>(
-        () => supabase!.from('registros_ponto').select('*').order('horario'),
+        () =>
+          supabase!
+            .from('registros_ponto')
+            .select('*')
+            /* A coluna `data` é indexada (`registros_ponto_por_data`), e
+               é por ela que o período se recorta — `horario` é timestamp
+               com fuso, e comparar data com ele erra a virada do dia */
+            .gte('data', janela.inicio)
+            .lte('data', janela.fim)
+            .order('horario'),
         'as marcações de ponto'
       ),
       supabase.from('codigos_ponto_loja').select('*'),
@@ -781,10 +877,33 @@ class PonteNuvem {
 
     if (!registros) return false;
 
-    localStorage.setItem(
-      CHAVE_REGISTROS_PONTO,
-      JSON.stringify(registros.map(paraRegistroPonto))
-    );
+    /**
+     * O CACHE QUE NÃO COUBE NÃO PODE DERRUBAR A BATIDA.
+     *
+     * `setItem` LANÇA quando estoura o limite do navegador, e esta
+     * função roda dentro de `registrarMarcacaoPorCodigo`. Sem esta
+     * guarda, o aparelho do RH que passasse do limite deixaria de bater
+     * ponto — com uma exceção subindo até a tela, sem nome nem
+     * explicação.
+     *
+     * E NÃO SE GRAVA PELA METADE. Truncar para caber deixaria o espelho
+     * com dias faltando e ninguém saberia: documento de ponto incompleto
+     * é pior do que documento que não abriu. Ou entra inteiro, ou o
+     * cache fica como estava e a função diz que falhou.
+     */
+    try {
+      localStorage.setItem(
+        CHAVE_REGISTROS_PONTO,
+        JSON.stringify(registros.map(paraRegistroPonto))
+      );
+    } catch (erro) {
+      console.error(
+        `Não coube no aparelho a janela ${janela.inicio} a ${janela.fim} ` +
+          `(${registros.length} marcações):`,
+        erro
+      );
+      return false;
+    }
 
     if (!codigos.error && codigos.data) {
       localStorage.setItem(
@@ -812,7 +931,15 @@ class PonteNuvem {
     if (error) {
       if (error.code === '23505') return { sucesso: false, duplicado: true };
       console.error('Falha ao gravar a marcação no banco:', error.message);
-      return { sucesso: false, erro: error.message };
+      /**
+       * A MESMA EXPLICAÇÃO DO CHAT, e não a mensagem crua.
+       *
+       * Devolvia `error.message` direto: uma pessoa no balcão, com o
+       * celular na mão, lendo "Could not find the 'x' column of
+       * 'registros_ponto' in the schema cache". Agora lê que falta rodar
+       * um script e que o TI resolve — e o TI lê o nome da coluna.
+       */
+      return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
     }
     return { sucesso: true };
   }

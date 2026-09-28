@@ -710,9 +710,19 @@ class ServicoPonto {
         };
       }
       if (!res.sucesso) {
+        /**
+         * O MOTIVO DO BANCO VAI PARA A TELA, como no chat.
+         *
+         * Este é o caminho mais crítico do sistema: alguém no balcão,
+         * com o celular na mão, tentando registrar a jornada. "Verifique
+         * a conexão" manda essa pessoa fazer a única coisa que não
+         * resolve — e foi assim que o chat da rede ficou parado por dias
+         * com a causa escrita no console de quem enviava.
+         */
         return {
           sucesso: false,
-          erro: 'Não foi possível gravar a marcação. Verifique a conexão e tente de novo.',
+          erro:
+            res.erro || 'Não foi possível gravar a marcação. Tente de novo.',
         };
       }
     }

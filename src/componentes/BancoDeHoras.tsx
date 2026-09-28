@@ -32,6 +32,7 @@ import {
   MapPin,
   ArrowRight,
   UserCog,
+  Loader2,
 } from 'lucide-react';
 import {
   Colaborador,
@@ -62,6 +63,8 @@ import {
   primeiroDiaDoMes,
 } from '../servicos/ponto';
 import { podeUsar } from '../servicos/permissoes';
+import { nuvem } from '../servicos/nuvem';
+import { usandoNuvem } from '../servicos/supabase';
 
 interface PropsBancoDeHoras {
   colaboradorAtual: Colaborador;
@@ -188,6 +191,50 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
     const cancelar = servicoPonto.assinarAlteracoes(() => setVersaoDados((v) => v + 1));
     return () => cancelar();
   }, []);
+
+  /**
+   * O APARELHO SÓ GUARDA A JANELA QUE ALGUÉM ESTÁ OLHANDO.
+   *
+   * O cache de ponto cobre o mês corrente e o anterior por padrão —
+   * baixar a rede inteira desde sempre estoura o limite do navegador no
+   * terceiro mês de uso, e aí o aparelho do RH deixa de bater ponto.
+   * A conta está em `nuvem.ts`.
+   *
+   * Então quando o RH escolhe outro período, o período é pedido ao
+   * banco. Sem isto o espelho de um mês antigo abriria VAZIO — e
+   * espelho vazio se lê como "esta pessoa não bateu ponto", que é a
+   * pior coisa que um documento de ponto pode dizer por engano.
+   *
+   * `sucesso` falso quer dizer que o período não coube no aparelho. A
+   * tela avisa em vez de mostrar um espelho pela metade.
+   */
+  const [carregandoPeriodo, setCarregandoPeriodo] = useState(false);
+
+  useEffect(() => {
+    if (!usandoNuvem()) return;
+
+    let vivo = true;
+    setCarregandoPeriodo(true);
+
+    nuvem
+      .sincronizarPonto({ inicio: dataInicio, fim: dataFim })
+      .then((coube) => {
+        if (!vivo) return;
+        setCarregandoPeriodo(false);
+        if (coube) return setVersaoDados((v) => v + 1);
+
+        exibirToast(
+          'O período escolhido é grande demais para caber neste aparelho. ' +
+            'Escolha um intervalo menor para o espelho sair completo.',
+          true
+        );
+      })
+      .catch(() => vivo && setCarregandoPeriodo(false));
+
+    return () => {
+      vivo = false;
+    };
+  }, [dataInicio, dataFim]);
 
   const exibirToast = (texto: string, erro = false) => {
     setToast({ texto, erro });
@@ -547,6 +594,21 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                 <CalendarRange className="w-3.5 h-3.5" />
                 Período apurado
               </div>
+
+              {/*
+                O aviso de que o período está sendo buscado.
+
+                O cache do aparelho cobre uma janela, e trocar a data vai
+                ao banco. Sem este sinal, quem muda o mês vê por um
+                instante os números do mês anterior e acredita neles —
+                num documento de ponto isso é pior do que esperar.
+              */}
+              {carregandoPeriodo && (
+                <p className="text-[11px] text-[var(--c-texto-3)] mb-1.5 flex items-center gap-1.5">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Buscando as marcações deste período...
+                </p>
+              )}
 
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
