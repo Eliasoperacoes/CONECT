@@ -154,8 +154,18 @@ O sistema já sabe fazer isso: `enviarAnexo` e `abrirDocumento`, em
 e pelos documentos de ausência.
 
 O base64 antigo CONTINUA funcionando: quem já tinha foto não perde
-nada, e ela sai da coluna sozinha quando a pessoa trocar. A conta de
-quantas faltam converter está no fim de `foto-de-perfil-no-balde.sql`.
+nada, e ela sai da coluna sozinha quando a pessoa trocar.
+
+**E MEDIDO no dia do conserto: ZERO fotos em base64.** Ninguém tinha
+trocado a foto ainda — as 89 usavam o logo. A projeção de 15,7 GB era
+de um cenário que não havia começado, e o conserto chegou antes da
+primeira foto. Não houve nada a migrar, e o caminho do base64 existe
+como rede de segurança que provavelmente nunca será usada.
+
+Isso não foi sorte de escolher a hora: foi o conferidor de consumo
+perguntando ao banco em vez de eu deduzir. A pergunta que revelou o
+problema — "quanto pesa uma foto?" — é a mesma que mostrou que ele
+ainda não existia.
 
 A tradução acontece num lugar só — na fronteira com o banco, em
 `paraColaborador`. As vinte e tantas telas que leem `colaborador.foto`
