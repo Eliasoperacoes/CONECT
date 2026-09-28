@@ -35,6 +35,15 @@ const ERRO_RLS = {
 };
 const ERRO_DUPLICADA = { code: '23505', message: 'duplicate key value violates unique constraint' };
 
+/**
+ * Colunas que o script do Supabase ainda não criou.
+ *
+ * Existe porque isto derrubou o chat da rede inteira: toda mensagem
+ * passou a levar `publicacao_id`, o `aviso-no-chat.sql` não tinha sido
+ * rodado, e o banco recusava CADA envio.
+ */
+let colunasQueFaltam = new Set<string>();
+
 const clienteFalso = {
   from(tabela: string) {
     const gravar = (dados: any, ehUpsert: boolean) => {
@@ -70,6 +79,27 @@ const clienteFalso = {
           linhasParticipantes.push({ ...linha });
         }
         return Promise.resolve({ error: null, data: null });
+      }
+
+      /**
+       * A COLUNA QUE O BANCO AINDA NÃO TEM.
+       *
+       * É assim que o PostgREST responde quando o código manda uma
+       * coluna criada por um script que ficou por rodar: `PGRST204`,
+       * com o nome da coluna na mensagem. Não é permissão, não é
+       * conexão, e tentar de novo não muda nada.
+       */
+      for (const linha of linhas) {
+        const faltando = Object.keys(linha).find((c) => colunasQueFaltam.has(c));
+        if (faltando) {
+          return Promise.resolve({
+            error: {
+              code: 'PGRST204',
+              message: `Could not find the '${faltando}' column of '${tabela}' in the schema cache`,
+            },
+            data: null,
+          });
+        }
       }
 
       return Promise.resolve({ error: null, data: null });
@@ -117,6 +147,7 @@ beforeEach(() => {
   linhasConversas = [];
   linhasParticipantes = [];
   euSou = 'colab-ana';
+  colunasQueFaltam = new Set();
 });
 
 test('conversa nova é criada e os participantes entram junto', async () => {
@@ -284,4 +315,93 @@ test('o primeiro evento depois de uma calmaria nao espera', async () => {
   expect(ponte).toContain('>= ESPERA_PARA_JUNTAR_EVENTOS_MS\n        ? 0');
   // Espera fixa é justamente o que este teste existe para impedir
   expect(ponte).not.toContain('}, ESPERA_PARA_JUNTAR_EVENTOS_MS);');
+});
+
+// ============================================================
+// COLUNA QUE O BANCO AINDA NÃO TEM
+// ============================================================
+
+test('COLUNA QUE FALTA é explicada como script por rodar, e não como conexão', async () => {
+  /**
+   * O caso que parou o chat da rede inteira.
+   *
+   * Toda mensagem passou a levar `publicacao_id` — a coluna do botão
+   * "Abrir publicação" —, o `aviso-no-chat.sql` não tinha sido rodado, e
+   * o PostgREST recusava CADA envio com `PGRST204`. A tela dizia
+   * "Verifique a conexão e tente de novo", que é a única coisa que não
+   * resolvia: a conexão estava ótima.
+   *
+   * A mensagem tem de sair daqui dizendo QUAL coluna e O QUE fazer —
+   * quem lê é quem roda o script.
+   */
+  colunasQueFaltam = new Set(['publicacao_id']);
+
+  const res = await nuvemComunicacao.salvarMensagem({
+    id: 'msg-1',
+    conversaId: CANAL_LOJA.id,
+    remetenteId: 'colab-ana',
+    tipo: 'texto',
+    texto: 'teste',
+    criadoEm: '2026-09-28T01:08:00.000Z',
+    horaFormatada: '01:08',
+    lida: false,
+    lidaPor: ['colab-ana'],
+  } as any);
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('publicacao_id');
+  expect(res.erro).toContain('script no Supabase');
+
+  // NÃO é permissão, e a mensagem não pode sugerir que seja
+  expect(res.erro).not.toContain('Sem permissão');
+  // E não manda a pessoa entrar de novo, que também não resolve
+  expect(res.erro).not.toContain('sessão terminou');
+});
+
+test('com a coluna no lugar, a mensagem passa', async () => {
+  /**
+   * A guarda do teste acima: se `salvarMensagem` passasse a recusar
+   * sempre, ele continuaria verde e o chat estaria morto.
+   */
+  const res = await nuvemComunicacao.salvarMensagem({
+    id: 'msg-2',
+    conversaId: CANAL_LOJA.id,
+    remetenteId: 'colab-ana',
+    tipo: 'texto',
+    texto: 'teste',
+    criadoEm: '2026-09-28T01:08:00.000Z',
+    horaFormatada: '01:08',
+    lida: false,
+    lidaPor: ['colab-ana'],
+  } as any);
+
+  expect(res.sucesso).toBe(true);
+});
+
+test('TODA MENSAGEM leva `publicacao_id`, mesmo sem publicação nenhuma', async () => {
+  /**
+   * É o que torna a coluna obrigatória na prática, e é o que fez o
+   * estrago ser total em vez de parcial: não são só os avisos da Central
+   * que mandam o campo — um "bom dia" manda `publicacao_id: null`.
+   *
+   * Sem esta asserção alguém poderia concluir que só o recado de aviso
+   * quebraria, e subestimar o tamanho de uma coluna que falta.
+   */
+  colunasQueFaltam = new Set(['publicacao_id']);
+
+  const res = await nuvemComunicacao.salvarMensagem({
+    id: 'msg-3',
+    conversaId: CANAL_LOJA.id,
+    remetenteId: 'colab-ana',
+    tipo: 'texto',
+    texto: 'bom dia',
+    criadoEm: '2026-09-28T01:08:00.000Z',
+    horaFormatada: '01:08',
+    lida: false,
+    lidaPor: ['colab-ana'],
+    // sem publicacaoId nenhum
+  } as any);
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('publicacao_id');
 });

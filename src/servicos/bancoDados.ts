@@ -2319,9 +2319,26 @@ class BancoDadosConecta {
 
       if (!res.sucesso) {
         this.marcarFalhaDeEnvio(novaMensagem.id);
+        /**
+         * O MOTIVO DO BANCO VAI PARA A TELA, inteiro.
+         *
+         * Dizia "Não foi possível enviar. Verifique a conexão e tente de
+         * novo." — e a conexão estava ótima. O chat da rede inteira parou
+         * porque `publicacao_id` não existia no banco (o
+         * `aviso-no-chat.sql` não tinha sido rodado), e a única pista
+         * disso estava no console de quem enviava.
+         *
+         * "Verifique a conexão" manda a pessoa fazer a única coisa que
+         * não resolve, e esconde a coisa que resolve em um minuto.
+         *
+         * É a QUARTA vez neste sistema: o login, a publicação da Central,
+         * a reapuração do ponto e agora o chat. O padrão é sempre o
+         * mesmo — a camada de baixo sabe o motivo, e a de cima o troca
+         * por uma frase tranquilizadora.
+         */
         return {
           sucesso: false,
-          erro: 'Não foi possível enviar. Verifique a conexão e tente de novo.',
+          erro: res.erro || 'Não foi possível enviar. Tente de novo.',
         };
       }
 

@@ -310,6 +310,35 @@ const paraLinhaAviso = (a: AvisoRede) => ({
  * falhou, então não custa nada no caminho normal.
  */
 const explicarRecusa = async (error: { code?: string; message: string }): Promise<string> => {
+  /**
+   * COLUNA QUE NÃO EXISTE NÃO É PROBLEMA DE QUEM ESTÁ USANDO.
+   *
+   * `PGRST204` é o PostgREST dizendo que o código mandou uma coluna que
+   * o banco não tem — ou seja, um script do Supabase que ficou por
+   * rodar. Não é falta de permissão, não é conexão, e não adianta a
+   * pessoa tentar de novo.
+   *
+   * Isto derrubou o CHAT INTEIRO uma vez: toda mensagem passou a levar
+   * `publicacao_id` (o botão "Abrir publicação"), o `aviso-no-chat.sql`
+   * não tinha sido rodado, e o banco recusava CADA envio. A tela dizia
+   * "Verifique a conexão e tente de novo" — e a conexão estava ótima.
+   *
+   * Uma coluna opcional derrubando o envio inteiro é o tamanho do
+   * estrago que essa mensagem precisa ajudar a encurtar: quem lê tem de
+   * sair dela sabendo que o conserto é rodar um script, e qual coluna
+   * procurar.
+   */
+  const ehColunaQueFalta =
+    error.code === 'PGRST204' ||
+    /could not find the .* column|schema cache/i.test(error.message);
+
+  if (ehColunaQueFalta) {
+    const coluna = error.message.match(/'([^']+)' column/)?.[1];
+    return `O banco ainda não tem ${
+      coluna ? `a coluna '${coluna}'` : 'uma coluna que o sistema usa'
+    }. Falta rodar um script no Supabase — avise o TI. (${error.message})`;
+  }
+
   const ehRecusaDeAcesso =
     error.code === '42501' || error.message.toLowerCase().includes('row-level security');
 

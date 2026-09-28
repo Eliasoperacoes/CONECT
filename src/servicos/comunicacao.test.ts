@@ -90,6 +90,22 @@ mock.module('./nuvem', () => ({
 
 const recusa = { sucesso: false, erro: 'sem conexao' };
 
+/**
+ * A recusa que derrubou o chat da rede inteira, palavra por palavra.
+ *
+ * Toda mensagem passou a levar `publicacao_id` — a coluna do botão
+ * "Abrir publicação" — e o `aviso-no-chat.sql` não tinha sido rodado. O
+ * PostgREST recusava CADA envio, e a tela dizia "Verifique a conexão e
+ * tente de novo".
+ */
+let recusarMensagem = false;
+const recusaDaMensagem = {
+  sucesso: false,
+  erro:
+    "O banco ainda não tem a coluna 'publicacao_id'. Falta rodar um " +
+    'script no Supabase — avise o TI.',
+};
+
 /** Conversas que o banco falso ja conhece. */
 const conversasNoBancoFalso = new Set<string>();
 
@@ -129,6 +145,14 @@ mock.module('./nuvemComunicacao', () => ({
     },
     salvarMensagem: async (m: any) => {
       if (recusarEscrita) return recusa;
+      /**
+       * A recusa SÓ DA MENSAGEM, com a conversa passando normal.
+       *
+       * `recusarEscrita` derruba a conversa primeiro, e aquele caminho
+       * sempre repassou o motivo. O da mensagem não repassava — e foi
+       * por ele que o chat da rede parou sem ninguém saber por quê.
+       */
+      if (recusarMensagem) return recusaDaMensagem;
       bancoMensagens.push({ ...m });
       bancoLeituras.push({ mensagemId: m.id, colaboradorId: m.remetenteId });
       return { sucesso: true };
@@ -209,6 +233,7 @@ beforeEach(() => {
   bancoConfig = null;
   bancoAuditoria = [];
   recusarEscrita = false;
+  recusarMensagem = false;
   modoNuvem = true;
   sessaoViva = true;
   colaboradoresNoBanco = [];
@@ -278,13 +303,45 @@ test('PARTICIPANTE FANTASMA: id que o banco não conhece não derruba a conversa
   expect(bancoMensagens).toHaveLength(1);
 });
 
-test('quando o banco recusa, a tela mostra o motivo que ele deu', async () => {
+test('quando o banco recusa A CONVERSA, a tela mostra o motivo que ele deu', async () => {
   recusarEscrita = true;
   const res = await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'oi' });
 
   expect(res.sucesso).toBe(false);
   // Antes dizia "verifique a conexão", mandando olhar para o lugar errado
   expect(res.erro).toContain('sem conexao');
+});
+
+test('quando o banco recusa A MENSAGEM, o motivo também chega inteiro', async () => {
+  /**
+   * ESTE ERA O BURACO, e ele tinha um teste passando por cima.
+   *
+   * O teste acima se chamava "quando o banco recusa, a tela mostra o
+   * motivo" — e exercitava só a recusa da CONVERSA, que sempre
+   * repassou. O envio da MENSAGEM tinha um texto fixo:
+   *
+   *     'Não foi possível enviar. Verifique a conexão e tente de novo.'
+   *
+   * Foi assim que o chat da rede inteira parou sem ninguém saber por
+   * quê: toda mensagem passou a levar `publicacao_id`, o
+   * `aviso-no-chat.sql` não tinha sido rodado, e o banco recusava CADA
+   * envio. A tela mandava verificar a conexão, que estava ótima.
+   *
+   * Nome de teste que promete a regra geral e cobre um ramo só é pior do
+   * que teste nenhum: ele ocupa o lugar do que faltava.
+   */
+  recusarMensagem = true;
+  const res = await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'teste' });
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('publicacao_id');
+  expect(res.erro).toContain('script no Supabase');
+  // E NÃO manda olhar para a conexão, que é o único lugar que não resolve
+  expect(res.erro?.toLowerCase()).not.toContain('verifique a conexão');
+
+  // Nada de mensagem fantasma só neste aparelho
+  expect(bancoMensagens).toHaveLength(0);
+  expect(lerCacheMensagens()).toHaveLength(0);
 });
 
 test('BANCO RECUSOU: não diz que enviou nem deixa a mensagem no aparelho', async () => {
