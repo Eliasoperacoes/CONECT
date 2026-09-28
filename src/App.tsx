@@ -895,9 +895,26 @@ export default function App() {
    * escala de folgas — e regra duplicada neste sistema já divergiu quatro
    * vezes.
    */
+  /**
+   * TOCAR NA NOTIFICAÇÃO LEVA ATÉ ELA, e não à tela onde ela mora.
+   *
+   * Cada tipo tem um destino próprio, e todos existiam antes — o que
+   * faltava era a publicação, que caía no `else` e mandava a pessoa
+   * para o painel de gestão, onde o aviso dela não estava.
+   *
+   * `abrirPublicacao` é o mesmo caminho do botão "Abrir publicação" do
+   * chat: troca para a Central E abre aquela publicação. Levar só até a
+   * Central deixaria a pessoa procurando entre dez avisos qual era o
+   * que tocou — e um atalho que obriga a procurar não é atalho.
+   */
   const irParaNotificacao = (destino: DestinoNotificacao) => {
     if (destino.tipo === 'conversa') {
       abrirJanela(destino.conversaId);
+      return;
+    }
+
+    if (destino.tipo === 'publicacao') {
+      abrirPublicacao(destino.publicacaoId);
       return;
     }
 

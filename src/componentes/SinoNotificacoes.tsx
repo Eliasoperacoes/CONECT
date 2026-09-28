@@ -15,7 +15,16 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Bell, CheckCheck, MessageSquare, Clock, CalendarDays, FileText, X } from 'lucide-react';
+import {
+  Bell,
+  CheckCheck,
+  MessageSquare,
+  Clock,
+  CalendarDays,
+  FileText,
+  Megaphone,
+  X,
+} from 'lucide-react';
 import {
   assinarNotificacoes,
   listarNotificacoes,
@@ -39,6 +48,7 @@ const ICONE: Record<TipoNotificacao, React.ElementType> = {
   jornada: Clock,
   ausencia: FileText,
   folga: CalendarDays,
+  publicacao: Megaphone,
 };
 
 /** "agora", "há 5 min", "há 2 h", "há 3 d" — quem olha quer a ordem, não a data. */
@@ -129,6 +139,76 @@ export const SinoNotificacoes: React.FC<Props> = ({ aoIrPara }) => {
     aoIrPara(item.destino);
   };
 
+  /**
+   * ===================================================================
+   * ONDE O PAINEL ABRE — medido, e não deduzido do CSS
+   * ===================================================================
+   *
+   * Ele era `absolute right-0`, ancorado no SINO. E aí a borda direita
+   * do painel fica onde o sino está, não onde a tela acaba: como ele
+   * tem quase a largura do aparelho, o que sobra vaza pela ESQUERDA e
+   * some fora da tela. No celular da loja a primeira coluna ficava
+   * cortada.
+   *
+   * Já tentei consertar isso limitando a LARGURA com
+   * `calc(100vw-2rem)`, e o comentário de então explicava a correção
+   * com segurança. Não resolveu, porque o problema nunca foi a largura
+   * — era o ponto de ancoragem. Largura certa ancorada no lugar errado
+   * vaza igual.
+   *
+   * Agora a posição é MEDIDA: onde o sino está na tela, qual a largura
+   * do aparelho, e o painel é preso com `fixed` num lugar que não tem
+   * como sair da janela. Vale em qualquer largura e em qualquer lugar
+   * que o sino venha a ficar no cabeçalho.
+   */
+  const [posicao, setPosicao] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+
+  const medirPosicao = React.useCallback(() => {
+    const alvo = caixa.current;
+    if (!alvo) return;
+
+    const r = alvo.getBoundingClientRect();
+    const MARGEM = 8;
+    const LARGURA_MAXIMA = 352; // 22rem, o que cabe bem num monitor
+
+    const largura = Math.min(LARGURA_MAXIMA, window.innerWidth - MARGEM * 2);
+
+    /**
+     * Alinha pela direita do sino — é de onde ele "sai", e é o que se
+     * espera de um menu. Mas as duas bordas da tela mandam mais: o
+     * `max` impede vazar pela esquerda, e o `min` pela direita.
+     */
+    const left = Math.min(
+      Math.max(MARGEM, r.right - largura),
+      window.innerWidth - largura - MARGEM
+    );
+
+    setPosicao({ top: r.bottom + MARGEM, left, width: largura });
+  }, []);
+
+  /**
+   * Remede ao abrir, e enquanto estiver aberto.
+   *
+   * Girar o aparelho, abrir o teclado ou rolar a página movem o sino —
+   * e o painel preso com `fixed` não anda junto por conta própria.
+   */
+  useEffect(() => {
+    if (!aberto) return;
+
+    medirPosicao();
+    window.addEventListener('resize', medirPosicao);
+    window.addEventListener('scroll', medirPosicao, true);
+
+    return () => {
+      window.removeEventListener('resize', medirPosicao);
+      window.removeEventListener('scroll', medirPosicao, true);
+    };
+  }, [aberto, medirPosicao]);
+
   return (
     <div className="relative" ref={caixa}>
       <button
@@ -154,11 +234,18 @@ export const SinoNotificacoes: React.FC<Props> = ({ aoIrPara }) => {
           role="dialog"
           aria-label="Notificações"
           /**
-           * No celular o painel ocupa quase a largura da tela e se ancora
-           * pela direita. Um menu de largura fixa estourava a borda no
-           * aparelho da loja, e a última linha ficava cortada.
+           * `fixed` com a posição MEDIDA. Ver `medirPosicao` acima: o
+           * painel era ancorado no sino e vazava pela esquerda.
+           *
+           * Enquanto a medida não chega (o primeiro quadro), ele fica
+           * invisível em vez de aparecer no canto errado e pular.
            */
-          className="absolute right-0 top-full mt-2 w-[min(22rem,calc(100vw-2rem))] max-h-[70vh] flex flex-col bg-[var(--c-superficie)] border border-[var(--c-borda)] rounded-xl shadow-lg z-50 overflow-hidden"
+          style={
+            posicao
+              ? { top: posicao.top, left: posicao.left, width: posicao.width }
+              : { opacity: 0, pointerEvents: 'none' }
+          }
+          className="fixed max-h-[70vh] flex flex-col bg-[var(--c-superficie)] border border-[var(--c-borda)] rounded-xl shadow-lg z-50 overflow-hidden"
         >
           <div className="px-3 py-2.5 border-b border-[var(--c-borda)] flex items-center justify-between gap-2 flex-shrink-0">
             <span className="text-sm font-semibold text-[var(--c-texto)]">Notificações</span>

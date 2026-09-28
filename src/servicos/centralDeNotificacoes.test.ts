@@ -49,6 +49,7 @@ let porLer: any[] = [];
 let jornadas: any[] = [];
 let ausencias: any[] = [];
 let folgas: any[] = [];
+let publicacoes: any[] = [];
 /** O que `justificativas` responderia sobre avisar de uma ausência. */
 let avisaAusencia = true;
 
@@ -59,6 +60,14 @@ mock.module('./bancoDados', () => ({
     obterColaboradores: () => REDE,
     obterMensagensPorLer: () => porLer,
     obterConversaPorId: (id: string) => ({ id, tipo: 'individual', nome: 'Conversa' }),
+    /**
+     * As publicações que ALCANÇAM quem está logado.
+     *
+     * Quem decide o alcance é `mural.ts`, e o serviço já filtra por lá —
+     * aqui o falso devolve o que a Central devolveria, e cada teste
+     * escolhe o que existe.
+     */
+    obterAvisosVisiveisParaUsuarioAtual: () => publicacoes,
   },
 }));
 mock.module('./ponto', () => ({
@@ -113,6 +122,7 @@ beforeEach(() => {
   jornadas = [];
   ausencias = [];
   folgas = [];
+  publicacoes = [];
   avisaAusencia = true;
 });
 
@@ -343,4 +353,120 @@ test('quem assina é avisado quando algo muda', () => {
   parar();
   limparNotificacoes();
   expect(avisos).toBe(1);
+});
+
+// ===============================================================
+// A PUBLICAÇÃO DA CENTRAL
+//
+// Ficou de fora até agora por um motivo escrito em comentário: nenhuma
+// tela marcava `lidoPorIds`, então um aviso que entrasse no sino nunca
+// sairia dele. A Central passou a marcar, e a condição foi cumprida sem
+// ninguém voltar para cá — que é o que acontece com pendência escrita
+// em comentário.
+// ===============================================================
+
+/** Uma publicação como a Central a devolve. */
+const umaPublicacao = (
+  id: string,
+  extras: Record<string, unknown> = {}
+): Record<string, unknown> => ({
+  id,
+  titulo: 'Inventário da matriz',
+  conteudo: 'Sexta, 08h.',
+  tipo: 'aviso',
+  categoria: 'operacional',
+  autorId: TI.id,
+  autorNome: TI.nome,
+  autorCargo: 'TI',
+  criadoEm: '2026-09-21T10:00:00.000Z',
+  lidoPorIds: [],
+  confirmacoesIds: [],
+  exigeConfirmacao: false,
+  ...extras,
+});
+
+test('PUBLICAÇÃO NÃO LIDA VIRA NOTIFICAÇÃO', () => {
+  publicacoes = [umaPublicacao('p1')];
+
+  const item = listarNotificacoes().find((n) => n.tipo === 'publicacao');
+
+  expect(item).toBeTruthy();
+  expect(item!.titulo).toContain('Inventário da matriz');
+});
+
+test('PUBLICAÇÃO LIDA NÃO VOLTA A AVISAR', () => {
+  /**
+   * É a condição que mantinha os avisos fora do sino: sem alguém
+   * marcando a leitura, a notificação nunca se resolveria. A pessoa
+   * abriria, leria, voltaria, e ela continuaria lá — o mesmo laço que
+   * o sino veio desfazer.
+   */
+  publicacoes = [umaPublicacao('p1', { lidoPorIds: [LIDER.id] })];
+
+  expect(listarNotificacoes().some((n) => n.tipo === 'publicacao')).toBe(false);
+});
+
+test('QUEM PUBLICOU NÃO É AVISADO do que escreveu', () => {
+  /**
+   * O autor já leu por definição, e o sistema o põe em `lidoPorIds` na
+   * hora de publicar. Mas a trava é explícita aqui também: um sino
+   * tocando pela própria publicação é o sistema avisando a pessoa de
+   * algo que ela acabou de escrever.
+   */
+  logado = TI;
+  publicacoes = [umaPublicacao('p1', { autorId: TI.id, lidoPorIds: [] })];
+
+  expect(listarNotificacoes().some((n) => n.tipo === 'publicacao')).toBe(false);
+
+  // E a mesma publicação, de outra pessoa, avisa normalmente
+  publicacoes = [umaPublicacao('p2', { autorId: GERENTE.id, lidoPorIds: [] })];
+  expect(listarNotificacoes().some((n) => n.tipo === 'publicacao')).toBe(true);
+});
+
+test('A NOTIFICAÇÃO LEVA À PUBLICAÇÃO, e não só à Central', () => {
+  /**
+   * O pedido do Elias: "as notificações devem levar direto para as
+   * seções nas quais estão sendo notificadas".
+   *
+   * Levar só até a Central deixaria a pessoa procurando entre dez
+   * avisos qual era o que tocou — e um atalho que obriga a procurar
+   * não é atalho. É a mesma razão de o botão do chat carregar o
+   * `publicacaoId`.
+   */
+  publicacoes = [umaPublicacao('p-abc')];
+
+  const item = listarNotificacoes().find((n) => n.tipo === 'publicacao');
+
+  expect(item!.destino).toEqual({ tipo: 'publicacao', publicacaoId: 'p-abc' });
+});
+
+test('a que PEDE CIÊNCIA diz isso na linha', () => {
+  /**
+   * Quem lê o sino decide o que abrir primeiro. "Pede sua ciência" é a
+   * diferença entre um aviso que se lê quando der e um que tem de ser
+   * assinado.
+   */
+  publicacoes = [umaPublicacao('p1', { exigeConfirmacao: true })];
+  const comCiencia = listarNotificacoes().find((n) => n.tipo === 'publicacao');
+  expect(comCiencia!.detalhe).toContain('ciência');
+
+  publicacoes = [umaPublicacao('p2', { exigeConfirmacao: false })];
+  const semCiencia = listarNotificacoes().find((n) => n.tipo === 'publicacao');
+  expect(semCiencia!.detalhe).not.toContain('ciência');
+  expect(semCiencia!.detalhe).toContain(TI.nome);
+});
+
+test('o id da publicação é estável entre leituras', () => {
+  /**
+   * Mesma regra das outras fontes: é o id que permite dizer "esta eu já
+   * dispensei". Sorteado, todo aviso voltaria a ser novidade a cada
+   * abertura do sino.
+   */
+  publicacoes = [umaPublicacao('p1')];
+
+  const primeira = listarNotificacoes().find((n) => n.tipo === 'publicacao')!.id;
+  const segunda = listarNotificacoes().find((n) => n.tipo === 'publicacao')!.id;
+
+  expect(primeira).toBe(segunda);
+  expect(primeira).toContain('p1');
 });

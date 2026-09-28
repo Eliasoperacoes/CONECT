@@ -51,7 +51,12 @@ import {
 } from './justificativas';
 import { montarPreviaDaMensagem } from './nuvemComunicacao';
 import { deveSerAvisadoSobre } from './organograma';
-import { ROTULO_TIPO_AJUSTE, ROTULO_TIPO_AUSENCIA, type Colaborador } from '../tipos';
+import {
+  ROTULO_TIPO_AJUSTE,
+  ROTULO_TIPO_AUSENCIA,
+  ROTULO_TIPO_PUBLICACAO_SINGULAR,
+  type Colaborador,
+} from '../tipos';
 
 /**
  * Para onde o toque leva.
@@ -64,9 +69,17 @@ export type SecaoDestino = 'aprovar_jornadas' | 'escala_folgas';
 
 export type DestinoNotificacao =
   | { tipo: 'conversa'; conversaId: string }
-  | { tipo: 'secao'; secao: SecaoDestino };
+  | { tipo: 'secao'; secao: SecaoDestino }
+  /* A publicação da Central: leva à Central COM ela aberta, e não só
+     à lista — quem toca num aviso quer aquele aviso */
+  | { tipo: 'publicacao'; publicacaoId: string };
 
-export type TipoNotificacao = 'mensagem' | 'jornada' | 'ausencia' | 'folga';
+export type TipoNotificacao =
+  | 'mensagem'
+  | 'jornada'
+  | 'ausencia'
+  | 'folga'
+  | 'publicacao';
 
 export interface ItemNotificacao {
   /**
@@ -235,25 +248,48 @@ const deFolgas = (): ItemNotificacao[] =>
 
 /**
  * ===================================================================
- * POR QUE OS AVISOS DA DIREÇÃO NÃO ESTÃO AQUI
+ * A PUBLICAÇÃO DA CENTRAL, que ficou de fora até agora
  * ===================================================================
  *
- * `AvisoRede` tem o campo `lidoPorIds`, e a tentação era óbvia: aviso não
- * lido vira notificação. Só que NENHUMA tela do sistema escreve nesse
- * campo hoje — `CentralAvisos` só mostra os avisos, e não registra quem
- * leu.
+ * Aqui havia um comentário explicando por que o aviso NÃO entrava: o
+ * campo `lidoPorIds` existia, mas nenhuma tela o escrevia. Um aviso que
+ * entrasse no sino nunca sairia dele — a pessoa abriria, leria,
+ * voltaria, e ele continuaria lá. Notificação que não se resolve é o
+ * mesmo laço que o sino veio desfazer.
  *
- * Um aviso que entrasse no sino nunca sairia dele. Seria uma notificação
- * que a pessoa não tem como resolver: abre, lê, volta, e ela continua
- * lá. É o mesmo laço de que o Elias reclamou, só que dentro do sino em
- * vez do Windows.
+ * O comentário terminava dizendo "fica de fora até `CentralAvisos`
+ * marcar a leitura de verdade. Aí basta acrescentar a fonte aqui".
  *
- * Fica de fora até `CentralAvisos` marcar a leitura de verdade. Aí basta
- * acrescentar a fonte aqui — o resto do sino já aguenta.
+ * A Central passou a marcar (`confirmarLeituraAviso`, em dois lugares
+ * dela), e a condição foi cumprida sem ninguém voltar para cá — que é o
+ * que acontece com pendência escrita em comentário. Este é o "aí basta".
  *
- * O aviso continua chegando pela faixa no topo e pela conversa
- * `grupo-avisos-da-rede`, como sempre chegou.
+ * SÓ O QUE ALCANÇA A PESSOA, e pela mesma regra que a Central usa:
+ * `alcanca`, de `mural.ts`. Uma segunda noção de "este aviso é meu"
+ * aqui dentro seria a quinta vez que este sistema se contradiz sozinho.
+ *
+ * O AUTOR NÃO É NOTIFICADO do que ele mesmo publicou. Ele já leu por
+ * definição — `criarAvisoRede` o põe em `lidoPorIds` na hora — e um
+ * sino tocando pela própria publicação é o sistema avisando a pessoa de
+ * algo que ela acabou de escrever.
  */
+const dePublicacoes = (): ItemNotificacao[] => {
+  const eu = bancoDados.obterColaboradorAtual();
+
+  return bancoDados
+    .obterAvisosVisiveisParaUsuarioAtual()
+    .filter((p) => p.autorId !== eu.id && !(p.lidoPorIds || []).includes(eu.id))
+    .map((p) => ({
+      id: `publicacao-${p.id}`,
+      tipo: 'publicacao' as const,
+      titulo: `${ROTULO_TIPO_PUBLICACAO_SINGULAR[p.tipo]}: ${p.titulo}`,
+      detalhe: p.exigeConfirmacao
+        ? `${p.autorNome} · pede sua ciência`
+        : `Publicado por ${p.autorNome}`,
+      quando: p.criadoEm,
+      destino: { tipo: 'publicacao' as const, publicacaoId: p.id },
+    }));
+};
 
 /**
  * Tudo o que espera esta pessoa, do mais recente para o mais antigo.
@@ -264,7 +300,13 @@ const deFolgas = (): ItemNotificacao[] =>
 export const listarNotificacoes = (): ItemNotificacao[] => {
   const dispensadas = lerDispensadas();
 
-  return [...deMensagens(), ...deJornadas(), ...deAusencias(), ...deFolgas()]
+  return [
+    ...deMensagens(),
+    ...deJornadas(),
+    ...deAusencias(),
+    ...deFolgas(),
+    ...dePublicacoes(),
+  ]
     .filter((n) => !dispensadas.has(n.id))
     .sort((a, b) => (b.quando || '').localeCompare(a.quando || ''));
 };
