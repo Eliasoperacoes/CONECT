@@ -34,6 +34,9 @@ Publicação: Vercel, automática a cada push em `main`.
   liberar o acesso de alguém, o que fazer quando o login trava.
 - [docs/APRENDIZADOS.md](docs/APRENDIZADOS.md) — os erros que já custaram
   caro aqui, com o sintoma de cada um. Vale a leitura antes de depurar.
+- [docs/LIMITES-SUPABASE.md](docs/LIMITES-SUPABASE.md) — até onde o plano
+  aguenta, o que consome cada limite e em que ordem eles chegam. Leia
+  antes de guardar coisa nova no banco ou de baixar tabela inteira.
 
 ---
 
