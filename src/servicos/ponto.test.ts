@@ -1111,23 +1111,104 @@ const CHEFE = {
   ...ELIAS, id: 'ch', nome: 'Chefe', login: 'ch', nivel: 3, setor: 'Gerência',
 };
 
-test('DENTRO DA TOLERÂNCIA: entra no banco sem passar por ninguém', async () => {
+test('DENTRO DA TOLERÂNCIA: o banco de horas recebe ZERO', async () => {
+  /**
+   * O art. 58 §1º: variações até cinco minutos por marcação, com limite
+   * de dez no dia, "NÃO SERÃO DESCONTADAS NEM COMPUTADAS como jornada
+   * extraordinária". Nem descontadas nem computadas — os dois lados.
+   *
+   * O código citava esse artigo e fazia o contrário: gravava o valor
+   * CHEIO, já aprovado, e ele entrava no saldo. Uma semana da Fernanda:
+   *
+   *     qua 23/09   8h15 contra 8h10   ->  +0h05 creditados
+   *     sex 25/09   8h13 contra 8h10   ->  +0h03 creditados
+   *
+   * E no outro sentido, a Camila: 33 minutos de débito em 6 dias,
+   * aprovados sozinhos. Em 190 dias úteis, 3 minutos por dia são −9h30
+   * que ninguém decidiu descontar.
+   */
   equipe = [CHEFE, CARLOS];
   colaboradorLogado = CARLOS;
 
   // 8h07 trabalhadas: 7 minutos além, dentro dos 10
   await fecharJornada(CARLOS, '2026-09-16', '08:00', '17:07');
 
-  const ajuste = servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!;
-  expect(ajuste.estado).toBe('aprovado');
-  expect(ajuste.origem).toBe('tolerancia_automatica');
-  // Ninguém carimbou: não há aprovador humano
-  expect(ajuste.aprovadorId).toBeUndefined();
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(0);
+  expect(servicoPonto.obterSaldoPendente(CARLOS.id)).toBe(0);
 
-  // Entrou no saldo, e não aparece na fila de ninguém
-  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(7);
+  // Nem linha nova: seriam 85 pessoas × 22 dias de zeros por mês
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')).toBeNull();
+
+  // E não aparece na fila de ninguém — a razão de a tolerância existir
   colaboradorLogado = CHEFE;
   expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(0);
+});
+
+test('O DIA CONTINUA FACTUAL no espelho, mesmo sem ir ao banco', async () => {
+  /**
+   * A tolerância filtra o que vira SALDO, e não o que aconteceu.
+   * Documento de ponto mostra o que aconteceu: a pessoa entrou 08:00 e
+   * saiu 17:07, e o dia dela tem 7 minutos a mais.
+   *
+   * Esta função é a fronteira entre as duas coisas — é aqui que o fato
+   * do dia vira crédito, débito ou nada. Zerar o espelho junto seria
+   * apagar do documento uma batida que existiu.
+   */
+  equipe = [CHEFE, CARLOS];
+  colaboradorLogado = CARLOS;
+
+  await fecharJornada(CARLOS, '2026-09-16', '08:00', '17:07');
+
+  const jornada = servicoPonto.obterJornadaDoDia(CARLOS.id, '2026-09-16');
+  expect(jornada.saldoMinutos).toBe(7);
+  expect(jornada.marcacoes.entrada?.horaFormatada).toBe('08:00');
+  expect(jornada.marcacoes.saida?.horaFormatada).toBe('17:07');
+
+  // Mas o banco de horas não recebeu nada
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(0);
+});
+
+test('A APURAÇÃO JÁ GRAVADA É ZERADA ao reapurar', async () => {
+  /**
+   * A cura dos saldos que já existem. Os débitos da Camila e os créditos
+   * da Fernanda estão gravados e APROVADOS — reapurar tem de alcançá-los,
+   * senão a regra nova só vale para o futuro e o passado fica torto para
+   * sempre.
+   *
+   * O DIA TEM DE JÁ TER FECHADO: reapurar pula o dia em andamento, e o
+   * relógio deste arquivo está em 16/09. Por isso o caso é no dia 15.
+   */
+  // O CHEFE precisa responder por ele: reapurar é de quem tem alçada
+  const SOB_CHEFE = { ...CARLOS, responsavelId: 'ch' };
+  equipe = [CHEFE, SOB_CHEFE];
+  colaboradorLogado = SOB_CHEFE;
+
+  // Um débito de 5 minutos, como os que estão no banco hoje
+  armazenamento.setItem(
+    'conecta_v4_ajustes_jornada',
+    JSON.stringify([
+      {
+        id: 'velho', colaboradorId: CARLOS.id, data: '2026-09-15',
+        tipo: 'debito', minutos: 5, minutosTrabalhados: 485, minutosPrevistos: 490,
+        estado: 'aprovado', origem: 'tolerancia_automatica',
+        criadoEm: '2026-09-15T18:00:00.000Z',
+      },
+    ])
+  );
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(-5);
+
+  await fecharJornada(SOB_CHEFE, '2026-09-15', '08:00', '17:05');
+  colaboradorLogado = CHEFE;
+  const res = await servicoPonto.reapurarPeriodo(CARLOS.id, '2026-09-15', '2026-09-15');
+
+  expect(res.sucesso).toBe(true);
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(0);
+
+  /**
+   * ZERADA E NÃO APAGADA: apagar exigiria dar permissão de remoção a quem
+   * bate o ponto, e aí bastaria apagar a linha para um débito sumir.
+   */
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-15')?.minutos).toBe(0);
 });
 
 test('FORA DA TOLERÂNCIA: pendência com o valor CHEIO, não o excedente', async () => {
@@ -1146,16 +1227,24 @@ test('FORA DA TOLERÂNCIA: pendência com o valor CHEIO, não o excedente', asyn
 });
 
 test('a faixa vale para os DOIS lados', async () => {
+  /**
+   * "Nem descontadas nem computadas" são dois verbos, e o segundo é o
+   * que costuma ser esquecido. Se a regra valesse só para o débito, a
+   * casa deixaria de descontar os minutos da pessoa e continuaria
+   * creditando os dela — o que é generoso e igualmente fora da lei.
+   */
   equipe = [CHEFE, CARLOS];
   colaboradorLogado = CARLOS;
 
-  // 8 minutos a menos
+  // 8 minutos a MENOS
   await fecharJornada(CARLOS, '2026-09-16', '08:00', '16:52');
-  const ajuste = servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!;
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(0);
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')).toBeNull();
 
-  expect(ajuste.tipo).toBe('debito');
-  expect(ajuste.estado).toBe('aprovado');
-  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(-8);
+  // 8 minutos a MAIS, no dia seguinte
+  await fecharJornada(CARLOS, '2026-09-17', '08:00', '17:08');
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(0);
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-17')).toBeNull();
 });
 
 test('O LIMITE É INCLUSIVO: exatamente 10 minutos ainda é tolerância', async () => {
@@ -1165,10 +1254,11 @@ test('O LIMITE É INCLUSIVO: exatamente 10 minutos ainda é tolerância', async 
   colaboradorLogado = CARLOS;
 
   await fecharJornada(CARLOS, '2026-09-16', '08:00', '17:10');
-  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!.estado).toBe('aprovado');
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')).toBeNull();
 
   await fecharJornada(CARLOS, '2026-09-17', '08:00', '17:11');
   expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-17')!.estado).toBe('pendente');
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-17')!.minutos).toBe(11);
 });
 
 test('a tolerância é CONFIGURÁVEL, sem deploy', async () => {
@@ -1181,7 +1271,8 @@ test('a tolerância é CONFIGURÁVEL, sem deploy', async () => {
 
   toleranciaDoTeste = 30;
   await fecharJornada(CARLOS, '2026-09-17', '08:00', '17:20');
-  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-17')!.estado).toBe('aprovado');
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-17')).toBeNull();
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(0);
 });
 
 test('tolerância inválida cai no padrão da lei, não em zero', async () => {
@@ -2239,9 +2330,9 @@ test('QUATRO MINUTOS A MENOS NUMA MARCAÇÃO SÓ SEGUE TOLERADO', async () => {
   // Saída 17:06: 4 minutos, dentro dos dois limites
   await baterTurnoA('2026-09-16', '17:06');
 
-  const ajuste = servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16')!;
-  expect(ajuste.estado).toBe('aprovado');
-  expect(ajuste.origem).toBe('tolerancia_automatica');
+  // Dentro dos dois limites: o banco de horas nao recebe nada
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16')).toBeNull();
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO.id)).toBe(0);
 });
 
 test('QUEM NÃO CUMPRE TURNO DA REDE SÓ RESPONDE PELO LIMITE DO DIA', async () => {
@@ -2259,8 +2350,8 @@ test('QUEM NÃO CUMPRE TURNO DA REDE SÓ RESPONDE PELO LIMITE DO DIA', async () 
   // 8h07: sete minutos além, numa marcação só — pelo turno seria recusado
   await fecharJornada(CARLOS, '2026-09-16', '08:00', '17:07');
 
-  const ajuste = servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')!;
-  expect(ajuste.estado).toBe('aprovado');
+  expect(servicoPonto.obterAjusteDoDia(CARLOS.id, '2026-09-16')).toBeNull();
+  expect(servicoPonto.obterSaldoAcumulado(CARLOS.id)).toBe(0);
   expect(servicoPonto.maiorVariacaoDoDia(CARLOS.id, '2026-09-16')).toBeNull();
 });
 
@@ -2271,7 +2362,12 @@ test('o limite por marcação é CONFIGURÁVEL, como o do dia', async () => {
   // Com o limite frouxo em 9, a variação de 8 volta a caber
   toleranciaPorMarcacaoDoTeste = 9;
   await baterTurnoA('2026-09-16', '17:02');
-  expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16')?.estado).toBe('aprovado');
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16')).toBeNull();
+
+  // E com o limite no numero da lei, a mesma variacao vira pendencia
+  toleranciaPorMarcacaoDoTeste = 5;
+  await baterTurnoA('2026-09-17', '17:02');
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-17')?.estado).toBe('pendente');
 });
 
 test('O PADRÃO É O NÚMERO DA LEI: 5 minutos por marcação, 10 no dia', async () => {

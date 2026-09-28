@@ -1804,20 +1804,66 @@ class ServicoPonto {
     const existente = this.obterAjusteDoDia(colaboradorId, data);
 
     /**
-     * DIA CERTO: nada a decidir.
+     * ===============================================================
+     * OS DOIS LIMITES DA LEI, e vale o que for atingido primeiro.
+     * ===============================================================
      *
-     * Se havia pendência de uma versão anterior do dia — antes de alguém
-     * corrigir a batida —, ela perde o sentido e precisa sair da fila.
+     * O art. 58 §1º diz "variações não excedentes de CINCO minutos,
+     * observado o limite máximo de DEZ minutos diários". O sistema
+     * conhecia só o segundo, e por isso era mais permissivo que a lei
+     * num caso: uma única variação de 6 a 10 minutos passava batida.
      *
-     * REESCRITA, E NÃO APAGADA. Apagar exigiria dar permissão de remoção
-     * à própria pessoa, e aí bastaria apagar a linha para um débito
-     * sumir: a apuração só é refeita quando alguém bate ou corrige.
-     * Reescrever tira da fila, preserva o histórico e não abre nada.
-     *
-     * "Aprovado pela tolerância" é verdade literal aqui: diferença zero
-     * cabe em qualquer tolerância.
+     * A variação por marcação só entra quando o sistema SABE o horário
+     * esperado de cada batida. Para o estágio, que combina o horário
+     * com a área e não cumpre turno da rede, continua valendo só o
+     * limite do dia — comparar com um horário inventado seria pior.
      */
-    if (diferenca === 0) {
+    const maiorVariacao = this.maiorVariacaoDoDia(colaboradorId, data);
+    const dentroDoDia = Math.abs(diferenca) <= this.obterToleranciaMinutos();
+    const dentroDaMarcacao =
+      maiorVariacao === null || maiorVariacao <= this.obterToleranciaPorMarcacaoMinutos();
+
+    const dentroDaTolerancia = dentroDoDia && dentroDaMarcacao;
+
+    /**
+     * ===============================================================
+     * NADA A LANÇAR: o dia fechou certo, ou fechou dentro da lei.
+     * ===============================================================
+     *
+     * DENTRO DA TOLERÂNCIA O BANCO DE HORAS RECEBE ZERO. Decisão do
+     * Elias, e é o que o artigo citado acima manda: variações até cinco
+     * minutos por marcação "NÃO SERÃO DESCONTADAS NEM COMPUTADAS como
+     * jornada extraordinária". Nem descontadas nem computadas — os dois
+     * lados.
+     *
+     * O código citava esse artigo e fazia o contrário: gravava o valor
+     * CHEIO, já aprovado, e ele entrava no saldo. Nos dois sentidos, o
+     * que fica visível numa semana só da Fernanda:
+     *
+     *     qua 23/09   8h15 contra 8h10   ->  +0h05 creditados
+     *     sex 25/09   8h13 contra 8h10   ->  +0h03 creditados
+     *
+     * E no outro sentido era a Camila: 33 minutos de débito em 6 dias,
+     * aprovados sozinhos. Em 190 dias úteis, 3 minutos por dia são
+     * −9h30 que ninguém decidiu descontar.
+     *
+     * O DIA CONTINUA FACTUAL. O espelho segue mostrando 07:32, 17:13 e
+     * o +0h05 do dia — é o que aconteceu, e documento de ponto mostra o
+     * que aconteceu. O que muda é o que VIRA SALDO, e esta função é
+     * justamente a fronteira entre as duas coisas: é aqui que o fato do
+     * dia vira crédito, débito ou nada.
+     *
+     * NÃO SE CRIA LINHA NOVA para um dia que não gera nada — seriam
+     * 85 pessoas × 22 dias de zeros por mês. Mas a linha que JÁ EXISTE
+     * é reescrita para zero, e é esse o caminho que cura os saldos
+     * errados que já estão gravados.
+     *
+     * REESCRITA, E NÃO APAGADA. Apagar exigiria dar permissão de
+     * remoção à própria pessoa, e aí bastaria apagar a linha para um
+     * débito sumir. Reescrever tira da fila, preserva o histórico e não
+     * abre nada.
+     */
+    if (diferenca === 0 || dentroDaTolerancia) {
       /**
        * DIA JÁ DECIDIDO TAMBÉM PRECISA SER REESCRITO QUANDO A BATIDA MUDA.
        *
@@ -1865,38 +1911,22 @@ class ServicoPonto {
     }
 
     /**
-     * A TOLERÂNCIA.
+     * DAQUI PARA BAIXO, O DIA ESTOUROU A TOLERÂNCIA.
      *
-     * Dentro dela a diferença entra no banco sem passar por ninguém. Fora
-     * dela, o dia inteiro vira pendência com o valor CHEIO — não se desconta
-     * a tolerância do excedente. É tudo-ou-nada por dia, como manda o art.
-     * 58 §1º da CLT: ou a variação é desprezível, ou o dia é extraordinário.
+     * E aí ele vira pendência com o valor CHEIO — não se desconta a
+     * tolerância do excedente. É tudo-ou-nada por dia, como manda o art.
+     * 58 §1º: ou a variação é desprezível, ou o dia é extraordinário.
      *
-     * Sem isto, qualquer minuto virava fila: ~1.800 aprovações por mês numa
-     * rede de 85 pessoas que batem ponto. Fila desse tamanho vira carimbo, e
-     * aprovação que vira carimbo não controla nada.
+     * A tolerância foi conferida lá em cima, junto com a diferença zero,
+     * porque as duas terminam no mesmo lugar: nada a lançar. Estava aqui
+     * embaixo, decidindo só o ESTADO do ajuste — e era por isso que o
+     * valor cheio entrava no saldo com carimbo automático.
+     *
+     * Sem a tolerância, qualquer minuto viraria fila: ~1.800 aprovações
+     * por mês numa rede de 85 pessoas que batem ponto. Fila desse
+     * tamanho vira carimbo, e aprovação que vira carimbo não controla
+     * nada.
      */
-    /**
-     * OS DOIS LIMITES DA LEI, e vale o que for atingido primeiro.
-     *
-     * O art. 58 §1º diz "variações não excedentes de CINCO minutos,
-     * observado o limite máximo de DEZ minutos diários". O sistema
-     * conhecia só o segundo, e por isso era mais permissivo que a lei num
-     * caso: uma única variação de 6 a 10 minutos passava batida — quem
-     * saía 8 minutos mais cedo não gerava nada, quando pela lei esses 8
-     * minutos contam.
-     *
-     * A variação por marcação só entra quando o sistema SABE o horário
-     * esperado de cada batida. Para o estágio, que combina o horário com
-     * a área e não cumpre turno da rede, continua valendo só o limite do
-     * dia — comparar com um horário inventado seria pior.
-     */
-    const maiorVariacao = this.maiorVariacaoDoDia(colaboradorId, data);
-    const dentroDoDia = Math.abs(diferenca) <= this.obterToleranciaMinutos();
-    const dentroDaMarcacao =
-      maiorVariacao === null || maiorVariacao <= this.obterToleranciaPorMarcacaoMinutos();
-
-    const dentroDaTolerancia = dentroDoDia && dentroDaMarcacao;
     const guardada = this.lerJustificativaDoDia(colaboradorId, data);
     const agora = new Date().toISOString();
 
@@ -1924,20 +1954,18 @@ class ServicoPonto {
        * A autoridade foi conferida em `ajustarMarcacao`, que é quem
        * preenche `corrigidoPor`. Batida normal não passa por aqui.
        */
-      estado: dentroDaTolerancia || corrigidoPor ? 'aprovado' : 'pendente',
-      origem: dentroDaTolerancia
-        ? 'tolerancia_automatica'
-        : corrigidoPor
-          ? 'correcao_manual'
-          : 'pendencia',
-      // Sem aprovadorId na tolerância: ninguém carimbou. O nome existe para
-      // o espelho conseguir dizer que aquilo foi regra, e não decisão de
-      // gente. Na correção manual há gente, e ela assina.
+      /**
+       * A TOLERÂNCIA NÃO APARECE MAIS AQUI, e a ausência dela é o
+       * conserto: quem cabe na tolerância volta lá em cima, sem lançar
+       * nada. O que chega neste ponto estourou o limite, e só tem dois
+       * destinos — a fila de quem decide, ou o carimbo de quem corrigiu
+       * a batida.
+       */
+      estado: corrigidoPor ? 'aprovado' : 'pendente',
+      origem: corrigidoPor ? 'correcao_manual' : 'pendencia',
       aprovadorId: corrigidoPor?.id,
-      aprovadorNome: dentroDaTolerancia
-        ? 'Tolerância automática'
-        : corrigidoPor?.nome,
-      decididoEm: dentroDaTolerancia || corrigidoPor ? agora : undefined,
+      aprovadorNome: corrigidoPor?.nome,
+      decididoEm: corrigidoPor ? agora : undefined,
       motivoColaborador:
         dadosDoColaborador?.motivo?.trim() ||
         guardada?.motivo ||
