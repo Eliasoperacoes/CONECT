@@ -493,10 +493,34 @@ test('AVISO DO SISTEMA SO QUANDO A TELA NAO ESTA A VISTA', async () => {
     new URL('./notificacoes.ts', import.meta.url)
   ).text();
 
+  /**
+   * FATIA ATÉ O FIM DA FUNÇÃO, e não por contagem de caracteres.
+   *
+   * Isto era `fonte.slice(inicio, inicio + 1200)`. Um comentário novo
+   * dentro da função empurrou a linha para além dos 1200 e o teste
+   * falhou sobre um código correto — a segunda vez que um corte por
+   * posição me trai neste projeto, depois do `descreverOrigem`.
+   *
+   * Pior: se a asserção fosse `not.toContain`, teria passado calada.
+   */
   const inicio = fonte.indexOf('export const mostrarAvisoDeMensagem');
-  const corpo = fonte.slice(inicio, inicio + 1200);
+  const fim = fonte.indexOf('\nexport const', inicio + 10);
+  const corpo = fonte.slice(inicio, fim === -1 ? undefined : fim);
 
+  expect(corpo.length).toBeGreaterThan(400);
   expect(corpo).toContain('if (janelaEstaVisivel()) return;');
+
+  /**
+   * E o aplicativo nativo sai ANTES de tudo.
+   *
+   * Decisão do Elias: "o app não pode dar notificações de navegador".
+   * Dentro da casca, quem avisa é o Android — deixar este caminho rodar
+   * junto mostraria DOIS avisos da mesma mensagem.
+   */
+  expect(corpo).toContain('if (rodandoNoAplicativo()) return;');
+  expect(corpo.indexOf('rodandoNoAplicativo')).toBeLessThan(
+    corpo.indexOf('janelaEstaVisivel')
+  );
 });
 
 /**

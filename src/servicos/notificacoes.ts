@@ -20,6 +20,8 @@
  * aqui.
  */
 
+import { rodandoNoAplicativo } from './aplicativo';
+
 const TITULO_BASE = 'CONECTA — Malachias Autopeças';
 const CHAVE_PREFERENCIA = 'conecta_v4_avisos_mensagem';
 
@@ -177,6 +179,28 @@ export const mostrarAvisoDeMensagem = async (dados: {
   conversaId: string;
   aoClicar?: () => void;
 }): Promise<void> => {
+  /**
+   * ===============================================================
+   * NO APLICATIVO ANDROID, QUEM AVISA É O ANDROID.
+   * ===============================================================
+   *
+   * Decisão do Elias: "o app não pode dar notificações de navegador,
+   * apenas notificações do próprio aplicativo".
+   *
+   * Dentro da casca nativa, o aviso chega pelo Firebase e o Android o
+   * desenha com o ícone e o nome do CONECTA. Deixar este caminho rodar
+   * junto faria o aparelho mostrar DOIS avisos da mesma mensagem — um
+   * do aplicativo e um da página dentro dele.
+   *
+   * E o de dentro é o pior dos dois: ele só existe com o sistema
+   * ABERTO, que é justamente quando a pessoa não precisa ser avisada.
+   *
+   * No computador do balcão e no iPhone nada muda — lá o aviso do
+   * navegador é o único que existe, e tirá-lo deixaria o pessoal do
+   * computador sem aviso nenhum.
+   */
+  if (rodandoNoAplicativo()) return;
+
   if (permissaoDeAviso() !== 'concedida') return;
 
   /**

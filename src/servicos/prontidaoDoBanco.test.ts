@@ -189,6 +189,8 @@ const ARQUIVOS_QUE_ESCREVEM = [
   'src/servicos/nuvemComunicacao.ts',
   'src/servicos/rh.ts',
   'src/servicos/supabase.ts',
+  /* Guarda o endereço de entrega do aviso nativo em `aparelhos` */
+  'src/servicos/pushNativo.ts',
 ];
 
 /**
