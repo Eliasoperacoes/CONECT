@@ -73,6 +73,19 @@ mock.module('./anexos', () => ({
     return caminhos.length;
   },
   resolverCaminhos: async () => new Map(),
+  /**
+   * `bancoDados` importa isto para subir a foto de perfil ao balde.
+   * Faltando no falso, o MÓDULO INTEIRO deixa de carregar — e a falha
+   * aparece como "Export named ... not found", longe de qualquer teste
+   * sobre foto.
+   */
+  ehCaminhoDeFotoPerfil: (v?: string | null) => !!v && v.startsWith('perfil/'),
+  PREFIXO_FOTO_PERFIL: 'perfil',
+  enviarFotoDePerfil: async (dataUrl: string, colaboradorId: string) => {
+    const caminho = `perfil/${colaboradorId}/1.jpg`;
+    anexosEnviados.push({ conteudo: dataUrl, caminho });
+    return { caminho, url: `https://assinado.exemplo/${caminho}` };
+  },
 }));
 
 mock.module('./nuvem', () => ({

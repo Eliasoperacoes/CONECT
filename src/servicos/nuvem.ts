@@ -35,6 +35,7 @@ import {
   normalizarLogin,
 } from './supabase';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
+import { ehCaminhoDeFotoPerfil, resolverCaminhos } from './anexos';
 import { nuvemComunicacao } from './nuvemComunicacao';
 /**
  * A folha, e não `justificativas`: aquele arquivo importa `ponto`, que
@@ -148,7 +149,38 @@ interface LinhaColaborador {
   criado_em: string;
 }
 
-const paraColaborador = (linha: LinhaColaborador): Colaborador => ({
+/**
+ * ===================================================================
+ * A FOTO CHEGA PRONTA PARA A TELA, sempre.
+ * ===================================================================
+ *
+ * O banco passou a guardar o CAMINHO da foto no balde, e não mais o
+ * base64. Mas vinte e tantas telas leem `colaborador.foto` e o entregam
+ * direto ao `<img src>` — de `AbaEu` a `Organograma`, passando pelo
+ * chat e pelo espelho de ponto.
+ *
+ * Fazer cada uma resolver o caminho seria vinte lugares aprendendo a
+ * mesma coisa, e o primeiro que esquecesse mostraria um quadrado
+ * quebrado no lugar do rosto de alguém.
+ *
+ * Então a tradução acontece AQUI, na fronteira: o que entra é o que o
+ * banco guardou, o que sai é sempre um endereço que o `<img>` abre.
+ * Nenhuma tela precisou mudar.
+ *
+ * TRÊS FORMATOS convivem, e é de propósito:
+ *
+ *   `perfil/<id>/<hora>.jpg`  o caminho no balde — vira endereço assinado
+ *   `data:image/...`          o base64 antigo, que ainda funciona
+ *   `/logo-malachias.svg`     quem nunca trocou a foto
+ *
+ * O base64 continua sendo aceito porque as fotos que já existem não
+ * podem sumir enquanto ninguém as converte. Elas desaparecem sozinhas
+ * conforme cada pessoa troca a sua.
+ */
+const paraColaborador = (
+  linha: LinhaColaborador,
+  fotosAssinadas?: Map<string, string>
+): Colaborador => ({
   id: linha.id,
   nome: linha.nome,
   login: linha.login,
@@ -156,7 +188,11 @@ const paraColaborador = (linha: LinhaColaborador): Colaborador => ({
   setor: linha.setor as Setor,
   loja: linha.loja as Loja,
   nivel: linha.nivel as NivelHierarquico,
-  foto: linha.foto || '/logo-malachias.svg',
+  /* Caminho que não foi assinado cai no logo, e não num quadrado
+     quebrado: a assinatura é uma ida à rede, e ela pode falhar */
+  foto: ehCaminhoDeFotoPerfil(linha.foto)
+    ? fotosAssinadas?.get(linha.foto!) || '/logo-malachias.svg'
+    : linha.foto || '/logo-malachias.svg',
   presenca: (linha.presenca || 'desconectado') as Colaborador['presenca'],
   vistoPorUltimo: linha.visto_por_ultimo || 'Agora',
   ramal: linha.ramal || undefined,
@@ -705,7 +741,26 @@ class PonteNuvem {
     const { data, error } = await supabase.from('colaboradores').select('*').order('nome');
     if (error || !data) return false;
 
-    this.gravarCacheColaboradores((data as LinhaColaborador[]).map(paraColaborador));
+    const linhas = data as LinhaColaborador[];
+
+    /**
+     * AS 89 ASSINATURAS NUMA CHAMADA SÓ.
+     *
+     * `createSignedUrls` assina em lote. Uma por pessoa seriam 89 idas
+     * à rede a cada sincronização — e ela roda ao entrar e a cada
+     * alteração em qualquer ficha.
+     *
+     * A assinatura vale oito horas, que cobre um turno. O aparelho que
+     * ficar aberto além disso sem sincronizar volta a mostrar o logo,
+     * e não um quadrado quebrado.
+     */
+    const caminhos = linhas
+      .map((l) => l.foto)
+      .filter((f): f is string => ehCaminhoDeFotoPerfil(f));
+
+    const assinadas = caminhos.length > 0 ? await resolverCaminhos(caminhos) : undefined;
+
+    this.gravarCacheColaboradores(linhas.map((l) => paraColaborador(l, assinadas)));
     this.avisar();
     return true;
   }
@@ -764,7 +819,7 @@ class PonteNuvem {
     if (!supabase) return [];
     const { data, error } = await supabase.from('colaboradores').select('*').order('nome');
     if (error || !data) return [];
-    return (data as LinhaColaborador[]).map(paraColaborador);
+    return (data as LinhaColaborador[]).map((l) => paraColaborador(l));
   }
 
   async removerColaborador(id: string): Promise<{ sucesso: boolean; erro?: string }> {

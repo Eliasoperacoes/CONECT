@@ -129,19 +129,21 @@ limites chegam:
 
 | Quando | O que acontece | O conserto |
 |---|---|---|
-| Ao trocarem as fotos | Tráfego dispara | Foto vai para o Storage |
+| ~~Ao trocarem as fotos~~ | ~~Tráfego dispara~~ | **Feito em 28/09/2026** |
 | ~3 meses | Banco passa de 500 MB? Não. Segue folgado | — |
 | ~5 anos | Banco perto do limite gratuito | Plano Pro |
 
-**A primeira linha é a única com prazo curto**, e ela depende de um
-comportamento humano — as pessoas descobrirem que dá para trocar a foto.
+A primeira linha era a única com prazo curto, e saiu: a foto foi para o
+Storage antes de as 89 pessoas começarem a trocar as delas. O que sobra
+não tem prazo de semanas.
 
 ---
 
-## O conserto da foto, quando for a hora
+## A foto: consertada em 28/09/2026
 
-A foto deveria ir para o **Storage**, como os anexos de conversa já vão,
-e a coluna guardar só o caminho. Isso muda três coisas de uma vez:
+A foto FOI para o **Storage**, como os anexos de conversa já iam, e a
+coluna passou a guardar só o caminho (`perfil/<id>/<hora>.jpg`). Isso
+mudou três coisas de uma vez:
 
 - sai do limite do banco e entra no de Storage, que é 200× maior no Pro
 - vira endereço, então o navegador **guarda em cache** e não rebaixa
@@ -151,8 +153,14 @@ O sistema já sabe fazer isso: `enviarAnexo` e `abrirDocumento`, em
 `src/servicos/anexos.ts`, são exatamente esse caminho, usados pelo chat
 e pelos documentos de ausência.
 
-A migração precisa converter as fotos que já existem — e é por isso que
-não é uma linha de código.
+O base64 antigo CONTINUA funcionando: quem já tinha foto não perde
+nada, e ela sai da coluna sozinha quando a pessoa trocar. A conta de
+quantas faltam converter está no fim de `foto-de-perfil-no-balde.sql`.
+
+A tradução acontece num lugar só — na fronteira com o banco, em
+`paraColaborador`. As vinte e tantas telas que leem `colaborador.foto`
+não mudaram nenhuma linha: o que sai de lá é sempre um endereço que o
+`<img>` abre.
 
 ---
 

@@ -29,7 +29,7 @@ import {
   montarPreviaDaMensagem,
   carimboDeAuditoria,
 } from './nuvemComunicacao';
-import { enviarAnexo, apagarAnexos } from './anexos';
+import { enviarAnexo, apagarAnexos, enviarFotoDePerfil } from './anexos';
 import {
   Colaborador,
   Conversa,
@@ -1276,6 +1276,50 @@ class BancoDadosConecta {
       return { sucesso: false, erro: 'Colaborador não encontrado.' };
     }
 
+    /**
+     * ===============================================================
+     * A FOTO VAI PARA O BALDE, e a ficha guarda o CAMINHO.
+     * ===============================================================
+     *
+     * Ela era gravada como base64 dentro de `colaboradores.foto`. Essa
+     * coluna viaja inteira para cada aparelho a cada alteração de
+     * QUALQUER ficha, porque o tempo real avisa todo mundo — com as 89
+     * pessoas de foto própria dava 15,7 GB de tráfego por mês, três
+     * vezes o limite do plano. A conta está em docs/LIMITES-SUPABASE.md.
+     *
+     * A REGRA MORA AQUI, e não nas telas. São DUAS que trocam foto — o
+     * modal do "Eu" e o formulário do Painel Administrativo — e
+     * ensinar as duas a subir arquivo é a duplicação que este sistema
+     * já pagou quatro vezes. A terceira tela que aparecer herda isto
+     * sem saber que existe.
+     *
+     * O logo e um endereço colado NÃO sobem: o logo é arquivo do
+     * próprio sistema, e a URL já mora em outro lugar.
+     */
+    let enderecoDaFotoNova: string | null = null;
+
+    if (usandoNuvem() && dados.foto?.startsWith('data:')) {
+      const enviada = await enviarFotoDePerfil(dados.foto, id);
+
+      if (!enviada) {
+        return {
+          sucesso: false,
+          erro: 'Não foi possível enviar a foto para o armazenamento. Tente de novo.',
+        };
+      }
+
+      /**
+       * A FICHA GUARDA O CAMINHO; a tela recebe o endereço.
+       *
+       * `perfil/x/123.jpg` não abre imagem nenhuma num `<img src>`, e
+       * quem acabou de trocar a foto vê a tela agora, antes da próxima
+       * sincronização. Por isso o cache local fica com o endereço
+       * assinado, e só o banco recebe o caminho.
+       */
+      dados = { ...dados, foto: enviada.caminho };
+      enderecoDaFotoNova = enviada.url || null;
+    }
+
     // Fora do Administrador, a pessoa só mexe nos próprios dados de contato e
     // perfil. Cargo, nível, loja, setor e situação são decisões da gestão — e
     // trocar a própria loja daria acesso ao canal de outra filial.
@@ -1379,6 +1423,22 @@ class BancoDadosConecta {
           }. Ela valeria só neste aparelho.`,
         };
       }
+    }
+
+    /**
+     * O CAMINHO FOI PARA O BANCO; O APARELHO FICA COM O ENDEREÇO.
+     *
+     * A ficha gravada acima leva `perfil/x/123.jpg`, que é o que o
+     * banco tem de guardar. Mas o cache alimenta as telas AGORA, antes
+     * da próxima sincronização — e um caminho num `<img src>` não abre
+     * imagem nenhuma.
+     *
+     * Quem trocou a foto veria um quadrado quebrado no lugar do próprio
+     * rosto até recarregar. Então o cache recebe o endereço assinado, e
+     * só ele.
+     */
+    if (enderecoDaFotoNova) {
+      colaboradores[indice] = { ...colaboradores[indice], foto: enderecoDaFotoNova };
     }
 
     localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));

@@ -125,14 +125,34 @@ export const ModalAlterarFoto: React.FC<PropsModalAlterarFoto> = ({
   };
 
   const salvarNovaFoto = async () => {
+    /**
+     * O ENVIO PARA O BALDE NÃO ACONTECE AQUI.
+     *
+     * A foto passou a ser guardada no armazenamento, com a ficha
+     * levando só o caminho — a coluna com base64 dentro viajava para
+     * cada aparelho a cada alteração de QUALQUER ficha, e dava 15,7 GB
+     * de tráfego por mês com as 89 pessoas. A conta está em
+     * docs/LIMITES-SUPABASE.md.
+     *
+     * Mas quem sobe é `atualizarColaborador`, não esta tela. São DUAS
+     * que trocam foto — esta e o formulário do Painel Administrativo —
+     * e ensinar as duas a subir arquivo é a duplicação que este sistema
+     * já pagou quatro vezes.
+     *
+     * Aqui continua chegando o `data:` que a câmera produziu, e o
+     * serviço faz o resto. A terceira tela que aparecer herda isso sem
+     * saber que existe.
+     */
+    setEstaProcessando(true);
     const res = await bancoDados.atualizarColaborador(colaborador.id, {
       foto: fotoPrevia.trim() || FOTO_PADRAO_LOGO_EMPRESA,
     });
+    setEstaProcessando(false);
 
     if (res.sucesso) {
-      if (aoFotoSalva) {
-        aoFotoSalva(fotoPrevia);
-      }
+      /* A prévia é o `data:` que já está na tela: ela abre na hora, sem
+         esperar assinatura nenhuma */
+      if (aoFotoSalva) aoFotoSalva(fotoPrevia);
       aoFechar();
     } else {
       setMensagemStatus(res.erro || 'Falha ao salvar nova foto.');

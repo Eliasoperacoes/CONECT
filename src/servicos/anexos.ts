@@ -122,6 +122,49 @@ export const enviarDocumento = async (
   }
 };
 
+/**
+ * ===================================================================
+ * A FOTO DE PERFIL VAI PARA O BALDE, e não para a coluna
+ * ===================================================================
+ *
+ * Ela era gravada em `colaboradores.foto` como base64 — um JPEG de
+ * 400px que o navegador converte em letras. Três consequências, e a
+ * terceira é a que custava caro:
+ *
+ *  1. contava no limite do BANCO, não no do Storage
+ *  2. não tinha cache de navegador: não era endereço, era conteúdo
+ *  3. VIAJAVA INTEIRA a cada sincronização de colaboradores — e essa
+ *     sincronização roda ao entrar e a cada alteração em QUALQUER
+ *     ficha, porque o tempo real avisa todos os aparelhos
+ *
+ * Estimado com as 89 pessoas e duas entradas por dia: 15,7 GB por mês,
+ * três vezes o limite de tráfego do plano gratuito, só para mostrar as
+ * caras na lista de conversas. A conta está em docs/LIMITES-SUPABASE.md.
+ *
+ * O CAMINHO CARREGA O DONO — `perfil/<id da pessoa>/<hora>.jpg`. É o
+ * mesmo desenho de holerite e advertência, e é ele que a regra do balde
+ * usa para não deixar ninguém subir foto na pasta de outro.
+ *
+ * E É UM ARQUIVO NOVO A CADA TROCA, com a hora no nome. Sobrescrever o
+ * mesmo caminho exigiria permissão de UPDATE no balde, que não existe
+ * — as regras cobrem select, insert e delete. O arquivo velho é apagado
+ * depois, por quem troca.
+ */
+export const PREFIXO_FOTO_PERFIL = 'perfil';
+
+/** Este valor é um caminho no balde, ou conteúdo pronto para a tela? */
+export const ehCaminhoDeFotoPerfil = (valor?: string | null): boolean =>
+  !!valor && valor.startsWith(`${PREFIXO_FOTO_PERFIL}/`);
+
+export const enviarFotoDePerfil = async (
+  dataUrl: string,
+  colaboradorId: string
+): Promise<{ caminho: string; url: string } | null> =>
+  enviarDocumento(
+    dataUrl,
+    `${PREFIXO_FOTO_PERFIL}/${colaboradorId}/${Date.now()}.jpg`
+  );
+
 export const resolverCaminho = async (caminho: string): Promise<string | null> => {
   if (!supabase) return null;
 
