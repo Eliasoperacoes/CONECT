@@ -1,34 +1,45 @@
 -- ============================================================
 -- CONECTA — O BANCO ESTÁ PRONTO PARA A LOJA INTEIRA?
 --
--- ESTE ARQUIVO NÃO ALTERA NADA. São quatro consultas.
+-- ESTE ARQUIVO NÃO ALTERA NADA. É UMA CONSULTA SÓ.
 --
 -- ------------------------------------------------------------
--- POR QUE ELE EXISTE
+-- POR QUE UMA SÓ
 -- ------------------------------------------------------------
 --
--- O chat da rede parou por UMA coluna. Toda mensagem passou a levar
--- `publicacao_id`, o script que a cria ficou por rodar, e o PostgREST
--- recusou CADA envio — inclusive um "bom dia", que manda a coluna como
--- nula do mesmo jeito. A tela dizia "Verifique a conexão".
+-- O SQL Editor do Supabase mostra o resultado da ÚLTIMA instrução. Um
+-- arquivo com quatro `select` devolve quatro respostas e deixa três
+-- invisíveis — e foi o que aconteceu três vezes seguidas aqui: o
+-- resultado que chegava era sempre o do fim, e o que decidia o rollout
+-- ficava para trás.
 --
--- Antes de abrir para 89 pessoas, a pergunta tem de ser feita de uma vez
--- e para TODAS as tabelas: o banco tem tudo o que o código manda?
+-- Então tudo vem numa tabela só, com uma coluna `secao` dizendo do que
+-- cada linha trata. Rolar a lista é mais barato do que rodar de novo.
 --
--- A lista da consulta 1 é gerada a partir dos próprios mapeadores do
--- código (`paraLinha`, `paraLinhaPonto`, `paraLinhaMensagem`...), e há um
--- teste na suíte que reprova se ela sair de sincronia com eles. Coluna
--- nova no código sem coluna nova aqui não passa da revisão.
+-- ------------------------------------------------------------
+-- COMO LER
+-- ------------------------------------------------------------
+--
+-- `1. COLUNA FALTANDO`  Se aparecer QUALQUER linha aqui, o rollout
+--                       para: é uma função que vai falhar, com a
+--                       tabela e a coluna a criar. É o que teria pego
+--                       o `publicacao_id` antes de o chat parar.
+--
+-- `2. POLÍTICA`         `tem_insert` e `tem_update` precisam dizer
+--                       "sim". RLS ligada sem política de UPDATE não
+--                       dá erro: afeta zero linhas e devolve sucesso.
+--
+-- `3. RETRATO`          Quanta gente, quanto ponto, quanta conversa.
+--
+-- `4. SALDO SEM PONTO`  Quem tem apuração sem marcação nenhuma — lixo
+--                       do piloto. Limpa com `zerar-saldo-sem-ponto.sql`.
+--
+-- A lista de colunas da seção 1 é gerada dos mapeadores do código, e um
+-- teste na suíte reprova se ela sair de sincronia com eles.
 -- ============================================================
 
--- ============================================================
--- 1. FALTA ALGUMA COLUNA?
---
--- O resultado ESPERADO é NENHUMA LINHA. Cada linha que aparecer é uma
--- função que vai falhar em produção, com a tabela e a coluna a criar.
--- ============================================================
 with esperadas (tabela, coluna) as (values
-  ('colaboradores', 'ativo'),
+('colaboradores', 'ativo'),
   ('colaboradores', 'carga_horaria_diaria_minutos'),
   ('colaboradores', 'carga_semanal_minutos'),
   ('colaboradores', 'cargo'),
@@ -144,96 +155,93 @@ with esperadas (tabela, coluna) as (values
   ('avisos_rede', 'loja_destino'),
   ('avisos_rede', 'prioridade'),
   ('avisos_rede', 'tipo'),
-  ('avisos_rede', 'titulo')
+  ('avisos_rede', 'titulo')),
+
+politicas as (
+  select
+    t.tabela,
+    c.relrowsecurity as rls,
+    count(*) filter (where p.cmd in ('INSERT', 'ALL')) > 0 as tem_insert,
+    count(*) filter (where p.cmd in ('UPDATE', 'ALL')) > 0 as tem_update,
+    count(*) filter (where p.cmd in ('SELECT', 'ALL')) > 0 as tem_select,
+    count(p.polname) as quantas
+    from (values
+      ('colaboradores'), ('registros_ponto'), ('ajustes_jornada'),
+      ('justificativas_ausencia'), ('mensagens'), ('conversas'),
+      ('participantes'), ('avisos_rede'), ('auditoria')
+    ) as t(tabela)
+    join pg_class c on c.relname = t.tabela
+     and c.relnamespace = 'public'::regnamespace
+    left join (
+      select polrelid, polname,
+             case polcmd when 'r' then 'SELECT' when 'a' then 'INSERT'
+                         when 'w' then 'UPDATE' when 'd' then 'DELETE'
+                         else 'ALL' end as cmd
+        from pg_policy
+    ) p on p.polrelid = c.oid
+   group by t.tabela, c.relrowsecurity
 )
-select
-  e.tabela,
-  e.coluna,
-  'FALTA NO BANCO' as situacao
-  from esperadas e
-  left join information_schema.columns c
-    on c.table_schema = 'public'
-   and c.table_name   = e.tabela
-   and c.column_name  = e.coluna
- where c.column_name is null
- order by e.tabela, e.coluna;
 
--- ============================================================
--- 2. AS TABELAS QUE O SISTEMA ESCREVE TÊM POLÍTICA PARA ESCREVER?
---
--- RLS ligada sem política de UPDATE não dá erro: o update afeta ZERO
--- linhas e devolve sucesso. A tela diz "salvo" e o banco não mudou —
--- já aconteceu aqui, e é o pior tipo de falha porque ninguém procura.
---
--- Esperado: `tem_update` e `tem_insert` verdadeiros em todas.
--- `rls_ligada` falso numa tabela de dados também merece atenção: quer
--- dizer que qualquer pessoa autenticada lê tudo.
--- ============================================================
-select
-  t.tabela,
-  c.relrowsecurity as rls_ligada,
-  count(*) filter (where p.cmd in ('SELECT', 'ALL')) > 0 as tem_select,
-  count(*) filter (where p.cmd in ('INSERT', 'ALL')) > 0 as tem_insert,
-  count(*) filter (where p.cmd in ('UPDATE', 'ALL')) > 0 as tem_update,
-  count(*) filter (where p.cmd in ('DELETE', 'ALL')) > 0 as tem_delete,
-  count(p.polname)                                       as politicas
-  from (values
-    ('colaboradores'), ('registros_ponto'), ('ajustes_jornada'),
-    ('justificativas_ausencia'), ('mensagens'), ('conversas'),
-    ('participantes'), ('avisos_rede'), ('auditoria')
-  ) as t(tabela)
-  join pg_class c on c.relname = t.tabela
-   and c.relnamespace = 'public'::regnamespace
-  left join (
-    select polrelid, polname,
-           case polcmd when 'r' then 'SELECT' when 'a' then 'INSERT'
-                       when 'w' then 'UPDATE' when 'd' then 'DELETE'
-                       else 'ALL' end as cmd
-      from pg_policy
-  ) p on p.polrelid = c.oid
- group by t.tabela, c.relrowsecurity
- order by t.tabela;
+select ordem, secao, item, valor, observacao from (
 
--- ============================================================
--- 3. O QUE JÁ ESTÁ LÁ DENTRO
---
--- O retrato antes de abrir para a loja inteira: quanta gente, quantos
--- já bateram ponto, quanta conversa existe.
--- ============================================================
-select
-  (select count(*) from public.colaboradores where ativo)            as pessoas_ativas,
-  (select count(distinct colaborador_id) from public.registros_ponto) as ja_bateram_ponto,
-  (select count(*) from public.registros_ponto)                       as marcacoes,
-  (select count(*) from public.ajustes_jornada)                       as apuracoes,
-  (select count(*) from public.ajustes_jornada where estado = 'pendente')
-                                                                      as apuracoes_na_fila,
-  (select count(*) from public.conversas)                             as conversas,
-  (select count(*) from public.mensagens)                             as mensagens,
-  (select count(*) from public.avisos_rede)                           as publicacoes;
+  -- 1. O QUE FALTA NO BANCO — nenhuma linha aqui é o resultado esperado
+  select 1 as ordem, '1. COLUNA FALTANDO' as secao,
+         e.tabela || '.' || e.coluna as item,
+         'CRIAR NO BANCO' as valor,
+         'o código manda esta coluna e o banco não tem' as observacao
+    from esperadas e
+    left join information_schema.columns c
+      on c.table_schema = 'public'
+     and c.table_name = e.tabela
+     and c.column_name = e.coluna
+   where c.column_name is null
 
--- ============================================================
--- 4. QUEM TEM SALDO SEM NUNCA TER BATIDO PONTO
---
--- É lixo do período de testes: apuração gravada para quem não tem
--- marcação nenhuma. Antes de abrir para a loja, o saldo dessa gente tem
--- de começar em zero — senão a primeira coisa que a pessoa vê ao entrar
--- é um débito que ela não fez.
---
--- Quem limpa é `zerar-saldo-sem-ponto.sql`.
--- ============================================================
-select
-  c.nome,
-  c.setor,
-  c.loja,
-  count(*)                                                     as apuracoes,
-  sum(case when a.tipo = 'debito' then -a.minutos else a.minutos end)
-    filter (where a.estado = 'aprovado')                       as saldo_min,
-  min(a.data)                                                  as primeira,
-  max(a.data)                                                  as ultima
-  from public.ajustes_jornada a
-  join public.colaboradores c on c.id = a.colaborador_id
- where not exists (
-   select 1 from public.registros_ponto r where r.colaborador_id = a.colaborador_id
- )
- group by c.nome, c.setor, c.loja
- order by c.nome;
+  union all
+
+  -- 2. AS POLÍTICAS DE ESCRITA
+  select 2, '2. POLÍTICA', p.tabela,
+         case when p.tem_insert and p.tem_update then 'ok'
+              else 'ATENÇÃO' end,
+         'rls ' || case when p.rls then 'ligada' else 'DESLIGADA' end ||
+         ' · insert ' || case when p.tem_insert then 'sim' else 'NÃO' end ||
+         ' · update ' || case when p.tem_update then 'sim' else 'NÃO' end ||
+         ' · select ' || case when p.tem_select then 'sim' else 'NÃO' end ||
+         ' · ' || p.quantas || ' política(s)'
+    from politicas p
+
+  union all
+
+  -- 3. O RETRATO DE HOJE
+  select 3, '3. RETRATO', x.item, x.valor::text, ''
+    from (
+      select 'pessoas ativas' as item,
+             (select count(*) from public.colaboradores where ativo) as valor
+      union all select 'já bateram ponto',
+             (select count(distinct colaborador_id) from public.registros_ponto)
+      union all select 'marcações', (select count(*) from public.registros_ponto)
+      union all select 'apurações', (select count(*) from public.ajustes_jornada)
+      union all select 'apurações na fila',
+             (select count(*) from public.ajustes_jornada where estado = 'pendente')
+      union all select 'conversas', (select count(*) from public.conversas)
+      union all select 'mensagens', (select count(*) from public.mensagens)
+      union all select 'publicações', (select count(*) from public.avisos_rede)
+    ) x
+
+  union all
+
+  -- 4. SALDO DE QUEM NUNCA BATEU PONTO
+  select 4, '4. SALDO SEM PONTO', c.nome,
+         count(*) || ' apuração(ões)',
+         'saldo aprovado: ' ||
+           coalesce(sum(case when a.tipo = 'debito' then -a.minutos else a.minutos end)
+             filter (where a.estado = 'aprovado'), 0) || ' min · ' ||
+           c.setor || ' · ' || c.loja
+    from public.ajustes_jornada a
+    join public.colaboradores c on c.id = a.colaborador_id
+   where not exists (
+     select 1 from public.registros_ponto r where r.colaborador_id = a.colaborador_id
+   )
+   group by c.nome, c.setor, c.loja
+
+) tudo
+order by ordem, item;

@@ -521,3 +521,28 @@ outro lugar.
 `igual ao`, `sempre bate com`) ganha um teste que cobra a igualdade. Se
 a afirmação vale a pena escrever, vale a pena verificar — e sem o teste
 ela sobrevive à mudança que a torna mentira.
+
+## Arquivo de diagnóstico desenhado para a ferramenta errada
+
+Mandei três arquivos SQL seguidos com quatro consultas cada, pedindo os
+quatro resultados. Nas três vezes voltou o print da ÚLTIMA — porque o
+SQL Editor do Supabase mostra o resultado da última instrução e só dele.
+
+As outras respostas existiam. Ninguém as viu. Entre elas, a que decidia
+se o sistema podia abrir para as 89 pessoas.
+
+Eu tratei isso como falha de comunicação — "faltou mandar as outras" — e
+insisti mais duas vezes. Não era: era um arquivo desenhado para uma
+ferramenta que não existe, a que mostraria quatro tabelas lado a lado.
+
+**A regra:** arquivo de diagnóstico devolve UMA consulta, com uma coluna
+`secao` separando os assuntos e um `union all` juntando tudo. Rolar uma
+lista é mais barato do que rodar de novo — e não depende de ninguém
+lembrar de mandar a segunda aba.
+
+Vale só para diagnóstico. Script que altera estrutura tem várias
+instruções por natureza, e termina com um `select` de conferência
+justamente porque é ele que fica à vista.
+
+**Sinal para procurar:** pedir um resultado duas vezes. Se a informação
+não chega, o conserto não é insistir — é olhar como ela é apresentada.

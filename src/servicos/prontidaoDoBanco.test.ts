@@ -229,3 +229,40 @@ test('ZERAR SALDO só alcança quem NÃO tem marcação nenhuma', async () => {
   // E devolve o que removeu: conferência e ação na mesma passada
   expect(sql).toContain('returning');
 });
+
+test('O DIAGNÓSTICO VEM NUMA CONSULTA SÓ', async () => {
+  /**
+   * O SQL Editor do Supabase mostra o resultado da ÚLTIMA instrução.
+   *
+   * Isso custou três idas e voltas: eu mandava um arquivo com quatro
+   * `select`, o Elias rodava, e voltava sempre o print do quarto. As
+   * três primeiras respostas existiam e ninguém as via — inclusive a
+   * que decidia se o sistema podia abrir para a loja.
+   *
+   * Não é limitação do editor: é arquivo desenhado para a ferramenta
+   * errada. Um `union all` com uma coluna `secao` devolve tudo de uma
+   * vez, e rolar a lista é mais barato do que rodar de novo.
+   *
+   * Vale só para os arquivos de DIAGNÓSTICO. Os que alteram estrutura
+   * têm várias instruções por natureza — e terminam com um `select` de
+   * conferência justamente porque é ele que fica à vista.
+   */
+  for (const arquivo of ['conferir-prontidao.sql', 'medir-consumo.sql']) {
+    const sql = semComentarios(await Bun.file(`supabase/${arquivo}`).text());
+    const instrucoes = sql.split(';').filter((t) => t.trim().length > 0);
+
+    expect({ arquivo, instrucoes: instrucoes.length }).toEqual({ arquivo, instrucoes: 1 });
+
+    /**
+     * E o RESULTADO traz a coluna que separa as seções.
+     *
+     * Conferir só `toContain('secao')` não bastava: a palavra aparece
+     * em cada ramo do `union all` (`'1. FOTO DE PERFIL' as secao`), e
+     * tirá-la da projeção de fora não a fazia sumir do arquivo. A
+     * mutação passou, e o teste estaria dizendo que o resultado tem uma
+     * coluna que ele não teria.
+     */
+    expect(sql).toContain('select ordem, secao, item, valor, observacao from (');
+    expect(sql).toContain('union all');
+  }
+});
