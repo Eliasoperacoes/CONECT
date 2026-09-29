@@ -46,6 +46,7 @@ const ESPACO_ENTRE_JANELAS = 12;
 const MAXIMO_JANELAS_ABERTAS = 3;
 import { bancoDados } from './servicos/bancoDados';
 import { manterSeIgual } from './servicos/igualdade';
+import { ehTelaDeCelular } from './servicos/tela';
 import {
   ondeParei,
   lembrarOndeParei,
@@ -257,6 +258,23 @@ export default function App() {
    * aviso como sumia antes.
    */
   const abrirJanela = (id: string) => {
+    /**
+     * NO CELULAR NÃO HÁ JANELA: A CONVERSA ABRE EM TELA CHEIA.
+     *
+     * A janela flutuante é do computador. No celular ela também ocupava a
+     * tela inteira, mas por fora do caminho da lista — e o voltar do
+     * Android só conhece a conversa aberta pela lista. Aberta pelo aviso,
+     * pelo sino, por "Nova conversa" ou pelo Painel, o primeiro voltar
+     * fechava a conversa ESCONDIDA embaixo (nada mudava na tela) e o
+     * segundo minimizava o aplicativo. Relatado pelo Elias como "voltar
+     * fantasma". Um caminho só no celular, e o voltar sempre sabe o que
+     * está na frente.
+     */
+    if (ehTelaDeCelular()) {
+      abrirConversaEmTelaCheia(id);
+      return;
+    }
+
     /**
      * ABRIR É O PEDIDO DE TRAZER DE VOLTA.
      *
