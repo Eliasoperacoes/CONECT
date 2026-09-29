@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Pin, PinOff, Trash2, Archive, MoreVertical, Check } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { Pin, PinOff, Trash2, Archive, Check } from 'lucide-react';
 import { Conversa } from '../tipos';
 import {
   estaFixada,
@@ -7,10 +7,19 @@ import {
   ocultarConversa,
   removerConversaDaLista,
 } from '../servicos/preferenciasConversa';
+import {
+  LARGURA_ACAO,
+  abreAoSoltar,
+  ehArrastoLateral,
+  limitarDeslocamento,
+} from '../servicos/deslizarItem';
 
-/** Três linhas de 36px mais o respiro das bordas. */
-const MENU_LARGURA = 168;
-const MENU_ALTURA = 116;
+/**
+ * O aviso de que um item abriu as ações. Os outros fecham as deles:
+ * duas conversas com a lixeira à mostra ao mesmo tempo é como se
+ * exclui a errada.
+ */
+const EVENTO_ITEM_ABERTO = 'conecta:item-conversa-aberto';
 
 interface PropsItemConversa {
   conversa: Conversa;
@@ -42,6 +51,11 @@ interface PropsItemConversa {
  * duas listas — a flutuante do computador e a da barra do celular. Quando
  * estavam só na do computador, o celular ficou sem elas, que foi o defeito
  * relatado. Uma vez só, os dois lados ganham juntos.
+ *
+ * AS AÇÕES FICAM ATRÁS DO ITEM, e arrastar para a esquerda as revela —
+ * pedido do Elias, no lugar dos três pontinhos que abriam um menu miúdo
+ * por cima da lista. No computador, o botão direito do mouse abre as
+ * mesmas ações, porque arrastar com o mouse ninguém adivinha.
  */
 export const ItemConversa: React.FC<PropsItemConversa> = ({
   conversa,
@@ -53,39 +67,207 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
   marcada = false,
   aoAlternarMarcada,
 }) => {
-  /**
-   * O menu aberto e o ponto da JANELA onde ancorá-lo.
-   *
-   * Era `absolute right-2 top-12` dentro do item da lista. A lista rola e
-   * tem `overflow`, então nas últimas conversas o menu abria para baixo e
-   * era cortado pela borda — a mesma experiência de defeito que o menu da
-   * mensagem tinha, e corrigida do mesmo jeito.
-   */
-  const [ancora, setAncora] = useState<{ x: number; y: number } | null>(null);
   // Em modo de seleção as ações individuais somem: a barra da lista decide
   // o que fazer com o conjunto, e ter os dois caminhos ao mesmo tempo só faz
   // a pessoa errar qual está usando
   const temAcoes = !!colaboradorId && !modoSelecao;
   const fixada = colaboradorId ? estaFixada(colaboradorId, conversa.id) : false;
 
-  const fechar = () => setAncora(null);
+  /** Quanto o item está puxado para a esquerda: 0 fechado, -largura aberto. */
+  const [deslocamento, setDeslocamento] = useState(0);
+  const [arrastando, setArrastando] = useState(false);
+  const toque = useRef<{ x: number; y: number; inicio: number; lateral: boolean | null } | null>(
+    null
+  );
+  /**
+   * O arrasto terminou em cima do item, e o navegador manda um clique
+   * logo depois. Sem engolir esse clique, soltar o dedo abriria a
+   * conversa que a pessoa só queria arrastar.
+   */
+  const arrastou = useRef(false);
+
+  const acoes = colaboradorId
+    ? [
+        {
+          chave: 'fixar',
+          rotulo: fixada ? 'Desafixar' : 'Fixar',
+          Icone: fixada ? PinOff : Pin,
+          cor: 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]',
+          dica: fixada ? 'Tirar do topo da lista' : 'Manter no topo da lista',
+          executar: () => alternarFixada(colaboradorId, conversa.id),
+        },
+        /*
+          ARQUIVAR — o nome honesto do que este botão sempre fez.
+
+          Chamava-se "Excluir conversa" e não excluía nada: a conversa
+          voltava sozinha assim que o colega escrevesse. Nome que promete
+          outra coisa faz a pessoa evitar o botão certo com medo de
+          perder o histórico.
+        */
+        {
+          chave: 'arquivar',
+          rotulo: 'Arquivar',
+          Icone: Archive,
+          cor: 'bg-slate-500 text-white',
+          dica: 'Sai da lista e volta sozinha na próxima mensagem',
+          executar: () => ocultarConversa(colaboradorId, conversa.id),
+        },
+        /*
+          EXCLUIR — sai da aba e NÃO volta sozinha.
+
+          É a única diferença para arquivar, e é ela que justifica as
+          duas existirem. Mensagem nova continua chegando: o contador
+          conta e o aviso do celular toca. O que não acontece é a
+          conversa reaparecer na lista por conta própria.
+
+          Nenhuma mensagem é apagada. Chamar o colega de novo traz a
+          conversa inteira de volta.
+        */
+        {
+          chave: 'excluir',
+          rotulo: 'Excluir',
+          Icone: Trash2,
+          cor: 'bg-red-600 text-white',
+          dica: 'Sai da aba e só volta quando você chamar o colega de novo',
+          executar: () => removerConversaDaLista(colaboradorId, conversa.id),
+        },
+      ]
+    : [];
+  const largura = acoes.length * LARGURA_ACAO;
+  const aberto = deslocamento === -largura && largura > 0;
+
+  const fechar = () => setDeslocamento(0);
+
+  const abrir = () => {
+    setDeslocamento(-largura);
+    window.dispatchEvent(new CustomEvent(EVENTO_ITEM_ABERTO, { detail: conversa.id }));
+  };
+
+  // Outro item abriu as ações dele: este fecha as suas
+  useEffect(() => {
+    const aoAbrirOutro = (e: Event) => {
+      if ((e as CustomEvent<string>).detail !== conversa.id) setDeslocamento(0);
+    };
+    window.addEventListener(EVENTO_ITEM_ABERTO, aoAbrirOutro);
+    return () => window.removeEventListener(EVENTO_ITEM_ABERTO, aoAbrirOutro);
+  }, [conversa.id]);
+
+  // Entrar em modo de seleção recolhe as ações: elas não valem ali
+  useEffect(() => {
+    if (!temAcoes) setDeslocamento(0);
+  }, [temAcoes]);
+
+  const soltar = () => {
+    const t = toque.current;
+    toque.current = null;
+    if (!t?.lateral) return;
+    setArrastando(false);
+    if (abreAoSoltar(t.inicio, deslocamento, largura)) abrir();
+    else fechar();
+  };
+
   // Inicial do nome para avatar caso não haja foto
   const obterInicial = (nome: string) => {
     return (nome || '?').charAt(0).toUpperCase();
   };
 
   return (
-    <div className="relative">
+    <div className="relative overflow-hidden border-b border-[var(--c-borda)]">
+      {/* As ações, atrás do item. Só aparecem quando ele desliza. */}
+      {temAcoes && (
+        <div
+          id={`acoes-item-conversa-${conversa.id}`}
+          className="absolute inset-y-0 right-0 flex"
+          style={{ width: largura }}
+          aria-hidden={!aberto}
+        >
+          {acoes.map(({ chave, rotulo, Icone, cor, dica, executar }) => (
+            <button
+              key={chave}
+              type="button"
+              tabIndex={aberto ? 0 : -1}
+              onClick={() => {
+                executar();
+                fechar();
+                aoMudarPreferencia?.();
+              }}
+              title={dica}
+              style={{ width: LARGURA_ACAO }}
+              className={`h-full flex flex-col items-center justify-center gap-1 active:brightness-90 transition-[filter] ${cor}`}
+            >
+              <Icone className="w-5 h-5" />
+              <span className="text-[11px] font-semibold leading-none">{rotulo}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
     <button
       type="button"
       id={`item-conversa-${conversa.id}`}
-      onClick={modoSelecao ? aoAlternarMarcada : aoClicar}
-      className={`w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-[var(--c-borda)] transition-colors min-h-[64px] active:bg-[var(--c-superficie-2)] ${
+      onClick={() => {
+        if (arrastou.current) {
+          arrastou.current = false;
+          return;
+        }
+        // Com as ações à mostra, tocar no item só as recolhe
+        if (deslocamento !== 0) {
+          fechar();
+          return;
+        }
+        (modoSelecao ? aoAlternarMarcada : aoClicar)?.();
+      }}
+      onContextMenu={(e) => {
+        if (!temAcoes) return;
+        e.preventDefault();
+        if (aberto) fechar();
+        else abrir();
+      }}
+      onPointerDown={(e) => {
+        if (!temAcoes || (e.pointerType === 'mouse' && e.button !== 0)) return;
+        toque.current = { x: e.clientX, y: e.clientY, inicio: deslocamento, lateral: null };
+        arrastou.current = false;
+      }}
+      onPointerMove={(e) => {
+        const t = toque.current;
+        if (!t) return;
+        const dx = e.clientX - t.x;
+        const dy = e.clientY - t.y;
+
+        if (t.lateral === null) {
+          if (ehArrastoLateral(dx, dy)) {
+            t.lateral = true;
+            arrastou.current = true;
+            setArrastando(true);
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } else if (Math.abs(dy) > 10) {
+            // É rolagem da lista: o item não se mexe até o dedo sair
+            t.lateral = false;
+          }
+          return;
+        }
+        if (t.lateral) setDeslocamento(limitarDeslocamento(t.inicio, dx, largura));
+      }}
+      onPointerUp={soltar}
+      onPointerCancel={soltar}
+      style={{
+        transform: `translateX(${deslocamento}px)`,
+        // O navegador cuida da rolagem vertical; o lado é nosso
+        touchAction: temAcoes ? 'pan-y' : undefined,
+      }}
+      className={`relative w-full flex items-center gap-3 px-4 py-3.5 text-left min-h-[64px] active:bg-[var(--c-superficie-2)] select-none ${
+        arrastando ? '' : 'transition-transform duration-200 ease-out'
+      } ${
         selecionada || marcada
           ? 'bg-[var(--c-acento-suave)]'
           : 'bg-[var(--c-superficie)]'
-      } ${temAcoes ? 'pr-12' : ''}`}
+      }`}
     >
+      {/* O alfinete fica sobre o item, sem roubar linha do nome */}
+      {fixada && (
+        <Pin className="absolute left-1 top-1 w-3 h-3 text-[var(--c-acento)] pointer-events-none" />
+      )}
+
       {/* A marca da seleção, à frente da foto */}
       {modoSelecao && (
         <span
@@ -105,8 +287,9 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
           <img
             src={conversa.foto}
             alt={conversa.nome}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover pointer-events-none"
             referrerPolicy="no-referrer"
+            draggable={false}
           />
         ) : (
           <span className="font-semibold text-base text-[var(--c-texto-2)]">
@@ -144,117 +327,6 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
         </div>
       </div>
     </button>
-
-    {/* O alfinete fica sobre o item, sem roubar linha do nome */}
-    {fixada && (
-      <Pin className="absolute left-1 top-1 w-3 h-3 text-[var(--c-acento)] pointer-events-none" />
-    )}
-
-    {/*
-      As ações. Um toque abre — não depende de passar o mouse, que é o que
-      deixava isto inalcançável no celular.
-    */}
-    {temAcoes && (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (ancora) {
-            fechar();
-            return;
-          }
-          const r = e.currentTarget.getBoundingClientRect();
-          setAncora({ x: r.right - MENU_LARGURA, y: r.bottom });
-        }}
-        title="Opções da conversa"
-        aria-label="Opções da conversa"
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-2 rounded-lg text-[var(--c-texto-3)] hover:text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)] active:scale-95 transition-all"
-      >
-        <MoreVertical className="w-4 h-4" />
-      </button>
-    )}
-
-    {ancora && colaboradorId && (() => {
-      // Cabe embaixo? Senão abre para cima. E nunca passa da lateral.
-      const cabeAbaixo = ancora.y + MENU_ALTURA + 12 <= window.innerHeight;
-      const topo = cabeAbaixo ? ancora.y + 4 : Math.max(8, ancora.y - MENU_ALTURA - 44);
-      const esquerda = Math.min(
-        Math.max(8, ancora.x),
-        window.innerWidth - MENU_LARGURA - 8
-      );
-
-      return (
-        <>
-          <div className="fixed inset-0 z-[60]" onClick={fechar} />
-          <div
-            id="menu-item-conversa"
-            style={{ top: topo, left: esquerda, width: MENU_LARGURA }}
-            className="fixed z-[61] py-1 rounded-lg bg-[var(--c-superficie)] border border-[var(--c-borda)] shadow-[var(--s-3)] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                alternarFixada(colaboradorId, conversa.id);
-                fechar();
-                aoMudarPreferencia?.();
-              }}
-              className="w-full px-3 h-9 flex items-center gap-2.5 text-xs font-semibold text-left text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-canvas)] transition-colors"
-            >
-              {fixada ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
-              {fixada ? 'Desafixar' : 'Fixar no topo'}
-            </button>
-
-            {/*
-              ARQUIVAR — o nome honesto do que este botão sempre fez.
-
-              Chamava-se "Excluir conversa" e não excluía nada: a conversa
-              voltava sozinha assim que o colega escrevesse. Nome que promete
-              outra coisa faz a pessoa evitar o botão certo com medo de
-              perder o histórico.
-            */}
-            <button
-              type="button"
-              onClick={() => {
-                ocultarConversa(colaboradorId, conversa.id);
-                fechar();
-                aoMudarPreferencia?.();
-              }}
-              className="w-full px-3 h-9 flex items-center gap-2.5 text-xs font-semibold text-left text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-canvas)] transition-colors border-t border-[var(--c-borda)]"
-              title="Sai da lista e volta sozinha na próxima mensagem"
-            >
-              <Archive className="w-3.5 h-3.5" />
-              Arquivar
-            </button>
-
-            {/*
-              EXCLUIR — sai da aba e NÃO volta sozinha.
-
-              É a única diferença para arquivar, e é ela que justifica as
-              duas existirem. Mensagem nova continua chegando: o contador
-              conta e o aviso do celular toca. O que não acontece é a
-              conversa reaparecer na lista por conta própria.
-
-              Nenhuma mensagem é apagada. Chamar o colega de novo traz a
-              conversa inteira de volta.
-            */}
-            <button
-              type="button"
-              onClick={() => {
-                removerConversaDaLista(colaboradorId, conversa.id);
-                fechar();
-                aoMudarPreferencia?.();
-              }}
-              className="w-full px-3 h-9 flex items-center gap-2.5 text-xs font-semibold text-left text-red-600 dark:text-red-400 hover:bg-red-500/10 active:bg-red-500/10 transition-colors border-t border-[var(--c-borda)]"
-              title="Sai da aba e só volta quando você chamar o colega de novo"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Excluir
-            </button>
-          </div>
-        </>
-      );
-    })()}
     </div>
   );
 };

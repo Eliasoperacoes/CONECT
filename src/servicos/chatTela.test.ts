@@ -555,31 +555,39 @@ test('reagir virou acao do menu, com mais opcoes de emoji', async () => {
 });
 
 /**
- * O MENU DA CONVERSA TAMBÉM SAÍA CORTADO.
+ * AS AÇÕES DA CONVERSA FICAM ATRÁS DO ITEM, reveladas deslizando.
  *
- * Era `absolute right-2 top-12` dentro do item da lista, e a lista rola e
- * tem `overflow`: nas últimas conversas ele abria para baixo e a borda o
- * cortava. Terceiro menu do sistema com o mesmo defeito — mensagem, emoji e
- * agora este.
+ * Pedido do Elias: no lugar dos três pontinhos, que abriam um menu miúdo
+ * por cima da lista, arrastar o item para o lado e ver as ações em
+ * quadrados, com ícone e nome embaixo.
  */
-test('o menu da conversa fica ancorado na janela', async () => {
-  const item = await Bun.file(
-    new URL('../componentes/ItemConversa.tsx', import.meta.url)
-  ).text();
+test('as acoes da conversa aparecem deslizando o item, sem menu de tres pontinhos', async () => {
+  const item = semComentarios(
+    await Bun.file(new URL('../componentes/ItemConversa.tsx', import.meta.url)).text()
+  );
 
-  /**
-   * Verificado pelo que o menu É, e não pelas classes antigas: os
-   * comentários deste arquivo citam "absolute right-2 top-12" ao contar
-   * esta história, e um teste que procurasse o texto reprovaria o código
-   * certo por causa da própria explicação.
-   */
-  expect(item).toContain('id="menu-item-conversa"');
-  expect(item).toContain('className="fixed z-[61]');
+  // O menu antigo saiu inteiro
+  expect(item).not.toContain('MoreVertical');
+  expect(item).not.toContain('menu-item-conversa');
 
-  // O mesmo cálculo dos outros dois: cabe embaixo, senão abre para cima
-  expect(item).toContain('const cabeAbaixo =');
-  expect(item).toContain('window.innerWidth - MENU_LARGURA - 8');
-  expect(item).toContain('e.currentTarget.getBoundingClientRect()');
+  // O gesto usa as contas do serviço, e não uma cópia delas
+  expect(item).toContain('ehArrastoLateral(dx, dy)');
+  expect(item).toContain('limitarDeslocamento(t.inicio, dx, largura)');
+  expect(item).toContain('abreAoSoltar(t.inicio, deslocamento, largura)');
+
+  // A rolagem vertical continua do navegador: sem isto a lista trava
+  expect(item).toContain("touchAction: temAcoes ? 'pan-y' : undefined");
+
+  // Soltar o arrasto não abre a conversa que se estava arrastando
+  expect(item).toContain('if (arrastou.current)');
+
+  // Cada ação é um quadrado com ícone E nome embaixo
+  expect(item).toContain('flex flex-col items-center justify-center');
+  expect(item).toContain('<Icone className="w-5 h-5" />');
+  expect(item).toContain('{rotulo}</span>');
+
+  // No computador, o botão direito abre as mesmas ações
+  expect(item).toContain('onContextMenu');
 });
 
 test('o menu da conversa oferece Arquivar e Excluir, separados', async () => {
@@ -710,7 +718,7 @@ test('em modo de selecao o toque marca, e o menu individual sai de cena', async 
     new URL('../componentes/ItemConversa.tsx', import.meta.url)
   ).text();
 
-  expect(item).toContain('onClick={modoSelecao ? aoAlternarMarcada : aoClicar}');
+  expect(item).toContain('(modoSelecao ? aoAlternarMarcada : aoClicar)?.()');
 
   // Ter os dois caminhos ao mesmo tempo só faz a pessoa errar qual está usando
   expect(item).toContain('const temAcoes = !!colaboradorId && !modoSelecao');
@@ -819,4 +827,75 @@ test('o canto da foto acompanha o canto do balao', async () => {
   // E a borda cinza em volta da foto sai: com o balão apertado ela vira
   // um contorno duplo
   expect(codigo).not.toContain('border border-black/5 dark:border-white/10');
+});
+
+/**
+ * O MENU ⋮ DO TOPO DA CONVERSA SAIU.
+ *
+ * Tinha "Ver perfil" e "Buscar na conversa" — os dois já à vista: o perfil
+ * abre tocando no nome, a busca é a lupa. Pedido do Elias.
+ */
+test('o topo da conversa nao tem menu que repete o que esta a vista', async () => {
+  const tela = semComentarios(await lerTela());
+
+  expect(tela).not.toContain('botao-menu-opcoes-conversa');
+  expect(tela).not.toContain('Buscar na conversa');
+  expect(tela).not.toContain('menuAberto');
+
+  // Os dois caminhos que ficam: o nome abre o perfil, a lupa abre a busca
+  expect(tela).toContain('id="botao-abrir-busca-chat"');
+  const nome = tela.indexOf('{conversa.nome}\n              </h1>');
+  expect(nome).toBeGreaterThan(-1);
+  const antesDoNome = tela.slice(tela.lastIndexOf('<div', tela.lastIndexOf('<h1', nome)), nome);
+  expect(antesDoNome).toContain('onClick={() => setModalDetalhesAberto(true)}');
+});
+
+/**
+ * NO CELULAR, A CONVERSA ABERTA NÃO DIVIDE A TELA COM O TOPO DO CONECTA.
+ *
+ * Os dois cabeçalhos empilhados achatavam as mensagens. No computador o
+ * topo fica: lá a conversa divide a tela com o resto do sistema.
+ */
+test('com a conversa aberta, o topo do sistema sai no celular e fica no computador', async () => {
+  const app = semComentarios(
+    await Bun.file(new URL('../App.tsx', import.meta.url)).text()
+  );
+
+  const topo = app.indexOf('<header');
+  expect(topo).toBeGreaterThan(-1);
+  const abertura = app.slice(topo, app.indexOf('>', app.indexOf('}`}', topo)));
+  expect(abertura).toContain("conversaAtiva ? 'hidden md:flex' : 'flex'");
+});
+
+/**
+ * A BARRA DE DIGITAÇÃO NO DESENHO DO WHATSAPP.
+ *
+ * Uma cápsula com o texto, o clipe e a câmera dentro, e um botão redondo
+ * ao lado — e não quatro botões soltos achatando a caixa de texto.
+ */
+test('a barra de digitacao e uma capsula, com clipe e camera dentro e um botao redondo ao lado', async () => {
+  const tela = semComentarios(await lerTela());
+
+  const capsula = tela.indexOf('rounded-[22px]');
+  expect(capsula).toBeGreaterThan(-1);
+  // A cápsula fecha depois da câmera: tudo o que vem antes está dentro dela
+  const fimCapsula = tela.indexOf('</div>', tela.indexOf('id="botao-abrir-camera-chat"'));
+
+  for (const id of ['campo-mensagem-texto', 'botao-anexo', 'botao-abrir-camera-chat']) {
+    const pos = tela.indexOf(`id="${id}"`);
+    expect(pos).toBeGreaterThan(capsula);
+    expect(pos).toBeLessThan(fimCapsula);
+  }
+
+  // O microfone é o botão redondo de fora, na cor do sistema
+  const microfone = tela.indexOf('id="botao-gravar-audio"');
+  expect(microfone).toBeGreaterThan(fimCapsula);
+  const classeMic = tela.slice(microfone, tela.indexOf('>', microfone));
+  expect(classeMic).toContain('bg-[var(--c-acento)]');
+
+  // O rodapé não pinta faixa própria: a cápsula fica sobre a conversa
+  const rodape = tela.indexOf('<footer', tela.indexOf('podePublicar ? ('));
+  const classeRodape = tela.slice(rodape, tela.indexOf('>', rodape));
+  expect(classeRodape).not.toContain('border-t');
+  expect(classeRodape).not.toContain('bg-[var(--c-superficie)]');
 });

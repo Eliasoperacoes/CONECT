@@ -145,7 +145,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [textoMensagem, setTextoMensagem] = useState('');
   const [audioTocandoId, setAudioTocandoId] = useState<string | null>(null);
-  const [menuAberto, setMenuAberto] = useState(false);
   const [tempoAudioAtual, setTempoAudioAtual] = useState<Record<string, number>>({});
   const [buscaAberta, setBuscaAberta] = useState(false);
   const [termoBusca, setTermoBusca] = useState('');
@@ -858,7 +857,15 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
             </div>
           </div>
 
-          {/* Ações da direita: Botão Chamar Rádio Menor Deslocado à Esquerda da Lupa, Botão Busca e Menu ⋮ */}
+          {/*
+            AÇÕES DA DIREITA: só a lupa.
+
+            Havia um menu ⋮ com "Ver perfil" e "Buscar na conversa" — os
+            dois já estavam à vista: o perfil abre tocando no nome, e a
+            busca é esta lupa. O Elias pediu para tirar; um menu que só
+            repete o que está na tela ensina a pessoa a procurar em dois
+            lugares.
+          */}
           <div className="flex items-center gap-1 flex-shrink-0">
             {/* Lupa de busca */}
             <button
@@ -877,47 +884,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
             >
               <Search className="w-4 h-4" />
             </button>
-
-            {/* Menu ⋮ */}
-            <div className="relative">
-              <button
-                type="button"
-                id="botao-menu-opcoes-conversa"
-                onClick={() => setMenuAberto(!menuAberto)}
-                className="w-9 h-9 flex items-center justify-center text-[var(--c-texto-2)] rounded-full hover:bg-[var(--c-superficie-2)]"
-                aria-label="Opções da conversa"
-              >
-                <MoreVertical className="w-5 h-5" />
-              </button>
-
-              {menuAberto && (
-                <div className="absolute right-0 top-10 w-52 bg-[var(--c-superficie)] border border-[var(--c-borda)] rounded-xl shadow-[var(--s-3)] py-1 z-30 divide-y divide-[var(--c-borda)] animate-in fade-in duration-100">
-                  {/* "Selecionar mensagens" saiu daqui: a própria mensagem já
-                      oferece Selecionar, e ter o mesmo comando em dois lugares
-                      faz a pessoa procurar qual dos dois é o certo. */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuAberto(false);
-                      setModalDetalhesAberto(true);
-                    }}
-                    className="w-full px-4 py-2.5 text-left text-sm text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)]"
-                  >
-                    {conversa.tipo === 'grupo' ? 'Dados do grupo' : 'Ver perfil'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuAberto(false);
-                      setBuscaAberta(true);
-                    }}
-                    className="w-full px-4 py-2.5 text-left text-sm text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)]"
-                  >
-                    Buscar na conversa
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </header>
       )}
@@ -1829,9 +1795,13 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
         );
       })()}
 
-      {/* 3. Rodapé com Ação: Câmera à esquerda, Barra de Texto no meio e Anexo no outro lado */}
+      {/*
+        3. Rodapé: a cápsula de digitação sobre o fundo da própria conversa,
+        sem faixa nem borda em volta — a faixa de 12px de cada lado era
+        altura tirada das mensagens.
+      */}
       {podePublicar ? (
-        <footer className="w-full bg-[var(--c-superficie)] border-t border-[var(--c-borda)] p-3 flex flex-col gap-2 pb-[max(12px,env(safe-area-inset-bottom))]">
+        <footer className="w-full px-2 pt-1.5 flex flex-col gap-1.5 pb-[max(8px,env(safe-area-inset-bottom))]">
           {/*
             A CITAÇÃO ENQUANTO A RESPOSTA É ESCRITA.
 
@@ -1912,25 +1882,25 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               </button>
             </div>
           ) : (
-          /* Linha de digitação de texto com câmera à esquerda, texto no meio e anexo no outro lado */
-          <div className="flex items-center gap-2">
-            {/* Lado Esquerdo: Botão de Tirar Foto com a Câmera */}
-            <button
-              type="button"
-              id="botao-abrir-camera-chat"
-              onClick={() => setModalCameraAberto(true)}
-              className="w-11 h-11 flex items-center justify-center text-[var(--c-texto-2)] hover:text-blue-600 dark:hover:text-blue-400 rounded-full hover:bg-[var(--c-superficie-2)] flex-shrink-0 transition-colors"
-              title="Tirar foto da peça com a câmera"
-              aria-label="Tirar foto com a câmera"
-            >
-              <Camera className="w-5 h-5" />
-            </button>
+          /*
+            A LINHA DE DIGITAÇÃO, no desenho do WhatsApp — pedido do Elias,
+            com o print dele como modelo.
 
-            {/* Centro: Barra de Texto no Meio */}
+            Uma cápsula só com o texto, o clipe e a câmera DENTRO dela, e
+            ao lado um botão redondo na cor do sistema: microfone com a
+            caixa vazia, enviar com texto. Eram quatro botões soltos de
+            44px lado a lado, que achatavam a caixa de texto justamente
+            no celular, onde ela é mais estreita.
+
+            A câmera some enquanto se digita, como lá: o espaço vai para
+            o texto, e foto no meio de uma frase é raro.
+          */
+          <div className="flex items-end gap-1.5">
+            <div className="flex-1 min-w-0 flex items-center gap-0.5 bg-[var(--c-superficie)] border border-[var(--c-borda)] focus-within:border-[var(--c-acento)] rounded-[22px] pl-4 pr-1 min-h-[44px] shadow-[var(--s-1)] transition-colors">
             <form
               onSubmit={lidarEnvioTexto}
               autoComplete="off"
-              className="flex-1 flex items-center gap-2 min-w-0"
+              className="flex-1 flex items-center min-w-0"
             >
               <input
                 id="campo-mensagem-texto"
@@ -1946,11 +1916,10 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                  * ontem, e a lista tapa justamente o que se está lendo.
                  */
                 autoComplete="off"
-                className="w-full bg-[var(--c-superficie-2)] text-[var(--c-texto)] text-base sm:text-sm rounded-full px-4 py-2.5 outline-none border border-transparent focus:border-[var(--c-acento)] placeholder:text-[var(--c-texto-3)] min-h-[44px]"
+                className="w-full bg-transparent text-[var(--c-texto)] text-base sm:text-sm py-2.5 outline-none placeholder:text-[var(--c-texto-3)]"
               />
             </form>
 
-            {/* Outro Lado (Direita): Botão de Anexar Arquivo */}
             <input
               type="file"
               ref={refInputArquivo}
@@ -1962,12 +1931,26 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               type="button"
               id="botao-anexo"
               onClick={() => refInputArquivo.current?.click()}
-              className="w-11 h-11 flex items-center justify-center text-[var(--c-texto-2)] hover:text-[var(--c-texto)] rounded-full hover:bg-[var(--c-superficie-2)] flex-shrink-0 transition-colors"
+              className="w-9 h-9 flex items-center justify-center text-[var(--c-texto-3)] hover:text-[var(--c-texto)] rounded-full flex-shrink-0 transition-colors"
               title="Enviar arquivo ou documento"
               aria-label="Enviar arquivo"
             >
               <Paperclip className="w-5 h-5" />
             </button>
+
+            {!textoMensagem.trim() && (
+              <button
+                type="button"
+                id="botao-abrir-camera-chat"
+                onClick={() => setModalCameraAberto(true)}
+                className="w-9 h-9 flex items-center justify-center text-[var(--c-texto-3)] hover:text-[var(--c-texto)] rounded-full flex-shrink-0 transition-colors"
+                title="Tirar foto da peça com a câmera"
+                aria-label="Tirar foto com a câmera"
+              >
+                <Camera className="w-5 h-5" />
+              </button>
+            )}
+            </div>
 
             {/*
               O MICROFONE SÓ APARECE COM A CAIXA VAZIA.
@@ -1981,7 +1964,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                 type="button"
                 id="botao-gravar-audio"
                 onClick={comecarAGravar}
-                className="w-11 h-11 flex items-center justify-center text-[var(--c-texto-2)] hover:text-[var(--c-acento)] rounded-full hover:bg-[var(--c-superficie-2)] flex-shrink-0 transition-colors"
+                className="w-11 h-11 flex items-center justify-center bg-[var(--c-acento)] text-[var(--c-sobre-acento)] rounded-full flex-shrink-0 shadow-[var(--s-1)] hover:brightness-110 active:scale-95 transition-all"
                 title="Gravar um áudio"
                 aria-label="Gravar áudio"
               >
@@ -1995,10 +1978,10 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                 type="button"
                 onClick={lidarEnvioTexto}
                 id="botao-enviar-mensagem"
-                className="w-11 h-11 rounded-full bg-[var(--c-acento)] text-[var(--c-sobre-acento)] flex items-center justify-center flex-shrink-0 active:scale-95 transition-all"
+                className="w-11 h-11 rounded-full bg-[var(--c-acento)] text-[var(--c-sobre-acento)] flex items-center justify-center flex-shrink-0 shadow-[var(--s-1)] active:scale-95 transition-all"
                 aria-label="Enviar mensagem"
               >
-                <Send className="w-4 h-4 ml-0.5" />
+                <Send className="w-5 h-5 ml-0.5" />
               </button>
             )}
           </div>

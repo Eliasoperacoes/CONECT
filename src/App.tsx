@@ -1171,8 +1171,21 @@ export default function App() {
         />
       )}
 
-      {/* Topo Geral da Aplicação Principal */}
-      <header className="px-4 py-2.5 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] flex items-center justify-between flex-shrink-0 z-10">
+      {/*
+        Topo Geral da Aplicação Principal.
+
+        NO CELULAR, COM UMA CONVERSA ABERTA, ELE SAI. A conversa tem o
+        próprio cabeçalho (voltar, nome, lupa), e os dois empilhados
+        achatavam as mensagens — pedido do Elias: "caber mais mensagens
+        possível na vertical". O sino e o perfil ficam a um "voltar" de
+        distância. No computador a conversa divide a tela com o resto,
+        então o topo fica.
+      */}
+      <header
+        className={`px-4 py-2.5 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] items-center justify-between flex-shrink-0 z-10 ${
+          conversaAtiva ? 'hidden md:flex' : 'flex'
+        }`}
+      >
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shadow-xs">
             <MessageSquare className="w-4 h-4" />
