@@ -31,7 +31,7 @@
  * ponte nativa de verdade do outro lado — é o próprio aplicativo
  * respondendo, não uma pista sobre ele.
  */
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin, SystemBars, SystemBarsStyle } from '@capacitor/core';
 import { App as AplicativoNativo } from '@capacitor/app';
 import { tratarVoltar } from './voltar';
 
@@ -61,6 +61,82 @@ export const rodandoNoAplicativo = (): boolean => {
 /** Onde estamos, por extenso. Serve para a tela explicar a si mesma. */
 export const ondeEstamosRodando = (): 'aplicativo' | 'navegador' =>
   rodandoNoAplicativo() ? 'aplicativo' : 'navegador';
+
+/** O plugin nativo do próprio app (android/.../Barras.java). */
+const Barras = registerPlugin<{ pintar(opcoes: { cor: string }): Promise<void> }>('Barras');
+
+/** "#0E1216" é escuro; "#F4F6F8" é claro. Pela luminância, como o olho vê. */
+export const corEhEscura = (cor: string): boolean => {
+  const hex = cor.trim().replace('#', '');
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return false;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5;
+};
+
+/**
+ * AS BARRAS DO ANDROID SEGUEM O TEMA DO CONECTA — e não o do celular.
+ *
+ * A barra de status (hora, bateria, avisos) e a de navegação ficavam
+ * brancas com o CONECTA escuro. E com o celular no modo escuro, os ícones
+ * da barra saíam brancos sobre o branco: a hora e os avisos sumiam.
+ *
+ * A cor sai do próprio tema (`--c-canvas` do index.css), e não de uma
+ * lista aqui: tema novo, cor nova, sem mexer neste arquivo. Os ícones
+ * ficam escuros sobre fundo claro e claros sobre fundo escuro.
+ *
+ * Acompanha as duas mudanças possíveis: a pessoa trocar o tema no
+ * sistema (`data-tema` na raiz) e, no "Automático", o celular trocar de
+ * claro para escuro.
+ *
+ * @returns a função que para de acompanhar
+ */
+export const acompanharTemaNasBarras = (): (() => void) => {
+  if (!rodandoNoAplicativo() || typeof document === 'undefined') return () => {};
+
+  /**
+   * A PÁGINA FICA FORA DAS BARRAS, em todo aparelho.
+   *
+   * O index.html pede `viewport-fit=cover`, que o iPhone precisa. No
+   * Android, com o WebView 140 em diante, o Capacitor obedece esse
+   * pedido e estica a página para BAIXO da hora e da barra de gestos —
+   * e o sistema não reserva esse espaço no topo. O WebView atualiza
+   * sozinho pela Play Store: o mesmo APK passaria a esconder o
+   * cabeçalho atrás da hora, de um dia para o outro.
+   *
+   * Dentro do aplicativo o pedido vira `auto`: a página fica entre as
+   * barras, e o que aparece nelas é o fundo que `Barras.pintar` colore.
+   * Fora do aplicativo (iPhone, navegador) nada muda.
+   */
+  const meta = document.querySelector('meta[name="viewport"]');
+  const conteudo = meta?.getAttribute('content');
+  if (meta && conteudo?.includes('viewport-fit=cover')) {
+    meta.setAttribute('content', conteudo.replace('viewport-fit=cover', 'viewport-fit=auto'));
+  }
+
+  const pintar = () => {
+    const cor = getComputedStyle(document.documentElement).getPropertyValue('--c-canvas').trim();
+    if (!cor) return;
+    const escuro = corEhEscura(cor);
+    /* DARK = ícones CLAROS (para fundo escuro); LIGHT = ícones escuros */
+    void SystemBars?.setStyle?.({ style: escuro ? SystemBarsStyle.Dark : SystemBarsStyle.Light })?.catch?.(
+      () => {}
+    );
+    void Barras.pintar?.({ cor })?.catch?.(() => {});
+  };
+
+  pintar();
+
+  const observador = new MutationObserver(pintar);
+  observador.observe(document.documentElement, { attributes: true, attributeFilter: ['data-tema'] });
+
+  const celular = window.matchMedia?.('(prefers-color-scheme: dark)');
+  celular?.addEventListener?.('change', pintar);
+
+  return () => {
+    observador.disconnect();
+    celular?.removeEventListener?.('change', pintar);
+  };
+};
 
 /**
  * O VOLTAR DO APARELHO.

@@ -1,18 +1,25 @@
 package br.com.malachiasautopecas.conecta;
 
+import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.service.notification.StatusBarNotification;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.app.Person;
 import androidx.core.app.RemoteInput;
 import androidx.core.content.ContextCompat;
 import com.capacitorjs.plugins.pushnotifications.MessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,8 +31,20 @@ import java.util.Map;
  *
  * Quando o servidor manda `notification`, o próprio Android desenha o
  * aviso com o aplicativo fechado — e o desenho dele não tem campo de
- * resposta. Para existir o "Responder", o servidor (enviar-aviso) manda
- * SÓ DADOS, e este serviço monta o aviso.
+ * resposta, não empilha mensagens e não agrupa conversas. O servidor
+ * (enviar-aviso) manda SÓ DADOS, e este serviço monta o aviso.
+ *
+ * ===================================================================
+ * COMO O WHATSAPP
+ * ===================================================================
+ *
+ *   · cada conversa é UM aviso, e as mensagens se EMPILHAM nele
+ *     (MessagingStyle) — "Fabio: chegou a peça", "Fabio: já separei";
+ *   · com duas conversas ou mais, um aviso PRINCIPAL resume tudo:
+ *     "4 mensagens de 2 conversas", com as conversas dentro dele;
+ *   · o cabeçalho diz "Malachias" — é o nome do aplicativo para o
+ *     Android (strings.xml, `app_name`); o ícone na tela inicial
+ *     continua "CONECTA" (`title_activity_main`).
  *
  * ===================================================================
  * POR QUE ESTENDER O SERVIÇO DO CAPACITOR
@@ -43,24 +62,77 @@ public class ServicoDeAvisos extends MessagingService {
     static final String CANAL = "mensagens";
 
     /** A chave do texto digitado no campo "Responder". */
-    static final String CHAVE_DO_TEXTO = "texto";
+    static final String CHAVE_DO_TEXTO = "texto_digitado";
+
+    /** O grupo que junta as conversas sob o aviso principal. */
+    static final String GRUPO = "conecta_conversas";
+
+    /** O id do aviso principal. Nenhuma conversa tem hash igual a este. */
+    static final int ID_DO_RESUMO = Integer.MIN_VALUE + 7;
+
+    /**
+     * O que vem do servidor e viaja junto com o aviso (até o "Responder").
+     * Uma lista só: o que o serviço lê é o que o receptor devolve.
+     */
+    static final String[] CHAVES = {
+        "tipo", "conversaId", "mensagemId", "remetente", "texto", "conversa", "ehGrupo", "vale", "respostaUrl",
+    };
+
+    /** Quem está com o aparelho: as respostas dele aparecem como "Você". */
+    static final Person EU = new Person.Builder().setName("Você").build();
 
     @Override
     public void onMessageReceived(@NonNull RemoteMessage mensagem) {
         super.onMessageReceived(mensagem);
 
         Map<String, String> dados = mensagem.getData();
-        if (!dados.containsKey("titulo")) return;
+        if (!dados.containsKey("remetente")) return;
 
         // Com o CONECTA na tela, a conversa já mostra a mensagem
         if (MainActivity.naTela) return;
 
-        mostrar(this, dados);
+        NotificationCompat.MessagingStyle estilo = estiloAtual(this, idDoAviso(dados.get("conversaId")));
+        Person quem = new Person.Builder().setName(dados.get("remetente")).setKey(dados.get("remetente")).build();
+        estilo.addMessage(dados.get("texto"), System.currentTimeMillis(), quem);
+
+        publicar(this, new HashMap<>(dados), estilo, false);
     }
 
-    /** Um aviso por conversa: a mensagem nova substitui a anterior. */
+    /** Um aviso por conversa: a mensagem nova se junta às anteriores. */
     static int idDoAviso(String conversaId) {
         return conversaId == null ? 0 : conversaId.hashCode();
+    }
+
+    /**
+     * As mensagens que JÁ ESTÃO no aviso desta conversa, para a nova se
+     * empilhar em cima delas. Aviso apagado ou tocado some da barra — e aí
+     * a conversa recomeça do zero, como no WhatsApp.
+     */
+    static NotificationCompat.MessagingStyle estiloAtual(Context contexto, int id) {
+        StatusBarNotification ativo = avisoAtivo(contexto, id);
+        if (ativo != null) {
+            NotificationCompat.MessagingStyle existente =
+                NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(ativo.getNotification());
+            if (existente != null) return existente;
+        }
+        return new NotificationCompat.MessagingStyle(EU);
+    }
+
+    @Nullable
+    static StatusBarNotification avisoAtivo(Context contexto, int id) {
+        for (StatusBarNotification s : avisosAtivos(contexto)) {
+            if (s.getId() == id) return s;
+        }
+        return null;
+    }
+
+    static List<StatusBarNotification> avisosAtivos(Context contexto) {
+        List<StatusBarNotification> lista = new ArrayList<>();
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return lista;
+        NotificationManager gerente = contexto.getSystemService(NotificationManager.class);
+        if (gerente == null) return lista;
+        for (StatusBarNotification s : gerente.getActiveNotifications()) lista.add(s);
+        return lista;
     }
 
     static void garantirCanal(Context contexto) {
@@ -73,11 +145,7 @@ public class ServicoDeAvisos extends MessagingService {
          * padrão ele entra calado na barra, e aviso que ninguém vê chegar é
          * aviso que não chegou.
          */
-        NotificationChannel canal = new NotificationChannel(
-            CANAL,
-            "Mensagens",
-            NotificationManager.IMPORTANCE_HIGH
-        );
+        NotificationChannel canal = new NotificationChannel(CANAL, "Mensagens", NotificationManager.IMPORTANCE_HIGH);
         canal.setDescription("Mensagens das conversas e avisos da rede");
         canal.enableVibration(true);
         gerente.createNotificationChannel(canal);
@@ -100,73 +168,150 @@ public class ServicoDeAvisos extends MessagingService {
         abrir.putExtra("google.message_id", mensagemId != null ? mensagemId : "aviso");
         abrir.putExtra("tipo", dados.get("tipo"));
         abrir.putExtra("conversaId", dados.get("conversaId"));
-        return PendingIntent.getActivity(
-            contexto,
-            id,
-            abrir,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
+        return PendingIntent.getActivity(contexto, id, abrir, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
-    static NotificationCompat.Builder base(Context contexto, Map<String, String> dados, int id) {
+    /**
+     * Desenha (ou redesenha) o aviso de uma conversa com as mensagens de
+     * `estilo`, e em seguida o aviso principal.
+     *
+     * @param silencioso redesenho depois de uma resposta: não toca de novo
+     */
+    static void publicar(Context contexto, Map<String, String> dados, NotificationCompat.MessagingStyle estilo, boolean silencioso) {
         garantirCanal(contexto);
-        String corpo = dados.get("corpo");
-        return new NotificationCompat.Builder(contexto, CANAL)
+        int id = idDoAviso(dados.get("conversaId"));
+        boolean ehGrupo = "true".equals(dados.get("ehGrupo"));
+
+        // Em grupo o título é o grupo, e cada linha diz quem falou
+        if (ehGrupo) {
+            estilo.setConversationTitle(dados.get("conversa"));
+            estilo.setGroupConversation(true);
+        }
+
+        NotificationCompat.Builder aviso = new NotificationCompat.Builder(contexto, CANAL)
             .setSmallIcon(R.drawable.ic_stat_conecta)
             .setColor(ContextCompat.getColor(contexto, R.color.cor_conecta))
-            .setContentTitle(dados.get("titulo"))
-            .setContentText(corpo)
-            .setStyle(new NotificationCompat.BigTextStyle().bigText(corpo))
+            .setContentTitle(ehGrupo ? dados.get("conversa") : dados.get("remetente"))
+            .setContentText(dados.get("texto"))
+            .setStyle(estilo)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(silencioso)
+            .setGroup(GRUPO)
+            // Quem toca e vibra são as conversas, não o resumo: sem isto o
+            // aparelho avisaria duas vezes a mesma mensagem
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
             .setContentIntent(aoTocar(contexto, dados, id));
-    }
 
-    static void mostrar(Context contexto, Map<String, String> dados) {
-        int id = idDoAviso(dados.get("conversaId"));
-        NotificationCompat.Builder aviso = base(contexto, dados, id);
-
-        /*
-         * O "RESPONDER" SÓ EXISTE QUANDO O SERVIDOR MANDOU O VALE.
-         *
-         * O vale é a prova de quem responde (o aparelho fechado não tem
-         * sessão). Sem ele — grupo de avisos da rede, grupo só de
-         * gestores — o aviso chega sem o botão, e quem pode publicar ali
-         * abre o aplicativo.
-         */
-        String vale = dados.get("vale");
-        String endereco = dados.get("respostaUrl");
-        if (vale != null && endereco != null) {
-            Intent responder = new Intent(contexto, RespostaRapida.class);
-            responder.putExtra("vale", vale);
-            responder.putExtra("respostaUrl", endereco);
-            responder.putExtra("conversaId", dados.get("conversaId"));
-            responder.putExtra("mensagemId", dados.get("mensagemId"));
-            responder.putExtra("tipo", dados.get("tipo"));
-            responder.putExtra("titulo", dados.get("titulo"));
-
-            // O campo de texto só funciona com PendingIntent MUTÁVEL: é o
-            // Android que escreve o texto digitado dentro dele
-            int bandeiras = PendingIntent.FLAG_UPDATE_CURRENT;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                bandeiras |= PendingIntent.FLAG_MUTABLE;
-            }
-            PendingIntent aoResponder = PendingIntent.getBroadcast(contexto, id, responder, bandeiras);
-
-            RemoteInput campo = new RemoteInput.Builder(CHAVE_DO_TEXTO).setLabel("Responder").build();
-            aviso.addAction(
-                new NotificationCompat.Action.Builder(R.drawable.ic_stat_conecta, "Responder", aoResponder)
-                    .addRemoteInput(campo)
-                    .setAllowGeneratedReplies(true)
-                    .build()
-            );
-        }
+        acrescentarResponder(contexto, aviso, dados, id);
 
         try {
             NotificationManagerCompat.from(contexto).notify(id, aviso.build());
         } catch (SecurityException semPermissao) {
-            // Notificação negada nos Ajustes: não há o que mostrar
+            return; // Notificação negada nos Ajustes: não há o que mostrar
+        }
+
+        atualizarResumo(contexto);
+    }
+
+    /**
+     * O "RESPONDER" SÓ EXISTE QUANDO O SERVIDOR MANDOU O VALE.
+     *
+     * O vale é a prova de quem responde (o aparelho fechado não tem
+     * sessão). Sem ele — grupo de avisos da rede, grupo só de gestores —
+     * o aviso chega sem o botão, e quem pode publicar ali abre o
+     * aplicativo.
+     */
+    static void acrescentarResponder(Context contexto, NotificationCompat.Builder aviso, Map<String, String> dados, int id) {
+        if (dados.get("vale") == null || dados.get("respostaUrl") == null) return;
+
+        Intent responder = new Intent(contexto, RespostaRapida.class);
+        for (String chave : CHAVES) responder.putExtra(chave, dados.get(chave));
+
+        // O campo de texto só funciona com PendingIntent MUTÁVEL: é o
+        // Android que escreve o texto digitado dentro dele
+        int bandeiras = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) bandeiras |= PendingIntent.FLAG_MUTABLE;
+        PendingIntent aoResponder = PendingIntent.getBroadcast(contexto, id, responder, bandeiras);
+
+        RemoteInput campo = new RemoteInput.Builder(CHAVE_DO_TEXTO).setLabel("Responder").build();
+        aviso.addAction(
+            new NotificationCompat.Action.Builder(R.drawable.ic_stat_conecta, "Responder", aoResponder)
+                .addRemoteInput(campo)
+                .setAllowGeneratedReplies(true)
+                .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+                .build()
+        );
+    }
+
+    /**
+     * O AVISO PRINCIPAL: "4 mensagens de 2 conversas".
+     *
+     * Só existe com DUAS conversas ou mais — com uma só, ele repetiria a
+     * própria conversa em cima dela. A contagem sai dos avisos que estão
+     * na barra agora, e não de um contador guardado: aviso que a pessoa
+     * apagou sai da conta sozinho.
+     */
+    static void atualizarResumo(Context contexto) {
+        List<StatusBarNotification> conversas = new ArrayList<>();
+        for (StatusBarNotification s : avisosAtivos(contexto)) {
+            if (s.getId() != ID_DO_RESUMO && GRUPO.equals(s.getNotification().getGroup())) conversas.add(s);
+        }
+
+        if (conversas.size() < 2) {
+            NotificationManagerCompat.from(contexto).cancel(ID_DO_RESUMO);
+            return;
+        }
+
+        NotificationCompat.InboxStyle lista = new NotificationCompat.InboxStyle();
+        int mensagens = 0;
+        for (StatusBarNotification s : conversas) {
+            NotificationCompat.MessagingStyle estilo =
+                NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(s.getNotification());
+            if (estilo == null) continue;
+
+            List<NotificationCompat.MessagingStyle.Message> linhas = estilo.getMessages();
+            NotificationCompat.MessagingStyle.Message ultima = null;
+            for (NotificationCompat.MessagingStyle.Message m : linhas) {
+                // As respostas da própria pessoa não contam como recebidas
+                if (m.getPerson() != null) {
+                    mensagens++;
+                    ultima = m;
+                }
+            }
+            if (ultima != null && ultima.getPerson() != null) {
+                lista.addLine(ultima.getPerson().getName() + ": " + ultima.getText());
+            }
+        }
+
+        String resumo = (mensagens == 1 ? "1 mensagem" : mensagens + " mensagens") + " de " + conversas.size() + " conversas";
+        lista.setSummaryText(resumo);
+
+        Intent abrir = new Intent(contexto, MainActivity.class);
+        abrir.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        PendingIntent aoTocar = PendingIntent.getActivity(
+            contexto, ID_DO_RESUMO, abrir, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Notification principal = new NotificationCompat.Builder(contexto, CANAL)
+            .setSmallIcon(R.drawable.ic_stat_conecta)
+            .setColor(ContextCompat.getColor(contexto, R.color.cor_conecta))
+            .setContentTitle(resumo)
+            .setContentText(resumo)
+            .setSubText(resumo)
+            .setStyle(lista)
+            .setGroup(GRUPO)
+            .setGroupSummary(true)
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+            .setAutoCancel(true)
+            .setContentIntent(aoTocar)
+            .build();
+
+        try {
+            NotificationManagerCompat.from(contexto).notify(ID_DO_RESUMO, principal);
+        } catch (SecurityException semPermissao) {
+            // Notificação negada nos Ajustes
         }
     }
 }

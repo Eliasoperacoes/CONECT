@@ -1,6 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">CONECTA</string>
+    <!--
+      DOIS NOMES, de propósito.
+      app_name: o nome do aplicativo para o Android — é o que aparece no
+      cabeçalho de cada aviso ("Malachias"), nos Ajustes e nos pedidos de
+      permissão. title_activity_main: o que aparece embaixo do ícone na
+      tela inicial ("CONECTA").
+    -->
+    <string name="app_name">Malachias</string>
     <string name="title_activity_main">CONECTA</string>
     <string name="package_name">br.com.malachiasautopecas.conecta</string>
     <string name="custom_url_scheme">br.com.malachiasautopecas.conecta</string>

@@ -92,7 +92,11 @@ import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
 import { ligarAvisoNativo, desligarAvisoNativo } from './servicos/pushNativo';
 import { encerrarEspera } from './servicos/telaDeEspera';
-import { ligarBotaoVoltar, ouvirEnderecosDoAplicativo } from './servicos/aplicativo';
+import {
+  acompanharTemaNasBarras,
+  ligarBotaoVoltar,
+  ouvirEnderecosDoAplicativo,
+} from './servicos/aplicativo';
 import { montarPreviaDaMensagem } from './servicos/nuvemComunicacao';
 import {
   atualizarTituloDaAba,
@@ -173,6 +177,15 @@ export default function App() {
   const consumirSecaoAlvo = useCallback(() => setSecaoAlvo(null), []);
   /** O código do cartaz de ponto, quando a pessoa chegou por ele. */
   const [codigoDoCartaz, setCodigoDoCartaz] = useState<string | null>(null);
+  /**
+   * A aba que o endereço pediu (atalho do ícone, cartaz de ponto).
+   *
+   * A sessão do banco é conferida DEPOIS de o endereço ser lido, e ao
+   * terminar restaura a última aba usada. Sem guardar o pedido, a
+   * restauração passava por cima dele. Ref, e não estado: é recado para
+   * a restauração, não coisa a desenhar.
+   */
+  const abaPedidaNaEntrada = useRef<AbaPrincipal | null>(null);
   /* "Bater ponto" pedido pelo atalho do ícone; a aba de ponto o consome,
      como consome o código do cartaz, para não abrir duas vezes */
   const [pedidoDeBater, setPedidoDeBater] = useState(false);
@@ -346,6 +359,7 @@ export default function App() {
         tirar('ponto');
         setCodigoDoCartaz(doCartaz);
         setAbaAtiva('ponto');
+        abaPedidaNaEntrada.current = 'ponto';
       }
 
       /**
@@ -363,6 +377,7 @@ export default function App() {
       if (atalho && (ABAS_PRINCIPAIS as readonly string[]).includes(atalho)) {
         tirar('atalho');
         setAbaAtiva(atalho as AbaPrincipal);
+        abaPedidaNaEntrada.current = atalho as AbaPrincipal;
         /* "Bater ponto" abre a batida com a câmera pronta, e não só a
            aba: quem segura o ícone e escolhe o atalho quer bater */
         if (atalho === 'ponto') setPedidoDeBater(true);
@@ -552,6 +567,9 @@ export default function App() {
    * Pela referência, e não pelo estado direto: o ouvinte é ligado uma
    * vez só, e leria para sempre a conversa e a aba do primeiro render.
    */
+  /* As barras do Android na cor do tema do CONECTA (aplicativo.ts) */
+  useEffect(() => acompanharTemaNasBarras(), []);
+
   const estadoParaVoltar = useRef({ conversaAtivaId, abaAtivaEscolhida });
   estadoParaVoltar.current = { conversaAtivaId, abaAtivaEscolhida };
   useEffect(
@@ -747,9 +765,16 @@ export default function App() {
          * lá em cima devolveria sempre o padrão, e a aba lembrada nunca
          * seria restaurada.
          */
+        /*
+         * O ATALHO VENCE A MEMÓRIA. Quem entrou pelo atalho "Bater ponto"
+         * do ícone pediu o ponto; restaurar a última aba por cima desfazia
+         * o pedido meio segundo depois — o atalho só abria o aplicativo.
+         */
         setAbaAtiva(
-          ondeParei(eu.id, 'aba-principal', ABAS_PRINCIPAIS, 'conversas')
+          abaPedidaNaEntrada.current ??
+            ondeParei(eu.id, 'aba-principal', ABAS_PRINCIPAIS, 'conversas')
         );
+        abaPedidaNaEntrada.current = null;
 
         /**
          * A REGRA DE GUARDA DO HISTÓRICO roda aqui, em segundo plano.

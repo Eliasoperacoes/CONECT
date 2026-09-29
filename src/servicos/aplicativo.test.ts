@@ -17,9 +17,23 @@ let ouvintes: Record<string, (dado?: any) => void> = {};
 let minimizou = 0;
 let enderecoDeLancamento: string | undefined;
 
+/** O que chegou às barras: a cor do fundo e o estilo dos ícones. */
+let pintadas: string[] = [];
+let estilos: string[] = [];
+
 mock.module('@capacitor/core', () => ({
   Capacitor: { isNativePlatform: () => dentroDoAplicativo },
-  registerPlugin: () => ({}),
+  registerPlugin: () => ({
+    pintar: async ({ cor }: { cor: string }) => {
+      pintadas.push(cor);
+    },
+  }),
+  SystemBars: {
+    setStyle: async ({ style }: { style: string }) => {
+      estilos.push(style);
+    },
+  },
+  SystemBarsStyle: { Dark: 'DARK', Light: 'LIGHT', Default: 'DEFAULT' },
 }));
 
 mock.module('@capacitor/app', () => ({
@@ -36,7 +50,8 @@ mock.module('@capacitor/app', () => ({
 }));
 
 const { registrarVoltar, tratarVoltar, alturaDaPilha } = await import('./voltar');
-const { ligarBotaoVoltar, ouvirEnderecosDoAplicativo } = await import('./aplicativo');
+const { ligarBotaoVoltar, ouvirEnderecosDoAplicativo, acompanharTemaNasBarras, corEhEscura } =
+  await import('./aplicativo');
 
 beforeEach(() => {
   dentroDoAplicativo = true;
@@ -200,6 +215,90 @@ test('o endereço do atalho é o que o aplicativo aceita abrir', async () => {
   expect(manifesto).toContain('android:scheme="conecta"');
   expect(manifesto).toContain('android:host="abrir"');
   expect(manifesto).toContain('android:resource="@xml/shortcuts"');
+});
+
+test('O ATALHO VENCE A ÚLTIMA ABA USADA', async () => {
+  /**
+   * O defeito do primeiro APK com atalhos: o atalho escolhia a aba, a
+   * sessão do banco terminava de ser conferida meio segundo depois e
+   * restaurava a última aba por cima. O atalho só abria o aplicativo.
+   */
+  const app = await Bun.file('src/App.tsx').text();
+  const restauracao = app.slice(app.indexOf('SÓ AGORA DÁ PARA SABER ONDE A PESSOA PAROU'));
+  expect(restauracao).toMatch(/abaPedidaNaEntrada\.current \?\?\s+ondeParei\(eu\.id/);
+  expect(app).toContain('abaPedidaNaEntrada.current = atalho as AbaPrincipal;');
+  expect(app).toContain("abaPedidaNaEntrada.current = 'ponto';");
+});
+
+// ===============================================================
+// AS BARRAS DO ANDROID
+// ===============================================================
+
+test('a cor do tema diz se os ícones da barra são claros ou escuros', () => {
+  expect(corEhEscura('#0E1216')).toBe(true);
+  expect(corEhEscura('#F4F6F8')).toBe(false);
+  expect(corEhEscura(' #FFFFFF ')).toBe(false);
+  expect(corEhEscura('lixo')).toBe(false);
+});
+
+test('AS BARRAS SEGUEM O TEMA DO CONECTA, e a página fica fora delas', () => {
+  /**
+   * Com o CONECTA escuro as barras ficavam brancas; com o celular escuro
+   * os ícones saíam brancos no branco — a hora e os avisos sumiam.
+   */
+  pintadas = [];
+  estilos = [];
+  let canvas = '#0E1216';
+  let aoMudar: () => void = () => {};
+  const meta = {
+    conteudo: 'width=device-width, initial-scale=1.0, viewport-fit=cover',
+    getAttribute: () => meta.conteudo,
+    setAttribute: (_: string, v: string) => (meta.conteudo = v),
+  };
+  const g = globalThis as any;
+  g.document = { documentElement: {}, querySelector: () => meta };
+  g.getComputedStyle = () => ({ getPropertyValue: () => canvas });
+  /* Só dispara a troca se alguém de fato pediu para observar o tema */
+  g.MutationObserver = class {
+    fn: () => void;
+    constructor(fn: () => void) {
+      this.fn = fn;
+    }
+    observe(_: unknown, opcoes: { attributeFilter?: string[] }) {
+      if (opcoes?.attributeFilter?.includes('data-tema')) aoMudar = this.fn;
+    }
+    disconnect() {}
+  };
+  g.window = { matchMedia: () => ({ addEventListener() {}, removeEventListener() {} }) };
+
+  try {
+    acompanharTemaNasBarras();
+    expect(pintadas).toEqual(['#0E1216']);
+    expect(estilos).toEqual(['DARK']);
+    expect(meta.conteudo).toContain('viewport-fit=auto');
+    expect(meta.conteudo).not.toContain('cover');
+
+    // A pessoa troca para o tema claro dentro do CONECTA
+    canvas = '#F4F6F8';
+    aoMudar();
+    expect(pintadas).toEqual(['#0E1216', '#F4F6F8']);
+    expect(estilos).toEqual(['DARK', 'LIGHT']);
+  } finally {
+    delete g.document;
+    delete g.getComputedStyle;
+    delete g.MutationObserver;
+    delete g.window;
+  }
+});
+
+test('o plugin das barras está registrado no aplicativo', async () => {
+  const atividade = await Bun.file(
+    'android/app/src/main/java/br/com/malachiasautopecas/conecta/MainActivity.java'
+  ).text();
+  expect(atividade).toContain('registerPlugin(Barras.class);');
+  expect(atividade.indexOf('registerPlugin(Barras.class)')).toBeLessThan(atividade.indexOf('super.onCreate'));
+  const app = await Bun.file('src/App.tsx').text();
+  expect(app).toContain('useEffect(() => acompanharTemaNasBarras(), []);');
 });
 
 test('"Bater ponto" abre a batida, e não só a aba', async () => {

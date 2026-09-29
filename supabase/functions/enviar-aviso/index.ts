@@ -322,16 +322,14 @@ const avisarConversa = async (
   if (!aparelhos || aparelhos.length === 0) return { entregues: 0 };
 
   /**
-   * "Malachias Pirassununga - Elias" em cima, a mensagem embaixo.
+   * QUEM FALOU, O QUE DISSE, E EM QUE GRUPO — separados.
    *
-   * Pedido do Elias: a loja de quem ENVIOU vem no título. Com 89 pessoas
-   * em 5 lojas há nomes repetidos, e "Fabio: chegou a peça" não diz qual
-   * Fabio nem de onde a peça saiu. Em grupo, o nome do grupo abre o
-   * corpo — sem ele, a resposta iria para o privado de quem mandou.
+   * O aparelho monta o aviso no estilo do WhatsApp (ServicoDeAvisos):
+   * "Malachias" no cabeçalho (é o nome do aplicativo), a conversa como
+   * título e cada mensagem empilhada como "Nome: texto". Para empilhar,
+   * ele precisa das partes, e não de um título já montado aqui.
    */
   const ehGrupo = conversa.tipo === 'grupo';
-  const titulo = `Malachias ${eu.loja} - ${eu.nome}`;
-  const corpo = ehGrupo ? `${conversa.nome} · ${previa}` : previa;
 
   const conta = JSON.parse(segredo) as ContaDeServico;
   const acesso = await obterTokenDoGoogle(conta);
@@ -361,9 +359,10 @@ const avisarConversa = async (
         tipo: 'conversa',
         conversaId: conversa.id,
         mensagemId,
-        titulo,
-        corpo,
-        canal: 'mensagens',
+        remetente: eu.nome,
+        texto: previa,
+        conversa: conversa.nome,
+        ehGrupo: ehGrupo ? 'true' : 'false',
       };
       if (respondivel) {
         dados.vale = await assinarVale({

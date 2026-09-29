@@ -99,6 +99,15 @@ const config: CapacitorConfig = {
   },
 
   plugins: {
+    SystemBars: {
+      /**
+       * A página começa FORA das barras (`auto`), e não embaixo delas.
+       * `acompanharTemaNasBarras` troca o `viewport-fit=cover` do
+       * index.html por `auto` dentro do app; esta dica evita o pulo de
+       * layout até essa troca acontecer.
+       */
+      initialViewportFitValueHint: 'auto',
+    },
     PushNotifications: {
       /**
        * VAZIO DE PROPÓSITO: o plugin não desenha aviso nenhum.

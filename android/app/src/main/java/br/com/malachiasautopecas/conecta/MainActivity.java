@@ -1,8 +1,16 @@
 package br.com.malachiasautopecas.conecta;
 
+import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+
+    @Override
+    public void onCreate(Bundle estado) {
+        // Plugins do próprio app entram ANTES do super, que monta a ponte
+        registerPlugin(Barras.class);
+        super.onCreate(estado);
+    }
 
     /**
      * O CONECTA ESTÁ NA TELA AGORA?

@@ -50,6 +50,8 @@ let ouvintes: Record<string, (dado: any) => void> = {};
 mock.module('@capacitor/core', () => ({
   Capacitor: { isNativePlatform: () => dentroDoAplicativo },
   registerPlugin: () => ({}),
+  SystemBars: {},
+  SystemBarsStyle: { Dark: 'DARK', Light: 'LIGHT', Default: 'DEFAULT' },
 }));
 
 /* `aplicativo.ts` liga o voltar e os atalhos por este plugin */

@@ -175,8 +175,9 @@ test('o aviso vai SÓ COM DADOS, para o aparelho montar o "Responder"', async ()
   expect(aviso.token).toBe('celular-bia');
   expect(aviso.notification).toBeUndefined();
   expect(aviso.android.priority).toBe('HIGH');
-  expect(aviso.data.titulo).toBe('Malachias Pirassununga - Ana');
-  expect(aviso.data.corpo).toBe('chegou a peça');
+  expect(aviso.data.remetente).toBe('Ana');
+  expect(aviso.data.texto).toBe('chegou a peça');
+  expect(aviso.data.ehGrupo).toBe('false');
   expect(aviso.data.conversaId).toBe('conv-ana-bia');
   for (const valor of Object.values(aviso.data)) expect(typeof valor).toBe('string');
 });
@@ -190,7 +191,8 @@ test('no grupo de avisos e no grupo de gestores o aviso chega SEM "Responder"', 
   expect(entregas).toHaveLength(2);
   for (const aviso of entregas) {
     expect(aviso.data.vale).toBeUndefined();
-    expect(aviso.data.titulo).toBeTruthy();
+    expect(aviso.data.remetente).toBe('Ana');
+    expect(aviso.data.ehGrupo).toBe('true');
   }
 });
 
@@ -226,7 +228,8 @@ test('A BIA RESPONDE PELA NOTIFICAÇÃO: grava em nome dela e avisa a Ana', asyn
   /* E a Ana é avisada da resposta, pelo mesmo caminho */
   expect(entregas).toHaveLength(1);
   expect(entregas[0].token).toBe('celular-ana');
-  expect(entregas[0].data.titulo).toBe('Malachias Descalvado - Bia');
+  expect(entregas[0].data.remetente).toBe('Bia');
+  expect(entregas[0].data.texto).toBe('já vou buscar');
 });
 
 test('VALE ADULTERADO é recusado: trocar o nome não passa na assinatura', async () => {
@@ -314,9 +317,54 @@ test('com o CONECTA na tela, o aviso não desce por cima', async () => {
   expect(atividade).toContain('naTela = false;');
 });
 
+test('TUDO QUE O SERVIDOR MANDA, o aparelho sabe ler e devolve no "Responder"', async () => {
+  /* Um campo que o servidor manda e o Java não lista some no caminho do
+     "Responder" — e o aviso redesenhado depois da resposta sai sem ele */
+  await valeDaBia();
+  const servico = await Bun.file(`${JAVA}/ServicoDeAvisos.java`).text();
+  const lista = servico.match(/static final String\[\] CHAVES = \{([^}]+)\}/)?.[1] ?? '';
+  const chavesDoJava = [...lista.matchAll(/"([a-zA-Z]+)"/g)].map((m) => m[1]);
+
+  const enviadas = Object.keys(entregas[0].data);
+  expect(enviadas.length).toBeGreaterThan(5);
+  expect(enviadas.filter((c) => !chavesDoJava.includes(c))).toEqual([]);
+});
+
+test('AS MENSAGENS SE EMPILHAM na conversa, e não trocam a anterior', async () => {
+  const servico = await Bun.file(`${JAVA}/ServicoDeAvisos.java`).text();
+  /* Dentro de `estiloAtual`: é ela que devolve as mensagens que já estão
+     no aviso, e não uma pilha nova a cada mensagem */
+  const inicio = servico.indexOf('static NotificationCompat.MessagingStyle estiloAtual(');
+  const estiloAtual = servico.slice(inicio, servico.indexOf('static StatusBarNotification avisoAtivo(', inicio));
+  expect(estiloAtual.length).toBeGreaterThan(0);
+  expect(estiloAtual).toContain('extractMessagingStyleFromNotification(ativo.getNotification())');
+  expect(estiloAtual).toContain('if (existente != null) return existente;');
+  expect(servico).toContain('estilo.addMessage(dados.get("texto")');
+  /* A resposta entra na mesma pilha, como "Você" */
+  const resposta = await Bun.file(`${JAVA}/RespostaRapida.java`).text();
+  expect(resposta).toContain('ServicoDeAvisos.estiloAtual(contexto, id)');
+});
+
+test('COM DUAS CONVERSAS OU MAIS existe o aviso principal, que não toca de novo', async () => {
+  const servico = await Bun.file(`${JAVA}/ServicoDeAvisos.java`).text();
+  expect(servico).toContain('if (conversas.size() < 2)');
+  expect(servico).toContain('.setGroupSummary(true)');
+  expect(servico).toContain('" mensagens") + " de " + conversas.size() + " conversas"');
+  /* Sem isto o aparelho avisa duas vezes a mesma mensagem */
+  expect(servico.split('GROUP_ALERT_CHILDREN').length - 1).toBeGreaterThanOrEqual(2);
+});
+
+test('o cabeçalho do aviso diz "Malachias", e o ícone continua "CONECTA"', async () => {
+  const textos = await Bun.file('android/app/src/main/res/values/strings.xml').text();
+  expect(textos).toContain('<string name="app_name">Malachias</string>');
+  expect(textos).toContain('<string name="title_activity_main">CONECTA</string>');
+  const manifesto = await Bun.file('android/app/src/main/AndroidManifest.xml').text();
+  expect(manifesto).toContain('android:label="@string/title_activity_main"');
+});
+
 test('o "Responder" só aparece quando veio vale, e o toque abre a conversa', async () => {
   const servico = await Bun.file(`${JAVA}/ServicoDeAvisos.java`).text();
-  expect(servico).toContain('if (vale != null && endereco != null)');
+  expect(servico).toContain('if (dados.get("vale") == null || dados.get("respostaUrl") == null) return;');
   /* O plugin só dispara o toque para o sistema com este extra */
   expect(servico).toContain('abrir.putExtra("google.message_id"');
   expect(servico).toContain('abrir.putExtra("conversaId"');

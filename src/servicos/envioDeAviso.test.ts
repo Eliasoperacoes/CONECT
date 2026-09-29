@@ -127,9 +127,8 @@ test('o título sai do banco, e não do aparelho', async () => {
   /* O aparelho manda só a prévia do próprio texto. Título vindo dele
      deixaria um aviso aparecer com o nome de outra pessoa */
   const fonte = await funcao();
-  expect(fonte).toContain('const titulo = `Malachias ${eu.loja} - ${eu.nome}`;');
-  expect(fonte).toContain(".select('id, nome, loja')");
-  expect(fonte).not.toMatch(/corpo\.titulo/);
+  expect(fonte).toContain('remetente: eu.nome,');
+  expect(fonte).not.toMatch(/pedido\.(remetente|titulo)/);
 });
 
 test('o aviso vai pelo canal de alta prioridade, criado por quem o desenha', async () => {

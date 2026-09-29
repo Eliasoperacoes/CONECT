@@ -5,7 +5,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
 import androidx.core.app.RemoteInput;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
@@ -26,7 +25,8 @@ import org.json.JSONObject;
  *
  * DEPOIS DE ENVIAR, O AVISO PRECISA SER REDESENHADO. Sem isso o Android
  * deixa o campo de resposta girando para sempre, e a pessoa não sabe se
- * foi.
+ * foi. A resposta entra na pilha como "Você", igual ao WhatsApp, e o
+ * "Responder" continua lá para a próxima.
  */
 public class RespostaRapida extends BroadcastReceiver {
 
@@ -37,15 +37,9 @@ public class RespostaRapida extends BroadcastReceiver {
         CharSequence texto = digitado.getCharSequence(ServicoDeAvisos.CHAVE_DO_TEXTO);
         if (texto == null || texto.toString().trim().isEmpty()) return;
 
-        final String vale = intent.getStringExtra("vale");
-        final String endereco = intent.getStringExtra("respostaUrl");
         final String resposta = texto.toString().trim();
-
         final Map<String, String> dados = new HashMap<>();
-        dados.put("conversaId", intent.getStringExtra("conversaId"));
-        dados.put("mensagemId", intent.getStringExtra("mensagemId"));
-        dados.put("tipo", intent.getStringExtra("tipo"));
-        dados.put("titulo", intent.getStringExtra("titulo"));
+        for (String chave : ServicoDeAvisos.CHAVES) dados.put(chave, intent.getStringExtra(chave));
 
         // A rede não pode rodar na linha principal; `goAsync` mantém o
         // receptor vivo até a resposta do servidor
@@ -55,7 +49,7 @@ public class RespostaRapida extends BroadcastReceiver {
         new Thread(() -> {
             boolean enviou = false;
             try {
-                enviou = enviar(endereco, vale, resposta);
+                enviou = enviar(dados.get("respostaUrl"), dados.get("vale"), resposta);
             } catch (Exception falha) {
                 enviou = false;
             } finally {
@@ -90,23 +84,12 @@ public class RespostaRapida extends BroadcastReceiver {
 
     private static void redesenhar(Context contexto, Map<String, String> dados, String texto, boolean enviou) {
         int id = ServicoDeAvisos.idDoAviso(dados.get("conversaId"));
+        NotificationCompat.MessagingStyle estilo = ServicoDeAvisos.estiloAtual(contexto, id);
 
-        if (enviou) {
-            dados.put("corpo", "Você: " + texto);
-        } else {
-            // Falhou: o texto não se perde da vista, e o toque abre a conversa
-            dados.put("corpo", "Não foi enviada: \"" + texto + "\". Toque para abrir a conversa.");
-        }
+        // Pessoa nula = quem está com o aparelho ("Você")
+        CharSequence linha = enviou ? texto : "⚠ Não foi enviada — toque para abrir a conversa: " + texto;
+        estilo.addMessage(linha, System.currentTimeMillis(), (androidx.core.app.Person) null);
 
-        NotificationCompat.Builder aviso = ServicoDeAvisos.base(contexto, dados, id).setOnlyAlertOnce(true);
-
-        // Enviada, o aviso some sozinho em instantes: o assunto terminou
-        if (enviou) aviso.setTimeoutAfter(4000);
-
-        try {
-            NotificationManagerCompat.from(contexto).notify(id, aviso.build());
-        } catch (SecurityException semPermissao) {
-            // Notificação negada nos Ajustes
-        }
+        ServicoDeAvisos.publicar(contexto, dados, estilo, true);
     }
 }
