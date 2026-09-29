@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "475241496242",
+    "project_id": "conecta-f668d",
+    "storage_bucket": "conecta-f668d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:475241496242:android:2e7ee5571826bbeab893ab",
+        "android_client_info": {
+          "package_name": "br.com.malachiasautopecas.conecta"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBYweOqzo1BJzUNXN7tqyYz_PmoyXmEv1Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -9,3 +9,25 @@ coverage/
 
 # Logs de sessao da IDE (AI Studio / Antigravity) - nao versionar
 .antigravity/
+
+# ------------------------------------------------------------
+# O PROJETO ANDROID
+#
+# A pasta `android/` VAI para o git: ela tem o `google-services.json`,
+# o nome do pacote e as permissões — sem ela, ninguém consegue gerar o
+# APK a partir deste repositório.
+#
+# `google-services.json` não é segredo: ele é config de CLIENTE, e a
+# chave dentro dele só funciona para o pacote
+# `br.com.malachiasautopecas.conecta`. O que é segredo é a chave de
+# CONTA DE SERVIÇO, que envia os avisos — essa mora nos secrets do
+# Supabase e nunca entra aqui.
+#
+# O que fica de fora é o que o Gradle GERA a cada compilação.
+# ------------------------------------------------------------
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/capacitor-cordova-android-plugins/
