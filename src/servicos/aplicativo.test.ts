@@ -241,7 +241,7 @@ test('a cor do tema diz se os ícones da barra são claros ou escuros', () => {
   expect(corEhEscura('lixo')).toBe(false);
 });
 
-test('AS BARRAS SEGUEM O TEMA DO CONECTA, e a página fica fora delas', () => {
+test('AS BARRAS SEGUEM O TEMA DO CONECTA', () => {
   /**
    * Com o CONECTA escuro as barras ficavam brancas; com o celular escuro
    * os ícones saíam brancos no branco — a hora e os avisos sumiam.
@@ -275,8 +275,6 @@ test('AS BARRAS SEGUEM O TEMA DO CONECTA, e a página fica fora delas', () => {
     acompanharTemaNasBarras();
     expect(pintadas).toEqual(['#0E1216']);
     expect(estilos).toEqual(['DARK']);
-    expect(meta.conteudo).toContain('viewport-fit=auto');
-    expect(meta.conteudo).not.toContain('cover');
 
     // A pessoa troca para o tema claro dentro do CONECTA
     canvas = '#F4F6F8';
@@ -353,3 +351,50 @@ test('a abertura do Android é branca, e não a cor do tema do celular', async (
   expect(config).toContain("backgroundColor: '#ffffff'");
 });
 
+
+// ===============================================================
+// 6. O TECLADO
+// ===============================================================
+
+/**
+ * A FAIXA VAZIA ENTRE A CAIXA DE MENSAGEM E O TECLADO.
+ *
+ * Medida no S10 do Elias (Android 12, WebView 153): 170px, a altura exata
+ * da barra de navegação, descontada duas vezes. O Capacitor lê a meta do
+ * viewport UMA VEZ, no primeiro desenho; a troca de `cover` para `auto`
+ * acontecia no aplicativo.ts, depois de o sistema baixar — tarde demais.
+ */
+const scriptDaTela = async (): Promise<{ html: string; script: string }> => {
+  const html = await Bun.file('index.html').text();
+  const meta = html.indexOf('<meta name="viewport"');
+  const abre = html.indexOf('<script>', meta);
+  const script = html.slice(abre + '<script>'.length, html.indexOf('</script>', abre));
+  return { html, script };
+};
+
+const rodarScriptDaTela = (script: string, janela: Record<string, unknown>): string => {
+  const meta = { content: 'width=device-width, initial-scale=1.0, viewport-fit=cover' };
+  const documento = { querySelector: () => meta };
+  new Function('window', 'document', script)(janela, documento);
+  return meta.content;
+};
+
+test('no aplicativo a página fica entre as barras DESDE o primeiro desenho', async () => {
+  const { html, script } = await scriptDaTela();
+
+  // Dentro do aplicativo: vira `auto`
+  expect(rodarScriptDaTela(script, { androidBridge: {} })).toContain('viewport-fit=auto');
+  // No navegador e no iPhone: continua `cover`
+  expect(rodarScriptDaTela(script, {})).toContain('viewport-fit=cover');
+
+  // Logo depois da meta, antes de qualquer outro script da página
+  const meta = html.indexOf('<meta name="viewport"');
+  const primeiroScript = html.indexOf('<script', meta);
+  expect(html.slice(primeiroScript, primeiroScript + 20)).toContain('<script>');
+  expect(html.indexOf('if (window.androidBridge)', meta)).toBeGreaterThan(primeiroScript);
+  expect(html.indexOf('if (window.androidBridge)', meta)).toBeLessThan(html.indexOf('</script>', primeiroScript));
+
+  // E num lugar só: o aplicativo.ts não troca de novo, tarde demais
+  const aplicativo = await Bun.file('src/servicos/aplicativo.ts').text();
+  expect(aplicativo).not.toContain("replace('viewport-fit=cover'");
+});

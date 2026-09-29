@@ -3,6 +3,31 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!--
+      NO APLICATIVO ANDROID, A PÁGINA FICA ENTRE AS BARRAS — e isto tem de
+      acontecer AQUI, antes do primeiro desenho.
+
+      `viewport-fit=cover` é para o iPhone. No aplicativo, o Capacitor lê
+      esta meta UMA VEZ, no primeiro desenho (a tela de espera), e decide
+      por ela quem desconta a barra de navegação. Com `cover`, quem
+      desconta é o WebView; com o teclado aberto o Capacitor ainda recua
+      a página pela altura do teclado, que já inclui a barra — e ela era
+      descontada duas vezes. Era a faixa vazia entre a caixa de mensagem
+      e o teclado, medida no S10 do Elias: 170px, a altura exata da barra.
+
+      A troca morava no aplicativo.ts, que só roda depois de o sistema
+      baixar: tarde demais, o Capacitor já tinha lido `cover`.
+
+      `androidBridge` é a ponte que o Capacitor põe na página desde o
+      primeiro instante, e só dentro do aplicativo. No navegador e no
+      iPhone ela não existe, e nada muda.
+    -->
+    <script>
+      if (window.androidBridge) {
+        var metaDaTela = document.querySelector('meta[name="viewport"]');
+        metaDaTela.content = metaDaTela.content.replace('viewport-fit=cover', 'viewport-fit=auto');
+      }
+    </script>
     <title>CONECTA — Malachias Autopeças</title>
     <meta name="description" content="Comunicador interno da Malachias Autopeças com conversas, grupos, painel de controle da rede, quadro de funcionários, fotos da câmera e rádio ao vivo." />
     <meta property="og:title" content="CONECTA — Malachias Autopeças" />

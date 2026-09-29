@@ -93,26 +93,12 @@ export const corEhEscura = (cor: string): boolean => {
 export const acompanharTemaNasBarras = (): (() => void) => {
   if (!rodandoNoAplicativo() || typeof document === 'undefined') return () => {};
 
-  /**
-   * A PÁGINA FICA FORA DAS BARRAS, em todo aparelho.
-   *
-   * O index.html pede `viewport-fit=cover`, que o iPhone precisa. No
-   * Android, com o WebView 140 em diante, o Capacitor obedece esse
-   * pedido e estica a página para BAIXO da hora e da barra de gestos —
-   * e o sistema não reserva esse espaço no topo. O WebView atualiza
-   * sozinho pela Play Store: o mesmo APK passaria a esconder o
-   * cabeçalho atrás da hora, de um dia para o outro.
-   *
-   * Dentro do aplicativo o pedido vira `auto`: a página fica entre as
-   * barras, e o que aparece nelas é o fundo que `Barras.pintar` colore.
-   * Fora do aplicativo (iPhone, navegador) nada muda.
+  /*
+   * A página fica ENTRE as barras, e o que aparece nelas é o fundo que
+   * `Barras.pintar` colore. Quem põe a página entre as barras é o
+   * index.html, antes do primeiro desenho — daqui chegava tarde (ver o
+   * comentário lá).
    */
-  const meta = document.querySelector('meta[name="viewport"]');
-  const conteudo = meta?.getAttribute('content');
-  if (meta && conteudo?.includes('viewport-fit=cover')) {
-    meta.setAttribute('content', conteudo.replace('viewport-fit=cover', 'viewport-fit=auto'));
-  }
-
   const pintar = () => {
     const cor = getComputedStyle(document.documentElement).getPropertyValue('--c-canvas').trim();
     if (!cor) return;
