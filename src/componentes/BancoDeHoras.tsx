@@ -11,6 +11,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
+import { useVoltar } from '../servicos/voltar';
 import {
   X,
   Users,
@@ -171,6 +172,10 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
     hora: string;
     justificativa: string;
   } | null>(null);
+
+  /* O voltar do Android fecha a janela de preencher e a de ajuste */
+  useVoltar(preenchimento !== null, () => setPreenchimento(null));
+  useVoltar(!!ajuste, () => setAjuste(null));
 
   const [qrcodes, setQrcodes] = useState<Array<{ loja: Loja; codigo: string; imagem: string }>>([]);
 

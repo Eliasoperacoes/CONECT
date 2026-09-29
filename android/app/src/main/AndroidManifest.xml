@@ -22,6 +22,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!--
+              OS ATALHOS DO ÍCONE abrem o aplicativo com conecta://abrir?atalho=...
+              Quem lê o endereço é `ouvirEnderecosDoAplicativo` (aplicativo.ts).
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="conecta" android:host="abrir" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+
         </activity>
 
         <provider
@@ -33,9 +48,51 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!--
+          O AVISO NA BARRA DO ANDROID.
+
+          Ícone: o Android pinta de branco tudo que não é transparente. O
+          ícone do aplicativo (quadrado azul cheio) virava um quadrado
+          branco; este é só o balão, em silhueta.
+
+          Canal: "mensagens" com importância alta, que é o que faz o aviso
+          descer por cima da tela. O canal padrão do Firebase só põe na
+          barra, e a pessoa não vê. É criado em `ligarAvisoNativo`.
+        -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_conecta" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/cor_conecta" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="mensagens" />
     </application>
 
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      O QUE O SISTEMA USA DO APARELHO.
+
+      Sem estas linhas o WebView NEGA em silêncio: a câmera do ponto e do
+      QR não abria, e o recado de voz não gravava — nem o pedido de
+      permissão chegava a aparecer, porque o Android não pede o que o
+      aplicativo não declarou.
+
+      O pedido acontece na hora do uso (tocar em "Bater ponto", segurar o
+      microfone), e não na abertura: pedir tudo de uma vez, antes de a
+      pessoa saber para quê, é o jeito mais rápido de ouvir "não".
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- A câmera é pedida, mas o aplicativo instala em aparelho sem ela -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 </manifest>

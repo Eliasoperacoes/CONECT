@@ -21,8 +21,103 @@
       coloca uma miniatura da página no lugar. Era o que estava acontecendo.
     -->
     <link rel="apple-touch-icon" href="/icone-192.png" />
+    <link rel="preload" as="image" href="/logo-malachias.svg" />
+    <!--
+      A TELA DE ESPERA mora aqui, e não no React.
+
+      Ela aparece no primeiro desenho da página, antes de o pacote do
+      sistema (1,8 MB) baixar. Dentro do React ela só surgia DEPOIS do
+      download — e até lá o aplicativo Android mostrava a tela vazia do
+      WebView, que no tema escuro do celular é preta.
+
+      O React não a desenha de novo: quando a sessão está conferida, ele
+      a retira (`encerrarEspera`, em servicos/telaDeEspera.ts). Um
+      desenho só, em um lugar só.
+    -->
+    <style>
+      #espera {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 28px;
+        background: #ffffff;
+        transition: opacity 0.35s ease;
+      }
+      #espera.saindo { opacity: 0; pointer-events: none; }
+
+      /* O losango respira, e um brilho atravessa a marca na diagonal
+         das listras. O corte em losango prende o brilho dentro dela. */
+      #espera .marca {
+        position: relative;
+        width: 132px;
+        height: 132px;
+        clip-path: polygon(50% 2%, 98% 50%, 50% 98%, 2% 50%);
+        animation: espera-respira 1.8s ease-in-out infinite;
+      }
+      #espera .marca img { width: 100%; height: 100%; display: block; }
+      #espera .marca::after {
+        content: '';
+        position: absolute;
+        inset: -50%;
+        background: linear-gradient(
+          135deg,
+          transparent 40%,
+          rgba(255, 255, 255, 0.75) 50%,
+          transparent 60%
+        );
+        animation: espera-brilho 1.8s ease-in-out infinite;
+      }
+      #espera .nome {
+        font: 700 13px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        letter-spacing: 0.32em;
+        color: #1F539E;
+        padding-left: 0.32em;
+      }
+      /* A barra corre sem fim: não há como saber quanto falta */
+      #espera .barra {
+        width: 120px;
+        height: 3px;
+        border-radius: 3px;
+        background: #e5e9f2;
+        overflow: hidden;
+        margin-top: -14px;
+      }
+      #espera .barra::before {
+        content: '';
+        display: block;
+        width: 40%;
+        height: 100%;
+        border-radius: 3px;
+        background: #1F539E;
+        animation: espera-barra 1.2s ease-in-out infinite;
+      }
+      @keyframes espera-respira {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.06); }
+      }
+      @keyframes espera-brilho {
+        from { transform: translate(-40%, -40%); }
+        to { transform: translate(40%, 40%); }
+      }
+      @keyframes espera-barra {
+        from { transform: translateX(-100%); }
+        to { transform: translateX(250%); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #espera .marca, #espera .marca::after, #espera .barra::before { animation: none; }
+      }
+    </style>
   </head>
   <body>
+    <div id="espera" role="status" aria-label="Carregando o CONECTA">
+      <div class="marca"><img src="/logo-malachias.svg" alt="" /></div>
+      <div class="nome">CONECTA</div>
+      <div class="barra"></div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <!--

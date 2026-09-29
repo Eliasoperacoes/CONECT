@@ -207,7 +207,7 @@ Deno.serve(async (req) => {
 
   const { data: eu } = await banco
     .from('colaboradores')
-    .select('id, nome')
+    .select('id, nome, loja')
     .eq('auth_user_id', sessao.user.id)
     .maybeSingle();
   if (!eu) return responder({ erro: 'Sessão sem colaborador.' }, 403);
@@ -254,10 +254,17 @@ Deno.serve(async (req) => {
     .in('colaborador_id', destinatarios);
   if (!aparelhos || aparelhos.length === 0) return responder({ entregues: 0 });
 
-  // O mesmo título e corpo do aviso do navegador (App.tsx)
+  /**
+   * "Malachias Pirassununga - Elias" em cima, a mensagem embaixo.
+   *
+   * Pedido do Elias: a loja de quem ENVIOU vem no título. Com 89 pessoas
+   * em 5 lojas há nomes repetidos, e "Fabio: chegou a peça" não diz qual
+   * Fabio nem de onde a peça saiu. Em grupo, o nome do grupo abre o
+   * corpo — sem ele, a resposta iria para o privado de quem mandou.
+   */
   const ehGrupo = conversa.tipo === 'grupo';
-  const titulo = ehGrupo ? conversa.nome : eu.nome;
-  const corpo = ehGrupo ? `${eu.nome}: ${previa}` : previa;
+  const titulo = `Malachias ${eu.loja} - ${eu.nome}`;
+  const corpo = ehGrupo ? `${conversa.nome} · ${previa}` : previa;
 
   const conta = JSON.parse(segredo) as ContaDeServico;
   const acesso = await obterTokenDoGoogle(conta);
@@ -285,7 +292,7 @@ Deno.serve(async (req) => {
               priority: 'HIGH',
               // Mesma conversa, um aviso só: a mensagem nova substitui a
               // anterior em vez de empilhar trinta na tela de bloqueio
-              notification: { tag: conversa.id },
+              notification: { tag: conversa.id, channel_id: 'mensagens' },
             },
           },
         }),

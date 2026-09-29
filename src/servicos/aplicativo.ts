@@ -32,6 +32,8 @@
  * respondendo, não uma pista sobre ele.
  */
 import { Capacitor } from '@capacitor/core';
+import { App as AplicativoNativo } from '@capacitor/app';
+import { tratarVoltar } from './voltar';
 
 /**
  * Verdadeiro só dentro da casca nativa (o APK do Android).
@@ -59,3 +61,68 @@ export const rodandoNoAplicativo = (): boolean => {
 /** Onde estamos, por extenso. Serve para a tela explicar a si mesma. */
 export const ondeEstamosRodando = (): 'aplicativo' | 'navegador' =>
   rodandoNoAplicativo() ? 'aplicativo' : 'navegador';
+
+/**
+ * O VOLTAR DO APARELHO.
+ *
+ * Primeiro a tela de cima (modal, foto, painel — `voltar.ts`). Sem
+ * nenhuma, pergunta ao App se ele tem para onde recuar: conversa aberta,
+ * aba que não é a inicial. Sem isso também, MINIMIZA — e não fecha.
+ *
+ * Minimizar e não fechar: fechar derruba a sessão do WebView, e a
+ * próxima abertura volta a passar pela tela de espera inteira. É o que
+ * o voltar faz no WhatsApp, e é o que as pessoas esperam.
+ *
+ * @param recuar do App: devolve verdadeiro se tinha para onde voltar
+ * @returns a função que desliga o ouvinte
+ */
+export const ligarBotaoVoltar = (recuar: () => boolean): (() => void) => {
+  if (!rodandoNoAplicativo()) return () => {};
+
+  const ouvinte = AplicativoNativo.addListener('backButton', () => {
+    if (tratarVoltar()) return;
+    if (recuar()) return;
+    void AplicativoNativo.minimizeApp();
+  });
+
+  return () => {
+    void ouvinte.then((o) => o.remove());
+  };
+};
+
+/**
+ * OS ENDEREÇOS QUE ABREM O APLICATIVO — os atalhos do ícone.
+ *
+ * Segurar o ícone mostra "Bater ponto", "Conversas" e "Central"
+ * (`android/.../res/xml/shortcuts.xml`). Cada um abre o aplicativo com
+ * `conecta://abrir?atalho=...`, e o Android entrega esse endereço aqui
+ * — não na barra do WebView, que continua no sistema publicado.
+ *
+ * Os dois casos:
+ *   · aplicativo FECHADO: o endereço é o de lançamento (`getLaunchUrl`)
+ *   · aplicativo ABERTO: chega pelo evento `appUrlOpen`
+ *
+ * Quem interpreta o `?atalho=` é o mesmo trecho do App que já lia o
+ * atalho do PWA. Esta função só entrega o endereço.
+ */
+export const ouvirEnderecosDoAplicativo = (aoAbrir: (endereco: URL) => void): (() => void) => {
+  if (!rodandoNoAplicativo()) return () => {};
+
+  const entregar = (texto?: string) => {
+    if (!texto) return;
+    try {
+      aoAbrir(new URL(texto));
+    } catch {
+      /* endereço que não é endereço: ignora, o aplicativo abre normal */
+    }
+  };
+
+  void AplicativoNativo.getLaunchUrl()
+    .then((r) => entregar(r?.url))
+    .catch(() => {});
+  const ouvinte = AplicativoNativo.addListener('appUrlOpen', (e) => entregar(e.url));
+
+  return () => {
+    void ouvinte.then((o) => o.remove());
+  };
+};

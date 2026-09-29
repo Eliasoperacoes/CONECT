@@ -27,6 +27,7 @@ import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Search, SlidersHorizontal, X } from 'lucide-react';
 import { Colaborador } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
+import { useVoltar } from '../servicos/voltar';
 
 interface PropsModalNovaConversa {
   aberto: boolean;
@@ -41,6 +42,7 @@ export const ModalNovaConversa: React.FC<PropsModalNovaConversa> = ({
   aoSelecionar,
   aoFechar,
 }) => {
+  useVoltar(aberto, aoFechar);
   const [busca, setBusca] = useState('');
   const [cidade, setCidade] = useState('todas');
   const [cargo, setCargo] = useState('todos');

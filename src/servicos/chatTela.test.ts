@@ -167,8 +167,10 @@ test('o app ouve o trabalhador e limpa o endereco depois de usar', async () => {
    * O endereço é lido UMA vez e apagado da barra. Sem isso, recarregar a
    * página reabriria a mesma conversa para sempre.
    */
-  expect(app).toContain("endereco.searchParams.delete('conversa')");
-  expect(app).toContain('window.history.replaceState');
+  expect(app).toContain("tirar('conversa')");
+  expect(app).toContain('endereco.searchParams.delete(chave);');
+  expect(app).toContain("if (daBarra) window.history.replaceState({}, '', endereco.toString());");
+  expect(app).toContain('lerEndereco(new URL(window.location.href), true)');
 
   /**
    * O aviso de jornadas usa um id que não é conversa nenhuma. Abrir uma

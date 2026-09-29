@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useVoltar } from '../servicos/voltar';
 import { NIVEL_TI } from '../tipos';
 import {
   Bell,
@@ -61,6 +62,7 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
   const [resultadoTeste, setResultadoTeste] = useState<string | null>(null);
   const [modalTrocaAberto, setModalTrocaAberto] = useState(false);
   const [modalFotoAberto, setModalFotoAberto] = useState(false);
+  useVoltar(modalTrocaAberto, () => setModalTrocaAberto(false));
 
   const todosColaboradores = bancoDados.obterColaboradores();
   const ehAdmin = colaboradorAtual.nivel >= NIVEL_TI;

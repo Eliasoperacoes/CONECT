@@ -10,6 +10,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { abrirFluxo, soltarFluxo, assinarRetomada } from '../servicos/midia';
+import { useVoltar } from '../servicos/voltar';
 
 interface PropsModalCamera {
   aberto: boolean;
@@ -29,6 +30,7 @@ export const ModalCamera: React.FC<PropsModalCamera> = ({
   aoFechar,
   aoConfirmarFoto,
 }) => {
+  useVoltar(aberto, aoFechar);
   // O fluxo fica em ref, não em estado: a limpeza do efeito e o `capturarFoto`
   // precisam enxergar o fluxo mais recente para desligar a câmera de verdade.
   const refStream = useRef<MediaStream | null>(null);

@@ -36,6 +36,7 @@ import { FotoPresenca } from './FotoPresenca';
 import { resolverCaminho } from '../servicos/anexos';
 import { resumoDaFicha } from '../servicos/fichaColaborador';
 import { ModalCorrigirJornada } from './ModalCorrigirJornada';
+import { useVoltar } from '../servicos/voltar';
 
 interface PropsAprovacaoJornada {
   colaboradorAtual: Colaborador;
@@ -56,6 +57,10 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
     null
   );
   const [motivoAusencia, setMotivoAusencia] = useState('');
+
+  /* O voltar do Android desiste da recusa, como o botão Cancelar */
+  useVoltar(!!recusando, () => setRecusando(null));
+  useVoltar(!!recusandoAusencia, () => setRecusandoAusencia(null));
 
   /**
    * Levanta os dias sem fechar ao abrir a fila.

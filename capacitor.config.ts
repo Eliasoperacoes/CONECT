@@ -79,6 +79,13 @@ const config: CapacitorConfig = {
    */
   webDir: 'dist',
 
+  /**
+   * O fundo do WebView antes de a página desenhar. Branco, como a
+   * abertura e a tela de espera: sem ele, o intervalo entre as duas era
+   * a cor do tema do celular — preta no modo escuro.
+   */
+  backgroundColor: '#ffffff',
+
   server: {
     url: ENDERECO,
     /**

@@ -127,8 +127,23 @@ test('o título sai do banco, e não do aparelho', async () => {
   /* O aparelho manda só a prévia do próprio texto. Título vindo dele
      deixaria um aviso aparecer com o nome de outra pessoa */
   const fonte = await funcao();
-  expect(fonte).toContain('const titulo = ehGrupo ? conversa.nome : eu.nome;');
+  expect(fonte).toContain('const titulo = `Malachias ${eu.loja} - ${eu.nome}`;');
+  expect(fonte).toContain(".select('id, nome, loja')");
   expect(fonte).not.toMatch(/corpo\.titulo/);
+});
+
+test('o aviso vai pelo canal de alta prioridade que o aparelho cria', async () => {
+  /* Canal com id diferente cai no padrão do Firebase, que não desce por
+     cima da tela: o aviso chega e ninguém vê */
+  const push = await Bun.file('src/servicos/pushNativo.ts').text();
+  const CANAL_DE_MENSAGENS = push.match(/export const CANAL_DE_MENSAGENS = '([a-z_]+)'/)?.[1];
+  expect(CANAL_DE_MENSAGENS).toBeTruthy();
+  expect(push).toContain('id: CANAL_DE_MENSAGENS');
+  const fonte = await funcao();
+  const manifesto = await Bun.file('android/app/src/main/AndroidManifest.xml').text();
+
+  expect(fonte).toContain(`channel_id: '${CANAL_DE_MENSAGENS}'`);
+  expect(manifesto).toContain(`android:value="${CANAL_DE_MENSAGENS}"`);
 });
 
 test('a chave de serviço do Firebase não está no repositório', async () => {

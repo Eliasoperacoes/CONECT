@@ -34,6 +34,7 @@ import {
   ehMarcacaoCorrigida,
 } from '../tipos';
 import { servicoPonto, formatarDataBR, marcacoesEsperadas } from '../servicos/ponto';
+import { useVoltar } from '../servicos/voltar';
 
 interface Props {
   colaborador: Colaborador;
@@ -48,6 +49,7 @@ export const ModalCorrigirJornada: React.FC<Props> = ({
   aoFechar,
   aoSalvar,
 }) => {
+  useVoltar(true, aoFechar);
   const jornada = useMemo(
     () => servicoPonto.obterJornadaDoDia(colaborador.id, data),
     [colaborador.id, data]

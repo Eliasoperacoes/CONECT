@@ -24,6 +24,7 @@ import { bancoDados } from '../servicos/bancoDados';
 import { enviarAnexo } from '../servicos/anexos';
 import { abrirFluxo, soltarFluxo, assinarRetomada } from '../servicos/midia';
 import { CardJustificarBatida } from './CardJustificarBatida';
+import { useVoltar } from '../servicos/voltar';
 
 interface PropsModalBaterPonto {
   aberto: boolean;
@@ -50,6 +51,7 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
   aoFechar,
   aoRegistrar,
 }) => {
+  useVoltar(aberto, aoFechar);
   const [estado, setEstado] = useState<EstadoLeitura>('iniciando');
   const [erro, setErro] = useState<string | null>(null);
   const [modoDigitar, setModoDigitar] = useState(false);

@@ -49,6 +49,16 @@ let ouvintes: Record<string, (dado: any) => void> = {};
 
 mock.module('@capacitor/core', () => ({
   Capacitor: { isNativePlatform: () => dentroDoAplicativo },
+  registerPlugin: () => ({}),
+}));
+
+/* `aplicativo.ts` liga o voltar e os atalhos por este plugin */
+mock.module('@capacitor/app', () => ({
+  App: {
+    addListener: async () => ({ remove: async () => {} }),
+    getLaunchUrl: async () => undefined,
+    minimizeApp: async () => {},
+  },
 }));
 
 mock.module('@capacitor/push-notifications', () => ({
@@ -63,6 +73,9 @@ mock.module('@capacitor/push-notifications', () => ({
     },
     register: async () => {
       chamadas.push('register');
+    },
+    createChannel: async (canal: any) => {
+      chamadas.push(`createChannel:${canal.id}:${canal.importance}`);
     },
     removeAllListeners: async () => {
       chamadas.push('removeAllListeners');
@@ -193,6 +206,9 @@ test('OS OUVINTES SÃO LIGADOS ANTES DO REGISTRO', async () => {
   expect(chamadas.indexOf('addListener:registration')).toBeLessThan(
     chamadas.indexOf('register')
   );
+  /* E o canal de alta prioridade existe antes do primeiro aviso chegar */
+  expect(chamadas.indexOf('createChannel:mensagens:5')).toBeGreaterThan(-1);
+  expect(chamadas.indexOf('createChannel:mensagens:5')).toBeLessThan(chamadas.indexOf('register'));
   expect(chamadas).toContain('addListener:pushNotificationActionPerformed');
 });
 

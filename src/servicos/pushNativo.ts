@@ -78,6 +78,9 @@ export const destinoDoPush = (dados: DadosDoPush): DestinoNotificacao | null => 
 
 type Navegador = (destino: DestinoNotificacao) => void;
 
+/** O canal dos avisos. O mesmo id no AndroidManifest e em enviar-aviso. */
+export const CANAL_DE_MENSAGENS = 'mensagens';
+
 let irPara: Navegador | null = null;
 
 /**
@@ -215,6 +218,26 @@ export const ligarAvisoNativo = async (
         if (destino) irPara?.(destino);
       }
     );
+
+    /**
+     * O CANAL "mensagens", com importância ALTA.
+     *
+     * É a importância do canal que decide se o aviso DESCE por cima da
+     * tela ou só entra calado na barra. O canal padrão do Firebase é o
+     * segundo — e aviso que ninguém vê chegar é aviso que não chegou.
+     *
+     * O id é o mesmo que o servidor manda (`channel_id` em
+     * enviar-aviso) e o do AndroidManifest. Criar de novo um canal que já
+     * existe não faz nada, então pode rodar a cada abertura.
+     */
+    await PushNotifications.createChannel({
+      id: CANAL_DE_MENSAGENS,
+      name: 'Mensagens',
+      description: 'Mensagens das conversas e avisos da rede',
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+    });
 
     await PushNotifications.register();
     return { ligado: true };

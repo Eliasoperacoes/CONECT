@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { useVoltar } from '../servicos/voltar';
 import {
   ArrowLeft,
   MoreVertical,
@@ -202,6 +203,12 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   const [mensagensParaEncaminhar, setMensagensParaEncaminhar] = useState<string[]>([]);
   const [toastFeedback, setToastFeedback] = useState<string | null>(null);
   const [mensagemParaExcluir, setMensagemParaExcluir] = useState<Mensagem | null>(null);
+
+  /* O voltar do Android fecha o que estiver aberto por cima da conversa */
+  useVoltar(modalDetalhesAberto, () => setModalDetalhesAberto(false));
+  useVoltar(!!painelReacao, fecharPainelReacao);
+  useVoltar(!!menuMensagem, fecharMenuMensagem);
+  useVoltar(!!mensagemParaExcluir, () => setMensagemParaExcluir(null));
   // Mensagem sendo editada no próprio balão, e o texto em andamento
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [textoEditado, setTextoEditado] = useState('');

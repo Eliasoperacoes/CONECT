@@ -4,4 +4,12 @@
     <string name="title_activity_main">CONECTA</string>
     <string name="package_name">br.com.malachiasautopecas.conecta</string>
     <string name="custom_url_scheme">br.com.malachiasautopecas.conecta</string>
+
+    <!-- Atalhos do ícone (res/xml/shortcuts.xml) -->
+    <string name="atalho_ponto_curto">Bater ponto</string>
+    <string name="atalho_ponto_longo">Bater ponto com o QR da loja</string>
+    <string name="atalho_conversas_curto">Conversas</string>
+    <string name="atalho_conversas_longo">Abrir as conversas</string>
+    <string name="atalho_central_curto">Central</string>
+    <string name="atalho_central_longo">Avisos e comunicados da rede</string>
 </resources>

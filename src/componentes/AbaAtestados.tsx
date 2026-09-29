@@ -51,6 +51,7 @@ import {
 import { decidirAusencia } from '../servicos/justificativas';
 import { abrirDocumento } from '../servicos/rh';
 import { FotoPresenca } from './FotoPresenca';
+import { useVoltar } from '../servicos/voltar';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -153,6 +154,7 @@ const VisorDocumento: React.FC<{
   nomeDaPessoa: string;
   aoFechar: () => void;
 }> = ({ justificativa, nomeDaPessoa, aoFechar }) => {
+  useVoltar(true, aoFechar);
   const url = useEnderecoDoAnexo(justificativa.anexoCaminho);
 
   return (

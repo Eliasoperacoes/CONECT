@@ -80,7 +80,9 @@ test('o codigo sai da barra de enderecos assim que e usado', async () => {
    * Recarregar a página com o código ainda no endereço bateria o ponto de
    * novo — e a pessoa nem saberia por quê.
    */
-  expect(app).toContain("endereco.searchParams.delete('ponto')");
+  expect(app).toContain("tirar('ponto')");
+  expect(app).toContain("if (daBarra) window.history.replaceState({}, '', endereco.toString());");
+  expect(app).toContain('lerEndereco(new URL(window.location.href), true)');
   expect(app).toContain("setAbaAtiva('ponto')");
 
   // E o código é consumido na tela, para não reabrir a batida ao voltar

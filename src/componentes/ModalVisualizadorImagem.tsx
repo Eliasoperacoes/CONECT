@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Download, ZoomIn } from 'lucide-react';
+import { useVoltar } from '../servicos/voltar';
 
 interface PropsModalVisualizadorImagem {
   imagemUrl: string | null;
@@ -12,6 +13,7 @@ export const ModalVisualizadorImagem: React.FC<PropsModalVisualizadorImagem> = (
   legenda,
   aoFechar,
 }) => {
+  useVoltar(true, aoFechar);
   if (!imagemUrl) return null;
 
   const lidarDownload = () => {

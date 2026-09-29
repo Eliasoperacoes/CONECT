@@ -69,6 +69,7 @@ import { ehArquivoDeImagem, comprimirImagem } from '../servicos/imagens';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 import { ImportacaoPlanilhaFuncionarios } from './ImportacaoPlanilhaFuncionarios';
 import { baixarPlanilhaModeloExcel } from '../servicos/planilhaFuncionarios';
+import { useVoltar } from '../servicos/voltar';
 
 interface PropsPainelAdministrativo {
   colaboradorAtual: Colaborador;
@@ -108,6 +109,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   aoFechar,
   aoAbrirConversa,
 }) => {
+  useVoltar(true, aoFechar);
   /** Volta para a aba onde a pessoa parou, e não para Colaboradores. */
   const [abaEscolhida, setAbaAtiva] = useState<AbaAdmin>(() =>
     ondeParei(colaboradorAtual.id, 'admin', ABAS_ADMIN, 'colaboradores')

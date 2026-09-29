@@ -58,6 +58,7 @@ import { bancoDados } from '../servicos/bancoDados';
 import { enviarAnexo } from '../servicos/anexos';
 import { EditorTexto } from './EditorTexto';
 import { SeletorDestinos } from './SeletorDestinos';
+import { useVoltar } from '../servicos/voltar';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -102,6 +103,7 @@ export const NovaPublicacao: React.FC<Props> = ({
   aoFechar,
   publicacaoAEditar,
 }) => {
+  useVoltar(true, aoFechar);
   const editando = publicacaoAEditar ?? null;
 
   const [titulo, setTitulo] = useState(editando?.titulo ?? '');

@@ -31,6 +31,7 @@ import {
 } from '../tipos';
 import { formatarMinutos } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
+import { useVoltar } from '../servicos/voltar';
 
 interface PropsModalCadastroColaborador {
   colaborador: Colaborador | null;
@@ -43,6 +44,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
   aoFechar,
   aoSalvar,
 }) => {
+  useVoltar(true, aoFechar);
   const [form, setForm] = useState({
     nome: '',
     cargo: '',

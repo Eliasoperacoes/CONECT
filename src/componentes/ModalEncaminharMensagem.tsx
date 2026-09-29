@@ -24,6 +24,7 @@ import {
 } from '../servicos/compartilharExterno';
 import { Colaborador, Conversa } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
+import { useVoltar } from '../servicos/voltar';
 
 interface PropsModalEncaminharMensagem {
   aberto: boolean;
@@ -38,6 +39,7 @@ export const ModalEncaminharMensagem: React.FC<PropsModalEncaminharMensagem> = (
   aoFechar,
   aoSucesso,
 }) => {
+  useVoltar(aberto, aoFechar);
   const [busca, setBusca] = useState('');
   const [avisoExterno, setAvisoExterno] = useState<string | null>(null);
   const [imagemParaColar, setImagemParaColar] = useState<File | null>(null);

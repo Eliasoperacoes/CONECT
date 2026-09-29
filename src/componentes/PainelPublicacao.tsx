@@ -38,6 +38,7 @@ import { abrirDocumento } from '../servicos/rh';
 import { imagensCitadas } from '../servicos/textoRico';
 import { TextoFormatado } from './EditorTexto';
 import { FotoPresenca } from './FotoPresenca';
+import { useVoltar } from '../servicos/voltar';
 
 interface Props {
   publicacao: AvisoRede;
@@ -75,6 +76,7 @@ export const PainelPublicacao: React.FC<Props> = ({
   aoEditar,
   aoFechar,
 }) => {
+  useVoltar(true, aoFechar);
   const [abaLeitura, setAbaLeitura] = useState<'leram' | 'faltam'>('faltam');
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
 

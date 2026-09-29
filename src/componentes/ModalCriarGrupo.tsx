@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Check } from 'lucide-react';
 import { Colaborador } from '../tipos';
+import { useVoltar } from '../servicos/voltar';
 
 interface PropsModalCriarGrupo {
   aberto: boolean;
@@ -15,6 +16,7 @@ export const ModalCriarGrupo: React.FC<PropsModalCriarGrupo> = ({
   aoCriar,
   aoFechar,
 }) => {
+  useVoltar(aberto, aoFechar);
   const [nome, setNome] = useState('');
   const [selecionados, setSelecionados] = useState<string[]>([]);
 

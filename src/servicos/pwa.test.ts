@@ -105,7 +105,8 @@ test('OS ATALHOS DO ÍCONE LEVAM A ALGUM LUGAR', async () => {
 
   const app = await Bun.file('src/App.tsx').text();
   expect(app).toContain("endereco.searchParams.get('atalho')");
-  expect(app).toContain("endereco.searchParams.delete('atalho')");
+  expect(app).toContain("tirar('atalho')");
+  expect(app).toContain('endereco.searchParams.delete(chave);');
 
   /**
    * E cada destino declarado tem que ser uma aba que existe — um

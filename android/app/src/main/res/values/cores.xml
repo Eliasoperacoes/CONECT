@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- O azul do losango da Malachias (public/logo-malachias.svg) -->
+    <color name="cor_conecta">#1F539E</color>
+    <!-- O fundo da abertura: o mesmo branco da tela de espera do index.html -->
+    <color name="fundo_abertura">#FFFFFF</color>
+</resources>

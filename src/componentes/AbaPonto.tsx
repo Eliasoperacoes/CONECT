@@ -55,6 +55,10 @@ interface PropsAbaPonto {
   codigoDoEndereco?: string | null;
   /** Avisa que o código já foi usado, para ele não valer de novo ao voltar. */
   aoConsumirCodigo?: () => void;
+  /** O atalho "Bater ponto" do ícone pediu a batida — abre sem código. */
+  pedidoDeBater?: boolean;
+  /** Avisa que o pedido foi atendido, para a outra instância não abrir junto. */
+  aoAtenderPedido?: () => void;
 }
 
 /**
@@ -95,6 +99,8 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
   colaboradorAtual,
   codigoDoEndereco,
   aoConsumirCodigo,
+  pedidoDeBater,
+  aoAtenderPedido,
 }) => {
   const [secao, setSecao] = useState<'bater' | 'justificar'>('bater');
   const [modalAberto, setModalAberto] = useState(false);
@@ -113,6 +119,13 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
     setModalAberto(true);
     aoConsumirCodigo?.();
   }, [codigoDoEndereco]);
+
+  useEffect(() => {
+    if (!pedidoDeBater) return;
+    setSecao('bater');
+    setModalAberto(true);
+    aoAtenderPedido?.();
+  }, [pedidoDeBater]);
   // Muda a cada alteração no ponto, forçando o recálculo dos dados derivados
   const [versaoDados, setVersaoDados] = useState(0);
 

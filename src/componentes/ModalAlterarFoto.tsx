@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Colaborador } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA } from '../servicos/bancoDados';
+import { useVoltar } from '../servicos/voltar';
 
 interface PropsModalAlterarFoto {
   aberto: boolean;
@@ -25,6 +26,7 @@ export const ModalAlterarFoto: React.FC<PropsModalAlterarFoto> = ({
   aoFechar,
   aoFotoSalva,
 }) => {
+  useVoltar(aberto, aoFechar);
   const [fotoPrevia, setFotoPrevia] = useState<string>(
     colaborador.foto || FOTO_PADRAO_LOGO_EMPRESA
   );

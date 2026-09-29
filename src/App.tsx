@@ -91,6 +91,8 @@ import { vigiarRelogio } from './servicos/relogio';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
 import { ligarAvisoNativo, desligarAvisoNativo } from './servicos/pushNativo';
+import { encerrarEspera } from './servicos/telaDeEspera';
+import { ligarBotaoVoltar, ouvirEnderecosDoAplicativo } from './servicos/aplicativo';
 import { montarPreviaDaMensagem } from './servicos/nuvemComunicacao';
 import {
   atualizarTituloDaAba,
@@ -171,6 +173,9 @@ export default function App() {
   const consumirSecaoAlvo = useCallback(() => setSecaoAlvo(null), []);
   /** O código do cartaz de ponto, quando a pessoa chegou por ele. */
   const [codigoDoCartaz, setCodigoDoCartaz] = useState<string | null>(null);
+  /* "Bater ponto" pedido pelo atalho do ícone; a aba de ponto o consome,
+     como consome o código do cartaz, para não abrir duas vezes */
+  const [pedidoDeBater, setPedidoDeBater] = useState(false);
 
   /**
    * A publicação que o botão do chat pediu para abrir.
@@ -305,12 +310,23 @@ export default function App() {
 
     navigator.serviceWorker?.addEventListener('message', aoReceberDoTrabalhador);
 
-    try {
-      const endereco = new URL(window.location.href);
+    /**
+     * Lê o que veio no endereço. Serve à barra do navegador e aos atalhos
+     * do ícone no Android (`ouvirEnderecosDoAplicativo`) — os dois falam
+     * `?atalho=`, e um só trecho os interpreta.
+     *
+     * `daBarra`: só o endereço da barra precisa ser limpo. O do atalho
+     * nativo nunca esteve nela.
+     */
+    const lerEndereco = (endereco: URL, daBarra: boolean) => {
+      const tirar = (chave: string) => {
+        endereco.searchParams.delete(chave);
+        if (daBarra) window.history.replaceState({}, '', endereco.toString());
+      };
+
       const pedida = endereco.searchParams.get('conversa');
       if (pedida) {
-        endereco.searchParams.delete('conversa');
-        window.history.replaceState({}, '', endereco.toString());
+        tirar('conversa');
         abrirSeExistir(pedida);
       }
 
@@ -327,8 +343,7 @@ export default function App() {
        */
       const doCartaz = endereco.searchParams.get('ponto');
       if (doCartaz) {
-        endereco.searchParams.delete('ponto');
-        window.history.replaceState({}, '', endereco.toString());
+        tirar('ponto');
         setCodigoDoCartaz(doCartaz);
         setAbaAtiva('ponto');
       }
@@ -346,16 +361,26 @@ export default function App() {
        */
       const atalho = endereco.searchParams.get('atalho');
       if (atalho && (ABAS_PRINCIPAIS as readonly string[]).includes(atalho)) {
-        endereco.searchParams.delete('atalho');
-        window.history.replaceState({}, '', endereco.toString());
+        tirar('atalho');
         setAbaAtiva(atalho as AbaPrincipal);
+        /* "Bater ponto" abre a batida com a câmera pronta, e não só a
+           aba: quem segura o ícone e escolhe o atalho quer bater */
+        if (atalho === 'ponto') setPedidoDeBater(true);
       }
+    };
+
+    try {
+      lerEndereco(new URL(window.location.href), true);
     } catch {
       // Endereço estranho: não vale derrubar a abertura do sistema por isso
     }
 
-    return () =>
+    const pararDeOuvir = ouvirEnderecosDoAplicativo((endereco) => lerEndereco(endereco, false));
+
+    return () => {
       navigator.serviceWorker?.removeEventListener('message', aoReceberDoTrabalhador);
+      pararDeOuvir();
+    };
   }, []);
 
   const alternarEncolhida = (id: string) =>
@@ -516,6 +541,35 @@ export default function App() {
   /* Recebe `irParaNotificacao` lá embaixo, depois que ela existe. O hook
      fica aqui porque abaixo há `return` condicional (tela de login) */
   const irParaRef = useRef<(destino: DestinoNotificacao) => void>(() => {});
+
+  /**
+   * O VOLTAR DO ANDROID, quando nenhum modal está aberto.
+   *
+   * Os modais se fecham sozinhos pela pilha (`useVoltar`). Aqui fica o
+   * que é do App: a conversa aberta fecha; fora das Conversas, volta para
+   * elas; nas Conversas já, devolve falso e o aparelho minimiza.
+   *
+   * Pela referência, e não pelo estado direto: o ouvinte é ligado uma
+   * vez só, e leria para sempre a conversa e a aba do primeiro render.
+   */
+  const estadoParaVoltar = useRef({ conversaAtivaId, abaAtivaEscolhida });
+  estadoParaVoltar.current = { conversaAtivaId, abaAtivaEscolhida };
+  useEffect(
+    () =>
+      ligarBotaoVoltar(() => {
+        const { conversaAtivaId: aberta, abaAtivaEscolhida: aba } = estadoParaVoltar.current;
+        if (aberta) {
+          setConversaAtivaId(null);
+          return true;
+        }
+        if (aba !== 'conversas') {
+          setAbaAtiva('conversas');
+          return true;
+        }
+        return false;
+      }),
+    []
+  );
   useEffect(() => {
     if (!autenticado) return;
 
@@ -811,16 +865,15 @@ export default function App() {
     lembrarOndeParei(colaboradorAtual.id, 'aba-principal', abaAtiva);
   }, [autenticado, colaboradorAtual.id, abaAtiva]);
 
+  /* Sessão conferida: a tela de espera do index.html sai de cima */
+  useEffect(() => {
+    if (!verificandoSessao) encerrarEspera();
+  }, [verificandoSessao]);
+
   // Enquanto a sessão do banco não é conferida, não dá para saber se mostra
-  // o login ou o sistema. Piscar uma tela e trocar pela outra é pior.
-  if (verificandoSessao) {
-    return (
-      <div className="min-h-[100dvh] w-full flex flex-col items-center justify-center gap-3 bg-[var(--c-canvas)] text-[var(--c-texto-3)]">
-        <div className="w-8 h-8 border-2 border-[var(--c-acento)] border-t-transparent rounded-full animate-spin" />
-        <span className="text-xs font-medium">Conectando à rede Malachias…</span>
-      </div>
-    );
-  }
+  // o login ou o sistema. Piscar uma tela e trocar pela outra é pior. Quem
+  // cobre este intervalo é a tela de espera do index.html, com o losango.
+  if (verificandoSessao) return null;
 
   if (!autenticado) {
     return (
@@ -1457,6 +1510,8 @@ export default function App() {
                   colaboradorAtual={colaboradorAtual}
                   codigoDoEndereco={codigoDoCartaz}
                   aoConsumirCodigo={() => setCodigoDoCartaz(null)}
+                  pedidoDeBater={pedidoDeBater}
+                  aoAtenderPedido={() => setPedidoDeBater(false)}
                 />
               </div>
             )}
@@ -1589,6 +1644,8 @@ export default function App() {
                   colaboradorAtual={colaboradorAtual}
                   codigoDoEndereco={codigoDoCartaz}
                   aoConsumirCodigo={() => setCodigoDoCartaz(null)}
+                  pedidoDeBater={pedidoDeBater}
+                  aoAtenderPedido={() => setPedidoDeBater(false)}
                 />
             </div>
           ) : abaDesktop === 'eu' ? (

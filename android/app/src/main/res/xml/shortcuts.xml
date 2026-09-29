@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  OS ATALHOS DO ÍCONE — segurar o CONECTA na tela inicial mostra estes três.
+
+  Cada um abre o aplicativo com conecta://abrir?atalho=<aba>. O valor TEM
+  de ser uma das abas de `ABAS_PRINCIPAIS` (src/tipos.ts): é o mesmo
+  `?atalho=` que o App já lia para o PWA, e um valor fora da lista é
+  ignorado lá — o atalho abriria o aplicativo na última aba, como um
+  toque comum. `aplicativo.test.ts` confere.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="bater_ponto"
+        android:enabled="true"
+        android:icon="@drawable/atalho_ponto"
+        android:shortcutShortLabel="@string/atalho_ponto_curto"
+        android:shortcutLongLabel="@string/atalho_ponto_longo">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="conecta://abrir?atalho=ponto"
+            android:targetPackage="br.com.malachiasautopecas.conecta"
+            android:targetClass="br.com.malachiasautopecas.conecta.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="conversas"
+        android:enabled="true"
+        android:icon="@drawable/atalho_conversas"
+        android:shortcutShortLabel="@string/atalho_conversas_curto"
+        android:shortcutLongLabel="@string/atalho_conversas_longo">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="conecta://abrir?atalho=conversas"
+            android:targetPackage="br.com.malachiasautopecas.conecta"
+            android:targetClass="br.com.malachiasautopecas.conecta.MainActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="central"
+        android:enabled="true"
+        android:icon="@drawable/atalho_central"
+        android:shortcutShortLabel="@string/atalho_central_curto"
+        android:shortcutLongLabel="@string/atalho_central_longo">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="conecta://abrir?atalho=central"
+            android:targetPackage="br.com.malachiasautopecas.conecta"
+            android:targetClass="br.com.malachiasautopecas.conecta.MainActivity" />
+    </shortcut>
+
+</shortcuts>
