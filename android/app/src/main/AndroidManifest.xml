@@ -10,24 +10,12 @@
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 
-        <!--
-          O TECLADO: adjustResize, dito com todas as letras.
-
-          Sem dizer, o Android escolhe sozinho, e em muitos aparelhos
-          escolhe DESLOCAR a janela para cima quando o teclado abre. O
-          Capacitor já encolhe a página até a borda do teclado; os dois
-          juntos empurravam a barra de mensagem duas vezes, e sobrava uma
-          faixa vazia entre ela e o teclado — o "aspecto de bug" que o
-          Elias relatou. Com adjustResize a janela fica parada e só o
-          Capacitor ajusta.
-        -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
             android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
-            android:windowSoftInputMode="adjustResize"
             android:exported="true">
 
             <intent-filter>

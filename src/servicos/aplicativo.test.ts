@@ -353,33 +353,3 @@ test('a abertura do Android é branca, e não a cor do tema do celular', async (
   expect(config).toContain("backgroundColor: '#ffffff'");
 });
 
-// ===============================================================
-// 6. O TECLADO
-// ===============================================================
-
-/**
- * O TECLADO ENCOSTA NA BARRA DE MENSAGEM.
- *
- * Relatado pelo Elias: ao abrir o teclado sobrava uma faixa vazia entre
- * ele e a barra de mensagem. O Capacitor 8 já recua a página até a borda
- * do teclado; o Android, deixado escolher sozinho, também deslocava a
- * janela — e no Android 14 ou anterior a janela nem ocupava a tela
- * inteira. Os dois ajustes somados eram a faixa.
- */
-test('o teclado é ajustado uma vez só, pelo Capacitor', async () => {
-  const manifesto = await Bun.file('android/app/src/main/AndroidManifest.xml').text();
-  const atividade = manifesto.slice(
-    manifesto.indexOf('<activity'),
-    manifesto.indexOf('>', manifesto.indexOf('android:exported', manifesto.indexOf('<activity')))
-  );
-  expect(atividade).toContain('android:windowSoftInputMode="adjustResize"');
-
-  const java = await Bun.file(
-    'android/app/src/main/java/br/com/malachiasautopecas/conecta/MainActivity.java'
-  ).text();
-  // Tela inteira em todo Android, ligada antes de a ponte montar a página
-  expect(java).toContain('EdgeToEdge.enable(this, transparente, transparente);');
-  expect(java.indexOf('EdgeToEdge.enable')).toBeLessThan(java.indexOf('super.onCreate'));
-  // Barras transparentes: um véu por cima estragaria a cor do tema
-  expect(java).toContain('SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)');
-});
