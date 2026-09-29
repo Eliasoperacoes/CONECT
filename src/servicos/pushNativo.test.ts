@@ -75,27 +75,25 @@ mock.module('@capacitor/push-notifications', () => ({
   },
 }));
 
-/** O que foi parar na tabela `aparelhos`. */
-let inseridos: any[] = [];
-let atualizados: any[] = [];
+/** O que chegou ao banco. */
+let registrados: any[] = [];
+let escritasDiretas: string[] = [];
 let apagados: string[] = [];
-/** Ligado, o insert é recusado como já existente. */
-let tokenJaExiste = false;
 
 mock.module('./supabase', () => ({
   supabase: {
+    rpc: async (funcao: string, args: any) => {
+      registrados.push({ funcao, ...args });
+      return { error: null };
+    },
     from: (tabela: string) => ({
-      insert: async (linha: any) => {
-        if (tabela !== 'aparelhos') return { error: null };
-        if (tokenJaExiste) {
-          return { error: { code: '23505', message: 'duplicate key' } };
-        }
-        inseridos.push(linha);
+      insert: async () => {
+        escritasDiretas.push(`insert:${tabela}`);
         return { error: null };
       },
-      update: (linha: any) => ({
-        eq: async (_coluna: string, valor: string) => {
-          atualizados.push({ ...linha, token: valor });
+      update: () => ({
+        eq: async () => {
+          escritasDiretas.push(`update:${tabela}`);
           return { error: null };
         },
       }),
@@ -111,16 +109,19 @@ mock.module('./supabase', () => ({
   temSessaoViva: () => true,
 }));
 
-const { ligarAvisoNativo, desligarAvisoNativo } = await import('./pushNativo');
+const { ligarAvisoNativo, desligarAvisoNativo, destinoDoPush } = await import('./pushNativo');
 
-beforeEach(() => {
+beforeEach(async () => {
+  /* O token lembrado é estado do módulo: sai do teste anterior aqui */
+  dentroDoAplicativo = true;
+  await desligarAvisoNativo();
+
   dentroDoAplicativo = false;
   chamadas = [];
   ouvintes = {};
-  inseridos = [];
-  atualizados = [];
+  registrados = [];
+  escritasDiretas = [];
   apagados = [];
-  tokenJaExiste = false;
   permissaoDoAparelho = 'granted';
 });
 
@@ -134,15 +135,15 @@ test('NO NAVEGADOR o push nativo nem é tentado', async () => {
    * erro aqui derrubaria o sistema de 89 pessoas por causa de um
    * recurso que ainda não existe para elas.
    */
-  const res = await ligarAvisoNativo('colab-ana', () => {});
+  const res = await ligarAvisoNativo(() => {});
 
   expect(res.ligado).toBe(false);
   expect(chamadas).toEqual([]);
-  expect(inseridos).toEqual([]);
+  expect(registrados).toEqual([]);
 });
 
 test('desligar no navegador também não faz nada', async () => {
-  await desligarAvisoNativo('token-x');
+  await desligarAvisoNativo();
 
   expect(chamadas).toEqual([]);
   expect(apagados).toEqual([]);
@@ -161,7 +162,7 @@ test('A PERMISSÃO É PEDIDA, e não suposta', async () => {
   dentroDoAplicativo = true;
   permissaoDoAparelho = 'prompt';
 
-  await ligarAvisoNativo('colab-ana', () => {});
+  await ligarAvisoNativo(() => {});
 
   expect(chamadas).toContain('checkPermissions');
   expect(chamadas).toContain('requestPermissions');
@@ -171,7 +172,7 @@ test('permissão negada NÃO registra, e explica onde ligar', async () => {
   dentroDoAplicativo = true;
   permissaoDoAparelho = 'denied';
 
-  const res = await ligarAvisoNativo('colab-ana', () => {});
+  const res = await ligarAvisoNativo(() => {});
 
   expect(res.ligado).toBe(false);
   expect(res.motivo).toContain('Notificações');
@@ -187,7 +188,7 @@ test('OS OUVINTES SÃO LIGADOS ANTES DO REGISTRO', async () => {
    */
   dentroDoAplicativo = true;
 
-  await ligarAvisoNativo('colab-ana', () => {});
+  await ligarAvisoNativo(() => {});
 
   expect(chamadas.indexOf('addListener:registration')).toBeLessThan(
     chamadas.indexOf('register')
@@ -197,38 +198,51 @@ test('OS OUVINTES SÃO LIGADOS ANTES DO REGISTRO', async () => {
 
 test('O ENDEREÇO DO APARELHO É GUARDADO quando o Firebase o entrega', async () => {
   dentroDoAplicativo = true;
-  await ligarAvisoNativo('colab-ana', () => {});
+  await ligarAvisoNativo(() => {});
 
   ouvintes['registration']({ value: 'token-do-firebase' });
   await Bun.sleep(1);
 
-  expect(inseridos).toHaveLength(1);
-  expect(inseridos[0].token).toBe('token-do-firebase');
-  expect(inseridos[0].colaborador_id).toBe('colab-ana');
+  expect(registrados).toEqual([
+    { funcao: 'registrar_aparelho', p_token: 'token-do-firebase', p_plataforma: 'android' },
+  ]);
 });
 
-test('APARELHO QUE TROCA DE DONO passa a ser de quem entrou', async () => {
+test('APARELHO QUE TROCA DE DONO passa pela função do banco, nunca por update', async () => {
   /**
-   * O celular do balcão é o mesmo em todos os turnos. Sem isto, o aviso
-   * da pessoa da manhã continuaria chegando no aparelho depois de a da
-   * tarde entrar — as mensagens de chat inclusive.
+   * O celular do balcão é o mesmo em todos os turnos. O caminho antigo
+   * era insert e, no 23505, update. Só que a política de UPDATE exige
+   * que a linha JÁ SEJA da pessoa — na troca, ainda é da anterior. O
+   * update afetava zero linhas, devolvia sucesso, e o chat da manhã
+   * seguia chegando no bolso da tarde.
    *
-   * E é por isso que o registro NÃO usa `upsert`: ele vira `ON
-   * CONFLICT`, que exige ENXERGAR a linha em conflito — e a regra da
-   * tabela só deixa a pessoa ler os próprios aparelhos. Na hora do
-   * conflito, aquele aparelho ainda é de outra pessoa.
+   * `registrar_aparelho` grava no nome de quem chama, pela sessão. Nada
+   * de colaborador no parâmetro: senão daria para registrar o aparelho
+   * no nome de outro.
    */
   dentroDoAplicativo = true;
-  tokenJaExiste = true;
 
-  await ligarAvisoNativo('colab-bia', () => {});
+  await ligarAvisoNativo(() => {});
   ouvintes['registration']({ value: 'token-do-balcao' });
   await Bun.sleep(1);
 
-  expect(inseridos).toHaveLength(0);
-  expect(atualizados).toHaveLength(1);
-  expect(atualizados[0].colaborador_id).toBe('colab-bia');
-  expect(atualizados[0].token).toBe('token-do-balcao');
+  expect(escritasDiretas).toEqual([]);
+  expect(registrados).toHaveLength(1);
+  expect(Object.keys(registrados[0]).sort()).toEqual(['funcao', 'p_plataforma', 'p_token']);
+});
+
+test('a função do banco não recebe colaborador, e passa por cima da RLS', async () => {
+  const sql = await Bun.file('supabase/aparelho-troca-de-dono.sql').text();
+  const cabecalho = sql.slice(
+    sql.indexOf('create or replace function public.registrar_aparelho('),
+    sql.indexOf('returns void')
+  );
+
+  expect(cabecalho.length).toBeGreaterThan(0);
+  expect(cabecalho).not.toContain('colaborador');
+  expect(sql).toContain('security definer');
+  expect(sql).toContain('public.meu_colaborador_id()');
+  expect(sql).toContain('from public, anon');
 });
 
 test('O TOQUE NO AVISO LEVA AO LUGAR, e não à tela inicial', async () => {
@@ -239,13 +253,29 @@ test('O TOQUE NO AVISO LEVA AO LUGAR, e não à tela inicial', async () => {
   dentroDoAplicativo = true;
   const destinos: any[] = [];
 
-  await ligarAvisoNativo('colab-ana', (d) => destinos.push(d));
+  await ligarAvisoNativo((d) => destinos.push(d));
 
   ouvintes['pushNotificationActionPerformed']({
     notification: { data: { tipo: 'conversa', conversaId: 'conv-9' } },
   });
 
   expect(destinos).toEqual([{ tipo: 'conversa', conversaId: 'conv-9' }]);
+});
+
+test('aviso com dado incompleto abre a tela inicial, e não uma janela vazia', async () => {
+  dentroDoAplicativo = true;
+  const destinos: any[] = [];
+  await ligarAvisoNativo((d) => destinos.push(d));
+
+  ouvintes['pushNotificationActionPerformed']({ notification: { data: { tipo: 'conversa' } } });
+  ouvintes['pushNotificationActionPerformed']({ notification: {} });
+
+  expect(destinos).toEqual([]);
+  expect(destinoDoPush({ tipo: 'publicacao', publicacaoId: 'pub-1' })).toEqual({
+    tipo: 'publicacao',
+    publicacaoId: 'pub-1',
+  });
+  expect(destinoDoPush({ tipo: 'secao' })).toBeNull();
 });
 
 test('COM O APLICATIVO ABERTO o aviso não vira tarja na tela', async () => {
@@ -255,7 +285,7 @@ test('COM O APLICATIVO ABERTO o aviso não vira tarja na tela', async () => {
    * susto. O sino conta; quem precisa do aviso é quem não está olhando.
    */
   dentroDoAplicativo = true;
-  await ligarAvisoNativo('colab-ana', () => {});
+  await ligarAvisoNativo(() => {});
 
   const recebido = ouvintes['pushNotificationReceived'];
   expect(recebido).toBeTruthy();
@@ -270,11 +300,39 @@ test('SAIR DO SISTEMA tira o aparelho da lista de entrega', async () => {
    * continuaria recebendo as mensagens da pessoa anterior.
    */
   dentroDoAplicativo = true;
+  await ligarAvisoNativo(() => {});
+  ouvintes['registration']({ value: 'token-do-balcao' });
+  await Bun.sleep(1);
 
-  await desligarAvisoNativo('token-do-balcao');
+  /* Quem sai não sabe o token — o aparelho tem de lembrar sozinho */
+  await desligarAvisoNativo();
 
   expect(apagados).toEqual(['token-do-balcao']);
   expect(chamadas).toContain('removeAllListeners');
+});
+
+test('SAIR tira o aparelho ANTES de encerrar a sessão', async () => {
+  /**
+   * Só a própria pessoa apaga o próprio aparelho. Depois do `sair()`, o
+   * delete afeta zero linhas e devolve sucesso — o celular seguiria
+   * recebendo o chat de quem já foi embora, e nada acusaria.
+   */
+  const fonte = await Bun.file('src/App.tsx').text();
+  const inicio = fonte.indexOf('const lidarDeslogar');
+  const corpo = fonte.slice(inicio, fonte.indexOf('setAutenticado(false)', inicio));
+
+  expect(corpo.length).toBeGreaterThan(0);
+  const desligar = corpo.indexOf('await desligarAvisoNativo()');
+  const sair = corpo.indexOf('nuvem.sair()');
+  expect(desligar).toBeGreaterThan(-1);
+  expect(sair).toBeGreaterThan(desligar);
+});
+
+test('o aviso nativo é ligado depois do login', async () => {
+  /* Estava escrito no App sem o import: o lint quebrava e nada ligava */
+  const fonte = await Bun.file('src/App.tsx').text();
+  expect(fonte).toMatch(/import \{[^}]*ligarAvisoNativo[^}]*\} from '\.\/servicos\/pushNativo'/);
+  expect(fonte).toContain('ligarAvisoNativo(');
 });
 
 // ===============================================================

@@ -85,15 +85,13 @@ create policy aparelhos_registro on public.aparelhos
   with check (colaborador_id = public.meu_colaborador_id());
 
 -- ------------------------------------------------------------
--- ATUALIZAR: o `visto_em` de cada abertura, e a troca de dono
+-- ATUALIZAR: só a própria linha
 --
--- O token é a chave primária, e um insert de token repetido é recusado
--- com 23505. O aplicativo trata isso atualizando a linha — é o caminho
--- de "este aparelho agora é de outra pessoa".
---
--- SEM POLÍTICA DE UPDATE, esse caminho falharia CALADO: o update
--- afetaria zero linhas e devolveria sucesso. O aparelho seguiria
--- entregando os avisos para o dono anterior, e ninguém descobriria.
+-- ATENÇÃO: esta política NÃO cobre a troca de dono. Na troca, a linha
+-- ainda é do dono anterior, o `using` a esconde, e o update afeta zero
+-- linhas devolvendo sucesso. Este arquivo dizia o contrário e estava
+-- errado. A troca de dono passa por `registrar_aparelho()`, em
+-- `aparelho-troca-de-dono.sql` — é ela que o aplicativo chama.
 -- ------------------------------------------------------------
 drop policy if exists aparelhos_atualizacao on public.aparelhos;
 create policy aparelhos_atualizacao on public.aparelhos

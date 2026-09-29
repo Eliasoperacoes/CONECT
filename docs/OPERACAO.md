@@ -92,6 +92,7 @@ esquema.
 |---|---|
 | `conferir-central.sql` | **Não altera nada.** Publicar na Central falhou — diz se a causa é coluna faltando, política ou nível |
 | `aparelhos-para-push.sql` | **Rode uma vez, antes de distribuir o APK.** Cria a tabela dos aparelhos que recebem aviso com o app fechado. Sem ela o aplicativo não consegue guardar o endereço de entrega, e o aviso nativo não chega |
+| `aparelho-troca-de-dono.sql` | **Rode uma vez, depois do anterior.** Cria `registrar_aparelho()`, que o aplicativo usa para guardar o endereço de entrega. Sem ela, o celular que troca de dono (o do balcão, de turno em turno) seguiria recebendo o chat de quem saiu — a política de UPDATE esconde a linha do dono anterior, e o update antigo afetava zero linhas calado |
 | `foto-de-perfil-no-balde.sql` | **Rode uma vez.** A foto de perfil passou a viver no armazenamento em vez de base64 dentro da ficha — este script acrescenta o prefixo `perfil/` às regras do balde, para ninguém subir foto na pasta de outro. No fim diz quantas fotos ainda faltam converter |
 | `medir-consumo.sql` | **Não altera nada.** Quanto o projeto gasta dos limites do Supabase: tamanho de cada tabela, peso das fotos de perfil (que são base64 dentro do banco), arquivos no Storage e o crescimento mês a mês. A leitura dos números está em [LIMITES-SUPABASE.md](LIMITES-SUPABASE.md) |
 | `conferir-prontidao.sql` | **Não altera nada. Rode antes de abrir o sistema para mais gente.** Confere se o banco tem TODA coluna que o código manda (é o que teria pego o `publicacao_id` antes de o chat parar), se as tabelas que o sistema escreve têm política de INSERT e UPDATE, e mostra o retrato do que já está lá dentro |
@@ -248,7 +249,54 @@ select exists (
 
 ---
 
+## Aviso com o aplicativo fechado (Android)
+
+O caminho tem três peças, e as três precisam estar de pé — faltando
+qualquer uma, o aviso simplesmente não chega, sem erro em lugar nenhum:
+
+| Peça | Onde | Feito uma vez |
+|---|---|---|
+| Tabela dos aparelhos | `aparelhos-para-push.sql` e `aparelho-troca-de-dono.sql` | SQL Editor |
+| O APK (Capacitor) | pasta `android/`, pacote `br.com.malachiasautopecas.conecta` | Android Studio |
+| A função que envia | `supabase/functions/enviar-aviso/index.ts` | painel do Supabase |
+
+### Publicar a função (sem instalar nada)
+
+1. **Chave do Firebase.** Firebase → ⚙ Configurações do projeto → *Contas
+   de serviço* → *Gerar nova chave privada*. Baixa um `.json`.
+2. **Guardar no Supabase.** Edge Functions → *Secrets* → nome
+   `FCM_CONTA_SERVICO`, valor = o conteúdo **inteiro** do `.json`.
+3. **Criar a função.** Edge Functions → *Deploy a new function* → *Via
+   Editor*, nome **`enviar-aviso`** (exatamente esse), colar o
+   `index.ts` inteiro, publicar.
+
+Essa chave envia aviso para qualquer aparelho do projeto: **não vai para o
+repositório**, nem para conversa, nem para e-mail. O `google-services.json`
+que está no `android/` é outra coisa — é do aplicativo e não envia nada.
+
+### O que dispara o aviso
+
+Toda mensagem gravada — chat, o recado de publicação no grupo de avisos e
+o aviso de citação. Quem recebe é quem participa da conversa, menos o
+remetente, quem **removeu** a conversa e quem está inativo. Várias
+mensagens da mesma conversa viram **um** aviso só na tela de bloqueio,
+atualizado.
+
+Cada mensagem é uma chamada à função. O plano gratuito dá 500 mil por mês.
+
+### Conferir
+
+Na tabela `aparelhos` tem de aparecer uma linha por celular com o app
+aberto e logado. Sem linha, o problema está no aparelho (permissão de
+notificação negada, ou o app não chegou a registrar). Com linha e sem
+aviso, o problema está na função: *Edge Functions → enviar-aviso → Logs*.
+
+---
+
 ## Gerar o APK no PWABuilder
+
+> **Substituído pela casca Capacitor** (seção acima). O PWABuilder não
+> recebe aviso com o app fechado. Fica aqui só como registro.
 
 O CONECTA é um site instalável. O [pwabuilder.com](https://pwabuilder.com)
 lê o endereço publicado e devolve um APK nativo — uma casca Android que abre

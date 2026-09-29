@@ -28,6 +28,7 @@ import {
   TipoPublicacao,
 } from '../tipos';
 import { supabase } from './supabase';
+import { pedirAvisoDaMensagem } from './envioDeAviso';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
 import { buscarTodasAsLinhas } from './paginacao';
 import { resolverCaminhos } from './anexos';
@@ -743,6 +744,15 @@ class PonteComunicacao {
      * olhando para o relógio por causa do próprio visto.
      */
     void this.marcarLeitura([mensagem.id], mensagem.remetenteId);
+
+    /**
+     * O AVISO COM O APLICATIVO FECHADO sai daqui, e de nenhum outro lugar.
+     *
+     * Este é o único insert de mensagem do sistema — chat, recado de
+     * publicação e aviso de citação passam todos por ele. Chamar em cada
+     * tela que envia seria esquecer uma delas.
+     */
+    pedirAvisoDaMensagem(mensagem.id, montarPreviaDaMensagem(mensagem));
     return { sucesso: true };
   }
 

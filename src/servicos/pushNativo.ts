@@ -41,24 +41,53 @@ import {
 import { rodandoNoAplicativo } from './aplicativo';
 import { supabase, usandoNuvem } from './supabase';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
+import type { DestinoNotificacao } from './centralDeNotificacoes';
 
 /**
- * O destino de um aviso, no mesmo formato que o sino já usa.
+ * O que o servidor manda dentro do push.
  *
- * É o que faz tocar na notificação abrir a conversa certa em vez da
- * tela inicial. O servidor manda isto dentro do push, e o aplicativo o
- * devolve para quem sabe navegar.
+ * O Firebase só carrega TEXTO nos dados, então chega solto: todo campo
+ * pode faltar. Quem traduz para o destino do sino é `destinoDoPush`.
  */
-export interface DestinoDoPush {
-  tipo?: 'conversa' | 'publicacao' | 'secao';
+export interface DadosDoPush {
+  tipo?: string;
   conversaId?: string;
   publicacaoId?: string;
-  secao?: string;
 }
 
-type Navegador = (destino: DestinoDoPush) => void;
+/**
+ * O TOQUE LEVA AO MESMO LUGAR QUE O SINO LEVA.
+ *
+ * Quem navega é `irParaNotificacao`, no App, e ele já sabe abrir
+ * conversa e publicação. Este arquivo não navega: só traduz o que
+ * chegou para o formato que ele entende. Um segundo navegador aqui
+ * seria uma segunda cópia da regra de "tocar leva aonde".
+ *
+ * Dado que não fecha vira `null`, e o aplicativo abre na tela inicial.
+ * Uma conversa sem id levaria a uma janela vazia, que é pior.
+ */
+export const destinoDoPush = (dados: DadosDoPush): DestinoNotificacao | null => {
+  if (dados.tipo === 'publicacao' && dados.publicacaoId) {
+    return { tipo: 'publicacao', publicacaoId: dados.publicacaoId };
+  }
+  if (dados.tipo === 'conversa' && dados.conversaId) {
+    return { tipo: 'conversa', conversaId: dados.conversaId };
+  }
+  return null;
+};
+
+type Navegador = (destino: DestinoNotificacao) => void;
 
 let irPara: Navegador | null = null;
+
+/**
+ * O token deste aparelho, lembrado para o logout.
+ *
+ * Sem ele, sair do sistema não teria o que apagar: o token só chega no
+ * evento de registro, e ninguém o pedia de volta. O aparelho seguiria
+ * na lista de entrega da pessoa que saiu.
+ */
+let tokenDesteAparelho: string | null = null;
 
 /**
  * GUARDA O ENDEREÇO DESTE APARELHO no banco.
@@ -68,52 +97,26 @@ let irPara: Navegador | null = null;
  * simplesmente não entrega, calado. Por isso ele é gravado a cada
  * abertura, e não só na primeira.
  *
- * O TOKEN É A CHAVE da tabela, e não o aparelho. Quando o mesmo token
- * reaparece para outra pessoa — o celular trocou de dono, ou alguém
- * entrou com outro login no mesmo aparelho —, a linha passa a ser dela.
- * Sem isso, o aviso de uma pessoa chegaria no bolso da outra.
+ * PELA FUNÇÃO DO BANCO, e não por insert + update.
+ *
+ * O caminho antigo era insert, e no 23505 um update. Na troca de dono
+ * — o celular do balcão passando da pessoa da manhã para a da tarde —
+ * a linha ainda é da anterior, a RLS a esconde, e o update afeta zero
+ * linhas devolvendo SUCESSO. O aviso da manhã continuava chegando no
+ * bolso da tarde, e nada acusava.
+ *
+ * `registrar_aparelho` grava no nome de QUEM CHAMA — não recebe o
+ * colaborador, então não há como registrar o aparelho em nome de outro.
  */
-const guardarAparelho = async (
-  token: string,
-  colaboradorId: string
-): Promise<{ sucesso: boolean; erro?: string }> => {
+const guardarAparelho = async (token: string): Promise<{ sucesso: boolean; erro?: string }> => {
   if (!supabase || !usandoNuvem()) return { sucesso: true };
 
-  const agora = new Date().toISOString();
-
-  /**
-   * INSERT SIMPLES, e o 23505 tratado como "já existe".
-   *
-   * Nada de `upsert`: ele vira `ON CONFLICT` no Postgres, que exige
-   * enxergar a linha em conflito — e a regra desta tabela só deixa a
-   * pessoa ler os PRÓPRIOS aparelhos. O aparelho que trocou de dono
-   * ainda pertence a outra pessoa na hora do conflito, então o upsert
-   * seria recusado pela RLS.
-   *
-   * É a mesma armadilha que derrubou a gravação de conversa uma vez, e
-   * está documentada em APRENDIZADOS.
-   */
-  const { error } = await supabase.from('aparelhos').insert({
-    token,
-    colaborador_id: colaboradorId,
-    plataforma: 'android',
-    visto_em: agora,
+  const { error } = await supabase.rpc('registrar_aparelho', {
+    p_token: token,
+    p_plataforma: 'android',
   });
 
   if (!error) return { sucesso: true };
-
-  if (error.code === '23505') {
-    /* Já existia: pode ser o mesmo dono abrindo de novo, ou o aparelho
-       mudando de mão. Os dois casos se resolvem igual. */
-    const { error: erroUpdate } = await supabase
-      .from('aparelhos')
-      .update({ colaborador_id: colaboradorId, visto_em: agora })
-      .eq('token', token);
-
-    if (!erroUpdate) return { sucesso: true };
-    return { sucesso: false, erro: await explicarRecusaDoBanco(erroUpdate) };
-  }
-
   return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
 };
 
@@ -124,11 +127,12 @@ const guardarAparelho = async (
  * permissão de notificação na tela de senha é o tipo de coisa que faz a
  * pessoa negar por reflexo.
  *
- * @param colaboradorId de quem está usando o aparelho agora
+ * Quem é o dono do aparelho o banco sabe pela sessão: por isso não se
+ * passa o colaborador aqui.
+ *
  * @param aoTocar o que fazer quando a pessoa toca no aviso
  */
 export const ligarAvisoNativo = async (
-  colaboradorId: string,
   aoTocar: Navegador
 ): Promise<{ ligado: boolean; motivo?: string }> => {
   if (!rodandoNoAplicativo()) {
@@ -172,7 +176,8 @@ export const ligarAvisoNativo = async (
     await PushNotifications.removeAllListeners();
 
     await PushNotifications.addListener('registration', (token: Token) => {
-      guardarAparelho(token.value, colaboradorId).then((res) => {
+      tokenDesteAparelho = token.value;
+      guardarAparelho(token.value).then((res) => {
         if (!res.sucesso) {
           console.error('Aparelho não foi registrado para avisos:', res.erro);
         }
@@ -206,8 +211,8 @@ export const ligarAvisoNativo = async (
     await PushNotifications.addListener(
       'pushNotificationActionPerformed',
       (acao: ActionPerformed) => {
-        const dados = (acao.notification.data || {}) as DestinoDoPush;
-        irPara?.(dados);
+        const destino = destinoDoPush((acao.notification.data || {}) as DadosDoPush);
+        if (destino) irPara?.(destino);
       }
     );
 
@@ -227,13 +232,20 @@ export const ligarAvisoNativo = async (
  * Chamado ao SAIR do sistema. Sem isto, quem empresta o celular ou
  * troca de turno no aparelho do balcão continuaria recebendo as
  * mensagens da pessoa anterior — inclusive as do chat.
+ *
+ * TEM DE RODAR ANTES DE ENCERRAR A SESSÃO. A regra de apagar só deixa
+ * a pessoa tirar os próprios aparelhos; sem sessão, o delete afeta zero
+ * linhas, devolve sucesso, e o aparelho continua na lista.
  */
-export const desligarAvisoNativo = async (token?: string): Promise<void> => {
+export const desligarAvisoNativo = async (): Promise<void> => {
   if (!rodandoNoAplicativo()) return;
 
   try {
     await PushNotifications.removeAllListeners();
     irPara = null;
+
+    const token = tokenDesteAparelho;
+    tokenDesteAparelho = null;
 
     if (token && supabase && usandoNuvem()) {
       await supabase.from('aparelhos').delete().eq('token', token);

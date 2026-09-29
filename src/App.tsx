@@ -90,6 +90,7 @@ import { servicoPonto } from './servicos/ponto';
 import { vigiarRelogio } from './servicos/relogio';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
+import { ligarAvisoNativo, desligarAvisoNativo } from './servicos/pushNativo';
 import { montarPreviaDaMensagem } from './servicos/nuvemComunicacao';
 import {
   atualizarTituloDaAba,
@@ -496,6 +497,35 @@ export default function App() {
    * Avisa só quando a fila CRESCE: notificar a cada sincronização, com o
    * mesmo total de sempre, viraria ruído e a pessoa desligaria o aviso.
    */
+  /**
+   * ===============================================================
+   * O AVISO NATIVO LIGA DEPOIS DO LOGIN, e não antes.
+   * ===============================================================
+   *
+   * Antes do login não há a quem entregar — o endereço do aparelho é
+   * guardado NO NOME de alguém, e sem alguém a linha não existe.
+   *
+   * E pedir permissão de notificação na tela de senha é o tipo de coisa
+   * que faz a pessoa negar por reflexo. No Android, negado é negado: o
+   * aplicativo não pode perguntar de novo, e a partir dali só se
+   * conserta nos Ajustes do aparelho.
+   *
+   * NO NAVEGADOR ISTO NÃO FAZ NADA. `ligarAvisoNativo` sai pela porta
+   * quando não há casca nativa — e hoje todo mundo está no navegador.
+   */
+  /* Recebe `irParaNotificacao` lá embaixo, depois que ela existe. O hook
+     fica aqui porque abaixo há `return` condicional (tela de login) */
+  const irParaRef = useRef<(destino: DestinoNotificacao) => void>(() => {});
+  useEffect(() => {
+    if (!autenticado) return;
+
+    /* `irParaRef` e não `irParaNotificacao` direto: a função é recriada a
+       cada render, e o ouvinte do plugin ficaria preso à primeira */
+    ligarAvisoNativo((destino) => irParaRef.current(destino)).then((res) => {
+      if (!res.ligado && res.motivo) console.info('Aviso nativo:', res.motivo);
+    });
+  }, [autenticado, colaboradorAtual.id]);
+
   const refPendenciasVistas = useRef<number | null>(null);
   useEffect(() => {
     const conferir = () => {
@@ -865,7 +895,16 @@ export default function App() {
     setConversaAtivaId(null);
   };
 
-  const lidarDeslogar = () => {
+  const lidarDeslogar = async () => {
+    /**
+     * O APARELHO SAI DA LISTA DE ENTREGA ANTES DA SESSÃO CAIR.
+     *
+     * Só a própria pessoa apaga o próprio aparelho. Depois do `sair()`
+     * o delete afeta zero linhas e devolve sucesso — e o celular do
+     * balcão seguiria recebendo o chat de quem já foi embora.
+     */
+    await desligarAvisoNativo();
+
     bancoDados.deslogar();
     // No modo rede a sessão vive no banco e também precisa ser encerrada
     if (usandoNuvem()) nuvem.sair();
@@ -922,6 +961,7 @@ export default function App() {
     setConversaAtivaId(null);
     setSecaoAlvo(destino.secao);
   };
+  irParaRef.current = irParaNotificacao;
 
   // Abre conversa de avisos ao clicar na faixa
   const abrirAvisosDirecao = () => {
