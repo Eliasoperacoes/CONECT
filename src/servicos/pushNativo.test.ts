@@ -206,9 +206,6 @@ test('OS OUVINTES SÃO LIGADOS ANTES DO REGISTRO', async () => {
   expect(chamadas.indexOf('addListener:registration')).toBeLessThan(
     chamadas.indexOf('register')
   );
-  /* E o canal de alta prioridade existe antes do primeiro aviso chegar */
-  expect(chamadas.indexOf('createChannel:mensagens:5')).toBeGreaterThan(-1);
-  expect(chamadas.indexOf('createChannel:mensagens:5')).toBeLessThan(chamadas.indexOf('register'));
   expect(chamadas).toContain('addListener:pushNotificationActionPerformed');
 });
 

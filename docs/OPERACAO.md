@@ -269,6 +269,27 @@ qualquer uma, o aviso simplesmente não chega, sem erro em lugar nenhum:
 3. **Criar a função.** Edge Functions → *Deploy a new function* → *Via
    Editor*, nome **`enviar-aviso`** (exatamente esse), colar o
    `index.ts` inteiro, publicar.
+4. **Desligar "Verify JWT"** nos detalhes da função. A resposta rápida
+   da notificação chega sem sessão (o app está fechado) e se identifica
+   pelo vale assinado; com a verificação ligada, o Supabase a recusa
+   antes. A função confere a identidade dos dois caminhos por conta
+   própria.
+
+Mudou o `index.ts`? Cole de novo em *enviar-aviso → Code* e publique:
+o repositório não chega à função sozinho, como chega à Vercel.
+
+### A resposta rápida
+
+O aviso chega com o campo **Responder** em conversas individuais e
+grupos abertos. No grupo de avisos da rede e nos grupos só de gestores
+ele vem sem o campo: quem publica ali depende do nível da pessoa, e essa
+regra mora no aplicativo — o servidor não a copia, só não oferece.
+
+Quem responde se identifica por um **vale** que a função assina para
+cada destinatário (quem, qual conversa, até quando — 48 horas). Um vale
+adulterado ou vencido é recusado; quem saiu da conversa ou foi desligado
+depois do aviso também. Os testes que executam a função estão em
+`src/servicos/respostaRapida.test.ts`.
 
 Essa chave envia aviso para qualquer aparelho do projeto: **não vai para o
 repositório**, nem para conversa, nem para e-mail. O `google-services.json`

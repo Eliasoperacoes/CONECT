@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -48,6 +49,31 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!--
+          QUEM RECEBE O AVISO É O NOSSO SERVIÇO, e não o do plugin.
+
+          O Android entrega a mensagem a um serviço só. O `ServicoDeAvisos`
+          estende o do Capacitor (o token continua sendo guardado) e
+          acrescenta o aviso com "Responder". O original sai daqui: com os
+          dois declarados, o Android escolheria um, e não necessariamente
+          o nosso.
+        -->
+        <service
+            android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
+            tools:node="remove" />
+        <service
+            android:name=".ServicoDeAvisos"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- O "Responder" da notificação: só o próprio aplicativo o chama -->
+        <receiver
+            android:name=".RespostaRapida"
+            android:exported="false" />
 
         <!--
           O AVISO NA BARRA DO ANDROID.

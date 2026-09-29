@@ -132,18 +132,18 @@ test('o título sai do banco, e não do aparelho', async () => {
   expect(fonte).not.toMatch(/corpo\.titulo/);
 });
 
-test('o aviso vai pelo canal de alta prioridade que o aparelho cria', async () => {
+test('o aviso vai pelo canal de alta prioridade, criado por quem o desenha', async () => {
   /* Canal com id diferente cai no padrão do Firebase, que não desce por
      cima da tela: o aviso chega e ninguém vê */
-  const push = await Bun.file('src/servicos/pushNativo.ts').text();
-  const CANAL_DE_MENSAGENS = push.match(/export const CANAL_DE_MENSAGENS = '([a-z_]+)'/)?.[1];
-  expect(CANAL_DE_MENSAGENS).toBeTruthy();
-  expect(push).toContain('id: CANAL_DE_MENSAGENS');
-  const fonte = await funcao();
+  const java = await Bun.file(
+    'android/app/src/main/java/br/com/malachiasautopecas/conecta/ServicoDeAvisos.java'
+  ).text();
+  const canal = java.match(/static final String CANAL = "([a-z_]+)";/)?.[1];
   const manifesto = await Bun.file('android/app/src/main/AndroidManifest.xml').text();
 
-  expect(fonte).toContain(`channel_id: '${CANAL_DE_MENSAGENS}'`);
-  expect(manifesto).toContain(`android:value="${CANAL_DE_MENSAGENS}"`);
+  expect(canal).toBeTruthy();
+  expect(java).toContain('NotificationManager.IMPORTANCE_HIGH');
+  expect(manifesto).toContain(`android:value="${canal}"`);
 });
 
 test('a chave de serviço do Firebase não está no repositório', async () => {

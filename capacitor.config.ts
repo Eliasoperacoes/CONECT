@@ -101,14 +101,16 @@ const config: CapacitorConfig = {
   plugins: {
     PushNotifications: {
       /**
-       * O som e o número no ícone ficam com o Android.
+       * VAZIO DE PROPÓSITO: o plugin não desenha aviso nenhum.
        *
-       * `badge` é o contador na bolinha do ícone; `alert` é o aviso na
-       * tela. Sem estes, o push chegaria e não apareceria — o que é
-       * pior do que não chegar, porque ninguém procura o que não sabe
-       * que existe.
+       * Com `alert`, o plugin desenhava o aviso por cima do sistema
+       * ABERTO — o contrário da regra "à vista, não interrompe". Quem
+       * desenha é o `ServicoDeAvisos` (Java), que monta o "Responder" e
+       * olha se o CONECTA está na tela antes. O servidor manda só dados,
+       * então estas opções nem teriam o que mostrar; vazio deixa isso
+       * dito, em vez de parecer que o aviso depende daqui.
        */
-      presentationOptions: ['badge', 'sound', 'alert'],
+      presentationOptions: [],
     },
   },
 

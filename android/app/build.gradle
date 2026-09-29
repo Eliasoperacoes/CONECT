@@ -40,6 +40,13 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
+
+    // O aviso com "Responder" (ServicoDeAvisos, RespostaRapida) usa as
+    // classes do Firebase direto. O plugin de push as traz, mas só para
+    // ele — sem esta linha o app não compila. A versão vem de
+    // variables.gradle, a mesma que o plugin lê: uma versão, um lugar.
+    implementation "com.google.firebase:firebase-messaging:$firebaseMessagingVersion"
+    implementation project(':capacitor-push-notifications')
 }
 
 apply from: 'capacitor.build.gradle'
