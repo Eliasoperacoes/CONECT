@@ -7,7 +7,7 @@
       permissão. title_activity_main: o que aparece embaixo do ícone na
       tela inicial ("CONECTA").
     -->
-    <string name="app_name">Malachias</string>
+    <string name="app_name">Malachias Autopeças</string>
     <string name="title_activity_main">CONECTA</string>
     <string name="package_name">br.com.malachiasautopecas.conecta</string>
     <string name="custom_url_scheme">br.com.malachiasautopecas.conecta</string>

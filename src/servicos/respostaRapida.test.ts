@@ -356,7 +356,7 @@ test('COM DUAS CONVERSAS OU MAIS existe o aviso principal, que não toca de novo
 
 test('o cabeçalho do aviso diz "Malachias", e o ícone continua "CONECTA"', async () => {
   const textos = await Bun.file('android/app/src/main/res/values/strings.xml').text();
-  expect(textos).toContain('<string name="app_name">Malachias</string>');
+  expect(textos).toContain('<string name="app_name">Malachias Autopeças</string>');
   expect(textos).toContain('<string name="title_activity_main">CONECTA</string>');
   const manifesto = await Bun.file('android/app/src/main/AndroidManifest.xml').text();
   expect(manifesto).toContain('android:label="@string/title_activity_main"');
