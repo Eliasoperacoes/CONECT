@@ -56,8 +56,15 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * outro lugar sem alguém editar este arquivo e esquecer de voltar — que
  * é como um aplicativo interno acaba apontando para a máquina de
  * alguém.
+ *
+ * O PRIMEIRO APK SAIU COM UM ENDEREÇO QUE NÃO EXISTIA
+ * (`conecta-malachias`, com hífen) — escrito de cabeça, sem abrir. O
+ * aplicativo instalou, abriu, e mostrou a página de erro da Vercel. Este
+ * é o que o pessoal usa no navegador, conferido respondendo 200 com o
+ * título do CONECTA. Os endereços `*-projects.vercel.app` da conta NÃO
+ * servem: pedem login da Vercel antes de abrir.
  */
-const ENDERECO = process.env.VITE_ENDERECO_PRODUCAO || 'https://conecta-malachias.vercel.app';
+const ENDERECO = process.env.VITE_ENDERECO_PRODUCAO || 'https://conectamalachias.vercel.app';
 
 const config: CapacitorConfig = {
   appId: 'br.com.malachiasautopecas.conecta',
