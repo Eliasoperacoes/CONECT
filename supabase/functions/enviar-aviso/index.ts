@@ -44,8 +44,10 @@
  *    (Firebase → Configurações do projeto → Contas de serviço →
  *     Gerar nova chave privada)
  *
- *  SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY o
- *  Supabase já entrega sozinho.
+ *  SUPABASE_URL e a chave de serviço o Supabase já entrega sozinho.
+ *
+ *  O editor abre com um MODELO de exemplo (withSupabase, "Hello"):
+ *  apague tudo e cole este arquivo no lugar.
  *
  *  A chave da conta de serviço é o que ENVIA aviso para qualquer
  *  aparelho do projeto. Ela mora só aqui, nunca no repositório nem no
@@ -141,6 +143,32 @@ const obterTokenDoGoogle = async (conta: ContaDeServico): Promise<string> => {
   return access_token;
 };
 
+/**
+ * A CHAVE DE SERVIÇO, nos dois formatos que o Supabase usa.
+ *
+ * Projeto antigo entrega `SUPABASE_SERVICE_ROLE_KEY`; o sistema novo de
+ * chaves entrega `SUPABASE_SECRET_KEYS`, um JSON com as `sb_secret_...`.
+ * Aceitar só um faria a função morrer no dia em que o painel migrar o
+ * projeto — com todo aviso sumindo, calado.
+ */
+const chaveDeServico = (): string => {
+  const antiga = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (antiga) return antiga;
+
+  const novas = Deno.env.get('SUPABASE_SECRET_KEYS');
+  if (novas) {
+    try {
+      const lista = JSON.parse(novas) as Record<string, string>;
+      const primeira = lista.default ?? Object.values(lista)[0];
+      if (primeira) return primeira;
+    } catch {
+      /* não era JSON: é a própria chave */
+      return novas;
+    }
+  }
+  throw new Error('Sem chave de serviço no ambiente da função.');
+};
+
 // ---------------------------------------------------------------
 // A FUNÇÃO
 // ---------------------------------------------------------------
@@ -168,17 +196,14 @@ Deno.serve(async (req) => {
 
   const url = Deno.env.get('SUPABASE_URL')!;
 
-  // Quem chama: pela sessão que veio no cabeçalho, e não pelo corpo
-  const chamador = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, {
-    global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
-  });
-  const { data: sessao } = await chamador.auth.getUser();
-  if (!sessao?.user) return responder({ erro: 'Sem sessão.' }, 401);
+  // A chave de serviço: passa por cima da RLS, que é o que permite ler os
+  // aparelhos dos OUTROS — coisa que ninguém no aplicativo pode.
+  const banco = createClient(url, chaveDeServico());
 
-  // Daqui para baixo, a chave de serviço: passa por cima da RLS, que é o
-  // que permite ler os aparelhos dos OUTROS — coisa que ninguém no
-  // aplicativo pode.
-  const banco = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+  // Quem chama: pela sessão que veio no cabeçalho, e não pelo corpo
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const { data: sessao } = await banco.auth.getUser(jwt);
+  if (!sessao?.user) return responder({ erro: 'Sem sessão.' }, 401);
 
   const { data: eu } = await banco
     .from('colaboradores')
