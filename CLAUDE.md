@@ -1,3 +1,7 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # CONECTA — instruções do projeto
 
 Sistema interno de comunicação e gestão de pessoas da **Malachias Autopeças**:
@@ -17,12 +21,43 @@ bun run dev      # http://localhost:3000
 bun run lint     # tsc --noEmit
 bun run test     # scripts/testar.ts — um processo POR ARQUIVO (ver abaixo)
 bun run build
+
+bun test src/servicos/ponto.test.ts   # um arquivo só
 ```
+
+Rodando um arquivo direto, as chaves do Supabase **chegam** ao processo: só
+a tranca de dentro de `supabase.ts` (não cria cliente em modo de teste)
+impede o teste de falar com a produção. O `testar.ts` apaga as chaves antes.
 
 Variáveis em `.env` (modelo em `.env.example`). Sem elas o sistema roda em
 **modo local**, com dados só no navegador.
 
-Publicação: Vercel, automática a cada push em `main`.
+Publicação: Vercel, automática a cada push em `main`. **`git push` não é
+publicação** — `bun scripts/conferir-deploy.ts` responde se o que está no
+repositório chegou ao ar.
+
+O `README.md` está desatualizado (fala em npm, "nenhuma variável de
+ambiente" e senha padrão). Vale este arquivo e a pasta `docs/`.
+
+---
+
+## Onde as coisas moram
+
+- `src/servicos/` — toda regra de negócio, e os testes ao lado
+  (`*.test.ts`). As telas não calculam: consomem daqui.
+- `src/componentes/` — as telas; `App.tsx` monta a navegação.
+- `supabase/esquema.sql` — o esquema inteiro. Os demais `.sql` são deltas
+  já aplicados ou consultas avulsas (`conferir-*`, `diagnostico-*`,
+  `medir-*`). Mudou estrutura? Atualize o `esquema.sql` **e** gere o delta.
+- `android/` + `capacitor.config.ts` — casca nativa só para o aviso com o
+  app fechado (FCM). Ela **aponta** para a produção (`server.url`), não
+  embute o sistema: mudança na tela não exige APK novo. iPhone fica no PWA.
+
+As fontes únicas e as travas que não podem cair estão tabeladas em
+[docs/ARQUITETURA.md](docs/ARQUITETURA.md) — não copie a tabela para cá.
+Uma regra vive em dois lugares **de propósito**: a alçada, em
+`organograma.ts` (tela) e em `posso_decidir_jornada()` (RLS). Mudou uma,
+mude a outra; a do banco é a que vale.
 
 ---
 
@@ -37,6 +72,8 @@ Publicação: Vercel, automática a cada push em `main`.
 - [docs/LIMITES-SUPABASE.md](docs/LIMITES-SUPABASE.md) — até onde o plano
   aguenta, o que consome cada limite e em que ordem eles chegam. Leia
   antes de guardar coisa nova no banco ou de baixar tabela inteira.
+- [docs/PROCESSO-HORAS.md](docs/PROCESSO-HORAS.md) — como ponto, jornada
+  e banco de horas funcionam hoje, lido do código. Antes de mexer em hora.
 
 ---
 
