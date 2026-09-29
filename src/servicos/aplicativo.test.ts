@@ -176,6 +176,29 @@ test('o modal que fica montado registra só quando ABERTO', async () => {
   }
 });
 
+test('NENHUM MODAL registra o voltar e depois se esconde com return null', async () => {
+  /**
+   * A lista de cima é escrita à mão, e o visualizador de imagem não estava
+   * nela: ele fica montado em toda conversa, registrava `useVoltar(true)`
+   * e desenhava nada sem imagem. O primeiro voltar de quem só queria sair
+   * da conversa "fechava" esse modal invisível. Medido no S10 do Elias.
+   *
+   * Esta varre todos: quem se esconde com `if (!x) return null` tem de
+   * registrar só quando está à mostra.
+   */
+  const { readdirSync } = await import('node:fs');
+  const errados: string[] = [];
+
+  for (const nome of readdirSync('src/componentes')) {
+    if (!nome.endsWith('.tsx')) continue;
+    const fonte = await Bun.file(`src/componentes/${nome}`).text();
+    const seEsconde = /^\s*if \(![\w.]+\) return null;/m.test(fonte);
+    if (seEsconde && fonte.includes('useVoltar(true')) errados.push(nome);
+  }
+
+  expect(errados).toEqual([]);
+});
+
 // ===============================================================
 // 4. OS ATALHOS DO ÍCONE
 // ===============================================================

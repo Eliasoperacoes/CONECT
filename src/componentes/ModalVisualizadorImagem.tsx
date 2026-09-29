@@ -13,7 +13,10 @@ export const ModalVisualizadorImagem: React.FC<PropsModalVisualizadorImagem> = (
   legenda,
   aoFechar,
 }) => {
-  useVoltar(true, aoFechar);
+  /* Só com imagem à mostra: ele fica montado dentro de toda conversa, e
+     registrado sem imagem engolia o primeiro voltar de quem só queria
+     sair da conversa (medido no S10 do Elias). */
+  useVoltar(!!imagemUrl, aoFechar);
   if (!imagemUrl) return null;
 
   const lidarDownload = () => {

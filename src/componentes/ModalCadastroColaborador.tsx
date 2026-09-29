@@ -44,7 +44,9 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
   aoFechar,
   aoSalvar,
 }) => {
-  useVoltar(true, aoFechar);
+  /* Só com uma ficha aberta: o Banco de Horas o mantém montado, e
+     registrado vazio engoliria o primeiro voltar da aba Ponto. */
+  useVoltar(!!colaborador, aoFechar);
   const [form, setForm] = useState({
     nome: '',
     cargo: '',
