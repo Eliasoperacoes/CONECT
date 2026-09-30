@@ -45,6 +45,7 @@ import { nuvemComunicacao } from './nuvemComunicacao';
 import { aplicarJustificativasDaNuvem } from './justificativasCache';
 import { aplicarFeriadosDaNuvem } from './feriadosCache';
 import { buscarTodasAsLinhas } from './paginacao';
+import { acompanharCanal, definirRecarga, recarregarAoVoltar } from './reconexao';
 
 /**
  * Enche o cache de conversa, aviso, configuração e auditoria. Fica aqui e não
@@ -1379,7 +1380,7 @@ class PonteNuvem {
           this.sincronizarColaboradores();
         }
       )
-      .subscribe();
+      .subscribe(acompanharCanal('colaboradores'));
 
     // O ponto é o dado que mais depende de chegar igual em todo aparelho:
     // a batida feita no celular tem que aparecer no computador na hora.
@@ -1427,7 +1428,7 @@ class PonteNuvem {
           this.sincronizarJustificativas();
         }
       )
-      .subscribe();
+      .subscribe(acompanharCanal('ponto'));
   }
 }
 
@@ -1440,27 +1441,38 @@ export const nuvem = new PonteNuvem();
 export const iniciarNuvem = async (): Promise<void> => {
   if (!usandoNuvem()) return;
 
+  /**
+   * TUDO O QUE O APARELHO GUARDA, trazido de novo do banco.
+   *
+   * É a carga da abertura e é também a da reconexão (`reconexao.ts`): o
+   * aviso que passou com o canal caído não volta, e a única forma de
+   * saber o que mudou é perguntar de novo.
+   */
+  const carregarTudo = async (): Promise<void> => {
+    if (!(await nuvem.temSessao())) return;
+    const eu = await nuvem.obterMeuColaborador();
+    if (eu) localStorage.setItem(CHAVE_COLABORADOR_ATUAL, eu.id);
+    await nuvem.sincronizarColaboradores();
+    await nuvem.sincronizarPonto();
+    await nuvem.sincronizarAjustes();
+    /**
+     * FALTAVA AQUI, e o login tinha.
+     *
+     * Login acontece uma vez; abrir o aplicativo com a sessão salva
+     * acontece todo dia. Sem esta linha, o cache de ausências de quem
+     * não deslogava ficava parado no dia do último login — mostrando
+     * como pendente o que já tinha sido decidido, e escondendo o que
+     * chegou depois.
+     */
+    await nuvem.sincronizarJustificativas();
+    await nuvem.sincronizarFeriados();
+    await carregarComunicacao();
+  };
+
   try {
-    const logado = await nuvem.temSessao();
-    if (logado) {
-      const eu = await nuvem.obterMeuColaborador();
-      if (eu) localStorage.setItem(CHAVE_COLABORADOR_ATUAL, eu.id);
-      await nuvem.sincronizarColaboradores();
-      await nuvem.sincronizarPonto();
-      await nuvem.sincronizarAjustes();
-      /**
-       * FALTAVA AQUI, e o login tinha.
-       *
-       * Login acontece uma vez; abrir o aplicativo com a sessão salva
-       * acontece todo dia. Sem esta linha, o cache de ausências de quem
-       * não deslogava ficava parado no dia do último login — mostrando
-       * como pendente o que já tinha sido decidido, e escondendo o que
-       * chegou depois.
-       */
-      await nuvem.sincronizarJustificativas();
-      await nuvem.sincronizarFeriados();
-      await carregarComunicacao();
-    }
+    await carregarTudo();
+    definirRecarga(carregarTudo);
+    recarregarAoVoltar();
     nuvem.iniciarTempoReal();
     nuvemComunicacao.iniciarTempoReal();
   } catch (erro) {

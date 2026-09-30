@@ -32,6 +32,7 @@ import { pedirAvisoDaMensagem } from './envioDeAviso';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
 import { buscarTodasAsLinhas } from './paginacao';
 import { resolverCaminhos } from './anexos';
+import { acompanharCanal } from './reconexao';
 import {
   aplicarPreferenciasDaNuvem,
   type MapaDePreferencias,
@@ -1228,7 +1229,7 @@ class PonteComunicacao {
         { event: '*', schema: 'public', table: 'leituras_mensagem' },
         recarregarConversas
       )
-      .subscribe();
+      .subscribe(acompanharCanal('conversas'));
 
     supabase
       .channel('conecta-rede')
@@ -1244,7 +1245,7 @@ class PonteComunicacao {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'auditoria' }, () => {
         this.sincronizarAuditoria();
       })
-      .subscribe();
+      .subscribe(acompanharCanal('rede'));
   }
 
   /** Tudo que veio do banco sai do aparelho quando a pessoa sai do sistema. */

@@ -410,6 +410,9 @@ class BancoDadosConecta {
     // O que os outros aparelhos mudarem no banco tem que chegar nas telas
     if (usandoNuvem()) {
       nuvemComunicacao.assinarAtualizacoes(() => this.notificar());
+      // Fichas e ponto vêm pela outra ponte. Sem isto, a tela de Lojas e a
+      // da Rede só mostravam quem mudou de loja ou entrou depois do F5.
+      nuvem.assinarAtualizacoes(() => this.notificar());
     }
   }
 
