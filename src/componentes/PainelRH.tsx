@@ -18,6 +18,7 @@
  * o RH faz toda semana, e todos levam para o lugar onde se resolve.
  */
 
+import { AbasRolaveis } from './AbasRolaveis';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Users,
@@ -296,28 +297,19 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
 
   return (
     <div className="w-full flex flex-col">
-      {/* A barra das seções: uma linha só, e ela cabe no celular rolando */}
-      <nav className="px-4 sm:px-6 pt-4 flex gap-1.5 overflow-x-auto no-scrollbar flex-shrink-0">
-        {abas.map((aba) => (
-          <button
-            key={aba.id}
-            type="button"
-            id={`aba-rh-${aba.id}`}
-            onClick={() => setSecao(aba.id)}
-            className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 whitespace-nowrap transition-colors border ${
-              secao === aba.id
-                ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] border-[var(--c-acento)] shadow-xs'
-                : 'bg-[var(--c-superficie)] text-[var(--c-texto-3)] border-[var(--c-borda)] hover:text-[var(--c-texto-2)]'
-            }`}
-          >
-            {aba.icone}
-            {aba.rotulo}
-            {aba.alerta && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 flex-shrink-0" />
-            )}
-          </button>
-        ))}
-      </nav>
+      {/* A barra das seções: uma linha só, que desliza (AbasRolaveis) */}
+      <AbasRolaveis
+        className="pt-4 pb-1 flex-shrink-0"
+        ativa={secao}
+        aoEscolher={setSecao}
+        abas={abas.map((aba) => ({
+          id: aba.id,
+          rotulo: aba.rotulo,
+          icone: aba.icone,
+          contador: aba.alerta ? numeros.aguardando : undefined,
+          domId: `aba-rh-${aba.id}`,
+        }))}
+      />
 
       {secao === 'painel' && (
         <div className="p-4 sm:p-6 flex flex-col gap-6 max-w-[1100px]">

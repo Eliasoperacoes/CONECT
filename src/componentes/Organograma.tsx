@@ -9,6 +9,8 @@
  * de cada movimento. Um organograma que parece decorativo mas altera alçada
  * é pior do que não ter organograma nenhum.
  */
+import { AbasRolaveis } from './AbasRolaveis';
+import { FolhaInferior } from './FolhaInferior';
 import React, { useMemo, useState } from 'react';
 import {
   Users,
@@ -21,6 +23,7 @@ import {
   CornerDownRight,
   Building2,
   Info,
+  Check,
 } from 'lucide-react';
 import { Colaborador, Loja, INFORMACOES_LOJAS, ROTULO_NIVEL, cuidaDePessoas } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
@@ -38,6 +41,9 @@ interface Props {
 
 export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
   const [lojaAtiva, setLojaAtiva] = useState<Loja>('Pirassununga');
+  /** Quem está tendo o responsável escolhido, pela folha (o caminho por toque). */
+  const [movendo, setMovendo] = useState<Colaborador | null>(null);
+  const [buscaResponsavel, setBuscaResponsavel] = useState('');
   const [versao, setVersao] = useState(0);
   const [arrastando, setArrastando] = useState<Colaborador | null>(null);
   const [alvoDestaque, setAlvoDestaque] = useState<string | null>(null);
@@ -238,6 +244,21 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
             </span>
           </div>
 
+          {/* O CAMINHO POR TOQUE: arrastar não funciona com o dedo no celular */}
+          {podeEditar && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMovendo(c);
+              }}
+              title="Escolher a quem esta pessoa responde"
+              aria-label={`Mudar o responsável de ${c.nome}`}
+              className="h-8 px-2.5 rounded-lg text-[12px] font-semibold text-[var(--c-acento)] bg-[var(--c-acento-suave)] flex-shrink-0"
+            >
+              mudar
+            </button>
+          )}
           {podeEditar && c.responsavelId && (
             <button
               type="button"
@@ -277,15 +298,21 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
         </h2>
         <p className="text-xs text-[var(--c-texto-3)]">
           {podeEditar
-            ? 'Arraste uma pessoa sobre outra para definir quem responde por quem. Isto muda quem aprova as horas dela.'
+            ? 'Toque em "mudar" numa pessoa para escolher a quem ela responde (no computador, dá para arrastar). Isto muda quem aprova as horas dela.'
             : 'Quem responde por quem nesta loja. Só RH, Diretoria e TI alteram.'}
         </p>
       </div>
 
-      {/* A consequência escrita, para ninguém arrastar achando que é desenho */}
-      <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20 flex gap-2.5 text-xs text-[var(--c-texto-2)]">
-        <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-        <div className="flex flex-col gap-1">
+      {/* A consequência escrita, para ninguém mover achando que é desenho —
+          recolhida: é leitura de uma vez, e aberta ela empurrava a árvore
+          para baixo da primeira tela do celular */}
+      <details className="group rounded-xl bg-blue-500/5 border border-blue-500/20 text-xs text-[var(--c-texto-2)]">
+        <summary className="list-none cursor-pointer p-3 flex items-center gap-2.5 font-semibold text-[var(--c-texto)]">
+          <Info className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          <span className="flex-1">Como a cadeia decide quem aprova as horas</span>
+          <ChevronDown className="w-4 h-4 text-[var(--c-texto-3)] transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="px-3 pb-3 pl-9 flex flex-col gap-1">
           <span>
             <strong>Posicionado na cadeia:</strong> só quem está acima dele aprova as horas.
             O alcance automático por setor e por loja deixa de valer para essa pessoa.
@@ -298,7 +325,7 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
             RH, Diretoria e TI aprovam a rede inteira nos dois casos.
           </span>
         </div>
-      </div>
+      </details>
 
       {aviso && (
         <div
@@ -313,41 +340,17 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
         </div>
       )}
 
-      {/* Seletor de loja: o quadro é montado uma unidade por vez */}
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-xs text-[var(--c-texto-3)] flex items-center gap-1 mr-1">
-          <Building2 className="w-3.5 h-3.5" /> Loja:
-        </span>
-        {lojasComPessoas.map((info) => {
-          const pendentes = colaboradoresSemResponsavel(todos, info.nome).length;
-          return (
-            <button
-              key={info.nome}
-              type="button"
-              onClick={() => setLojaAtiva(info.nome)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                lojaAtiva === info.nome
-                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                  : 'bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-              }`}
-            >
-              {info.nome}
-              {pendentes > 0 && (
-                <span
-                  title={`${pendentes} sem responsável definido`}
-                  className={`min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
-                    lojaAtiva === info.nome
-                      ? 'bg-white/25 text-[var(--c-sobre-acento)]'
-                      : 'bg-amber-500 text-white'
-                  }`}
-                >
-                  {pendentes}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* Seletor de loja: o quadro é montado uma unidade por vez, numa linha que desliza */}
+      <AbasRolaveis
+        className="-mx-4 sm:mx-0 sm:px-0"
+        ativa={lojaAtiva}
+        aoEscolher={setLojaAtiva}
+        abas={lojasComPessoas.map((info) => ({
+          id: info.nome,
+          rotulo: info.nome,
+          contador: colaboradoresSemResponsavel(todos, info.nome).length,
+        }))}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 items-start">
         {/* A árvore da loja */}
@@ -409,7 +412,7 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
             Seguem na regra automática: líder do setor e gerente da loja aprovam as
             horas deles.
             {podeEditar &&
-              ' Arraste daqui para cima de um líder ou gerente — ou solte alguém aqui para tirá-lo da cadeia.'}
+              ' Toque numa pessoa para escolher o responsável dela (no computador, dá para arrastar).'}
           </p>
 
           {aguardando.length === 0 ? (
@@ -422,6 +425,8 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
                 <div
                   key={c.id}
                   draggable={podeEditar}
+                  role={podeEditar ? 'button' : undefined}
+                  onClick={() => podeEditar && setMovendo(c)}
                   onDragStart={() => setArrastando(c)}
                   onDragEnd={() => {
                     setArrastando(null);
@@ -447,6 +452,84 @@ export const Organograma: React.FC<Props> = ({ colaboradorAtual }) => {
           )}
         </div>
       </div>
+
+      {/*
+        ESCOLHER O RESPONSÁVEL POR TOQUE. No celular não há arrastar: a
+        pessoa toca em "mudar" e escolhe da lista. Só quem pode ser
+        responsável dela aparece habilitado — a regra é a mesma do arrasto
+        (`podeSerResponsavelDe`), e quem não pode diz por quê.
+      */}
+      <FolhaInferior
+        aberto={!!movendo}
+        titulo={movendo ? `A quem ${movendo.nome.split(' ')[0]} responde?` : ''}
+        subtitulo="Quem responde por ela aprova as horas dela"
+        aoFechar={() => {
+          setMovendo(null);
+          setBuscaResponsavel('');
+        }}
+      >
+        {movendo && (
+          <div className="pb-4">
+            <div className="p-3 sticky top-0 bg-[var(--c-superficie)] z-10">
+              <input
+                type="search"
+                value={buscaResponsavel}
+                onChange={(e) => setBuscaResponsavel(e.target.value)}
+                placeholder="Buscar pelo nome"
+                className="w-full h-11 px-4 rounded-full bg-[var(--c-superficie-2)] text-[15px] text-[var(--c-texto)] outline-none placeholder:text-[var(--c-texto-3)]"
+              />
+            </div>
+            {movendo.responsavelId && (
+              <button
+                type="button"
+                onClick={() => {
+                  mover(movendo, null);
+                  setMovendo(null);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-600 active:bg-[var(--c-superficie-2)] border-b border-[var(--c-borda)]"
+              >
+                <X className="w-5 h-5" />
+                <span className="text-[15px] font-semibold">Tirar da cadeia (volta à regra de setor e loja)</span>
+              </button>
+            )}
+            {todos
+              .filter((c) => c.ativo !== false && c.id !== movendo.id && c.nivel >= 2)
+              .filter((c) => c.nome.toLowerCase().includes(buscaResponsavel.trim().toLowerCase()))
+              .sort(
+                (a, b) =>
+                  Number(b.loja === movendo.loja) - Number(a.loja === movendo.loja) ||
+                  b.nivel - a.nivel ||
+                  a.nome.localeCompare(b.nome)
+              )
+              .map((c) => {
+                const regra = podeSerResponsavelDe(c, movendo, todos);
+                const atual = movendo.responsavelId === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    disabled={!regra.pode || atual}
+                    onClick={() => {
+                      mover(movendo, c.id);
+                      setMovendo(null);
+                      setBuscaResponsavel('');
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left active:bg-[var(--c-superficie-2)] disabled:opacity-50"
+                  >
+                    <FotoPresenca foto={c.foto} nome={c.nome} presenca={c.presenca} tamanho="w-10 h-10" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[15px] font-semibold text-[var(--c-texto)] truncate">{c.nome}</span>
+                      <span className="block text-[12px] text-[var(--c-texto-3)] truncate">
+                        {regra.pode ? `${c.cargo} · ${c.loja}` : regra.motivo}
+                      </span>
+                    </span>
+                    {atual && <Check className="w-5 h-5 text-[var(--c-acento)] flex-shrink-0" />}
+                  </button>
+                );
+              })}
+          </div>
+        )}
+      </FolhaInferior>
     </div>
   );
 };

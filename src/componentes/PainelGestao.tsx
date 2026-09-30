@@ -21,6 +21,7 @@
  * Marcação continua sendo registro trabalhista: a correção exige motivo,
  * fica com o nome de quem fez, e APAGAR batida segue só do RH.
  */
+import { AbasRolaveis } from './AbasRolaveis';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Users,
@@ -368,7 +369,34 @@ export const PainelGestao: React.FC<Props> = ({
         </div>
       ) : (
         <>
-          {/* O que precisa de atenção, antes da lista */}
+          {/*
+            AS VISTAS, NUMA LINHA QUE DESLIZA (AbasRolaveis) — e ANTES dos
+            cartões. Eram quatro a seis botões num contêiner que quebrava
+            em três linhas no celular, depois de quatro cartões: para
+            aprovar jornadas era preciso rolar por cima do resumo.
+
+            A escala fica AQUI, e não no painel de RH: quem monta a escala
+            de sábado é quem responde pela loja. "Rede" é a tela do RH —
+            todas as lojas, correção e exportação —; o nome diz o alcance.
+          */}
+          <AbasRolaveis
+            className="-mx-4 sm:mx-0 sm:px-0"
+            ativa={aba}
+            aoEscolher={setAba}
+            abas={[
+              { id: 'equipe' as Aba, rotulo: 'Banco de horas' },
+              ...(totais.semBaterHoje > 0
+                ? [{ id: 'sem_bater' as Aba, rotulo: 'Sem bater hoje', contador: totais.semBaterHoje }]
+                : []),
+              { id: 'aprovacoes' as Aba, rotulo: 'Aprovar jornadas', contador: pendencias.length },
+              ...(veEscala ? [{ id: 'folgas' as Aba, rotulo: 'Escala de folgas' }] : []),
+              ...(veRede ? [{ id: 'rede' as Aba, rotulo: veEspelhoDaRede ? 'Rede' : 'Espelho de ponto' }] : []),
+              ...(veQr ? [{ id: 'qr' as Aba, rotulo: 'QR do ponto' }] : []),
+            ]}
+          />
+
+          {/* O resumo da equipe: só na vista da equipe, abaixo das abas */}
+          {aba === 'equipe' && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <Cartao
               titulo="Equipe"
@@ -406,111 +434,7 @@ export const PainelGestao: React.FC<Props> = ({
               }
             />
           </div>
-
-          {/* Abas */}
-          <div className="flex items-center bg-[var(--c-canvas)] border border-[var(--c-borda)] p-1 rounded-xl gap-1 self-start">
-            <button
-              type="button"
-              onClick={() => setAba('equipe')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                aba === 'equipe'
-                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                  : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-              }`}
-            >
-              Banco de horas da equipe
-            </button>
-            {/* A escala fica AQUI, e não no painel de RH: quem monta a
-                escala de sábado é quem responde pela loja, e ele precisa dela
-                junto do resto da equipe dele */}
-            {totais.semBaterHoje > 0 && (
-              <button
-                type="button"
-                onClick={() => setAba('sem_bater')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                  aba === 'sem_bater'
-                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-                }`}
-              >
-                Sem bater hoje
-                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
-                  {totais.semBaterHoje}
-                </span>
-              </button>
-            )}
-            {veEscala && (
-            <button
-              type="button"
-              onClick={() => setAba('folgas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                aba === 'folgas'
-                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                  : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-              }`}
-            >
-              Escala de folgas
-            </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setAba('aprovacoes')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                aba === 'aprovacoes'
-                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                  : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-              }`}
-            >
-              Aprovar jornadas
-              {pendencias.length > 0 && (
-                <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
-                  {pendencias.length}
-                </span>
-              )}
-            </button>
-
-            {/*
-              AS DUAS QUE VIERAM DA ABA DE TOPO.
-
-              "Rede" é a tela do RH: todas as lojas, correção de marcação e
-              exportação. Continua sendo exatamente a mesma tela, com as
-              mesmas permissões — o que mudou foi só o caminho até ela.
-
-              O nome é "Rede" e não "Banco de Horas" porque a PRIMEIRA vista
-              desta barra já é o banco de horas, da equipe de quem abre. Dois
-              itens com o mesmo nome na mesma barra é o defeito que esta
-              fusão veio corrigir, não um a repetir.
-            */}
-            {veRede && (
-              <button
-                type="button"
-                onClick={() => setAba('rede')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  aba === 'rede'
-                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-                }`}
-              >
-                {/* O rótulo diz o alcance: quem vê a rede lê "Rede", quem
-                    vê só a equipe lê "Espelho de ponto" */}
-                {veEspelhoDaRede ? 'Rede' : 'Espelho de ponto'}
-              </button>
-            )}
-
-            {veQr && (
-              <button
-                type="button"
-                onClick={() => setAba('qr')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  aba === 'qr'
-                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-                }`}
-              >
-                QR do ponto
-              </button>
-            )}
-          </div>
+          )}
 
           {/*
             As duas vistas que vieram da aba de topo entram ANTES da cadeia

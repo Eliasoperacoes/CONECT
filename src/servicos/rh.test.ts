@@ -170,7 +170,8 @@ test('a tela de RH e de quem cuida de pessoas, e nao de um nivel', async () => {
    * nega.
    */
   expect(painel).toContain("podeUsar('rh_pessoal', colaboradorAtual) && cuidaDeRh");
-  expect(painel).toContain("pode('rh_pessoal') && cuidaDeRh");
+  // A barra vem da lista, que já tem a condição acima
+  expect(painel).toContain('abas={abasPermitidas.map((id) => ROTULO_SUBABA[id](');
 });
 
 /**
@@ -257,14 +258,8 @@ test('as abas que o RH NAO ve saem da barra e da lista juntas', async () => {
     new URL('../componentes/PainelRede.tsx', import.meta.url)
   ).text();
 
-  // Na barra, todas passam por `!souDoRh`
-  for (const botao of [
-    "pode('visao_lojas') && !souDoRh",
-    'podeVerGestao && !souDoRh',
-    "pode('organograma') && !souDoRh",
-  ]) {
-    expect(painel).toContain(botao);
-  }
+  // A barra é desenhada DA lista: a simetria deixou de depender de duas cópias
+  expect(painel).toContain('abas={abasPermitidas.map((id) => ROTULO_SUBABA[id](');
 
   /**
    * E na lista, todas moram DENTRO do mesmo bloco. O recorte vai do

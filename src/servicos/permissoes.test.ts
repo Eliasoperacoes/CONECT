@@ -555,8 +555,9 @@ test('as vistas do RH continuam com as permissoes delas', async () => {
   expect(gestao).toContain("podeUsar('espelho_equipe', colaboradorAtual)");
   expect(gestao).toContain("veEspelhoDaRede ? 'Rede' : 'Espelho de ponto'");
   expect(gestao).toContain("const veQr = podeUsar('qr_ponto', colaboradorAtual)");
-  expect(gestao).toContain('{veRede && (');
-  expect(gestao).toContain('{veQr && (');
+  // As vistas entram na barra só com a permissão delas
+  expect(gestao).toContain('...(veRede ? [');
+  expect(gestao).toContain('...(veQr ? [');
 
   // E é a MESMA tela de antes, não uma cópia
   expect(gestao).toContain('<BancoDeHoras colaboradorAtual={colaboradorAtual} abaFixa="banco_horas" />');
@@ -767,8 +768,12 @@ test('a BARRA diz o mesmo que a lista', async () => {
    * fora no render seguinte — porque `subAbaAtiva` só aceita o que está na
    * lista. Um botão que pisca e não leva a lugar nenhum.
    */
-  expect(painel).toContain('{podeVerGestao && !souDoRh && (');
-  expect(painel).toContain("{pode('organograma') && !souDoRh && (");
+  /**
+   * A barra é DESENHADA a partir da lista: não há mais uma condição por
+   * botão para discordar da lista. Antes eram duas cópias de cada regra.
+   */
+  expect(painel).toContain('abas={abasPermitidas.map((id) => ROTULO_SUBABA[id](');
+  expect(painel).not.toContain('{podeVerGestao && !souDoRh && (');
 });
 
 /**

@@ -1,3 +1,4 @@
+import { AbasRolaveis, type AbaRolavel } from './AbasRolaveis';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Building2,
@@ -67,6 +68,24 @@ const SUB_ABAS = [
 ] as const;
 
 type SubAbaPainel = (typeof SUB_ABAS)[number];
+
+/**
+ * O NOME DE CADA ABA NA FAIXA — curto, para caber sem quebrar.
+ * "Visão & Lojas" virou "Lojas"; "Recursos Humanos", "RH".
+ */
+const ROTULO_SUBABA: Record<SubAbaPainel, (pendencias: number) => AbaRolavel<SubAbaPainel>> = {
+  rh: () => ({ id: 'rh', rotulo: 'RH', icone: <Briefcase />, domId: 'subaba-rh' }),
+  visao_geral: () => ({ id: 'visao_geral', rotulo: 'Lojas', icone: <Building2 />, domId: 'subaba-visao-geral' }),
+  gestao: (pendencias) => ({
+    id: 'gestao',
+    rotulo: 'Equipe e ponto',
+    icone: <ClipboardList />,
+    contador: pendencias,
+    domId: 'subaba-gestao',
+  }),
+  organograma: () => ({ id: 'organograma', rotulo: 'Organograma', icone: <Network />, domId: 'subaba-organograma' }),
+  aprovacoes: () => ({ id: 'aprovacoes', rotulo: 'Aprovações' }),
+};
 
 export const PainelRede: React.FC<PropsPainelRede> = ({
   colaboradorAtual,
@@ -321,141 +340,35 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
 
   return (
     <div className="w-full h-full flex flex-col bg-[var(--c-canvas)] overflow-y-auto pb-24">
-      {/* Cabeçalho do Painel */}
-      <header className="bg-[var(--c-superficie)] border-b border-[var(--c-borda)] p-4 sm:p-5 flex-shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 max-w-7xl mx-auto">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <h1 className="text-lg sm:text-xl font-black text-[var(--c-texto)] tracking-tight">
-                {tituloDoPainel}
-              </h1>
-            </div>
-            <p className="text-xs sm:text-sm text-[var(--c-texto-3)]">
-              {subtituloDoPainel}
-            </p>
-          </div>
+      {/*
+        O TOPO DO GERENCIAR — pedido do Elias: "layout estourado, texto
+        empilhado". Era um cabeçalho grande com as abas num contêiner que
+        quebrava "Visão & Lojas" em três linhas. Agora: o título numa linha,
+        e as abas numa faixa que desliza, fixa no alto enquanto a tela rola.
 
-          {/* Seletor de Sub-Abas do Painel */}
-          <div className="flex items-center bg-[var(--c-canvas)] border border-[var(--c-borda)] p-1 rounded-xl gap-1 self-start sm:self-auto max-w-full overflow-x-auto">
-            {/*
-              O RH VEM PRIMEIRO. É a tela que essa pessoa abre todo dia, e a
-              ordem da barra é a ordem de importância de quem está olhando —
-              não a ordem em que as abas foram escritas.
-            */}
-            {pode('rh_pessoal') && cuidaDeRh && (
-              <button
-                type="button"
-                id="subaba-rh"
-                onClick={() => setSubAbaAtiva('rh')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-                  subAbaAtiva === 'rh'
-                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-                }`}
-              >
-                <Briefcase className="w-3.5 h-3.5" />
-                <span>Recursos Humanos</span>
-              </button>
-            )}
-
-            {/*
-              O `!souDoRh` acompanha o de `abasPermitidas`, e precisa
-              acompanhar: botão que aparece sem a aba estar na lista é
-              escolhido e cai fora no clique seguinte — a tela pisca e
-              volta sozinha, sem dizer por quê.
-            */}
-            {pode('visao_lojas') && !souDoRh && (
-            <button
-              type="button"
-              id="subaba-visao-geral"
-              onClick={() => setSubAbaAtiva('visao_geral')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                subAbaAtiva === 'visao_geral'
-                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                  : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              <span>Visão & Lojas</span>
-            </button>
-            )}
-
-            {/* Minha equipe: o dia a dia de quem responde por alguém */}
-            {podeVerGestao && !souDoRh && (
-              <button
-                type="button"
-                id="subaba-gestao"
-                onClick={() => setSubAbaAtiva('gestao')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-                  subAbaAtiva === 'gestao'
-                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                    : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-                }`}
-              >
-                <ClipboardList className="w-3.5 h-3.5" />
-                {/*
-                  O NOME MUDOU COM O CONTEÚDO.
-
-                  Era "Minha Equipe" e a aba tinha só a equipe de quem abre.
-                  Agora ela reúne também o banco de horas da rede e o cartaz
-                  de QR — para o RH, "minha equipe" passaria a mentir sobre
-                  o alcance do que está lá dentro.
-                */}
-                <span>Equipe &amp; Ponto</span>
-                {pendenciasParaDecidir > 0 && (
-                  <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold flex items-center justify-center">
-                    {pendenciasParaDecidir}
-                  </span>
-                )}
-              </button>
-            )}
-
-            {pode('organograma') && !souDoRh && (
-            <>
-            {/* Organograma: quem responde por quem. Fica ao lado do quadro
-                porque é a mesma equipe vista pela cadeia de responsabilidade
-                — e é essa cadeia que decide a fila de aprovação de horas. */}
-            <button
-              type="button"
-              id="subaba-organograma"
-              onClick={() => setSubAbaAtiva('organograma')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap ${
-                subAbaAtiva === 'organograma'
-                  ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-sm'
-                  : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
-              }`}
-            >
-              <Network className="w-3.5 h-3.5" />
-              <span>Organograma</span>
-            </button>
-            </>
-            )}
-
-            {/* "Aprovar Jornadas" saiu daqui de propósito: a fila vive
-                dentro de Minha Equipe, junto da equipe que ela decide. Dois
-                caminhos para a mesma fila fazem a pessoa procurar qual dos
-                dois é o certo — e o contador aparecia duas vezes na mesma
-                tela. */}
-
-            {/*
-              A ABA "BANCO DE HORAS" SAIU DAQUI.
-
-              Ela virou uma vista dentro de "Gerenciar", numa barra única
-              junto das vistas de equipe. O motivo: a primeira vista de lá já
-              se chamava "Banco de horas da equipe", e quem tinha as duas
-              permissões via o mesmo nome em dois lugares, um dentro do
-              outro. Quem tem só o cartaz continua chegando nele por lá, como
-              "QR do ponto".
-
-              Nada de tela mudou: a de rede continua sendo a do RH, com
-              correção de marcação e exportação, e com as mesmas permissões.
-              O que mudou foi o caminho.
-            */}
-
-          </div>
+        As abas saem de `abasPermitidas` — a mesma lista que decide qual
+        aba vale. Botões escritos um a um, cada um com a própria condição,
+        eram como uma aba aparecia sem estar liberada e "caía fora" no
+        clique seguinte.
+      */}
+      <header className="bg-[var(--c-superficie)] flex-shrink-0">
+        <div className="px-4 pt-4 pb-1 max-w-7xl mx-auto w-full">
+          <h1 className="text-2xl font-black text-[var(--c-texto)] tracking-tight leading-tight">
+            {tituloDoPainel}
+          </h1>
+          <p className="text-[13px] text-[var(--c-texto-3)] truncate">{subtituloDoPainel}</p>
         </div>
       </header>
+      <div className="sticky top-0 z-20 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] flex-shrink-0">
+        <div className="max-w-7xl mx-auto w-full">
+          <AbasRolaveis
+            variante="sublinhado"
+            ativa={subAbaAtiva}
+            aoEscolher={setSubAbaAtiva}
+            abas={abasPermitidas.map((id) => ROTULO_SUBABA[id](pendenciasParaDecidir))}
+          />
+        </div>
+      </div>
 
       {/* Conteúdo Principal do Painel */}
       <main className="flex-1 max-w-7xl w-full mx-auto">
