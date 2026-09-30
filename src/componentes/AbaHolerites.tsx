@@ -24,11 +24,13 @@ import {
   FileText,
   ChevronDown,
   ChevronRight,
+  FileUp,
 } from 'lucide-react';
 import { Colaborador, Holerite } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import { listarHolerites, salvarHolerite, removerHolerite } from '../servicos/rh';
 import { FotoPresenca } from './FotoPresenca';
+import { CargaDeHolerites } from './CargaDeHolerites';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -56,6 +58,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
   const [enviando, setEnviando] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [versao, setVersao] = useState(0);
+  const [cargaAberta, setCargaAberta] = useState(false);
 
   /** Um input por pessoa: um só, compartilhado, manda o arquivo para o último clicado. */
   const refArquivo = useRef<HTMLInputElement>(null);
@@ -70,6 +73,15 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
       cancelado = true;
     };
   }, [versao]);
+
+  /**
+   * Todos os ativos, sem o filtro da busca: a carga procura o nome de
+   * qualquer pessoa da rede no PDF, não só de quem está na tela agora.
+   */
+  const ativos = useMemo(
+    () => bancoDados.obterColaboradores().filter((c) => c.ativo !== false),
+    [versao]
+  );
 
   const pessoas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -208,6 +220,33 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
           Reenviar substitui o do mesmo mês.
         </p>
       </div>
+
+      {/*
+        A CARGA VEM PRIMEIRO: é como o holerite chega de verdade, num PDF
+        só do escritório. O envio um por um fica embaixo, para o caso
+        isolado — o recém-admitido, a correção de uma pessoa.
+      */}
+      <button
+        type="button"
+        id="botao-abrir-carga-holerites"
+        onClick={() => setCargaAberta(true)}
+        className="w-full sm:w-auto sm:self-start flex items-center gap-3 p-4 rounded-2xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-left hover:brightness-110 active:scale-[0.99] transition-all"
+      >
+        <FileUp className="w-6 h-6 flex-shrink-0" />
+        <span>
+          <span className="block text-sm font-bold">Carregar o PDF do escritório</span>
+          <span className="block text-xs opacity-85">Um arquivo com todos · distribui pelo nome de cada um</span>
+        </span>
+      </button>
+
+      <CargaDeHolerites
+        aberto={cargaAberta}
+        aoFechar={() => setCargaAberta(false)}
+        pessoas={ativos}
+        holerites={holerites}
+        competenciaInicial={competencia}
+        aoPublicar={() => setVersao((v) => v + 1)}
+      />
 
       {/* O mês, e quantos já subiram nele */}
       <div className="flex flex-wrap items-end gap-3 p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)]">
