@@ -236,7 +236,7 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
         procura quando o assunto é jornada; numa aba distante ninguém acharia.
       */}
       <div className="px-4 pt-4">
-        <div className="flex items-center bg-[var(--c-canvas)] border border-[var(--c-borda)] p-1 rounded-xl gap-1">
+        <div className="flex items-center bg-[var(--c-canvas)] border border-[var(--c-borda)] p-1 rounded-xl gap-1 lg:max-w-sm">
           <button
             type="button"
             onClick={() => setSecao('bater')}
@@ -264,7 +264,12 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
 
       {secao === 'justificar' && <AbaJustificar colaboradorAtual={colaboradorAtual} />}
 
-      <div className={secao === 'bater' ? '' : 'hidden'}>
+      {/*
+        NO COMPUTADOR, O DIA E O SALDO LADO A LADO: o que bater agora à
+        esquerda, quanto se tem no banco à direita, o histórico embaixo na
+        largura toda. Era uma coluna só, estreita, no meio de uma tela larga.
+      */}
+      <div className={secao === 'bater' ? 'lg:grid lg:grid-cols-2 lg:items-start' : 'hidden'}>
       {/* Cartão do dia */}
       <div className="p-4">
         <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] overflow-hidden shadow-xs">
@@ -395,7 +400,7 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
       </div>
 
       {/* Saldo do banco de horas */}
-      <div className="px-4">
+      <div className="px-4 lg:pt-4">
         <div
           className={`rounded-2xl border p-4 flex items-center justify-between gap-3 ${
             saldoAcumulado >= 0
@@ -488,7 +493,7 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
       </div>
 
       {/* Histórico do mês */}
-      <div className="mt-5">
+      <div className="mt-5 lg:col-span-2 lg:px-4">
         <div className="px-4 pb-2 flex items-center gap-2">
           <CalendarDays className="w-3.5 h-3.5 text-[var(--c-texto-3)] shrink-0" />
           <span className="text-xs font-semibold text-[var(--c-texto-3)] uppercase tracking-wider">

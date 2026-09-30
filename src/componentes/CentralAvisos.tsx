@@ -24,6 +24,7 @@
  * ordenar. Tudo isso é `mural.ts`. Esta tela mostra — e uma tela que
  * decide quem vê o quê é uma segunda cópia da regra que o banco já tem.
  */
+import { TituloDaPagina } from './TituloDaPagina';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Megaphone,
@@ -416,7 +417,7 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
   };
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col gap-4 pb-28 lg:pb-6">
+    <div className="p-4 sm:p-6 flex flex-col gap-4 pb-28 lg:pb-6 md:w-full md:max-w-7xl md:mx-auto">
       {/*
         NO CELULAR, A CENTRAL É UMA TELA DE APLICATIVO — pedido do Elias:
         "não só funções espalhadas pela tela". Título curto, busca e um
@@ -522,32 +523,23 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
         )}
       </div>
 
-      {/* Cabeçalho do computador */}
-      <div className="hidden lg:flex items-start gap-3 flex-wrap">
-        <div className="w-11 h-11 rounded-2xl bg-[var(--c-acento)]/10 flex items-center justify-center shrink-0">
-          <Megaphone className="w-5 h-5 text-[var(--c-acento)]" />
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-black text-[var(--c-texto)] leading-tight">
-            Central da Direção
-          </h1>
-          <p className="text-xs text-[var(--c-texto-3)]">
-            Comunicados, documentos e tutoriais das {INFORMACOES_LOJAS.length} lojas
-            da Malachias
-          </p>
-        </div>
-
-        {podeAdministrar && (
-          <button
-            type="button"
-            onClick={() => setFormularioAberto(true)}
-            className="px-4 py-2.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center gap-1.5 hover:brightness-110 transition-all"
-          >
-            <Plus className="w-4 h-4" /> Nova publicação
-          </button>
-        )}
-      </div>
+      {/* Cabeçalho do computador: o mesmo título de todas as telas */}
+      <TituloDaPagina
+        className="hidden lg:flex"
+        titulo="Central da Direção"
+        subtitulo={`Comunicados, documentos e tutoriais das ${INFORMACOES_LOJAS.length} lojas da Malachias`}
+        acoes={
+          podeAdministrar && (
+            <button
+              type="button"
+              onClick={() => setFormularioAberto(true)}
+              className="px-4 py-2.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center gap-1.5 hover:brightness-110 transition-all"
+            >
+              <Plus className="w-4 h-4" /> Nova publicação
+            </button>
+          )
+        }
+      />
 
       <div className="flex flex-col lg:flex-row gap-4 items-start">
         {/* Coluna da esquerda */}

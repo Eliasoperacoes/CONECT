@@ -280,7 +280,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
   };
 
   return (
-    <section id="meu-rh" className="px-4 pt-5 pb-1">
+    <section id="meu-rh" className="px-4 pt-5 pb-1 lg:px-0 lg:pt-0">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-base font-bold text-[var(--c-texto)]">Meu RH</h2>
         <span className="text-xs text-[var(--c-texto-3)]">Só você vê</span>

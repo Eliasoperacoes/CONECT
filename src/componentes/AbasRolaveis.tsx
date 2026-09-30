@@ -11,7 +11,8 @@
  *   · `pilula` — o segundo nível, dentro de uma aba.
  *
  * Nunca quebra linha: o que não cabe desliza, e a borda esmaece para
- * dizer que há mais. A aba escolhida rola sozinha para a vista — chegar
+ * dizer que há mais. No computador tudo cabe, e a borda esmaecida só
+ * apagava a primeira aba — lá ela não existe. A aba escolhida rola sozinha para a vista — chegar
  * por um aviso na quarta aba e não vê-la marcada deixa a pessoa perdida.
  */
 import React, { useEffect, useRef } from 'react';
@@ -54,7 +55,7 @@ export function AbasRolaveis<T extends string>({
       role="tablist"
       className={`flex overflow-x-auto no-scrollbar ${
         sublinhado ? 'gap-1 px-2' : 'gap-2 px-4'
-      } [mask-image:linear-gradient(to_right,transparent,black_12px,black_calc(100%-12px),transparent)] ${className}`}
+      } [mask-image:linear-gradient(to_right,transparent,black_12px,black_calc(100%-12px),transparent)] md:[mask-image:none] ${className}`}
     >
       {abas.map((aba) => {
         const eAtiva = aba.id === ativa;

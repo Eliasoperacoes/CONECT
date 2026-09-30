@@ -1,3 +1,4 @@
+import { TituloDaPagina } from './TituloDaPagina';
 import { AbasRolaveis, type AbaRolavel } from './AbasRolaveis';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
@@ -346,16 +347,14 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
         clique seguinte.
       */}
       <header className="bg-[var(--c-superficie)] flex-shrink-0">
-        <div className="px-4 pt-4 pb-1 max-w-7xl mx-auto w-full">
-          <h1 className="text-2xl font-black text-[var(--c-texto)] tracking-tight leading-tight">
-            {tituloDoPainel}
-          </h1>
-          <p className="text-[13px] text-[var(--c-texto-3)] truncate">{subtituloDoPainel}</p>
+        <div className="px-4 pt-4 pb-1 md:px-6 md:pt-6 max-w-7xl mx-auto w-full">
+          <TituloDaPagina titulo={tituloDoPainel} subtitulo={subtituloDoPainel} />
         </div>
       </header>
       <div className="sticky top-0 z-20 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] flex-shrink-0">
         <div className="max-w-7xl mx-auto w-full">
           <AbasRolaveis
+            className="md:px-3"
             variante="sublinhado"
             ativa={subAbaAtiva}
             aoEscolher={setSubAbaAtiva}

@@ -86,9 +86,20 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
   };
 
   return (
-    <div id="aba-eu" className="flex-1 overflow-y-auto bg-[var(--c-canvas)] pb-24">
+    /*
+      NO COMPUTADOR, DUAS COLUNAS: quem a pessoa é e os ajustes à esquerda,
+      estreita; o Meu RH, que é o que se veio ver, ocupando o resto. Era uma
+      coluna de 900px no meio da tela, com as laterais vazias.
+
+      No celular nada muda: as classes de coluna só valem a partir de `lg`,
+      e a ordem do código é a ordem da tela pequena.
+    */
+    <div
+      id="aba-eu"
+      className="flex-1 overflow-y-auto bg-[var(--c-canvas)] pb-24 md:flex-none md:overflow-visible lg:grid lg:grid-cols-[360px_minmax(0,1fr)] lg:grid-rows-[auto_1fr] lg:gap-x-6 lg:gap-y-4 lg:items-start lg:px-6 lg:pt-4"
+    >
       {/* 1. Perfil */}
-      <div className="bg-[var(--c-superficie)] border-b border-[var(--c-borda)] p-5 flex items-center gap-4">
+      <div className="bg-[var(--c-superficie)] border-b border-[var(--c-borda)] p-5 flex items-center gap-4 lg:col-start-1 lg:row-start-1 lg:border lg:rounded-2xl">
         <div className="relative group/avatar flex-shrink-0">
           <button
             type="button"
@@ -172,7 +183,12 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
         preferências são ajuste de aparelho, que se mexe uma vez e se
         esquece — ficam embaixo.
       */}
-      <MeuRH colaboradorAtual={colaboradorAtual} />
+      <div className="lg:col-start-2 lg:row-start-1 lg:row-span-2">
+        <MeuRH colaboradorAtual={colaboradorAtual} />
+      </div>
+
+      {/* A coluna estreita do computador: ficha, presença, preferências, sair */}
+      <div className="lg:col-start-1 lg:row-start-2 lg:rounded-2xl lg:border lg:border-[var(--c-borda)] lg:overflow-hidden lg:bg-[var(--c-superficie)] lg:pb-4">
 
       {/*
         A FICHA É CONSULTA, e por isso nasce fechada.
@@ -205,8 +221,9 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
       </SecaoRecolhivel>
 
       {/* Atalho ao Painel ADM exclusivo para Administrador (Elias) */}
+      {/* No computador o Painel ADM já está no cabeçalho: aqui seria o segundo caminho */}
       {ehAdmin && aoAbrirAdmin && (
-        <div className="mt-4 px-4">
+        <div className="mt-4 px-4 md:hidden">
           <button
             type="button"
             id="botao-acessar-painel-adm-aba-eu"
@@ -488,6 +505,7 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
         <p className="mt-3 text-center text-[10px] text-[var(--c-texto-3)]">
           Versão {versaoLegivel()}
         </p>
+      </div>
       </div>
 
       {/* Modal para alternar o colaborador atual */}

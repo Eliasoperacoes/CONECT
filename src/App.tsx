@@ -58,6 +58,7 @@ import { ItemConversa } from './componentes/ItemConversa';
 import { ResultadosDaBusca } from './componentes/ResultadosDaBusca';
 import { FaixaAvisoDirecao } from './componentes/FaixaAvisoDirecao';
 import { TelaConversa } from './componentes/TelaConversa';
+import { TituloDaPagina } from './componentes/TituloDaPagina';
 import { AbaEu } from './componentes/AbaEu';
 import { PainelRede } from './componentes/PainelRede';
 import { CentralAvisos } from './componentes/CentralAvisos';
@@ -1314,9 +1315,14 @@ export default function App() {
             .filter((aba) => aba.id !== 'conversas' && aba.id !== 'grupos')
             .map((aba) => {
               const ehLista = aba.id === 'conversas' || aba.id === 'grupos';
+              /*
+                Compara com a tela MOSTRADA (`abaDesktop`), e não com a
+                escolhida: a sessão nasce em "conversas", que no computador
+                não é tela e vira o painel — e o menu não marcava nada.
+              */
               const ativa = ehLista
                 ? secaoListaAberta === (aba.id === 'grupos' ? 'grupos' : 'individuais')
-                : abaAtiva === aba.alvo;
+                : abaDesktop === aba.alvo;
 
               return (
                 <button
@@ -1362,8 +1368,34 @@ export default function App() {
 
         <div className="flex-1" />
 
-        {/* Ações Rápidas do Topo: Painel ADM e Perfil */}
+        {/* Ações Rápidas do Topo: Conversas, Painel ADM e Perfil */}
         <div className="flex items-center gap-2">
+          {/*
+            CONVERSAS NO CABEÇALHO, e não num botão flutuando por cima da
+            tela. O flutuante cobria o fim de toda lista — na Equipe e
+            ponto, o saldo das últimas pessoas ficava embaixo dele. Aqui ele
+            está sempre à vista, com as não lidas, e não esconde nada.
+          */}
+          <button
+            type="button"
+            id="botao-abrir-conversas"
+            onClick={() => setSecaoListaAberta(secaoListaAberta ? null : 'individuais')}
+            aria-pressed={!!secaoListaAberta}
+            title="Conversas e grupos"
+            className={`relative px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              secaoListaAberta
+                ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)]'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">Conversas</span>
+            {totalNaoLidas > 0 && (
+              <span className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {totalNaoLidas > 99 ? '99+' : totalNaoLidas}
+              </span>
+            )}
+          </button>
 
           {ehAdmin && (
             <button
@@ -1810,7 +1842,19 @@ export default function App() {
                 />
             </div>
           ) : abaDesktop === 'ponto' ? (
-            <div className="w-full max-w-[900px] h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
+            /*
+              A MESMA LARGURA DAS OUTRAS TELAS, e o mesmo título.
+              Eram 900px no meio da tela, sem título: trocar de Gerenciar
+              para Ponto parecia trocar de sistema.
+            */
+            <div className="w-full h-full bg-[var(--c-canvas)] overflow-y-auto">
+              <div className="w-full max-w-7xl mx-auto">
+              <TituloDaPagina
+                className="px-6 pt-6"
+                titulo="Meu ponto"
+                subtitulo="Suas batidas de hoje, o seu banco de horas e as suas justificativas"
+              />
+              <div className="px-2">
               <AbaPonto
                   colaboradorAtual={colaboradorAtual}
                   codigoDoEndereco={codigoDoCartaz}
@@ -1818,15 +1862,24 @@ export default function App() {
                   pedidoDeBater={pedidoDeBater}
                   aoAtenderPedido={() => setPedidoDeBater(false)}
                 />
+              </div>
+              </div>
             </div>
           ) : abaDesktop === 'eu' ? (
-            <div className="w-full max-w-[900px] h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
+            <div className="w-full h-full bg-[var(--c-canvas)] overflow-y-auto">
+              <div className="w-full max-w-7xl mx-auto">
+              <TituloDaPagina
+                className="px-6 pt-6"
+                titulo="Meu perfil"
+                subtitulo="Seus documentos da empresa, seus dados e as preferências deste aparelho"
+              />
               <AbaEu
                 colaboradorAtual={colaboradorAtual}
                 aoTrocarColaborador={lidarTrocarColaborador}
                 aoSair={lidarDeslogar}
                 aoAbrirAdmin={() => setPainelAdminAberto(true)}
               />
+              </div>
             </div>
           ) : (
             <div className="w-full max-w-[760px] h-full flex flex-col items-center justify-center text-center p-8 text-[var(--c-texto-3)]">
@@ -1869,27 +1922,6 @@ export default function App() {
         aoCriar={lidarCriarGrupo}
         aoFechar={() => setModalCriarGrupoAberto(false)}
       />
-
-      {/* O acesso às conversas no computador: um botão só, no canto de
-          baixo à direita, onde a janela do chat já abre. Some quando a
-          lista está aberta, para não ficar um botão em cima do painel. */}
-      {!secaoListaAberta && (
-        <button
-          type="button"
-          id="botao-abrir-conversas"
-          onClick={() => setSecaoListaAberta('individuais')}
-          title="Conversas e grupos"
-          className="hidden md:flex fixed bottom-6 right-6 z-40 items-center gap-2 px-4 py-3 rounded-2xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-sm shadow-lg hover:brightness-110 active:scale-95 transition-all"
-        >
-          <MessageSquare className="w-4 h-4" />
-          <span>Conversas</span>
-          {totalNaoLidas > 0 && (
-            <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center">
-              {totalNaoLidas > 99 ? '99+' : totalNaoLidas}
-            </span>
-          )}
-        </button>
-      )}
 
       {/* Lista de conversas por cima, no lugar da antiga coluna fixa */}
       {secaoListaAberta && (

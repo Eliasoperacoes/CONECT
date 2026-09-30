@@ -49,7 +49,9 @@ export const SecaoRecolhivel: React.FC<Props> = ({
   const [aberta, setAberta] = useState(abertaDeInicio);
 
   return (
-    <div className="mt-3 bg-[var(--c-superficie)] border-y border-[var(--c-borda)]">
+    /* No computador as seções moram num cartão só (aba Eu): lá cada uma é
+       uma linha separada por um traço, sem o vão e o traço duplo do celular */
+    <div className="mt-3 bg-[var(--c-superficie)] border-y border-[var(--c-borda)] lg:mt-0 lg:border-t-0">
       <button
         type="button"
         onClick={() => setAberta((v) => !v)}

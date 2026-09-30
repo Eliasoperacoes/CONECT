@@ -300,7 +300,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
     <div className="w-full flex flex-col">
       {/* A barra das seções: uma linha só, que desliza (AbasRolaveis) */}
       <AbasRolaveis
-        className="pt-4 pb-1 flex-shrink-0"
+        className="pt-4 pb-1 flex-shrink-0 md:px-6"
         ativa={secao}
         aoEscolher={setSecao}
         abas={abas.map((aba) => ({
@@ -313,7 +313,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
       />
 
       {secao === 'painel' && (
-        <div className="p-4 sm:p-6 flex flex-col gap-6 max-w-[1100px]">
+        <div className="p-4 sm:p-6 flex flex-col gap-6">
           {/*
             ===============================================================
             PRIMEIRO O QUE ESPERA DECISÃO. DEPOIS O RESTO.
