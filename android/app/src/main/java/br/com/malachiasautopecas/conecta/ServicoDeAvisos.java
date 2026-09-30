@@ -6,6 +6,8 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioAttributes;
+import android.net.Uri;
 import android.os.Build;
 import android.service.notification.StatusBarNotification;
 import androidx.annotation.NonNull;
@@ -58,8 +60,17 @@ import java.util.Map;
  */
 public class ServicoDeAvisos extends MessagingService {
 
-    /** O canal dos avisos: o mesmo id do AndroidManifest. */
-    static final String CANAL = "mensagens";
+    /**
+     * O canal dos avisos: o mesmo id do AndroidManifest.
+     *
+     * Era "mensagens", com o som padrão do celular. O Android não deixa
+     * trocar o som de um canal que já existe — então o som do CONECTA veio
+     * num canal novo, e o antigo é apagado em `garantirCanal`.
+     */
+    static final String CANAL = "avisos_conecta";
+
+    /** O canal de antes do som próprio, que sai para não ficar duplicado nas configurações. */
+    static final String CANAL_ANTIGO = "mensagens";
 
     /** A chave do texto digitado no campo "Responder". */
     static final String CHAVE_DO_TEXTO = "texto_digitado";
@@ -138,7 +149,12 @@ public class ServicoDeAvisos extends MessagingService {
     static void garantirCanal(Context contexto) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager gerente = contexto.getSystemService(NotificationManager.class);
-        if (gerente == null || gerente.getNotificationChannel(CANAL) != null) return;
+        if (gerente == null) return;
+
+        if (gerente.getNotificationChannel(CANAL_ANTIGO) != null) {
+            gerente.deleteNotificationChannel(CANAL_ANTIGO);
+        }
+        if (gerente.getNotificationChannel(CANAL) != null) return;
 
         /*
          * IMPORTÂNCIA ALTA: é o que faz o aviso DESCER por cima da tela. Na
@@ -148,6 +164,19 @@ public class ServicoDeAvisos extends MessagingService {
         NotificationChannel canal = new NotificationChannel(CANAL, "Mensagens", NotificationManager.IMPORTANCE_HIGH);
         canal.setDescription("Mensagens das conversas e avisos da rede");
         canal.enableVibration(true);
+
+        /*
+         * O SOM DO CONECTA: os dois sinos que o navegador também toca. O
+         * arquivo é gerado da mesma receita (scripts/gerar-som-do-aviso.ts),
+         * então o aviso soa igual no computador e no celular.
+         */
+        Uri som = Uri.parse("android.resource://" + contexto.getPackageName() + "/" + R.raw.aviso_conecta);
+        AudioAttributes uso = new AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build();
+        canal.setSound(som, uso);
+
         gerente.createNotificationChannel(canal);
     }
 

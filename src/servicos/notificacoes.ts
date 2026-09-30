@@ -21,6 +21,58 @@
  */
 
 import { rodandoNoAplicativo } from './aplicativo';
+import { gerarAmostrasDoAviso } from './somDoAviso';
+
+/**
+ * É computador (mouse), e não celular nem o aplicativo Android?
+ *
+ * O convite para ligar os avisos e o aviso silencioso (com o som do
+ * CONECTA no lugar do Windows) são coisa do computador: no aplicativo quem
+ * avisa é o Android, e no celular pelo navegador o aviso do sistema é o que
+ * vibra.
+ */
+export const ehComputador = (): boolean =>
+  typeof window !== 'undefined' &&
+  !rodandoNoAplicativo() &&
+  !!window.matchMedia?.('(pointer: fine)').matches;
+
+// --- Convite para ligar os avisos ---
+
+const CHAVE_CONVITE_ADIADO = 'conecta_convite_avisos_adiado_ate';
+/** "Agora não" cala o convite por uma semana, e não para sempre. */
+const DIAS_DE_ADIAMENTO = 7;
+
+/**
+ * O CONVITE PARA LIGAR OS AVISOS DO COMPUTADOR.
+ *
+ * O Elias: "não dá a sugestão para ativar". O único caminho era Eu →
+ * Preferências → Ligar, e ninguém ia lá. O navegador só deixa pedir a
+ * permissão num clique da pessoa — por isso é um convite com botão, e não
+ * o pedido direto ao abrir.
+ *
+ * Aparece só quando ainda dá para pedir: quem recusou no navegador só
+ * libera pelo cadeado, e perguntar de novo não adiantaria.
+ */
+export const deveConvidarParaAvisos = (agora: number = Date.now()): boolean => {
+  if (!ehComputador() || permissaoDeAviso() !== 'nao_perguntada') return false;
+  try {
+    const ate = Number(localStorage.getItem(CHAVE_CONVITE_ADIADO) || 0);
+    return !(ate > agora);
+  } catch {
+    return true;
+  }
+};
+
+export const adiarConviteDeAvisos = (agora: number = Date.now()): void => {
+  try {
+    localStorage.setItem(
+      CHAVE_CONVITE_ADIADO,
+      String(agora + DIAS_DE_ADIAMENTO * 24 * 60 * 60 * 1000)
+    );
+  } catch {
+    // Sem armazenamento, o convite volta na próxima vez — é o menor dos males
+  }
+};
 
 const TITULO_BASE = 'CONECTA — Malachias Autopeças';
 const CHAVE_PREFERENCIA = 'conecta_v4_avisos_mensagem';
@@ -119,9 +171,13 @@ export const prepararSom = (): void => {
   }
 };
 
+/** O som gerado uma vez por aparelho: montar 60 mil amostras a cada aviso seria desperdício. */
+let somPronto: AudioBuffer | null = null;
+
 /**
- * Dois toques curtos, agudos e baixos. Precisa ser reconhecível no meio do
- * barulho da loja sem assustar quem está atendendo um cliente ao lado.
+ * O som do CONECTA: dois sinos suaves, subindo. A receita está em
+ * `somDoAviso.ts`, a mesma que gera o som do aplicativo Android — o aviso
+ * soa igual no computador e no celular.
  */
 export const tocarAvisoDeMensagem = (): void => {
   if (!somLigado() || typeof window === 'undefined') return;
@@ -133,22 +189,16 @@ export const tocarAvisoDeMensagem = (): void => {
     if (!contexto) contexto = new Ctx();
     if (contexto.state === 'suspended') contexto.resume();
 
-    const agora = contexto.currentTime;
-    [0, 0.14].forEach((atraso, indice) => {
-      const osc = contexto!.createOscillator();
-      const ganho = contexto!.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(indice === 0 ? 880 : 1175, agora + atraso);
+    if (!somPronto || somPronto.sampleRate !== contexto.sampleRate) {
+      const amostras = gerarAmostrasDoAviso(contexto.sampleRate);
+      somPronto = contexto.createBuffer(1, amostras.length, contexto.sampleRate);
+      somPronto.getChannelData(0).set(amostras);
+    }
 
-      ganho.gain.setValueAtTime(0.0001, agora + atraso);
-      ganho.gain.exponentialRampToValueAtTime(0.14, agora + atraso + 0.02);
-      ganho.gain.exponentialRampToValueAtTime(0.0001, agora + atraso + 0.11);
-
-      osc.connect(ganho);
-      ganho.connect(contexto!.destination);
-      osc.start(agora + atraso);
-      osc.stop(agora + atraso + 0.12);
-    });
+    const fonte = contexto.createBufferSource();
+    fonte.buffer = somPronto;
+    fonte.connect(contexto.destination);
+    fonte.start();
   } catch {
     // Som é conforto, não função: falhar aqui não pode atrapalhar a mensagem
   }
@@ -237,6 +287,15 @@ export const mostrarAvisoDeMensagem = async (dados: {
      * `renotify` mantém a substituição E volta a chamar a atenção.
      */
     renotify: true,
+
+    /**
+     * NO COMPUTADOR, SÓ O SOM DO CONECTA.
+     *
+     * O aviso do sistema toca o som do Windows, e o sistema já toca o
+     * dele (`tocarAvisoDeMensagem`): eram dois sons juntos a cada mensagem.
+     * No celular fica como estava — lá o aviso do sistema é quem vibra.
+     */
+    silent: somLigado() && ehComputador(),
 
     /**
      * Na loja o celular quase sempre está no bolso ou em cima do balcão, com

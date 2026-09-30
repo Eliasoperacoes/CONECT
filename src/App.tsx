@@ -58,6 +58,7 @@ import { ItemConversa } from './componentes/ItemConversa';
 import { ResultadosDaBusca } from './componentes/ResultadosDaBusca';
 import { FaixaAvisoDirecao } from './componentes/FaixaAvisoDirecao';
 import { TelaConversa } from './componentes/TelaConversa';
+import { ConviteAvisos } from './componentes/ConviteAvisos';
 import { TituloDaPagina } from './componentes/TituloDaPagina';
 import { AbaEu } from './componentes/AbaEu';
 import { PainelRede } from './componentes/PainelRede';
@@ -670,7 +671,12 @@ export default function App() {
   const [pendenciasParaMim, setPendenciasParaMim] = useState(0);
   useEffect(() => {
     const conferir = () => {
-      if (!bancoDados.estaAutenticado()) return;
+      /* Sem sessão, a conta recomeça: o próximo a entrar começa calado,
+         e não comparado com o número de quem saiu */
+      if (!bancoDados.estaAutenticado()) {
+        refPendenciasVistas.current = null;
+        return;
+      }
       /**
        * A MESMA CONTA DO NÚMERO DA ABA E DO AVISO DO CELULAR.
        *
@@ -788,7 +794,28 @@ export default function App() {
    */
   const jaAvisadas = useRef<Set<string> | null>(null);
 
+  /**
+   * DE QUEM SÃO OS AVISOS JÁ DADOS.
+   *
+   * Ao sair, o sistema esquece quem estava logado e o "colaborador atual"
+   * cai no primeiro da lista — com a tela ainda montada. As mensagens não
+   * lidas DESSA outra pessoa chegavam aqui como novas: tocava o som ao
+   * fazer logout, e o aviso podia mostrar a prévia da mensagem de outro.
+   * Sem sessão não se avisa nada; trocou a pessoa, a conta recomeça.
+   */
+  const donoDosAvisos = useRef<string | null>(null);
+
   useEffect(() => {
+    const sessao = autenticado && bancoDados.estaAutenticado() ? colaboradorAtual.id : null;
+    if (sessao !== donoDosAvisos.current) {
+      donoDosAvisos.current = sessao;
+      jaAvisadas.current = null;
+    }
+    if (!sessao) {
+      atualizarTituloDaAba(0);
+      return;
+    }
+
     const porLer = bancoDados.obterMensagensPorLer();
     atualizarTituloDaAba(porLer.length);
 
@@ -823,7 +850,7 @@ export default function App() {
       conversaId: ultima.conversaId,
       aoClicar: () => abrirJanela(ultima.conversaId),
     });
-  }, [conversasIndividuais, grupos, conversaAtivaId, conversaFlutuanteId]);
+  }, [conversasIndividuais, grupos, conversaAtivaId, conversaFlutuanteId, autenticado, colaboradorAtual.id]);
 
   // Recupera a sessão do banco antes de decidir o que mostrar
   useEffect(() => {
@@ -1455,6 +1482,9 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* Só no computador, só enquanto dá para pedir: ver `deveConvidarParaAvisos` */}
+      <ConviteAvisos />
 
       {/* Estrutura responsiva:
           - No celular (< 768px): ou vê a lista de abas, ou vê a conversa ativa
