@@ -57,7 +57,7 @@ test('NENHUM AVISO SE PERDEU NA COMPACTAÇÃO', async () => {
    */
   const tabela = semComentarios(await lerTabela());
 
-  expect(tabela).toContain('!r.registrouHoje');
+  expect(tabela).toContain('r.semBaterHoje');
   expect(tabela).toContain('r.diasComPendencia > 0');
   expect(tabela).toContain('servicoPonto.obterSaldoPendente(c.id)');
   expect(tabela).toContain('esperando');
@@ -82,7 +82,7 @@ test('AGRUPADO POR UNIDADE, com o resumo no cabeçalho', async () => {
 
   expect(tabela).toContain('const porLoja = new Map<string, ResumoPontoColaborador[]>()');
   expect(tabela).toContain('saldo: pessoas.reduce((t, p) => t + p.saldoAcumuladoMinutos, 0)');
-  expect(tabela).toContain('semBater: pessoas.filter((p) => !p.registrouHoje).length');
+  expect(tabela).toContain('semBater: pessoas.filter((p) => p.semBaterHoje).length');
   expect(tabela).toContain('emAberto: pessoas.filter((p) => p.diasComPendencia > 0).length');
 });
 

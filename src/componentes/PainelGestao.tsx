@@ -289,13 +289,13 @@ export const PainelGestao: React.FC<Props> = ({
    * consulta nem segunda regra: é a mesma lista, filtrada.
    */
   const semBaterHoje = useMemo(
-    () => equipe.filter((r) => !r.registrouHoje),
+    () => equipe.filter((r) => r.semBaterHoje),
     [equipe]
   );
 
   const totais = useMemo(() => {
     const saldoBanco = equipe.reduce((t, r) => t + r.saldoAcumuladoMinutos, 0);
-    const semBaterHoje = equipe.filter((r) => !r.registrouHoje).length;
+    const semBaterHoje = equipe.filter((r) => r.semBaterHoje).length;
     const comPendencia = equipe.reduce((t, r) => t + r.diasComPendencia, 0);
     return { saldoBanco, semBaterHoje, comPendencia };
   }, [equipe]);

@@ -178,7 +178,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                         <>
                           {ehExtra ? '+' : '−'}
                           {formatarMinutos(ajuste.minutos)} ·{' '}
-                          {ROTULO_TIPO_AJUSTE[ajuste.tipo]}
+                          {servicoPonto.rotuloDoAjuste(ajuste)}
                         </>
                       )}
                     </span>
@@ -480,7 +480,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
             <h3 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-2">
               <Clock className="w-4 h-4 text-conecta-atencao" />
               Recusar {formatarMinutos(recusando.minutos)} de{' '}
-              {ROTULO_TIPO_AJUSTE[recusando.tipo].toLowerCase()}
+              {servicoPonto.rotuloDoAjuste(recusando).toLowerCase()}
             </h3>
             <p className="text-xs text-[var(--c-texto-3)]">
               Estas horas não entram no banco. O motivo fica registrado e a pessoa consegue ver.

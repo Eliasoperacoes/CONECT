@@ -143,12 +143,15 @@ export const formatarDataBR = (data: string): string => {
  * aviso do pedido e o da decisão — os dois falam do mesmo dia com as
  * mesmas palavras.
  */
-export const descreverAjuste = (ajuste: {
-  tipo: keyof typeof ROTULO_TIPO_AJUSTE;
-  minutos: number;
-  data: string;
-}): string =>
-  `${ROTULO_TIPO_AJUSTE[ajuste.tipo]} de ${formatarMinutos(ajuste.minutos)} em ${formatarDataBR(ajuste.data)}`;
+export const descreverAjuste = (
+  ajuste: {
+    tipo: keyof typeof ROTULO_TIPO_AJUSTE;
+    minutos: number;
+    data: string;
+  },
+  // O nome pela causa ("Atraso na entrada"), quando quem chama a conhece
+  rotulo: string = ROTULO_TIPO_AJUSTE[ajuste.tipo]
+): string => `${rotulo} de ${formatarMinutos(ajuste.minutos)} em ${formatarDataBR(ajuste.data)}`;
 
 /** "seg, 14/09" — rótulo curto para listas. */
 export const formatarDiaCurto = (data: string): string => {
@@ -1727,6 +1730,68 @@ class ServicoPonto {
   }
 
   /**
+   * A HORA EM QUE ESTA PESSOA DEVE ENTRAR NESTE DIA.
+   *
+   * Um lugar só, perguntado pela batida (motivo do atraso) e pelo painel
+   * ("Sem bater hoje"). O painel não perguntava nada: às 07:40 dava como
+   * faltoso quem é do turno B e só entra às 08:20.
+   */
+  entradaEsperada(colaborador: Colaborador | undefined, data: string): string {
+    return ehSabado(data) ? TURNO_SABADO.entrada : turnoDe(colaborador).entrada;
+  }
+
+  /**
+   * JÁ DEVIA TER BATIDO, E NÃO BATEU.
+   *
+   * "Sem bater hoje" era só "nenhuma batida hoje" — sem olhar a hora. O
+   * turno B inteiro aparecia como faltoso das 07:30 às 08:20, e a lista
+   * que devia apontar quem sumiu vinha cheia de quem ainda nem entrou.
+   *
+   * Só conta depois da entrada do turno DA PESSOA mais a tolerância, e
+   * só em dia que prevê jornada: domingo, feriado, folga, atestado e o
+   * sábado de quem não vem ao sábado não cobram batida nenhuma.
+   */
+  estaSemBaterHoje(
+    colaborador: Colaborador,
+    // O padrão vem do relógio sincronizado; os testes passam a data deles
+    agora: Date = agoraSincronizado()
+  ): boolean {
+    const data = paraDataLocal(agora);
+    if (this.obterMarcacoesDoDia(colaborador.id, data).length > 0) return false;
+    if (this.cargaPrevistaEmMinutos(colaborador, data) === 0) return false;
+
+    const [h, m] = this.entradaEsperada(colaborador, data).split(':').map(Number);
+    const limite = h * 60 + m + this.obterToleranciaPorMarcacaoMinutos();
+    return agora.getHours() * 60 + agora.getMinutes() > limite;
+  }
+
+  /**
+   * O NOME DO DÉBITO PELA CAUSA, e não "Saída antecipada" para tudo.
+   *
+   * O rótulo do débito era um só. Quem entrou atrasado recebia o aviso de
+   * "Saída antecipada", e quem decide lia o contrário do que aconteceu. A
+   * causa já está na apuração do dia — o quanto cada batida tirou — e é
+   * dela que o nome sai. Sem horário esperado (dia medido só pelo total),
+   * não há como apontar a causa, e o nome diz só o que se sabe.
+   */
+  rotuloDoAjuste(ajuste: Pick<AjusteJornada, 'tipo' | 'colaboradorId' | 'data'>): string {
+    if (ajuste.tipo !== 'debito') return ROTULO_TIPO_AJUSTE[ajuste.tipo];
+
+    const t = this.obterJornadaDoDia(ajuste.colaboradorId, ajuste.data).tolerancia;
+    const causas: string[] = [];
+    if (t.entradaESaida && t.entradaESaida.efeitoEntrada < 0) causas.push('atraso na entrada');
+    if (t.intervalo && t.intervalo.efeito < 0) causas.push('intervalo estendido');
+    if (t.entradaESaida && t.entradaESaida.efeitoSaida < 0) causas.push('saída antecipada');
+
+    if (causas.length === 0) return ROTULO_TIPO_AJUSTE.debito;
+    const texto =
+      causas.length === 1
+        ? causas[0]
+        : `${causas.slice(0, -1).join(', ')} e ${causas[causas.length - 1]}`;
+    return texto.charAt(0).toUpperCase() + texto.slice(1);
+  }
+
+  /**
    * Esta batida, agora, exige motivo do colaborador?
    *
    * Chamada ANTES de confirmar. O dia só fecha na 4ª batida, então nem
@@ -1772,10 +1837,13 @@ class ServicoPonto {
       // Domingo não tem horário de entrada a cumprir
       if (ehDiaDeFolga(data)) return semMotivo;
 
-      const esperado = ehSabado(data) ? TURNO_SABADO.entrada : turno.entrada;
+      const esperado = this.entradaEsperada(colaborador, data);
       const atraso = minutosAgora - emMinutos(esperado);
 
-      if (atraso <= tolerancia) return semMotivo;
+      /* A entrada é UMA marcação: vale o limite por marcação da CLT (5),
+         não o do dia (10). Entre os dois, o atraso já gera saldo — e o
+         motivo era pedido só quando passava de 10. */
+      if (atraso <= this.obterToleranciaPorMarcacaoMinutos()) return semMotivo;
       return {
         precisaMotivo: true,
         minutos: atraso,
@@ -2240,7 +2308,7 @@ class ServicoPonto {
         id: ajuste.id,
         destinatarios: quemAcompanha((quem) => deveSerAvisadoSobre(quem, dono, todos)),
         secao: 'aprovar_jornadas',
-        texto: `${descreverAjuste(ajuste)} · aguarda sua decisão`,
+        texto: `${descreverAjuste(ajuste, this.rotuloDoAjuste(ajuste))} · aguarda sua decisão`,
       });
     }
 
@@ -2389,7 +2457,11 @@ class ServicoPonto {
     avisarDecisaoDePonto({
       tabela: 'ajustes_jornada',
       id: ajusteId,
-      texto: textoDaDecisao(aprovado, descreverAjuste(ajuste), aprovado ? undefined : observacao),
+      texto: textoDaDecisao(
+        aprovado,
+        descreverAjuste(ajuste, this.rotuloDoAjuste(ajuste)),
+        aprovado ? undefined : observacao
+      ),
     });
     return { sucesso: true };
   }
@@ -2526,6 +2598,7 @@ class ServicoPonto {
           diasCompletos,
           diasComPendencia,
           registrouHoje: this.obterMarcacoesDoDia(colaborador.id, hoje).length > 0,
+          semBaterHoje: this.estaSemBaterHoje(colaborador),
         };
       })
       .sort((a, b) => a.colaborador.nome.localeCompare(b.colaborador.nome));

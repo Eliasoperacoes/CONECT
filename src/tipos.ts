@@ -1221,7 +1221,10 @@ export type EstadoAjuste = 'pendente' | 'aprovado' | 'recusado';
 
 export const ROTULO_TIPO_AJUSTE: Record<TipoAjuste, string> = {
   hora_extra: 'Hora extra',
-  debito: 'Saída antecipada',
+  /* "Saída antecipada" era o nome de todo débito, até do atraso na
+     entrada. O nome pela causa sai de `servicoPonto.rotuloDoAjuste`;
+     este é o que se sabe quando a causa não dá para apontar. */
+  debito: 'Horas a menos',
   dia_incompleto: 'Dia sem fechar',
 };
 
@@ -1520,7 +1523,10 @@ export interface ResumoPontoColaborador {
   saldoAcumuladoMinutos: number;
   diasCompletos: number;
   diasComPendencia: number;
+  /** Bateu alguma marcação hoje — presença, sem julgar a hora. */
   registrouHoje: boolean;
+  /** Já passou da entrada dela (com a tolerância) e não bateu. É o "Sem bater hoje". */
+  semBaterHoje: boolean;
 }
 
 // ============================================================

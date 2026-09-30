@@ -98,7 +98,7 @@ export const TabelaEquipe: React.FC<Props> = ({
          * bloco recolhido esconde justamente o que faz alguém abri-lo.
          */
         saldo: pessoas.reduce((t, p) => t + p.saldoAcumuladoMinutos, 0),
-        semBater: pessoas.filter((p) => !p.registrouHoje).length,
+        semBater: pessoas.filter((p) => p.semBaterHoje).length,
         emAberto: pessoas.filter((p) => p.diasComPendencia > 0).length,
       }))
       .sort((a, b) => {
@@ -255,7 +255,7 @@ export const TabelaEquipe: React.FC<Props> = ({
                                   {/* Os avisos entram AQUI, na linha da pessoa,
                                       e não como etiqueta solta: em tabela, o
                                       que não está numa coluna some */}
-                                  {!r.registrouHoje && ' · sem bater hoje'}
+                                  {r.semBaterHoje && ' · sem bater hoje'}
                                 </span>
                               </div>
 

@@ -1478,10 +1478,11 @@ test('domingo não cobra horário de entrada', () => {
 
 test('a tolerância vale também na entrada', () => {
   equipe = [GESTOR, DO_TURNO_A];
-  // 8 minutos depois das 07:30, dentro dos 10
+  // 5 minutos depois das 07:30: o limite por marcação da CLT. Era 8
+  // dentro dos 10 do dia — mas a entrada é uma marcação, e 8 já é saldo.
   expect(
     servicoPonto.avaliarMarcacao(
-      DO_TURNO_A.id, 'entrada', new Date('2026-09-16T07:38:00')
+      DO_TURNO_A.id, 'entrada', new Date('2026-09-16T07:35:00')
     ).precisaMotivo
   ).toBe(false);
 });
@@ -3824,4 +3825,105 @@ test('ALINE, 21/09, no espelho: relógio +0h01 e saldo 0h00', async () => {
   expect(dia.saldoBrutoMinutos).toBe(1);
   expect(dia.saldoMinutos).toBe(0);
   expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-21')).toBeNull();
+});
+
+// ============================================================
+// "SEM BATER HOJE" RESPEITA A ENTRADA DE CADA UM
+//
+// Pedido do Elias: às 07:35 o painel dava como faltoso até quem é do
+// turno B, que só entra às 08:20. A lista de quem sumiu vinha cheia de
+// quem ainda nem devia ter chegado.
+// ============================================================
+
+test('sem bater hoje: só depois da entrada do turno da pessoa mais 5 minutos', () => {
+  equipe = [GESTOR, DO_TURNO_A, DO_TURNO_B];
+  const quarta = (hora: string) => new Date(`2026-09-16T${hora}:00`);
+
+  // Turno A entra 07:30: até 07:35 está na margem; às 07:36, já devia
+  expect(servicoPonto.estaSemBaterHoje(DO_TURNO_A as any, quarta('07:35'))).toBe(false);
+  expect(servicoPonto.estaSemBaterHoje(DO_TURNO_A as any, quarta('07:36'))).toBe(true);
+
+  // O mesmo horário não cobra quem é do turno B
+  expect(servicoPonto.estaSemBaterHoje(DO_TURNO_B as any, quarta('07:36'))).toBe(false);
+  expect(servicoPonto.estaSemBaterHoje(DO_TURNO_B as any, quarta('08:25'))).toBe(false);
+  expect(servicoPonto.estaSemBaterHoje(DO_TURNO_B as any, quarta('08:26'))).toBe(true);
+});
+
+test('sem bater hoje: quem já bateu, e o domingo, não entram', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+
+  expect(servicoPonto.estaSemBaterHoje(DO_TURNO_A as any, new Date('2026-09-20T10:00:00'))).toBe(false);
+
+  baterParcial(DO_TURNO_A, '2026-09-16', { entrada: '07:31' });
+  expect(servicoPonto.estaSemBaterHoje(DO_TURNO_A as any, new Date('2026-09-16T10:00:00'))).toBe(false);
+});
+
+test('o painel conta como sem bater só quem já passou da hora', () => {
+  colaboradorLogado = GESTOR;
+  equipe = [GESTOR, DO_TURNO_A, DO_TURNO_B];
+  setSystemTime(new Date(2026, 8, 16, 7, 40, 0));
+
+  const resumo = servicoPonto.obterResumoDoPeriodo('2026-09-16', '2026-09-16');
+  const de = (id: string) => resumo.find((r) => r.colaborador.id === id)!;
+
+  expect(de(DO_TURNO_A.id).semBaterHoje).toBe(true);
+  expect(de(DO_TURNO_B.id).semBaterHoje).toBe(false);
+  // Presença é outra pergunta: nenhum dos dois bateu
+  expect(de(DO_TURNO_B.id).registrouHoje).toBe(false);
+});
+
+test('a entrada pede motivo a partir de 6 minutos: o limite é o da marcação', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  const entrada = (hora: string) =>
+    servicoPonto.avaliarMarcacao(DO_TURNO_A.id, 'entrada', new Date(`2026-09-16T${hora}:00`));
+
+  expect(entrada('07:35').precisaMotivo).toBe(false);
+  expect(entrada('07:36').precisaMotivo).toBe(true);
+});
+
+// ============================================================
+// O DÉBITO TEM O NOME DA CAUSA
+//
+// O Elias entrou atrasado e o aviso dizia "Saída antecipada": era o nome
+// de todo débito, viesse de onde viesse.
+// ============================================================
+
+const fecharDiaDoA = async (entrada: string, saida: string) => {
+  equipe = [GESTOR, DO_TURNO_A];
+  baterParcial(DO_TURNO_A, '2026-09-16', {
+    entrada, saida_almoco: '12:30', retorno_almoco: '14:00', saida,
+  });
+  const res = await servicoPonto.apurarDia(DO_TURNO_A.id, '2026-09-16');
+  return res.ajuste!;
+};
+
+test('atraso na entrada não vira "saída antecipada"', async () => {
+  const ajuste = await fecharDiaDoA('07:50', '17:10');
+  expect(ajuste.tipo).toBe('debito');
+  expect(servicoPonto.rotuloDoAjuste(ajuste)).toBe('Atraso na entrada');
+});
+
+test('saída antes da hora continua sendo saída antecipada', async () => {
+  const ajuste = await fecharDiaDoA('07:30', '16:50');
+  expect(servicoPonto.rotuloDoAjuste(ajuste)).toBe('Saída antecipada');
+});
+
+test('as duas causas no mesmo dia aparecem juntas', async () => {
+  const ajuste = await fecharDiaDoA('07:50', '16:50');
+  expect(servicoPonto.rotuloDoAjuste(ajuste)).toBe('Atraso na entrada e saída antecipada');
+});
+
+test('almoço esticado é intervalo estendido', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  baterParcial(DO_TURNO_A, '2026-09-16', {
+    entrada: '07:30', saida_almoco: '12:30', retorno_almoco: '14:30', saida: '17:10',
+  });
+  const { ajuste } = await servicoPonto.apurarDia(DO_TURNO_A.id, '2026-09-16');
+  expect(servicoPonto.rotuloDoAjuste(ajuste!)).toBe('Intervalo estendido');
+});
+
+test('hora extra continua hora extra', async () => {
+  const ajuste = await fecharDiaDoA('07:30', '17:40');
+  expect(ajuste.tipo).toBe('hora_extra');
+  expect(servicoPonto.rotuloDoAjuste(ajuste)).toBe('Hora extra');
 });
