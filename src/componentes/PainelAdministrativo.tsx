@@ -53,8 +53,11 @@ import {
   RegistroAuditoria,
   AvisoRede,
   PrioridadeAviso,
-  CARGA_HORARIA_PADRAO_MINUTOS,
   SENHA_PADRAO_PRIMEIRO_ACESSO,
+  TURNO_PADRAO,
+  turnosDoPerfil,
+  ehDeEstagio,
+  minutosDoTurno,
   SETORES,
   INFORMACOES_LOJAS,
 } from '../tipos';
@@ -70,6 +73,10 @@ import { ModalAlterarFoto } from './ModalAlterarFoto';
 import { ImportacaoPlanilhaFuncionarios } from './ImportacaoPlanilhaFuncionarios';
 import { baixarPlanilhaModeloExcel } from '../servicos/planilhaFuncionarios';
 import { useVoltar } from '../servicos/voltar';
+import { formatarMinutos } from '../servicos/ponto';
+
+/** O valor do seletor de horário quando a ficha tem carga própria. */
+const CARGA_PROPRIA = 'carga-propria';
 
 interface PropsPainelAdministrativo {
   colaboradorAtual: Colaborador;
@@ -203,7 +210,9 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     telefone: '',
     email: '',
     foto: '',
-    cargaHorariaDiariaMinutos: CARGA_HORARIA_PADRAO_MINUTOS,
+    /* Vazio = vale o turno. A carga própria é exceção, não padrão */
+    cargaHorariaDiariaMinutos: undefined as number | undefined,
+    turno: TURNO_PADRAO as string,
   });
 
   // Modal Novo Canal/Grupo
@@ -377,7 +386,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       telefone: '',
       email: '',
       foto: FOTO_PADRAO_LOGO_EMPRESA,
-      cargaHorariaDiariaMinutos: CARGA_HORARIA_PADRAO_MINUTOS,
+      cargaHorariaDiariaMinutos: undefined,
+      turno: TURNO_PADRAO,
     });
     setModalColabAberto(true);
   };
@@ -428,8 +438,16 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       telefone: colab.telefone || '',
       email: colab.email || '',
       foto: colab.foto || FOTO_PADRAO_LOGO_EMPRESA,
-      cargaHorariaDiariaMinutos:
-        colab.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS,
+      /**
+       * A CARGA PRÓPRIA SÓ VEM SE A FICHA TIVER UMA.
+       *
+       * Era `?? 8h00`: abrir e salvar a ficha de alguém do turno A (8h10)
+       * gravava 8h00 como carga própria. Com isso o previsto dele virava
+       * 8h00, e como 8h00 não fecha com turno nenhum, o sistema deixava de
+       * conhecer o horário dele — e a tolerância por marcação não valia.
+       */
+      cargaHorariaDiariaMinutos: colab.cargaHorariaDiariaMinutos ?? undefined,
+      turno: colab.turno || TURNO_PADRAO,
     });
     setModalColabAberto(true);
   };
@@ -460,6 +478,16 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       return;
     }
 
+    /**
+     * O TURNO TEM DE CABER NO CONTRATO. Trocar o setor para Estágio deixaria
+     * o "A" gravado enquanto o seletor já mostra os turnos de estágio — o
+     * espelho obedeceria em silêncio ao que a tela não mostra.
+     */
+    const oferecidos = turnosDoPerfil(ehDeEstagio(formColab));
+    const turno = oferecidos.some((o) => o.chave === formColab.turno)
+      ? formColab.turno
+      : oferecidos[0]?.chave || TURNO_PADRAO;
+
     if (colabEditando) {
       const res = await bancoDados.atualizarColaborador(colabEditando.id, {
         nome: formColab.nome.trim(),
@@ -473,7 +501,9 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
         telefone: formColab.telefone.trim(),
         email: formColab.email.trim(),
         foto: formColab.foto.trim() || colabEditando.foto,
+        // Vazio limpa a carga própria no banco: o turno volta a mandar
         cargaHorariaDiariaMinutos: formColab.cargaHorariaDiariaMinutos,
+        turno,
       });
       if (res.sucesso) {
         exibirToast(`Colaborador ${formColab.nome} atualizado com sucesso.`);
@@ -482,7 +512,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
         exibirToast(res.erro || 'Falha ao atualizar.', true);
       }
     } else {
-      const res = await bancoDados.criarColaborador(formColab);
+      const res = await bancoDados.criarColaborador({ ...formColab, turno });
       if (res.sucesso) {
         exibirToast(`Colaborador ${formColab.nome} cadastrado com sucesso.`);
         setModalColabAberto(false);
@@ -2111,35 +2141,59 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                 </select>
               </div>
 
-              {/* Jornada contratada — base do cálculo do banco de horas */}
+              {/*
+                O HORÁRIO DA ESCALA — e não um número solto de horas.
+
+                Aqui havia "Jornada Diária" com 4h00, 6h00, 6h36, 7h20, 8h00 e
+                8h48: nem o 8h10 dos turnos A e B estava na lista. Quem
+                salvava a ficha por aqui gravava 8h00, e o espelho passava a
+                cobrar a pessoa por um horário que ela não cumpre. Pedido do
+                Elias: escolher o horário A ou B — e, para estagiário, os
+                turnos de estágio. É o mesmo campo da ficha do RH
+                (`ModalCadastroColaborador`), com a mesma lista.
+              */}
               <div>
                 <label
-                  htmlFor="campo-carga-horaria"
+                  htmlFor="campo-turno"
                   className="block font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1"
                 >
-                  Jornada Diária (Banco de Horas)
+                  Horário (turno da escala)
                 </label>
                 <select
-                  id="campo-carga-horaria"
-                  value={formColab.cargaHorariaDiariaMinutos}
-                  onChange={(e) =>
+                  id="campo-turno"
+                  value={formColab.cargaHorariaDiariaMinutos != null ? CARGA_PROPRIA : formColab.turno}
+                  onChange={(e) => {
+                    if (e.target.value === CARGA_PROPRIA) return;
+                    // Escolher um turno tira a carga própria: o turno manda
                     setFormColab({
                       ...formColab,
-                      cargaHorariaDiariaMinutos: Number(e.target.value),
-                    })
-                  }
+                      turno: e.target.value,
+                      cargaHorariaDiariaMinutos: undefined,
+                    });
+                  }}
                   className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] font-semibold"
                 >
-                  <option value={240}>4h00 por dia útil</option>
-                  <option value={360}>6h00 por dia útil</option>
-                  <option value={396}>6h36 por dia útil (44h semanais em 6 dias)</option>
-                  <option value={440}>7h20 por dia útil</option>
-                  <option value={480}>8h00 por dia útil (padrão)</option>
-                  <option value={528}>8h48 por dia útil (44h semanais em 5 dias)</option>
+                  {turnosDoPerfil(ehDeEstagio(formColab)).map((turno) => (
+                    <option key={turno.chave} value={turno.chave}>
+                      {turno.nome} · {formatarMinutos(minutosDoTurno(turno))}
+                    </option>
+                  ))}
+                  {/*
+                    A carga própria de quem JÁ TEM uma não some em silêncio:
+                    pode ser um contrato individual de verdade. Ela aparece
+                    como opção, e sai quando alguém escolhe um turno.
+                  */}
+                  {formColab.cargaHorariaDiariaMinutos != null && (
+                    <option value={CARGA_PROPRIA}>
+                      Carga própria da ficha · {formatarMinutos(formColab.cargaHorariaDiariaMinutos)}{' '}
+                      (sem horário: só o limite do dia)
+                    </option>
+                  )}
                 </select>
                 <p className="mt-1 text-[11px] text-[var(--c-texto-3)]">
-                  Saldo positivo ou negativo é calculado contra esta jornada. Sábados e domingos
-                  não geram jornada prevista.
+                  {formColab.cargaHorariaDiariaMinutos != null
+                    ? 'Com carga própria o sistema não conhece o horário de cada batida: a tolerância vale só pelo total do dia. Escolha o turno para a regra completa.'
+                    : 'O previsto do dia e o horário de cada batida saem deste turno. A tolerância de entrada, saída e almoço é medida contra ele.'}
                 </p>
               </div>
 

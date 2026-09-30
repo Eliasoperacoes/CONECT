@@ -922,6 +922,8 @@ class BancoDadosConecta {
     email?: string;
     foto?: string;
     cargaHorariaDiariaMinutos?: number;
+    /** O horário da escala. Sem ele, o padrão da rede. */
+    turno?: string;
   }): Promise<{ sucesso: boolean; colaborador?: Colaborador; erro?: string }> {
     const atual = this.obterColaboradorAtual();
     if (atual.nivel < NIVEL_TI) {
@@ -1009,8 +1011,12 @@ class BancoDadosConecta {
        * mandava null explícito, que anula o default e viola o not null. Todo
        * cadastro era recusado — em silêncio. Preencher na origem é mais
        * barato do que confiar que o outro lado conserte.
+       *
+       * O turno escolhido no cadastro vence o padrão: era sempre o A, e
+       * quem nascia no turno B era cobrado pelo horário do A até alguém
+       * abrir a ficha de novo.
        */
-      turno: TURNO_PADRAO,
+      turno: dados.turno || TURNO_PADRAO,
       ativo: true,
       criadoEm: new Date().toISOString(),
     };

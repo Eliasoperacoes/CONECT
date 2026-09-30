@@ -3515,3 +3515,155 @@ test('15. DIA SEM MARCAÇÃO COMPLETA não vira saldo pela tolerância', async (
   expect(jornada.tolerancia.modo).toBe('sem_jornada');
   expect(jornada.completa).toBe(false);
 });
+
+// ============================================================
+// HORÁRIO A, HORÁRIO B E SÁBADO — com os turnos REAIS do cadastro
+//
+// Pedido do Elias: "faça testes explícitos para Horário A, Horário B e
+// sábado". Aqui o dia passa por `obterJornadaDoDia` inteiro: o turno
+// da ficha define o horário de cada batida, e a tolerância é medida
+// contra ele. Nada de "total trabalhado − 8h10".
+// ============================================================
+
+/** Um sábado: duas batidas, das 8 ao meio-dia. */
+const baterSabado = async (quem: any, data: string, entrada: string, saida: string) => {
+  bancoRegistros = bancoRegistros.filter((r: any) => !(r.colaboradorId === quem.id && r.data === data));
+  bancoRegistros.push(
+    ...[['entrada', entrada], ['saida', saida]].map(([tipo, hora]) => ({
+      id: `s-${quem.id}-${data}-${tipo}`, colaboradorId: quem.id, data, tipo,
+      horario: new Date(`${data}T${hora}:00`).toISOString(), horaFormatada: hora,
+      metodo: 'qrcode', loja: quem.loja, criadoEm: '',
+    }))
+  );
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+  await servicoPonto.apurarDia(quem.id, data);
+};
+
+test('HORÁRIO A: 07:29 e 17:12 fecham com saldo 0h00, não +0h03', async () => {
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+  await baterDia(DO_TURNO_A, '2026-09-15', ['07:29', '12:30', '14:00', '17:12']);
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-15');
+  expect(dia.minutosPrevistos).toBe(490); // 8h10, do turno
+  expect(dia.minutosTrabalhados).toBe(493);
+  expect(dia.saldoBrutoMinutos).toBe(3);
+  expect(dia.saldoMinutos).toBe(0);
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-15')).toBeNull();
+});
+
+test('HORÁRIO A: o almoço reduzido além de 5 min conta, e a entrada/saída não o mascara', async () => {
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+  // Entrada e saída exatas; almoço de 12:32 a 13:56 (84 min, 6 a menos)
+  await baterDia(DO_TURNO_A, '2026-09-15', ['07:30', '12:32', '13:56', '17:10']);
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-15');
+  expect(dia.tolerancia.intervalo?.reducaoMinutos).toBe(6);
+  expect(dia.saldoMinutos).toBe(6);
+});
+
+test('HORÁRIO B: entrada 08:22 não gera −0h02', async () => {
+  // Turno B: 08:20 · 11:00 · 12:30 · 18:00, 8h10
+  equipe = [ELIAS, DO_TURNO_B];
+  colaboradorLogado = DO_TURNO_B;
+  await baterDia(DO_TURNO_B, '2026-09-15', ['08:22', '11:00', '12:30', '18:00']);
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_B.id, '2026-09-15');
+  expect(dia.minutosPrevistos).toBe(490);
+  expect(dia.saldoBrutoMinutos).toBe(-2);
+  expect(dia.saldoMinutos).toBe(0);
+  // Medido contra o horário do B, e não contra o do A
+  expect(dia.tolerancia.entradaESaida).toEqual({ efeitoEntrada: -2, efeitoSaida: 0, tolerado: true });
+});
+
+test('HORÁRIO B: a mesma batida medida contra o horário do A seria atraso de 52 min', async () => {
+  // Prova de que o turno da ficha é o que manda: 08:22 no turno A é outra história
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+  await baterDia(DO_TURNO_A, '2026-09-15', ['08:22', '12:30', '14:00', '17:10']);
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-15').saldoMinutos).toBe(-52);
+});
+
+test('SÁBADO: 08:03 às 11:57 fecha com saldo 0h00, e não −0h06', async () => {
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+  // 19/09/2026 é sábado
+  await baterSabado(DO_TURNO_A, '2026-09-19', '08:03', '11:57');
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-19');
+  expect(dia.minutosPrevistos).toBe(240);
+  expect(dia.minutosTrabalhados).toBe(234);
+  expect(dia.saldoBrutoMinutos).toBe(-6);
+  expect(dia.saldoMinutos).toBe(0);
+  expect(dia.tolerancia.entradaESaida).toEqual({ efeitoEntrada: -3, efeitoSaida: -3, tolerado: true });
+});
+
+// ============================================================
+// O ESPELHO AUDITÁVEL
+// ============================================================
+
+test('o espelho mostra a conta de cada dia: previsto, relógio, variações, tolerância, saldo', async () => {
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+  await baterDia(DO_TURNO_A, '2026-09-14', ['07:29', '12:30', '14:00', '17:12']); // tolerado
+  await baterDia(DO_TURNO_A, '2026-09-15', ['07:24', '12:30', '14:00', '17:10']); // entrada 6 antes
+
+  colaboradorLogado = ELIAS;
+  const html = servicoPonto.gerarHtmlEspelho('2026-09-14', '2026-09-15', [DO_TURNO_A.id]);
+
+  for (const coluna of ['Previsto', 'Trabalhado', 'Relógio', 'Entrada / Saída', 'Almoço', 'Saldo']) {
+    expect(html).toContain(`<th>${coluna}</th>`);
+  }
+  // Segunda: E −1, S +2, soma 3, tolerado; almoço exato
+  expect(html).toContain('E -1 / S +2 = 3 ✓');
+  expect(html).toContain('S 0 / R 0 = 0 ✓');
+  // Terça: entrada 6 antes — passa do limite, conta
+  expect(html).toContain('E -6 / S 0 = 6 ✗');
+
+  // O rodapé fecha a conta: relógio +9, tolerância +3, saldo +6
+  expect(html).toContain('Relógio do período');
+  expect(html).toContain('Tolerância aplicada');
+
+  // A jornada do documento é a do turno, e não "8h00 por dia útil"
+  expect(html).toContain('Turno A · 07:30 às 17:10');
+  expect(html).not.toContain('8h00 por dia útil');
+});
+
+test('o CSV traz as mesmas colunas de auditoria', async () => {
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+  await baterDia(DO_TURNO_A, '2026-09-14', ['07:29', '12:30', '14:00', '17:12']);
+
+  colaboradorLogado = ELIAS;
+  const csv = servicoPonto.gerarCsvDoPeriodo('2026-09-14', '2026-09-14', [DO_TURNO_A.id]);
+  const [cabecalho, linha] = csv.split('\n');
+  expect(cabecalho).toContain('Relogio;Entrada/Saida;Almoco;Tolerancia aplicada;Saldo do dia');
+  expect(linha).toContain('E -1 / S +2 = 3 ✓');
+});
+
+test('ESTAGIÁRIO: a mesma regra, medida contra o turno de estágio dele', async () => {
+  /**
+   * A carga do estágio é outra (5h no turno escola), mas a regra é a
+   * mesma: 5 min por marcação, 10 somadas. O horário vem do turno da
+   * ficha, que é a especificidade de cada estagiário.
+   */
+  const ESTAGIARIO = {
+    ...ELIAS, id: 'est', nome: 'Estagiária', login: 'est', nivel: 1,
+    setor: 'Estágio', cargo: 'Estagiária', turno: 'E2', cargaHorariaDiariaMinutos: undefined,
+  };
+  equipe = [ELIAS, ESTAGIARIO];
+  colaboradorLogado = ESTAGIARIO;
+
+  // Turno E2: 07:30 às 12:30, direto. Entrou 07:33 e saiu 12:31
+  await baterSabado(ESTAGIARIO, '2026-09-15', '07:33', '12:31');
+  const tolerado = servicoPonto.obterJornadaDoDia(ESTAGIARIO.id, '2026-09-15');
+  expect(tolerado.minutosPrevistos).toBe(300);
+  expect(tolerado.saldoBrutoMinutos).toBe(-2);
+  expect(tolerado.saldoMinutos).toBe(0);
+  expect(tolerado.tolerancia.modo).toBe('marcacoes');
+
+  // Entrou 07:37: 7 de atraso numa marcação só — conta inteiro
+  await baterSabado(ESTAGIARIO, '2026-09-14', '07:37', '12:30');
+  expect(servicoPonto.obterJornadaDoDia(ESTAGIARIO.id, '2026-09-14').saldoMinutos).toBe(-7);
+});

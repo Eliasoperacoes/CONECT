@@ -421,7 +421,8 @@ test('o cadastro preenche as colunas que o banco exige', async () => {
   // que anula o default e derruba a gravação inteira.
   const corpo = await corpoDoCadastro();
 
-  expect(corpo).toContain('turno: TURNO_PADRAO');
+  // O turno escolhido, e o padrão quando ninguém escolheu: nunca nulo
+  expect(corpo).toContain('turno: dados.turno || TURNO_PADRAO');
   expect(corpo).toContain('ativo: true');
   expect(corpo).toContain('presenca:');
 });

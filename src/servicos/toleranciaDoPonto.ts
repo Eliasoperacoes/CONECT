@@ -82,6 +82,10 @@ export interface ResultadoDaTolerancia {
   /** Minutos ganhos (+) ou perdidos (−) na entrada e na saída. */
   entradaESaida?: { efeitoEntrada: number; efeitoSaida: number; tolerado: boolean };
   intervalo?: {
+    /** Batido − previsto na saída para o almoço (+ é depois do horário). */
+    variacaoSaida: number;
+    /** Batido − previsto no retorno do almoço. */
+    variacaoRetorno: number;
     /** |Δ saída do almoço| + |Δ retorno|. */
     variacao: number;
     /** Duração prevista − duração usufruída: + é intervalo mais curto. */
@@ -145,9 +149,9 @@ export function aplicarTolerancia(dados: {
     batidas.saidaAlmoco !== null &&
     batidas.retornoAlmoco !== null
   ) {
-    const variacao =
-      Math.abs(batidas.saidaAlmoco - esperados.saida_almoco) +
-      Math.abs(batidas.retornoAlmoco - esperados.retorno_almoco);
+    const variacaoSaida = batidas.saidaAlmoco - esperados.saida_almoco;
+    const variacaoRetorno = batidas.retornoAlmoco - esperados.retorno_almoco;
+    const variacao = Math.abs(variacaoSaida) + Math.abs(variacaoRetorno);
     const efeito =
       esperados.retorno_almoco -
       esperados.saida_almoco -
@@ -156,6 +160,8 @@ export function aplicarTolerancia(dados: {
 
     if (tolerado) neutralizado += efeito;
     resultado.intervalo = {
+      variacaoSaida,
+      variacaoRetorno,
       variacao,
       efeito,
       tolerado,
@@ -165,4 +171,55 @@ export function aplicarTolerancia(dados: {
 
   resultado.saldoApurado = abaterPausa(diferenca - neutralizado, pausa);
   return resultado;
+}
+
+// ---------------------------------------------------------------
+// A AUDITORIA DO DIA, EM TEXTO
+//
+// Pedido do Elias: "quero conseguir auditar matematicamente todos os
+// valores exibidos no espelho". O espelho impresso e o CSV mostram a
+// mesma coisa, e por isso o texto nasce aqui, uma vez:
+//
+//   relógio (trabalhado − previsto)  −  o que a tolerância perdoou  =  saldo
+//
+// As variações seguem a convenção do pedido: batido − previsto, com
+// sinal. Entrar 07:29 num turno de 07:30 é −1; sair 17:12 de 17:10, +2.
+// ---------------------------------------------------------------
+
+const comSinal = (n: number): string => (n > 0 ? `+${n}` : n < 0 ? `-${-n}` : '0');
+
+export interface AuditoriaDoDia {
+  /** "E -1 / S +2 = 3 ✓" — cada marcação, a soma e se foi tolerado. */
+  entradaESaida: string;
+  /** "S +2 / R -1 = 3 ✓", e a redução quando o intervalo encolheu além dela. */
+  intervalo: string;
+  /** Quanto a tolerância tirou do relógio, com sinal. */
+  tolerado: number;
+}
+
+export function auditarDia(t: ResultadoDaTolerancia, saldoRelogio: number): AuditoriaDoDia {
+  if (t.modo === 'sem_jornada') return { entradaESaida: '—', intervalo: '—', tolerado: 0 };
+  if (t.modo === 'dia') {
+    return {
+      entradaESaida: 'sem horário: limite do dia',
+      intervalo: '—',
+      tolerado: saldoRelogio - t.saldoApurado,
+    };
+  }
+
+  const es = t.entradaESaida;
+  const entradaESaida = es
+    ? `E ${comSinal(-es.efeitoEntrada)} / S ${comSinal(es.efeitoSaida)} = ${
+        Math.abs(es.efeitoEntrada) + Math.abs(es.efeitoSaida)
+      } ${es.tolerado ? '✓' : '✗'}`
+    : '—';
+
+  const iv = t.intervalo;
+  const intervalo = iv
+    ? `S ${comSinal(iv.variacaoSaida)} / R ${comSinal(iv.variacaoRetorno)} = ${iv.variacao} ${
+        iv.tolerado ? '✓' : '✗'
+      }${iv.reducaoMinutos > 0 ? ` · reduzido ${iv.reducaoMinutos}` : ''}`
+    : '—';
+
+  return { entradaESaida, intervalo, tolerado: saldoRelogio - t.saldoApurado };
 }

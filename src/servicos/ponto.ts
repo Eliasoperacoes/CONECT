@@ -68,7 +68,7 @@ import { podeUsar } from './permissoes';
 import { agora as agoraSincronizado } from './relogio';
 import { linhasDeIdentificacao, contatoEmLinha } from './fichaColaborador';
 import { temAlcadaSobre, regraAutomaticaDeAlcada, deveSerAvisadoSobre } from './organograma';
-import { aplicarTolerancia } from './toleranciaDoPonto';
+import { aplicarTolerancia, auditarDia } from './toleranciaDoPonto';
 import {
   avisarPedidoDePonto,
   avisarDecisaoDePonto,
@@ -2879,7 +2879,7 @@ class ServicoPonto {
      * informação da grade impressa uma vez.
      */
     const linhas: string[] = [
-      'Colaborador;Matricula;CNPJ;Cargo;Loja;Setor;Data;Entrada;Saida almoco;Retorno almoco;Saida;Trabalhado;Previsto;Saldo do dia;Lancamentos manuais',
+      'Colaborador;Matricula;CNPJ;Cargo;Loja;Setor;Data;Entrada;Saida almoco;Retorno almoco;Saida;Trabalhado;Previsto;Relogio;Entrada/Saida;Almoco;Tolerancia aplicada;Saldo do dia;Lancamentos manuais',
     ];
 
     const todos = this.obterResumoDoPeriodo(dataInicio, dataFim);
@@ -2891,6 +2891,7 @@ class ServicoPonto {
       for (const jornada of resumo.jornadas) {
         const temAlgo = Object.keys(jornada.marcacoes).length > 0;
         if (!temAlgo) continue;
+        const auditoria = auditarDia(jornada.tolerancia, jornada.saldoBrutoMinutos);
 
         const lancadasPorOutro = ORDEM_MARCACOES.map((t) => jornada.marcacoes[t])
           .filter((r): r is RegistroPonto => !!r)
@@ -2916,7 +2917,13 @@ class ServicoPonto {
             jornada.marcacoes.retorno_almoco?.horaFormatada || '',
             jornada.marcacoes.saida?.horaFormatada || '',
             formatarMinutos(jornada.minutosTrabalhados),
-            formatarMinutos(jornada.minutosPrevistos),
+            /* O previsto do dia, com a pausa do estágio já descontada: é o que
+               faz Trabalhado − Previsto dar exatamente a coluna Relógio */
+            formatarMinutos(jornada.minutosPrevistosEfetivos),
+            formatarSaldo(jornada.saldoBrutoMinutos),
+            auditoria.entradaESaida,
+            auditoria.intervalo,
+            formatarSaldo(auditoria.tolerado),
             formatarSaldo(jornada.saldoMinutos),
             lancadasPorOutro,
           ].join(';')
@@ -2981,8 +2988,26 @@ class ServicoPonto {
     const folhas = selecionados
       .map((resumo) => {
         const c = resumo.colaborador;
-        const jornadaContratada =
-          c.cargaHorariaDiariaMinutos ?? CARGA_HORARIA_PADRAO_MINUTOS;
+        /**
+         * A JORNADA DO DOCUMENTO É A DO TURNO DA PESSOA.
+         *
+         * Era `cargaHorariaDiariaMinutos ?? 8h00`: quem cumpre o turno A
+         * (8h10) sem carga própria na ficha saía no papel como "8h00 por
+         * dia útil" — um número contra o qual nenhum saldo dele foi
+         * apurado. Só a carga própria da ficha, quando existe, vence o
+         * turno, e é a mesma precedência de `cargaPrevistaEmMinutos`.
+         */
+        const turnoDaPessoa = turnoDe(c);
+        const jornadaContratada = c.cargaHorariaDiariaMinutos ?? minutosDoTurno(turnoDaPessoa);
+        const horarioContratado =
+          c.cargaHorariaDiariaMinutos != null
+            ? `${formatarMinutos(jornadaContratada)} por dia útil (carga própria da ficha)`
+            : /* O turno já tem linha própria na ficha: aqui, a carga e o almoço */
+              `${formatarMinutos(jornadaContratada)} por dia útil${
+                turnoDaPessoa.intervalo?.desconta
+                  ? ` · almoço ${turnoDaPessoa.intervalo.saida} às ${turnoDaPessoa.intervalo.retorno}`
+                  : ''
+              }`;
 
         // A identificação vem da ficha, não de uma lista escrita aqui. É o
         // que garante que campo novo no cadastro (o CNPJ foi o último)
@@ -2995,7 +3020,7 @@ class ServicoPonto {
             ? // A jornada do documento é a que vale de fato: sem o contratado
               // preenchido, corre a carga padrão da rede, e o espelho tem de
               // dizer contra qual jornada o saldo foi apurado.
-              { ...campo, valor: `${formatarMinutos(jornadaContratada)} por dia útil` }
+              { ...campo, valor: horarioContratado }
             : campo
         );
         camposDaIdentificacao.push(
@@ -3015,6 +3040,14 @@ class ServicoPonto {
           // Número ímpar de campos deixaria a última linha aberta
           .map((linha) => (linha.endsWith('</tr>') ? linha : `${linha}<td></td></tr>`))
           .join('\n');
+
+        /**
+         * O RELÓGIO DO PERÍODO, para o rodapé fechar a conta: relógio −
+         * tolerância aplicada = saldo do período. É a soma da coluna
+         * Relógio, dia a dia — e não total trabalhado − total previsto,
+         * que conta o previsto do contrato antes da pausa do estágio.
+         */
+        const relogioDoPeriodo = resumo.jornadas.reduce((s, j) => s + j.saldoBrutoMinutos, 0);
 
         // Só entram os dias com alguma marcação ou com jornada prevista
         const dias = resumo.jornadas.filter(
@@ -3079,6 +3112,8 @@ class ServicoPonto {
 
             const feriadoDoDia = feriadoEm(j.data, resumo.colaborador.loja);
             const semMarcacao = Object.keys(j.marcacoes).length === 0;
+            const auditoria = auditarDia(j.tolerancia, j.saldoBrutoMinutos);
+            const semJornada = j.minutosTrabalhados === 0;
 
             return `<tr class="${semMarcacao ? 'vazio' : ''}">
               ${/*
@@ -3098,10 +3133,13 @@ class ServicoPonto {
                   : formatarDiaCurto(j.data).split(',')[0]
               }</span></td>
               ${celulas}
+              <td class="num">${formatarMinutos(j.minutosPrevistosEfetivos)}</td>
               <td class="num">${formatarMinutos(j.minutosTrabalhados)}</td>
-              <td class="num">${formatarMinutos(j.minutosPrevistos)}</td>
+              <td class="num">${semJornada ? '—' : formatarSaldo(j.saldoBrutoMinutos)}</td>
+              <td class="auditoria">${escapar(auditoria.entradaESaida)}</td>
+              <td class="auditoria">${escapar(auditoria.intervalo)}</td>
               <td class="num ${j.saldoMinutos < 0 ? 'neg' : ''}">${
-                j.minutosTrabalhados === 0 ? '—' : formatarSaldo(j.saldoMinutos)
+                semJornada ? '—' : formatarSaldo(j.saldoMinutos)
               }</td>
             </tr>`;
           })
@@ -3131,13 +3169,32 @@ class ServicoPonto {
                 <th>Saída<br>almoço</th>
                 <th>Retorno<br>almoço</th>
                 <th>Saída</th>
-                <th>Trabalhado</th>
                 <th>Previsto</th>
+                <th>Trabalhado</th>
+                <th>Relógio</th>
+                <th>Entrada / Saída</th>
+                <th>Almoço</th>
                 <th>Saldo</th>
               </tr>
             </thead>
             <tbody>${linhas}</tbody>
           </table>
+
+          ${/*
+            A CONTA DE CADA DIA, À VISTA — pedido do Elias: "quero conseguir
+            auditar matematicamente todos os valores exibidos no espelho".
+            Cada coluna sai da anterior; a legenda diz como.
+          */ ''}
+          <p class="legenda">
+            <strong>Como se lê a conta do dia:</strong>
+            Relógio = Trabalhado − Previsto, antes da tolerância.
+            <strong>Entrada / Saída</strong>: batido − previsto em cada marcação
+            (E = entrada, S = saída) e a soma; ✓ = até 5 min em cada e até 10 somadas,
+            não gera saldo; ✗ = passou, as duas contam inteiras (art. 58 §1º da CLT).
+            <strong>Almoço</strong>: batido − previsto na saída (S) e no retorno (R) e a
+            soma; ✓ = até 5 min somados, não gera saldo; ✗ = a diferença do intervalo conta.
+            <strong>Saldo = Relógio − as variações marcadas com ✓.</strong>
+          </p>
 
           <table class="totais">
             <tr>
@@ -3147,6 +3204,14 @@ class ServicoPonto {
             <tr>
               <td>Total previsto no período</td>
               <td class="num">${formatarMinutos(resumo.minutosPrevistos)}</td>
+            </tr>
+            <tr>
+              <td>Relógio do período (soma da coluna Relógio)</td>
+              <td class="num">${formatarSaldo(relogioDoPeriodo)}</td>
+            </tr>
+            <tr>
+              <td>Tolerância aplicada (variações marcadas com ✓)</td>
+              <td class="num">${formatarSaldo(relogioDoPeriodo - resumo.saldoPeriodoMinutos)}</td>
             </tr>
             <tr class="destaque">
               <td>Saldo do período</td>
@@ -3235,6 +3300,9 @@ class ServicoPonto {
   .notas ol { margin: 4px 0 0 16px; padding: 0; }
   .notas li { margin-bottom: 2px; }
   .naoSeAplica { color: #bbb; }
+  /* Quebra só no caso raro do intervalo reduzido, em vez de invadir o Saldo */
+  .marcacoes .auditoria { font-size: 8px; white-space: normal; line-height: 1.15; }
+  .legenda { margin-top: 6px; font-size: 8.5px; color: #333; line-height: 1.35; }
   .vazio td { background: #fafafa; }
   /* De pé, 60% de largura deixava o quadro de totais solto no meio */
   .totais { margin-top: 12px; width: 85%; font-size: 11px; }
