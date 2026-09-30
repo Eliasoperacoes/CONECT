@@ -312,12 +312,23 @@ export const darCienciaNaAdvertencia = async (
   }
   if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('advertencias')
     .update({ ciencia_em: new Date().toISOString() })
-    .eq('id', advertencia.id);
+    .eq('id', advertencia.id)
+    .select('ciencia_em');
 
   if (error) return { sucesso: false, erro: error.message };
+  /**
+   * UPDATE QUE NÃO ALCANÇOU LINHA NENHUMA DEVOLVE SUCESSO.
+   *
+   * A segurança por linha barra calada — e a tela diria "ciência dada"
+   * numa advertência que continua sem ciência no banco, que é justamente
+   * o registro que precisa existir.
+   */
+  if (!data || data.length === 0 || !data[0].ciencia_em) {
+    return { sucesso: false, erro: 'A ciência não foi registrada. Tente de novo.' };
+  }
   return { sucesso: true };
 };
 

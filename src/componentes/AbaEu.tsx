@@ -40,7 +40,7 @@ import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
 import { ModalAlterarFoto } from './ModalAlterarFoto';
 import { versaoLegivel } from '../servicos/versao';
-import { MeusDocumentos } from './MeusDocumentos';
+import { MeuRH } from './MeuRH';
 import { SecaoRecolhivel } from './SecaoRecolhivel';
 
 interface PropsAbaEu {
@@ -156,13 +156,23 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
             type="button"
             id="botao-alterar-foto-texto"
             onClick={() => setModalFotoAberto(true)}
-            className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+            className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--c-acento)] min-h-[32px]"
           >
             <Camera className="w-3.5 h-3.5" />
-            <span>Alterar Foto / Usar Logo Malachias</span>
+            <span>Alterar foto</span>
           </button>
         </div>
       </div>
+
+      {/*
+        MEU RH VEM LOGO ABAIXO DO NOME.
+
+        É o que a pessoa abre a aba Eu para ver: o holerite que chegou, a
+        folga que foi aprovada, o espelho do mês que fechou. Presença e
+        preferências são ajuste de aparelho, que se mexe uma vez e se
+        esquece — ficam embaixo.
+      */}
+      <MeuRH colaboradorAtual={colaboradorAtual} />
 
       {/*
         A FICHA É CONSULTA, e por isso nasce fechada.
@@ -220,13 +230,6 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
           </button>
         </div>
       )}
-
-      {/*
-        Os documentos da pessoa vêm ANTES de presença e preferências: quando
-        chega um holerite ou uma advertência, é a primeira coisa que ela
-        abre o aplicativo para ver. A seção some inteira quando não há nada.
-      */}
-      <MeusDocumentos colaboradorAtual={colaboradorAtual} />
 
       {/*
         PRESENÇA: o resumo mostra o estado atual, que é a única coisa que

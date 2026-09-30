@@ -1011,6 +1011,58 @@ class PonteNuvem {
   }
 
   /**
+   * AS BATIDAS DE UMA PESSOA NUM MÊS FECHADO, somadas ao cache.
+   *
+   * Para o espelho do mês na aba Eu. Não troca a janela, de propósito:
+   * `sincronizarPonto(periodo)` baixa tudo o que a pessoa ENXERGA no
+   * período — para o RH, a rede inteira —, e doze meses da rede estouram
+   * o aparelho. Aqui vem só a própria pessoa: umas 90 linhas por mês.
+   *
+   * As do período são TROCADAS, e não somadas: o que o RH corrigiu ou
+   * apagou lá não pode sobrar aqui e sair no documento.
+   */
+  async trazerMarcacoesDe(colaboradorId: string, periodo: JanelaDoPonto): Promise<boolean> {
+    if (!supabase) return true;
+
+    const linhas = await buscarTodasAsLinhas<LinhaRegistroPonto>(
+      () =>
+        supabase!
+          .from('registros_ponto')
+          .select('*')
+          .eq('colaborador_id', colaboradorId)
+          .gte('data', periodo.inicio)
+          .lte('data', periodo.fim)
+          .order('horario'),
+      'as marcações do mês'
+    );
+    if (!linhas) return false;
+
+    const novas = linhas.map(paraRegistroPonto);
+    let atuais: RegistroPonto[] = [];
+    try {
+      atuais = JSON.parse(localStorage.getItem(CHAVE_REGISTROS_PONTO) || '[]');
+    } catch {
+      atuais = [];
+    }
+    const mantidas = atuais.filter(
+      (r) =>
+        !(
+          r.colaboradorId === colaboradorId &&
+          r.data >= periodo.inicio &&
+          r.data <= periodo.fim
+        )
+    );
+
+    try {
+      localStorage.setItem(CHAVE_REGISTROS_PONTO, JSON.stringify([...mantidas, ...novas]));
+    } catch (erro) {
+      console.error('Não coube no aparelho o mês pedido para o espelho:', erro);
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Grava a marcação no banco. O banco é quem decide se ela vale: a restrição
    * `unique (colaborador_id, data, tipo)` recusa a segunda batida do mesmo
    * passo, mesmo que tenha vindo de outro aparelho com o cache atrasado.

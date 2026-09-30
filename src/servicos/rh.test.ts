@@ -113,14 +113,15 @@ test('a pessoa VE os documentos dela na aba Eu', async () => {
   const aba = await Bun.file(
     new URL('../componentes/AbaEu.tsx', import.meta.url)
   ).text();
-  expect(aba).toContain('<MeusDocumentos colaboradorAtual={colaboradorAtual} />');
+  expect(aba).toContain('<MeuRH colaboradorAtual={colaboradorAtual} />');
 
   const meus = await Bun.file(
-    new URL('../componentes/MeusDocumentos.tsx', import.meta.url)
+    new URL('../componentes/MeuRH.tsx', import.meta.url)
   ).text();
   // E ela pede SÓ os dela: a lista da rede nem chega ao aparelho
-  expect(meus).toContain('listarHolerites(colaboradorAtual.id)');
-  expect(meus).toContain('listarAdvertencias(colaboradorAtual.id)');
+  expect(meus).toContain('const eu = colaboradorAtual;');
+  expect(meus).toContain('listarHolerites(eu.id)');
+  expect(meus).toContain('listarAdvertencias(eu.id)');
   expect(meus).toContain('darCienciaNaAdvertencia');
 });
 

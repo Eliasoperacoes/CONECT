@@ -23,7 +23,7 @@ const lerAba = async (): Promise<string> =>
   Bun.file(new URL('../componentes/AbaEu.tsx', import.meta.url)).text();
 
 const lerDocumentos = async (): Promise<string> =>
-  Bun.file(new URL('../componentes/MeusDocumentos.tsx', import.meta.url)).text();
+  Bun.file(new URL('../componentes/MeuRH.tsx', import.meta.url)).text();
 
 /** O código sem os comentários, para a verificação não achar a explicação. */
 const semComentarios = (fonte: string): string =>
@@ -38,7 +38,8 @@ test('O RECOLHER É UMA PEÇA, e não sete cópias', async () => {
   const documentos = semComentarios(await lerDocumentos());
 
   expect(aba).toContain("import { SecaoRecolhivel } from './SecaoRecolhivel'");
-  expect(documentos).toContain("import { SecaoRecolhivel } from './SecaoRecolhivel'");
+  // O Meu RH abre as listas na folha de baixo do sistema, e não numa terceira peça
+  expect(documentos).toContain("import { FolhaInferior } from './FolhaInferior'");
 
   // Pelo menos quatro seções na aba: dados, presença, preferências, admin
   expect((aba.match(/<SecaoRecolhivel/g) || []).length).toBeGreaterThanOrEqual(4);
@@ -86,19 +87,17 @@ test('FECHADA, A SEÇÃO AINDA DIZ ALGUMA COISA', async () => {
   expect(aba).toContain('resumo={ROTULO_PRESENCA[colaboradorAtual.presenca]');
 });
 
-test('ADVERTÊNCIA SEM CIÊNCIA NASCE ABERTA', async () => {
+test('ADVERTÊNCIA SEM CIÊNCIA SE DESTACA SEM PRECISAR ABRIR', async () => {
   /**
-   * É a única seção da aba que pede uma ação da pessoa, e com prazo.
-   * Recolhida, viraria mais uma linha entre as outras — e "não vi" é
-   * exatamente a defesa que a ciência existe para tirar de cena.
-   *
-   * Com todas assinadas, recolhe como o resto.
+   * É o único cartão do Meu RH que pede uma ação da pessoa, e com prazo.
+   * Igual aos outros, viraria mais um quadrado — e "não vi" é exatamente
+   * a defesa que a ciência existe para tirar de cena. O cartão fica em
+   * alerta e o resumo diz quantas esperam.
    */
   const documentos = semComentarios(await lerDocumentos());
 
-  expect(documentos).toContain('abertaDeInicio={semCiencia.length > 0}');
   expect(documentos).toContain('alerta={semCiencia.length > 0}');
-  expect(documentos).toContain('`${semCiencia.length} sem ciência`');
+  expect(documentos).toContain('`${semCiencia.length} aguardando sua ciência`');
 });
 
 test('o holerite mais recente aparece no resumo', async () => {
@@ -107,7 +106,7 @@ test('o holerite mais recente aparece no resumo', async () => {
    * doze linhas de coisa antiga na frente da única que interessa.
    */
   const documentos = semComentarios(await lerDocumentos());
-  expect(documentos).toContain('porExtenso(holerites[0].competencia)');
+  expect(documentos).toContain('rotuloDoMes(holerites[0].competencia)');
 });
 
 test('TRÊS BLOCOS DE PREFERÊNCIA VIRARAM UM', async () => {

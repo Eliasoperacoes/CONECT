@@ -39,6 +39,7 @@ import {
   Plus,
   ChevronRight,
   FileText,
+  Palmtree,
 } from 'lucide-react';
 import {
   Colaborador,
@@ -104,7 +105,22 @@ const MOTIVOS: Array<{
   },
 ];
 
-const motivoDe = (tipo: TipoAusencia) => MOTIVOS.find((m) => m.tipo === tipo) || MOTIVOS[4];
+/**
+ * Férias não se pedem por aqui — a liderança e o RH as lançam —, mas o
+ * mesmo cartão as mostra na aba Eu. Sem isto elas sairiam com o ícone
+ * de "Outro".
+ */
+const APARENCIA_DAS_FERIAS = {
+  tipo: 'ferias' as TipoAusencia,
+  Icone: Palmtree,
+  descricao: '',
+  cor: 'text-teal-600 bg-teal-500/10',
+};
+
+const motivoDe = (tipo: TipoAusencia) =>
+  tipo === 'ferias'
+    ? APARENCIA_DAS_FERIAS
+    : MOTIVOS.find((m) => m.tipo === tipo) || MOTIVOS[4];
 
 /** O sábado de uma data, para o campo já nascer numa data válida. */
 const proximoSabado = (): string => {
@@ -150,8 +166,17 @@ const SeloEstado: React.FC<{ j: JustificativaAusencia }> = ({ j }) => {
   );
 };
 
-/** Uma solicitação na lista: o motivo, a data, a situação. */
-const CartaoSolicitacao: React.FC<{ j: JustificativaAusencia }> = ({ j }) => {
+/**
+ * Uma solicitação na lista: o motivo, a data, a situação.
+ *
+ * Exportado: a aba Eu mostra folgas, férias e documentos com ESTE cartão,
+ * e não com um segundo desenho do mesmo pedido.
+ */
+export const CartaoSolicitacao: React.FC<{
+  j: JustificativaAusencia;
+  /** Quando existe, o nome do anexo vira botão para abrir o arquivo. */
+  aoAbrirAnexo?: (caminho: string) => void;
+}> = ({ j, aoAbrirAnexo }) => {
   const { Icone, cor } = motivoDe(j.tipo);
   return (
     <li className="flex gap-3 px-4 py-3.5 border-b border-[var(--c-borda)] last:border-b-0">
@@ -169,12 +194,22 @@ const CartaoSolicitacao: React.FC<{ j: JustificativaAusencia }> = ({ j }) => {
         {j.observacao && (
           <p className="text-[13px] text-[var(--c-texto-3)] mt-1 line-clamp-2">{j.observacao}</p>
         )}
-        {j.anexoNome && (
-          <p className="text-xs text-[var(--c-texto-3)] mt-1 flex items-center gap-1 truncate">
-            <Paperclip className="w-3 h-3 flex-shrink-0" />
-            <span className="truncate">{j.anexoNome}</span>
-          </p>
-        )}
+        {j.anexoNome &&
+          (aoAbrirAnexo && j.anexoCaminho ? (
+            <button
+              type="button"
+              onClick={() => aoAbrirAnexo(j.anexoCaminho!)}
+              className="mt-1 max-w-full text-xs font-semibold text-[var(--c-acento)] flex items-center gap-1 min-h-[32px]"
+            >
+              <Paperclip className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate">{j.anexoNome}</span>
+            </button>
+          ) : (
+            <p className="text-xs text-[var(--c-texto-3)] mt-1 flex items-center gap-1 truncate">
+              <Paperclip className="w-3 h-3 flex-shrink-0" />
+              <span className="truncate">{j.anexoNome}</span>
+            </p>
+          ))}
         {j.estado === 'aprovada' && j.aprovadorNome && (
           <p className="text-xs text-[var(--c-texto-3)] mt-1">por {j.aprovadorNome}</p>
         )}
