@@ -39,6 +39,14 @@ export const ConversasEmEspera: React.FC<PropsConversasEmEspera> = ({
   if (conversas.length === 0) return null;
 
   const quantas = conversas.length;
+  /**
+   * AS NÃO LIDAS, À VISTA SEM ABRIR A LISTA.
+   *
+   * O botão dizia só quantas conversas estavam encolhidas. Mensagem nova
+   * numa delas não mudava nada no canto da tela — e o Elias perguntou se
+   * havia aviso ali. Não havia.
+   */
+  const naoLidas = conversas.reduce((soma, c) => soma + (c.naoLidas || 0), 0);
 
   return (
     /*
@@ -72,9 +80,18 @@ export const ConversasEmEspera: React.FC<PropsConversasEmEspera> = ({
                   title={`Abrir ${conversa.nome}`}
                 >
                   <MessageSquare className="w-4 h-4 text-[var(--c-acento)] flex-shrink-0" />
-                  <span className="text-xs font-semibold text-[var(--c-texto)] truncate">
+                  <span
+                    className={`flex-1 min-w-0 text-xs truncate text-[var(--c-texto)] ${
+                      conversa.naoLidas ? 'font-bold' : 'font-semibold'
+                    }`}
+                  >
                     {conversa.nome}
                   </span>
+                  {!!conversa.naoLidas && (
+                    <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center flex-shrink-0">
+                      {conversa.naoLidas > 99 ? '99+' : conversa.naoLidas}
+                    </span>
+                  )}
                 </button>
                 <button
                   type="button"
@@ -96,10 +113,20 @@ export const ConversasEmEspera: React.FC<PropsConversasEmEspera> = ({
         id="botao-conversas-em-espera"
         onClick={() => setListaAberta((v) => !v)}
         className="relative z-50 flex items-center gap-1.5 px-3.5 py-2.5 rounded-t-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] border border-b-0 border-[var(--c-acento)] shadow-[var(--s-3)] cursor-pointer hover:brightness-110 transition-all"
-        title={`${quantas} conversa${quantas > 1 ? 's' : ''} em espera`}
+        title={`${quantas} conversa${quantas > 1 ? 's' : ''} em espera${
+          naoLidas ? ` · ${naoLidas} mensage${naoLidas > 1 ? 'ns' : 'm'} não lida${naoLidas > 1 ? 's' : ''}` : ''
+        }`}
       >
         <MessageSquare className="w-4 h-4" />
         <span className="text-xs font-bold">{quantas}</span>
+        {naoLidas > 0 && (
+          <span
+            id="nao-lidas-em-espera"
+            className="absolute -top-2 -right-2 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-black flex items-center justify-center ring-2 ring-[var(--c-canvas)]"
+          >
+            {naoLidas > 99 ? '99+' : naoLidas}
+          </span>
+        )}
         <ChevronUp
           className={`w-3.5 h-3.5 transition-transform ${listaAberta ? 'rotate-180' : ''}`}
         />

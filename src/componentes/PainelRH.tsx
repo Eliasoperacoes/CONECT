@@ -51,6 +51,7 @@ import { AbaHolerites } from './AbaHolerites';
 import { AbaAdvertencias } from './AbaAdvertencias';
 import { AbaAtestados } from './AbaAtestados';
 import { AbaFerias } from './AbaFerias';
+import { SeparacaoPorSetor } from './SeparacaoPorSetor';
 
 /**
  * A aba "Feriados" saiu daqui.
@@ -451,6 +452,8 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
               />
             </div>
           </section>
+
+          <SeparacaoPorSetor />
         </div>
       )}
 

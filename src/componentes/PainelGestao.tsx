@@ -55,6 +55,7 @@ import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { EscalaDeFolgas } from './EscalaDeFolgas';
+import { AbaFerias } from './AbaFerias';
 import { TabelaEquipe } from './TabelaEquipe';
 import type { SecaoDestino } from '../servicos/centralDeNotificacoes';
 
@@ -98,7 +99,7 @@ interface Props {
  * que existe HOJE: aba removida ou escrita à mão no console cai no
  * padrão, em vez de deixar a tela em branco.
  */
-const ABAS = ['equipe', 'sem_bater', 'aprovacoes', 'folgas', 'rede', 'qr'] as const;
+const ABAS = ['equipe', 'sem_bater', 'aprovacoes', 'folgas', 'ferias', 'rede', 'qr'] as const;
 
 type Aba = (typeof ABAS)[number];
 
@@ -200,7 +201,7 @@ export const PainelGestao: React.FC<Props> = ({
    * a permissão depois de ter estado lá — ou editar o `localStorage`.
    */
   const aba: Aba = (() => {
-    if (abaEscolhida === 'folgas' && !veEscala) return abaInicial;
+    if ((abaEscolhida === 'folgas' || abaEscolhida === 'ferias') && !veEscala) return abaInicial;
     if (abaEscolhida === 'rede' && !veRede) return abaInicial;
     if (abaEscolhida === 'qr' && !veQr) return abaInicial;
     if (
@@ -390,6 +391,14 @@ export const PainelGestao: React.FC<Props> = ({
                 : []),
               { id: 'aprovacoes' as Aba, rotulo: 'Aprovar jornadas', contador: pendencias.length },
               ...(veEscala ? [{ id: 'folgas' as Aba, rotulo: 'Escala de folgas' }] : []),
+              /*
+                FÉRIAS DA EQUIPE, PELA MESMA PERMISSÃO DA ESCALA.
+                O catálogo já dizia "folgas de sábado e férias da equipe".
+                Quando as férias ganharam tela própria, ela foi só para o
+                RH, e o líder ficou sem onde lançar. A tela filtra pela
+                alçada: ele vê a própria linha e a de quem responde a ele.
+              */
+              ...(veEscala ? [{ id: 'ferias' as Aba, rotulo: 'Férias' }] : []),
               ...(veRede ? [{ id: 'rede' as Aba, rotulo: veEspelhoDaRede ? 'Rede' : 'Espelho de ponto' }] : []),
               ...(veQr ? [{ id: 'qr' as Aba, rotulo: 'QR do ponto' }] : []),
             ]}
@@ -491,6 +500,10 @@ export const PainelGestao: React.FC<Props> = ({
           ) : aba === 'folgas' ? (
             <div className="-m-4 sm:-m-6">
               <EscalaDeFolgas colaboradorAtual={colaboradorAtual} />
+            </div>
+          ) : aba === 'ferias' ? (
+            <div className="-m-4 sm:-m-6">
+              <AbaFerias colaboradorAtual={colaboradorAtual} />
             </div>
           ) : aba === 'aprovacoes' ? (
             <div className="-m-4 sm:-m-6">

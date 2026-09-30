@@ -454,9 +454,16 @@ export default function App() {
     () =>
       janelas
         .filter((j) => j.encolhida)
-        .map((j) => bancoDados.obterConversaPorId(j.id))
+        // Da lista viva primeiro: é ela que traz as não lidas de agora. Só
+        // pela janela, o número parava no instante em que ela encolheu.
+        .map(
+          (j) =>
+            conversasIndividuais.find((c) => c.id === j.id) ||
+            grupos.find((c) => c.id === j.id) ||
+            bancoDados.obterConversaPorId(j.id)
+        )
         .filter((c): c is Conversa => !!c),
-    [janelas]
+    [janelas, conversasIndividuais, grupos]
   );
 
   // Qual seção da lista flutuante está aberta no computador (nenhuma = fechada)
@@ -499,6 +506,41 @@ export default function App() {
   // Modais acionados pelo botão '+'
   const [modalNovaConversaAberto, setModalNovaConversaAberto] = useState(false);
   const [modalCriarGrupoAberto, setModalCriarGrupoAberto] = useState(false);
+
+  /**
+   * A TELA É DE QUEM ENTROU.
+   *
+   * O Elias saiu de uma conta, entrou em outra no mesmo navegador, e a
+   * janela de conversa da primeira continuou aberta — o nome do colega à
+   * vista, as mensagens não (o banco não as entrega a quem não participa).
+   * As janelas vivem na memória da tela, e nem o sair nem o entrar as
+   * limpavam.
+   *
+   * Tudo o que é da pessoa, e não do aparelho, sai aqui: as conversas
+   * abertas, a lista, a busca, o que ia ser aberto.
+   */
+  const limparTelaDaSessao = () => {
+    setJanelas([]);
+    setConversaAtivaId(null);
+    setSecaoListaAberta(null);
+    setBuscaConversas('');
+    setMensagemAlvo(null);
+    setPublicacaoAAbrir(null);
+    setSecaoAlvo(null);
+    setPainelAdminAberto(false);
+    setModalNovaConversaAberto(false);
+    setModalCriarGrupoAberto(false);
+  };
+
+  // Trocou a pessoa (outra conta, ou a sessão restaurada era de outra):
+  // o que estava aberto era da anterior. A primeira vez não conta — o
+  // endereço de uma notificação pode ter acabado de abrir uma conversa.
+  const refPessoaDaTela = useRef(colaboradorAtual.id);
+  useEffect(() => {
+    if (refPessoaDaTela.current === colaboradorAtual.id) return;
+    refPessoaDaTela.current = colaboradorAtual.id;
+    limparTelaDaSessao();
+  }, [colaboradorAtual.id]);
 
   /**
    * Carrega e sincroniza dados — SÓ TROCANDO O QUE MUDOU DE VERDADE.
@@ -1033,10 +1075,10 @@ export default function App() {
      * estava conferindo.
      */
     esquecerOndeParei();
+    limparTelaDaSessao();
     setPrecisaTrocarSenha(false);
     setAutenticado(false);
     setAbaAtiva('conversas');
-    setConversaAtivaId(null);
   };
 
   /**

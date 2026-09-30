@@ -4,7 +4,6 @@ import {
   Building2,
   Users,
   Megaphone,
-  Layers,
   ArrowRight,
   TrendingUp,
   Activity,
@@ -36,6 +35,7 @@ import { manterSeIgual } from '../servicos/igualdade';
 import { ondeParei, lembrarOndeParei } from '../servicos/navegacaoLembrada';
 import { servicoPonto } from '../servicos/ponto';
 import { PainelRH } from './PainelRH';
+import { SeparacaoPorSetor } from './SeparacaoPorSetor';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { Organograma } from './Organograma';
 import { PainelGestao } from './PainelGestao';
@@ -136,12 +136,6 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
       if (totalA !== totalB) return totalB - totalA;
       return a.nome.localeCompare(b.nome);
     });
-  }, [estatisticas]);
-
-  /** Maior setor da rede, para as barras compararem entre si com honestidade. */
-  const maiorSetor = useMemo(() => {
-    const valores = Object.values(estatisticas.porSetor) as number[];
-    return valores.length > 0 ? Math.max(...valores) : 0;
   }, [estatisticas]);
 
   /** Banco de horas e QR do ponto: só RH e Administrador. */
@@ -548,47 +542,8 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
               </div>
             </section>
 
-            {/* SEÇÃO 2: SEPARAÇÕES POR SETOR OPERACIONAL */}
-            <section className="flex flex-col gap-3">
-              <div>
-                <h2 className="text-base font-bold text-[var(--c-texto)] flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-[var(--c-acento)]" />
-                  Separações por Setor da Autopeças
-                </h2>
-                <p className="text-xs text-[var(--c-texto-3)]">
-                  Distribuição de colaboradores por atividade nas lojas e na matriz
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                {(Object.entries(estatisticas.porSetor) as [string, number][]).map(([setorNome, quantidade]) => {
-                  const qtdNum = Number(quantidade) || 0;
-                  return (
-                    <div
-                      key={setorNome}
-                      className="bg-[var(--c-superficie)] p-3.5 rounded-xl border border-[var(--c-borda)] shadow-xs transition-all flex flex-col justify-between gap-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <strong className="text-sm text-[var(--c-texto)]">{setorNome}</strong>
-                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800">
-                          {qtdNum} {qtdNum === 1 ? 'membro' : 'membros'}
-                        </span>
-                      </div>
-                      <div className="w-full bg-[var(--c-canvas)] h-2 rounded-full overflow-hidden border border-[var(--c-borda)]">
-                        <div
-                          className="bg-[var(--c-acento)] h-full rounded-full"
-                          style={{
-                            // Proporcional ao maior setor: a barra compara
-                            // setores entre si, sem fator de escala inventado
-                            width: `${Math.round((qtdNum / Math.max(1, maiorSetor)) * 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
+            {/* SEÇÃO 2: SEPARAÇÕES POR SETOR — a mesma do painel do RH */}
+            <SeparacaoPorSetor />
 
             {/* SEÇÃO 3: ATALHOS RÁPIDOS PARA AVISOS DA REDE */}
             <section className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-xl p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

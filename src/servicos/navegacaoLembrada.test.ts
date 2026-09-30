@@ -198,7 +198,10 @@ test('O PAINEL DE GESTÃO GANHOU A ABA QUE VALE', async () => {
    */
   const gestao = semComentarios(await lerArquivo('../componentes/PainelGestao.tsx'));
 
-  expect(gestao).toContain("if (abaEscolhida === 'folgas' && !veEscala) return abaInicial;");
+  // Escala e férias da equipe andam juntas: a mesma permissão abre as duas
+  expect(gestao).toContain(
+    "if ((abaEscolhida === 'folgas' || abaEscolhida === 'ferias') && !veEscala) return abaInicial;"
+  );
   expect(gestao).toContain("if (abaEscolhida === 'rede' && !veRede) return abaInicial;");
   expect(gestao).toContain("if (abaEscolhida === 'qr' && !veQr) return abaInicial;");
 
