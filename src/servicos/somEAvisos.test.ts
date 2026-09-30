@@ -88,8 +88,9 @@ test('o som começa e termina em silêncio, sem estalo, e não satura', () => {
   let pico = 0;
   for (const v of a) pico = Math.max(pico, Math.abs(v));
   // Audível na loja, longe de estourar
-  expect(pico).toBeGreaterThan(0.4);
-  expect(pico).toBeLessThan(0.8);
+  expect(pico).toBeGreaterThan(0.3);
+  // A primeira versão ia a 0,53 e soava "estourada" (Elias)
+  expect(pico).toBeLessThan(0.45);
 });
 
 test('são duas notas, subindo, e a segunda entra depois da primeira', () => {
@@ -128,12 +129,14 @@ test('o canal do Android tem o som, e o manifesto aponta para ele', () => {
   const manifesto = ler('android/app/src/main/AndroidManifest.xml');
 
   const canal = java.match(/static final String CANAL = "([^"]+)"/)?.[1];
-  expect(canal).toBe('avisos_conecta');
+  // Sobe a cada som novo: o Android não troca o som de um canal que já existe
+  expect(canal).toBe('avisos_conecta_2');
   expect(manifesto).toContain(`android:value="${canal}" />`);
   expect(java).toContain('R.raw.aviso_conecta');
   expect(java).toContain('canal.setSound(som, uso);');
   // O canal antigo sai, para não haver dois "Mensagens" nas configurações
-  expect(java).toContain('gerente.deleteNotificationChannel(CANAL_ANTIGO);');
+  expect(java).toContain('static final String[] CANAIS_ANTIGOS = { "mensagens", "avisos_conecta" };');
+  expect(java).toContain('gerente.deleteNotificationChannel(antigo);');
 });
 
 test('no computador o aviso do sistema é silencioso: toca só o som do CONECTA', () => {
@@ -157,4 +160,23 @@ test('sem sessão não se avisa nada, e a troca de pessoa recomeça a conta', ()
   // As pendências do ponto também recomeçam sem sessão
   expect(app).toContain(`if (!bancoDados.estaAutenticado()) {
         refPendenciasVistas.current = null;`);
+});
+
+test('som novo exige canal novo no Android', async () => {
+  /**
+   * O Android não troca o som de um canal que já existe: quem instalou o
+   * APK anterior continuaria ouvindo o som velho. Cada som tem o canal
+   * dele. Mudou a receita? Este teste falha — suba o número em
+   * ServicoDeAvisos.CANAL, mova o anterior para CANAIS_ANTIGOS, e anote
+   * aqui a impressão digital nova junto do canal novo.
+   */
+  const { createHash } = await import('crypto');
+  const impressao = createHash('sha1').update(gerarWavDoAviso(44100)).digest('hex');
+  const SOM_DE_CADA_CANAL: Record<string, string> = {
+    avisos_conecta_2: '8d9ff1ba02d43733c405c63ed9ea7ea461e3de5e',
+  };
+
+  const java = ler('android/app/src/main/java/br/com/malachiasautopecas/conecta/ServicoDeAvisos.java');
+  const canal = java.match(/static final String CANAL = "([^"]+)"/)![1];
+  expect(SOM_DE_CADA_CANAL[canal]).toBe(impressao);
 });

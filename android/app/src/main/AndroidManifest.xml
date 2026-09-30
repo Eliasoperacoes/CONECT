@@ -82,7 +82,7 @@
           ícone do aplicativo (quadrado azul cheio) virava um quadrado
           branco; este é só o balão, em silhueta.
 
-          Canal: "avisos_conecta" (era "mensagens"), importância alta e o som
+          Canal: "avisos_conecta_2" (antes "mensagens" e "avisos_conecta"), importância alta e o som
           do CONECTA. A importância alta é o que faz o aviso
           descer por cima da tela. O canal padrão do Firebase só põe na
           barra, e a pessoa não vê. É criado em `ServicoDeAvisos.garantirCanal`.
@@ -95,7 +95,7 @@
             android:resource="@color/cor_conecta" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="avisos_conecta" />
+            android:value="avisos_conecta_2" />
     </application>
 
     <!-- Permissions -->

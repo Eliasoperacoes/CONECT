@@ -230,7 +230,7 @@ export const ligarAvisoNativo = async (
     );
 
     /*
-     * O canal "avisos_conecta" (importância alta, som do CONECTA) é criado pelo lado Android,
+     * O canal "avisos_conecta_2" (importância alta, som do CONECTA) é criado pelo lado Android,
      * em `ServicoDeAvisos.garantirCanal` — é lá que o aviso é desenhado,
      * e o canal tem de existir nessa hora mesmo que o sistema nunca tenha
      * sido aberto depois de uma atualização. Um lugar só.

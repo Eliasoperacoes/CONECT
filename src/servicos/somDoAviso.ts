@@ -14,37 +14,50 @@
  *   - o navegador toca as amostras geradas aqui (`notificacoes.ts`);
  *   - `scripts/gerar-som-do-aviso.ts` grava estas mesmas amostras num WAV,
  *     que é o som do canal de avisos do aplicativo Android.
- * Mudou aqui, rode o script e gere o APK — os dois continuam iguais.
+ * Mudou aqui, rode o script, SUBA O NÚMERO DO CANAL (ServicoDeAvisos.CANAL:
+ * o Android não troca o som de um canal que já existe) e gere o APK.
  */
 
-/** As duas notas, em segundos e em hertz: Si5 e Mi6. */
+/**
+ * As duas notas: Ré5 subindo para Sol5, uma quarta.
+ *
+ * A primeira versão usava Si5 e Mi6 — o Elias achou "estourado". O
+ * agudo era parte do problema: quanto mais alta a nota, mais ela fura o
+ * ouvido. Uma oitava abaixo o toque fica quente, como uma campainha de
+ * madeira, e continua claro o bastante para se ouvir na loja.
+ */
 export const NOTAS_DO_AVISO = [
-  { inicio: 0, frequencia: 987.77, volume: 1 },
-  { inicio: 0.13, frequencia: 1318.51, volume: 0.8 },
+  { inicio: 0, frequencia: 587.33, volume: 1 },
+  { inicio: 0.16, frequencia: 783.99, volume: 0.9 },
 ] as const;
 
-/** O timbre de sino: o som principal e dois harmônicos baixos, um levemente fora. */
+/**
+ * O timbre: quase só a nota pura, com uma oitava e um brilho de marimba
+ * bem baixos. Os harmônicos fortes da primeira versão davam o som de
+ * metal; aqui eles só arredondam.
+ */
 const PARCIAIS = [
   { multiplo: 1, volume: 1 },
-  { multiplo: 2, volume: 0.16 },
-  { multiplo: 3.01, volume: 0.05 },
+  { multiplo: 2, volume: 0.07 },
+  { multiplo: 4, volume: 0.015 },
 ] as const;
 
-/** Subida em 6 ms: sem clique no começo, sem demora para soar. */
-const ATAQUE = 0.006;
-/** Quanto a nota leva para cair a um terço: curto o bastante para não arrastar. */
-const DECAIMENTO = 0.3;
-/** Um eco curto, baixo: é o que tira o som de "bipe" e dá o ar de sino. */
-const ECO = { atraso: 0.17, volume: 0.2 };
+/** Subida em 18 ms: a nota "abre" em vez de estalar. */
+const ATAQUE = 0.018;
+/** A cauda cai devagar: é o que faz soar harmonioso, e não como um bipe. */
+const DECAIMENTO = 0.42;
+/** Um eco curto e baixo, só para dar espaço. */
+const ECO = { atraso: 0.19, volume: 0.14 };
 /**
- * Volume geral: o pico fica em ~53% da escala. Com 0,22 ele ficava em 33%
- * e sumia no barulho da loja; o celular ainda aplica o volume de
- * notificação dele por cima.
+ * Volume geral: o pico fica em ~40% da escala, onde as duas notas se
+ * somam. A primeira versão ia a 53%, aguda e com harmônicos fortes, e
+ * soava estourada; nota grave soa mais baixa ao ouvido que aguda do mesmo
+ * pico. O celular ainda aplica o volume de notificação dele por cima.
  */
-const VOLUME_GERAL = 0.35;
+const VOLUME_GERAL = 0.25;
 
-/** Quanto dura o som inteiro, com o fim do eco. */
-export const DURACAO_DO_AVISO = 1.4;
+/** Quanto dura o som inteiro, com o fim da cauda e do eco. */
+export const DURACAO_DO_AVISO = 1.8;
 
 const envelope = (t: number): number => {
   if (t < 0) return 0;

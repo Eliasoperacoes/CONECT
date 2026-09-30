@@ -137,7 +137,8 @@ test('o aviso vai pelo canal de alta prioridade, criado por quem o desenha', asy
   const java = await Bun.file(
     'android/app/src/main/java/br/com/malachiasautopecas/conecta/ServicoDeAvisos.java'
   ).text();
-  const canal = java.match(/static final String CANAL = "([a-z_]+)";/)?.[1];
+  // Com número: o canal sobe de versão a cada som novo (avisos_conecta_2)
+  const canal = java.match(/static final String CANAL = "([a-z0-9_]+)";/)?.[1];
   const manifesto = await Bun.file('android/app/src/main/AndroidManifest.xml').text();
 
   expect(canal).toBeTruthy();

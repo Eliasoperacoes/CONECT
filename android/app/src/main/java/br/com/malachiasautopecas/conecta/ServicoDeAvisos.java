@@ -65,12 +65,17 @@ public class ServicoDeAvisos extends MessagingService {
      *
      * Era "mensagens", com o som padrão do celular. O Android não deixa
      * trocar o som de um canal que já existe — então o som do CONECTA veio
-     * num canal novo, e o antigo é apagado em `garantirCanal`.
+     * num canal novo, e os antigos são apagados em `garantirCanal`.
+     *
+     * O NÚMERO ACOMPANHA O SOM: trocou o som (somDoAviso.ts), sobe o número
+     * e põe o anterior em CANAIS_ANTIGOS — senão o celular que já tem o
+     * canal continua tocando o som velho. O "_2" é o som mais grave, depois
+     * de o Elias achar o primeiro "estourado".
      */
-    static final String CANAL = "avisos_conecta";
+    static final String CANAL = "avisos_conecta_2";
 
-    /** O canal de antes do som próprio, que sai para não ficar duplicado nas configurações. */
-    static final String CANAL_ANTIGO = "mensagens";
+    /** Os canais de antes, que saem para não ficarem duplicados nas configurações. */
+    static final String[] CANAIS_ANTIGOS = { "mensagens", "avisos_conecta" };
 
     /** A chave do texto digitado no campo "Responder". */
     static final String CHAVE_DO_TEXTO = "texto_digitado";
@@ -151,8 +156,8 @@ public class ServicoDeAvisos extends MessagingService {
         NotificationManager gerente = contexto.getSystemService(NotificationManager.class);
         if (gerente == null) return;
 
-        if (gerente.getNotificationChannel(CANAL_ANTIGO) != null) {
-            gerente.deleteNotificationChannel(CANAL_ANTIGO);
+        for (String antigo : CANAIS_ANTIGOS) {
+            if (gerente.getNotificationChannel(antigo) != null) gerente.deleteNotificationChannel(antigo);
         }
         if (gerente.getNotificationChannel(CANAL) != null) return;
 
