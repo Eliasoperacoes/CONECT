@@ -3612,14 +3612,24 @@ test('o espelho mostra a conta de cada dia: previsto, relógio, variações, tol
   colaboradorLogado = ELIAS;
   const html = servicoPonto.gerarHtmlEspelho('2026-09-14', '2026-09-15', [DO_TURNO_A.id]);
 
-  for (const coluna of ['Previsto', 'Trabalhado', 'Relógio', 'Entrada / Saída', 'Almoço', 'Saldo']) {
+  for (const coluna of ['Previsto', 'Trabalhado', 'Relógio', 'Saldo']) {
     expect(html).toContain(`<th>${coluna}</th>`);
   }
-  // Segunda: E −1, S +2, soma 3, tolerado; almoço exato
-  expect(html).toContain('E -1 / S +2 = 3 ✓');
-  expect(html).toContain('S 0 / R 0 = 0 ✓');
-  // Terça: entrada 6 antes — passa do limite, conta
-  expect(html).toContain('E -6 / S 0 = 6 ✗');
+  /**
+   * AS COLUNAS DAS SOMAS SAÍRAM DO PAPEL — pedido do Elias: poluíam o
+   * espelho. O detalhe marcação a marcação continua no CSV (teste abaixo);
+   * no papel, Relógio e Saldo lado a lado e a legenda em texto corrido.
+   */
+  expect(html).not.toContain('<th>Entrada / Saída</th>');
+  expect(html).not.toContain('<th>Almoço</th>');
+  expect(html).not.toContain('E -1 / S +2');
+  const legenda = html.slice(html.indexOf('class="legenda"'), html.indexOf('</p>', html.indexOf('class="legenda"')));
+  expect(legenda).toContain('até 5 minutos na entrada');
+  for (const simbolo of ['✓', '✗', '(E =', '(S)', '(R)']) expect(legenda).not.toContain(simbolo);
+
+  // Segunda tolerada (relógio +0h03, saldo 0h00); terça fora (+0h06 nos dois)
+  expect(html).toContain('+0h03');
+  expect(html).toContain('+0h06');
 
   // O rodapé fecha a conta: relógio +9, tolerância +3, saldo +6
   expect(html).toContain('Relógio do período');

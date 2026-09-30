@@ -3112,7 +3112,6 @@ class ServicoPonto {
 
             const feriadoDoDia = feriadoEm(j.data, resumo.colaborador.loja);
             const semMarcacao = Object.keys(j.marcacoes).length === 0;
-            const auditoria = auditarDia(j.tolerancia, j.saldoBrutoMinutos);
             const semJornada = j.minutosTrabalhados === 0;
 
             return `<tr class="${semMarcacao ? 'vazio' : ''}">
@@ -3136,8 +3135,6 @@ class ServicoPonto {
               <td class="num">${formatarMinutos(j.minutosPrevistosEfetivos)}</td>
               <td class="num">${formatarMinutos(j.minutosTrabalhados)}</td>
               <td class="num">${semJornada ? '—' : formatarSaldo(j.saldoBrutoMinutos)}</td>
-              <td class="auditoria">${escapar(auditoria.entradaESaida)}</td>
-              <td class="auditoria">${escapar(auditoria.intervalo)}</td>
               <td class="num ${j.saldoMinutos < 0 ? 'neg' : ''}">${
                 semJornada ? '—' : formatarSaldo(j.saldoMinutos)
               }</td>
@@ -3172,8 +3169,6 @@ class ServicoPonto {
                 <th>Previsto</th>
                 <th>Trabalhado</th>
                 <th>Relógio</th>
-                <th>Entrada / Saída</th>
-                <th>Almoço</th>
                 <th>Saldo</th>
               </tr>
             </thead>
@@ -3186,14 +3181,14 @@ class ServicoPonto {
             Cada coluna sai da anterior; a legenda diz como.
           */ ''}
           <p class="legenda">
-            <strong>Como se lê a conta do dia:</strong>
-            Relógio = Trabalhado − Previsto, antes da tolerância.
-            <strong>Entrada / Saída</strong>: batido − previsto em cada marcação
-            (E = entrada, S = saída) e a soma; ✓ = até 5 min em cada e até 10 somadas,
-            não gera saldo; ✗ = passou, as duas contam inteiras (art. 58 §1º da CLT).
-            <strong>Almoço</strong>: batido − previsto na saída (S) e no retorno (R) e a
-            soma; ✓ = até 5 min somados, não gera saldo; ✗ = a diferença do intervalo conta.
-            <strong>Saldo = Relógio − as variações marcadas com ✓.</strong>
+            <strong>Como se lê a conta do dia.</strong>
+            Previsto é a jornada do turno para aquele dia. Trabalhado é o tempo entre a
+            entrada e a saída, descontado o almoço. Relógio é a diferença entre o trabalhado
+            e o previsto, exatamente como o relógio marcou. Saldo é o que vale para o banco de
+            horas: pequenas variações de horário não contam — até 5 minutos na entrada e até
+            5 na saída, no máximo 10 somando as duas, e até 5 minutos somando a saída e a
+            volta do almoço (art. 58, §1º da CLT). Quando uma variação passa desses limites,
+            ela conta inteira. Por isso o Saldo pode ser menor que o Relógio, ou zero.
           </p>
 
           <table class="totais">
@@ -3210,7 +3205,7 @@ class ServicoPonto {
               <td class="num">${formatarSaldo(relogioDoPeriodo)}</td>
             </tr>
             <tr>
-              <td>Tolerância aplicada (variações marcadas com ✓)</td>
+              <td>Tolerância aplicada (pequenas variações que não contam)</td>
               <td class="num">${formatarSaldo(relogioDoPeriodo - resumo.saldoPeriodoMinutos)}</td>
             </tr>
             <tr class="destaque">
@@ -3287,7 +3282,8 @@ class ServicoPonto {
   .marcacoes th { background: #eee; border: 1px solid #999; padding: 4px 2px; font-size: 9px; text-transform: uppercase; }
   .marcacoes td { border: 1px solid #bbb; padding: 3px 2px; text-align: center; }
   .marcacoes .dia { text-align: left; white-space: nowrap; font-weight: 600; font-size: 9px; }
-  .semana { font-weight: 400; color: #666; text-transform: capitalize; }
+  /* O dia da semana à vista: em cinza claro ele sumia na impressão */
+  .semana { font-weight: 600; color: #222; text-transform: capitalize; }
   /*
     A NOTA É UM NÚMERO, e a coluna tem largura de número.
 
@@ -3300,8 +3296,6 @@ class ServicoPonto {
   .notas ol { margin: 4px 0 0 16px; padding: 0; }
   .notas li { margin-bottom: 2px; }
   .naoSeAplica { color: #bbb; }
-  /* Quebra só no caso raro do intervalo reduzido, em vez de invadir o Saldo */
-  .marcacoes .auditoria { font-size: 8px; white-space: normal; line-height: 1.15; }
   .legenda { margin-top: 6px; font-size: 8.5px; color: #333; line-height: 1.35; }
   .vazio td { background: #fafafa; }
   /* De pé, 60% de largura deixava o quadro de totais solto no meio */
