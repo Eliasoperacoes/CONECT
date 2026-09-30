@@ -9,7 +9,7 @@ import {
   Check,
   AlertCircle,
 } from 'lucide-react';
-import { abrirFluxo, soltarFluxo, assinarRetomada } from '../servicos/midia';
+import { abrirFluxo, soltarFluxo, assinarRetomada, CAPA_VAZIA_DO_VIDEO } from '../servicos/midia';
 import { useVoltar } from '../servicos/voltar';
 
 interface PropsModalCamera {
@@ -39,6 +39,8 @@ export const ModalCamera: React.FC<PropsModalCamera> = ({
   const [erroCamera, setErroCamera] = useState<string | null>(null);
   const [cameraTraseira, setCameraTraseira] = useState(true);
   const [disparandoFlash, setDisparandoFlash] = useState(false);
+  /** Invisível até a primeira imagem: parado, o vídeo mostra um quadro de erro. */
+  const [imagemChegou, setImagemChegou] = useState(false);
 
   const refVideo = useRef<HTMLVideoElement>(null);
   const refCanvas = useRef<HTMLCanvasElement>(null);
@@ -101,6 +103,7 @@ export const ModalCamera: React.FC<PropsModalCamera> = ({
 
       if (!stream) throw new Error('Câmera indisponível.');
       refStream.current = stream;
+      setImagemChegou(false);
 
       if (refVideo.current) {
         refVideo.current.srcObject = stream;
@@ -248,7 +251,11 @@ export const ModalCamera: React.FC<PropsModalCamera> = ({
               autoPlay
               playsInline
               muted
-              className={`w-full h-full object-cover ${!cameraTraseira ? 'scale-x-[-1]' : ''}`}
+              poster={CAPA_VAZIA_DO_VIDEO}
+              onPlaying={() => setImagemChegou(true)}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${
+                imagemChegou ? 'opacity-100' : 'opacity-0'
+              } ${!cameraTraseira ? 'scale-x-[-1]' : ''}`}
             />
 
             {/* Guias do Viewfinder para enquadrar peças / etiquetas */}

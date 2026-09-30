@@ -115,5 +115,16 @@ export const abrirFluxo = async (
   }
 };
 
+/**
+ * A CAPA DO VÍDEO ANTES DA PRIMEIRA IMAGEM: nenhuma.
+ *
+ * Sem `poster`, o WebView do Android desenha no `<video>` parado um quadro
+ * cinza com o ícone de "play" — o Elias via isso ao abrir a câmera do
+ * ponto, "como se fosse um vídeo com erro". Um GIF transparente de 1 pixel
+ * tira o quadro; o fundo preto da tela aparece no lugar.
+ */
+export const CAPA_VAZIA_DO_VIDEO =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 /** Quantos fluxos estão abertos agora. Existe para o teste enxergar. */
 export const fluxosAbertos = (): number => abertos.size;

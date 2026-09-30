@@ -22,7 +22,7 @@ import { RegistroPonto, ROTULO_MARCACAO, precisaEscolherTurno } from '../tipos';
 import { servicoPonto, dataDeHoje } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 import { enviarAnexo } from '../servicos/anexos';
-import { abrirFluxo, soltarFluxo, assinarRetomada } from '../servicos/midia';
+import { abrirFluxo, soltarFluxo, assinarRetomada, CAPA_VAZIA_DO_VIDEO } from '../servicos/midia';
 import { CardJustificarBatida } from './CardJustificarBatida';
 import { EscolherTurno } from './EscolherTurno';
 import { useVoltar } from '../servicos/voltar';
@@ -58,6 +58,11 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
   const [modoDigitar, setModoDigitar] = useState(false);
   const [codigoDigitado, setCodigoDigitado] = useState('');
   const [registroFeito, setRegistroFeito] = useState<RegistroPonto | null>(null);
+  /**
+   * A câmera já mandou imagem? Até lá o vídeo fica invisível: parado, o
+   * WebView do Android desenha nele um quadro de "vídeo com erro".
+   */
+  const [imagemChegou, setImagemChegou] = useState(false);
   /** Batida segurada esperando o motivo. */
   const [pedindoMotivo, setPedindoMotivo] = useState<{
     conteudo: string;
@@ -212,6 +217,7 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
   const iniciarCamera = useCallback(async () => {
     setErro(null);
     setEstado('iniciando');
+    setImagemChegou(false);
 
     try {
       // Sempre por `midia`, para o fluxo poder ser desligado de fora
@@ -369,7 +375,11 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
                     ref={refVideo}
                     playsInline
                     muted
-                    className="w-full h-full object-cover"
+                    poster={CAPA_VAZIA_DO_VIDEO}
+                    onPlaying={() => setImagemChegou(true)}
+                    className={`w-full h-full object-cover transition-opacity duration-300 ${
+                      imagemChegou ? 'opacity-100' : 'opacity-0'
+                    }`}
                   />
                   <canvas ref={refCanvas} className="hidden" />
 
@@ -378,8 +388,9 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
                     <div className="w-48 h-48 rounded-2xl border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]" />
                   </div>
 
-                  {estado === 'iniciando' && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white bg-black/60">
+                  {/* Fundo inteiro, e não translúcido: por trás não há nada que valha ver */}
+                  {(estado === 'iniciando' || (estado === 'lendo' && !imagemChegou)) && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white bg-black">
                       <Loader2 className="w-6 h-6 animate-spin" />
                       <span className="text-xs font-medium">Abrindo a câmera…</span>
                     </div>
