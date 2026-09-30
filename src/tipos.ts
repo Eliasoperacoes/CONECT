@@ -196,6 +196,13 @@ export interface Colaborador {
    */
   turno?: string;
   /**
+   * Quando o turno foi confirmado — pela própria pessoa, na primeira
+   * batida, ou pelo RH/TI ao escolhê-lo. Vazio = ainda vale o padrão que
+   * ninguém escolheu, e a batida pergunta. Quem grava é o banco
+   * (`turno_escolhido_uma_vez`), não a tela.
+   */
+  turnoConfirmadoEm?: string;
+  /**
    * Senha do PRIMEIRO ACESSO — a que o RH entrega em mao.
    *
    * Diferente da senha de login, que vive cifrada na autenticacao e nunca
@@ -508,6 +515,27 @@ export const turnoDe = (colaborador?: {
   const doPerfil = turnosDoPerfil(ehDeEstagio(colaborador));
   return doPerfil.find((t) => t.chave === colaborador?.turno) || doPerfil[0];
 };
+
+/**
+ * OS TURNOS QUE A PRÓPRIA PESSOA PODE ESCOLHER.
+ *
+ * Os do perfil dela, sem o encaixe "a definir" (E0): ele é um lugar de
+ * espera, não um horário que alguém cumpre. O banco confere a mesma
+ * coisa no gatilho `turno_escolhido_uma_vez` — mudou aqui, mude lá.
+ */
+export const turnosParaEscolher = (colaborador?: { setor?: string; cargo?: string }): Turno[] =>
+  turnosDoPerfil(ehDeEstagio(colaborador)).filter((t) => t.chave !== 'E0');
+
+/**
+ * A BATIDA PERGUNTA O HORÁRIO?
+ *
+ * Todas as 91 fichas estavam no Turno A — o padrão de todo cadastro — e
+ * quem entra às 08:20 era cobrado como atrasado 50 minutos todo dia. A
+ * pessoa sabe o próprio horário; o sistema pergunta UMA vez, na batida.
+ * Depois de confirmado, só o RH ou o TI mudam.
+ */
+export const precisaEscolherTurno = (colaborador?: { turnoConfirmadoEm?: string }): boolean =>
+  !!colaborador && !colaborador.turnoConfirmadoEm;
 
 /** Minutos contratados no sábado. */
 export const MINUTOS_SABADO =

@@ -104,6 +104,7 @@ esquema.
 | `resetar-senha-inicial.sql` | **Rode uma vez.** Cria a função do botão "Resetar para a senha padrão", na ficha do colaborador |
 | `apuracao-pode-zerar.sql` | **Rode uma vez.** Solta a trava que recusava apuração de ZERO minuto — sem ela, "Reapurar período" não consegue desfazer um débito errado, e a tela diz "0 dias mudaram" como se estivesse tudo certo. No fim ele **lista quem tem débito com cara de pausa cobrada**, sem alterar nada |
 | `horario-pelo-turno.sql` | **Rode uma vez (29/09/2026).** Tira a carga própria que o Painel ADM gravava ao salvar a ficha, para o previsto e a tolerância saírem do turno; põe a Lyvia no turno de estágio da tarde (E3) |
+| `turno-escolhido-uma-vez.sql` | **Rode uma vez (30/09/2026).** A pessoa confirma o próprio horário na primeira batida, uma vez só; depois só RH e TI mudam. Tira da própria pessoa o poder de mudar turno, cargas e cargo da ficha. Sem ele, a escolha falha e a batida segue com o Turno A |
 | `lideres-publicam.sql` | **Rode uma vez.** O banco passa a aceitar publicação na Central do líder de setor para cima, como a tela já mostrava. Sem ele, o líder monta a publicação e é recusado no fim |
 | `resetar-acesso.sql` | Pessoa não entra e não lembra a senha, e o botão não está à mão |
 | `liberar-acesso.sql` | Contas de autenticação órfãs (sem ficha do outro lado) |

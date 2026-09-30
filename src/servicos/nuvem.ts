@@ -142,6 +142,8 @@ interface LinhaColaborador {
   observacoes: string | null;
   carga_horaria_diaria_minutos: number | null;
   turno: string | null;
+  /** Ausente até rodar `turno-escolhido-uma-vez.sql`. */
+  turno_confirmado_em?: string | null;
   carga_semanal_minutos: number | null;
   trabalha_sabado: boolean | null;
   tem_intervalo: boolean | null;
@@ -209,6 +211,7 @@ const paraColaborador = (
   // previsto de todo dia útil da Lyvia.
   cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos ?? undefined,
   turno: linha.turno || undefined,
+  turnoConfirmadoEm: linha.turno_confirmado_em || undefined,
   /**
    * A jornada da pessoa. Vazio no banco quer dizer "vale o padrão do
    * setor" — e não zero: uma carga semanal de zero minutos faria a pessoa
@@ -763,6 +766,41 @@ class PonteNuvem {
     this.gravarCacheColaboradores(linhas.map((l) => paraColaborador(l, assinadas)));
     this.avisar();
     return true;
+  }
+
+  /**
+   * A PESSOA CONFIRMA O PRÓPRIO TURNO — uma vez só.
+   *
+   * Não passa por `salvarColaborador`: aquele grava a linha inteira, e a
+   * confirmação precisa ir explícita. Quem decide se vale é o gatilho
+   * `turno_escolhido_uma_vez`: já confirmado, ou turno fora do perfil, e
+   * ele devolve o valor antigo SEM erro. Por isso a resposta é conferida
+   * — update que o banco desfez em silêncio não pode virar "salvo".
+   */
+  async escolherMeuTurno(
+    colaboradorId: string,
+    turno: string
+  ): Promise<{ sucesso: boolean; erro?: string; confirmadoEm?: string }> {
+    if (!supabase) return { sucesso: true, confirmadoEm: new Date().toISOString() };
+
+    const { data, error } = await supabase
+      .from('colaboradores')
+      .update({ turno, turno_confirmado_em: new Date().toISOString() })
+      .eq('id', colaboradorId)
+      .select('turno, turno_confirmado_em')
+      .maybeSingle();
+
+    if (error) {
+      console.error('Falha ao confirmar o turno:', error.message);
+      return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
+    }
+    if (!data || data.turno !== turno || !data.turno_confirmado_em) {
+      return {
+        sucesso: false,
+        erro: 'O seu horário já foi definido. Para mudar, fale com o RH.',
+      };
+    }
+    return { sucesso: true, confirmadoEm: data.turno_confirmado_em };
   }
 
   /** Cria ou atualiza a ficha no banco. Chamado após a gravação local. */

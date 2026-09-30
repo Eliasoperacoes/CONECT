@@ -18,12 +18,13 @@ import {
   CameraOff,
   Loader2,
 } from 'lucide-react';
-import { RegistroPonto, ROTULO_MARCACAO } from '../tipos';
+import { RegistroPonto, ROTULO_MARCACAO, precisaEscolherTurno } from '../tipos';
 import { servicoPonto, dataDeHoje } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 import { enviarAnexo } from '../servicos/anexos';
 import { abrirFluxo, soltarFluxo, assinarRetomada } from '../servicos/midia';
 import { CardJustificarBatida } from './CardJustificarBatida';
+import { EscolherTurno } from './EscolherTurno';
 import { useVoltar } from '../servicos/voltar';
 
 interface PropsModalBaterPonto {
@@ -63,6 +64,10 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
     rotulo: string;
     descricao: string;
   } | null>(null);
+  /** Batida segurada esperando a pessoa dizer o horário dela. */
+  const [escolhendoTurno, setEscolhendoTurno] = useState<string | null>(null);
+  // Pergunta uma vez por batida: quem respondeu "agora não" não é perguntado de novo aqui
+  const refTurnoPerguntado = useRef(false);
 
   const refVideo = useRef<HTMLVideoElement>(null);
   const refCanvas = useRef<HTMLCanvasElement>(null);
@@ -109,6 +114,24 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
         bancoDados.obterColaboradorAtual().id,
         dataDeHoje()
       );
+
+      /**
+       * O HORÁRIO VEM ANTES DO MOTIVO.
+       *
+       * Com a ficha no turno padrão que ninguém escolheu, a pergunta do
+       * motivo cobrava de quem entra às 08:20 um atraso de 50 minutos — e
+       * a batida ficava segurada até ela escrever. Quem ainda não
+       * confirmou o horário diz qual é, e a batida é medida por ele.
+       */
+      const eu = bancoDados.obterColaboradorAtual();
+      if (proxima && !justificativa && !refTurnoPerguntado.current && precisaEscolherTurno(eu)) {
+        refTurnoPerguntado.current = true;
+        setEscolhendoTurno(conteudo);
+        setEstado(refStream.current ? 'lendo' : 'sem_camera');
+        // A trava FICA: a câmera segue apontada para o cartaz, e uma
+        // segunda leitura registraria a batida por baixo da pergunta
+        return;
+      }
 
       if (proxima && !justificativa) {
         const avaliacao = servicoPonto.avaliarMarcacao(
@@ -217,6 +240,8 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
     if (!aberto) {
       encerrarCamera();
       refProcessando.current = false;
+      refTurnoPerguntado.current = false;
+      setEscolhendoTurno(null);
       setEstado('iniciando');
       setErro(null);
       setModoDigitar(false);
@@ -455,6 +480,27 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
         </div>
       </div>
     </div>
+      {/* Horário na primeira batida: escolhe uma vez, e a batida segue */}
+      <EscolherTurno
+        aberto={!!escolhendoTurno}
+        colaborador={bancoDados.obterColaboradorAtual()}
+        aoEscolher={async (turno) => {
+          const res = await bancoDados.escolherMeuTurno(turno);
+          if (!res.sucesso) return res.erro || 'Não foi possível gravar o horário.';
+          const segurada = escolhendoTurno;
+          setEscolhendoTurno(null);
+          refProcessando.current = false;
+          if (segurada) await confirmarCodigo(segurada);
+          return null;
+        }}
+        aoPular={() => {
+          const segurada = escolhendoTurno;
+          setEscolhendoTurno(null);
+          refProcessando.current = false;
+          if (segurada) void confirmarCodigo(segurada);
+        }}
+      />
+
       {/* Motivo no ato: a batida fica segurada até a pessoa escrever */}
       <CardJustificarBatida
         aberto={!!pedindoMotivo}

@@ -52,6 +52,8 @@ import {
   CARGA_HORARIA_PADRAO_MINUTOS,
   TURNO_PADRAO,
   SENHA_PADRAO_PRIMEIRO_ACESSO,
+  turnosParaEscolher,
+  precisaEscolherTurno,
 } from '../tipos';
 
 const CHAVE_COLABORADORES = 'conecta_v4_colaboradores';
@@ -1545,6 +1547,43 @@ class BancoDadosConecta {
   ): Promise<{ sucesso: boolean; erro?: string }> {
     const fotoFinal = novaFoto.trim() || FOTO_PADRAO_LOGO_EMPRESA;
     return this.atualizarColaborador(id, { foto: fotoFinal });
+  }
+
+  /**
+   * A pessoa diz o próprio horário, na primeira batida. Uma vez só.
+   *
+   * Não passa por `atualizarColaborador`: lá o turno é campo do RH. Aqui
+   * é a exceção única — confirmar o que ninguém escolheu ainda —, e quem
+   * garante o "uma vez" é o banco; a checagem abaixo só evita a viagem.
+   */
+  async escolherMeuTurno(turno: string): Promise<{ sucesso: boolean; erro?: string }> {
+    const eu = this.obterColaboradorAtual();
+    if (!precisaEscolherTurno(eu)) {
+      return { sucesso: false, erro: 'O seu horário já foi definido. Para mudar, fale com o RH.' };
+    }
+    if (!turnosParaEscolher(eu).some((t) => t.chave === turno)) {
+      return { sucesso: false, erro: 'Esse horário não é do seu contrato.' };
+    }
+
+    let confirmadoEm = new Date().toISOString();
+    if (usandoNuvem()) {
+      const res = await nuvem.escolherMeuTurno(eu.id, turno);
+      if (!res.sucesso) return { sucesso: false, erro: res.erro };
+      confirmadoEm = res.confirmadoEm || confirmadoEm;
+    }
+
+    const colaboradores = this.obterColaboradores().map((c) =>
+      c.id === eu.id ? { ...c, turno, turnoConfirmadoEm: confirmadoEm } : c
+    );
+    localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));
+
+    this.registrarAuditoria(
+      'Horário confirmado',
+      'usuario',
+      `${eu.nome} confirmou o próprio horário: turno ${turno}.`
+    );
+    this.notificar();
+    return { sucesso: true };
   }
 
   // Excluir ou desativar colaborador
