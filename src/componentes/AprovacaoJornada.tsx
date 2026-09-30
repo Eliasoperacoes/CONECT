@@ -22,7 +22,6 @@ import { CheckCircle2, XCircle, Clock, AlertCircle, Inbox, Paperclip, Pencil } f
 import {
   AjusteJornada,
   Colaborador,
-  ROTULO_TIPO_AJUSTE,
   ROTULO_TIPO_AUSENCIA,
   JustificativaAusencia,
 } from '../tipos';
@@ -146,6 +145,9 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
           {pendencias.map(({ ajuste, colaborador }) => {
             const ehExtra = ajuste.tipo === 'hora_extra';
             const ehDiaSemFechar = ajuste.tipo === 'dia_incompleto';
+            // Dia sem batida nenhuma: a mesma decisão, com o nome certo
+            const ehFalta =
+              ehDiaSemFechar && servicoPonto.obterJornadaDoDia(ajuste.colaboradorId, ajuste.data).falta;
             return (
               <div
                 key={ajuste.id}
@@ -173,7 +175,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                       }`}
                     >
                       {ehDiaSemFechar ? (
-                        ROTULO_TIPO_AJUSTE[ajuste.tipo]
+                        servicoPonto.rotuloDoAjuste(ajuste)
                       ) : (
                         <>
                           {ehExtra ? '+' : '−'}
@@ -250,14 +252,16 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                         setEmAndamento(null);
                         mostrar(
                           res.sucesso
-                            ? 'Marcado como débito. O dia não foi trabalhado.'
+                            ? ehFalta
+                              ? 'Falta confirmada. O dia entra como débito no banco de horas.'
+                              : 'Marcado como débito. O dia não foi trabalhado.'
                             : res.erro || 'Não foi possível registrar.',
                           !res.sucesso
                         );
                       }}
                       className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-conecta-atencao hover:border-conecta-atencao/30 disabled:opacity-50 transition-colors cursor-pointer"
                     >
-                      Marcar débito
+                      {ehFalta ? 'Confirmar falta' : 'Marcar débito'}
                     </button>
                     <button
                       type="button"

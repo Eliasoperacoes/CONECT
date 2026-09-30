@@ -3997,3 +3997,107 @@ test('ausência aprovada SEM batida continua prevendo zero, sem débito', () => 
 
   armazenamento.removeItem('conecta_v4_justificativas_ausencia');
 });
+
+// ============================================================
+// DIA SEM BATIDA É FALTA — a partir de 01/10/2026
+//
+// O Elias viu no espelho: os dias sem batida passavam sem débito. Decisão
+// dele: débito no espelho e a fila do líder (confirmar ou abonar), e só a
+// partir de 01/10/2026 — antes disso, muita gente ainda nem usava o sistema.
+// 2026-10-06 é terça; 2026-10-03 é sábado; 2026-10-04 é domingo.
+// ============================================================
+
+const emOutubro = () => setSystemTime(new Date(2026, 9, 8, 9, 0, 0));
+
+test('dia útil sem batida, já passado, é falta: o débito da jornada inteira', () => {
+  emOutubro();
+  equipe = [GESTOR, DO_TURNO_A];
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-10-06');
+  expect(dia.falta).toBe(true);
+  expect(dia.saldoMinutos).toBe(-490);
+});
+
+test('o sábado de quem vem ao sábado também é falta, das 4 horas', () => {
+  emOutubro();
+  equipe = [GESTOR, DO_TURNO_A];
+  const sabado = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-10-03');
+  expect(sabado.falta).toBe(true);
+  expect(sabado.saldoMinutos).toBe(-240);
+});
+
+test('não é falta: hoje, domingo, antes de 01/10, antes da admissão, dia abonado', () => {
+  emOutubro();
+  equipe = [GESTOR, DO_TURNO_A];
+  const falta = (data: string, quem: any = DO_TURNO_A) =>
+    servicoPonto.obterJornadaDoDia(quem.id, data).falta;
+
+  expect(falta('2026-10-08')).toBe(false); // hoje ainda dá tempo
+  expect(falta('2026-10-04')).toBe(false); // domingo
+  expect(falta('2026-09-29')).toBe(false); // antes da cobrança
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-29').saldoMinutos).toBe(0);
+
+  const NOVATO = { ...DO_TURNO_A, id: 'novato', login: 'novato', dataAdmissao: '2026-10-07' };
+  equipe = [GESTOR, NOVATO];
+  expect(falta('2026-10-06', NOVATO)).toBe(false);
+
+  equipe = [GESTOR, DO_TURNO_A];
+  comAusenciaAprovada(DO_TURNO_A, '2026-10-06', 'atestado');
+  expect(falta('2026-10-06')).toBe(false);
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('a falta vai para a fila do líder, com o nome "Falta"', async () => {
+  emOutubro();
+  colaboradorLogado = GESTOR;
+  equipe = [GESTOR, DO_TURNO_A];
+
+  await servicoPonto.levantarDiasIncompletos();
+
+  const ajuste = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06');
+  expect(ajuste?.tipo).toBe('dia_incompleto');
+  expect(ajuste?.estado).toBe('pendente');
+  expect(ajuste?.minutosPrevistos).toBe(490);
+  expect(servicoPonto.rotuloDoAjuste(ajuste!)).toBe('Falta');
+  // Setembro não entra na fila
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-29')).toBeNull();
+});
+
+test('o líder confirma: débito; abona: zero — e o espelho mostra o decidido', async () => {
+  emOutubro();
+  colaboradorLogado = GESTOR;
+  equipe = [GESTOR, DO_TURNO_A];
+  await servicoPonto.levantarDiasIncompletos();
+
+  const terca = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06')!;
+  await servicoPonto.decidirDiaIncompleto(terca.id, false);
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-10-06').saldoMinutos).toBe(-490);
+
+  const segunda = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-05')!;
+  await servicoPonto.decidirDiaIncompleto(segunda.id, true);
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-10-05').saldoMinutos).toBe(0);
+});
+
+test('o espelho escreve "Falta" e o rodapé soma as faltas numa linha própria', async () => {
+  emOutubro();
+  colaboradorLogado = GESTOR;
+  equipe = [GESTOR, DO_TURNO_A];
+  const { linhaDoEspelho, totaisDoEspelho, linhasDoRodape } = await import('./ponto');
+
+  const linha = linhaDoEspelho(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-10-06'), DO_TURNO_A as any);
+  expect(linha.falta).toBe(true);
+  expect(linha.saldo).toBe(-490);
+
+  // 05 e 06/10 sem batida; o relógio não muda, a linha de faltas soma as duas
+  const resumo = servicoPonto
+    .obterResumoDoPeriodo('2026-10-05', '2026-10-06')
+    .find((r) => r.colaborador.id === DO_TURNO_A.id)!;
+  const t = totaisDoEspelho(resumo);
+  expect(t.faltas).toBe(-980);
+  expect(t.relogio).toBe(0);
+  expect(t.tolerancia).toBe(0);
+  expect(t.saldoPeriodo).toBe(-980);
+  expect(linhasDoRodape(t).map((l) => l.rotulo)).toContain('Faltas (dias sem batida)');
+
+  expect(servicoPonto.gerarHtmlEspelho('2026-10-05', '2026-10-06', [DO_TURNO_A.id])).toContain('>Falta<');
+});

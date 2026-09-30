@@ -422,6 +422,17 @@ export const TURNO_SABADO = { entrada: '08:00', saida: '12:00' };
 
 export const TURNO_PADRAO = 'A';
 
+/**
+ * A PARTIR DE QUANDO O DIA SEM BATIDA É FALTA.
+ *
+ * Até 30/09/2026 o dia sem nenhuma batida não gerava saldo: passava em
+ * branco no espelho e no banco. O Elias viu e pediu a cobrança — mas a
+ * partir de 01/10/2026 (decisão dele): 67 pessoas ainda nem tinham
+ * entrado no sistema, e cobrar para trás faria cada uma amanhecer devendo
+ * o mês inteiro por dias em que batia ponto no papel.
+ */
+export const INICIO_DA_COBRANCA_DE_FALTAS = '2026-10-01';
+
 const emMinutos = (hora: string): number => {
   const [h, m] = hora.split(':').map(Number);
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
@@ -1228,6 +1239,11 @@ export interface JornadaDia {
   tolerancia: import('./servicos/toleranciaDoPonto').ResultadoDaTolerancia;
   completa: boolean; // as quatro marcações registradas
   emAndamento: boolean; // começou e ainda não encerrou
+  /**
+   * Dia que previa jornada, já passou, e não teve batida nenhuma — nem
+   * ausência aprovada, nem feriado. Ver `INICIO_DA_COBRANCA_DE_FALTAS`.
+   */
+  falta: boolean;
 }
 
 // ============================================================

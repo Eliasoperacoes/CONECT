@@ -1350,7 +1350,9 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                               {formatarMinutos(l.trabalhado)}
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums text-[var(--c-texto-2)]">
-                              {l.relogio === null ? '—' : formatarSaldo(l.relogio)}
+                              {l.falta ? (
+                                <span className="text-[11px] font-bold uppercase tracking-wide text-red-600">Falta</span>
+                              ) : l.relogio === null ? '—' : formatarSaldo(l.relogio)}
                             </td>
                             <td
                               className={`px-3 py-2 text-right font-bold tabular-nums ${

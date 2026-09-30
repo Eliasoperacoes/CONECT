@@ -1427,7 +1427,9 @@ create table if not exists public.ajustes_jornada (
   id                   text primary key,
   colaborador_id       text not null references public.colaboradores(id) on delete cascade,
   data                 date not null,
-  tipo                 text not null check (tipo in ('hora_extra', 'debito')),
+  -- 'dia_incompleto': o dia pela metade e a FALTA, esperando o líder decidir
+  -- (falta-na-fila.sql). Sem ele o banco recusava e a fila ficava vazia.
+  tipo                 text not null check (tipo in ('hora_extra', 'debito', 'dia_incompleto')),
   -- Nunca negativo: o sinal vem do tipo, para não haver dois jeitos de ler.
   -- ZERO vale (apuracao-pode-zerar.sql): é como a reapuração desfaz um
   -- lançamento errado — o +8h13 da Fernanda no atestado de 25/09, por ex.

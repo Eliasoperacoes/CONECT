@@ -50,6 +50,7 @@ import {
   EstadoAjuste,
   ROTULO_TIPO_AJUSTE,
   minutosComSinal,
+  INICIO_DA_COBRANCA_DE_FALTAS,
   trabalhaNoSabado,
   temIntervaloNoDia,
   cargaSemanalDe,
@@ -353,6 +354,8 @@ export interface LinhaDoEspelho {
   relogio: number | null;
   /** O que vale para o banco de horas, com a tolerância. Nulo sem jornada. */
   saldo: number | null;
+  /** Dia sem batida que previa jornada: o relógio diz "Falta" e o saldo, o débito. */
+  falta: boolean;
 }
 
 export const linhaDoEspelho = (j: JornadaDia, colaborador?: Colaborador): LinhaDoEspelho => {
@@ -373,7 +376,9 @@ export const linhaDoEspelho = (j: JornadaDia, colaborador?: Colaborador): LinhaD
     previsto: j.minutosPrevistosEfetivos,
     trabalhado: j.minutosTrabalhados,
     relogio: semJornada ? null : j.saldoBrutoMinutos,
-    saldo: semJornada ? null : j.saldoMinutos,
+    // A falta tem saldo sem ter jornada: é exatamente o que ela é
+    saldo: semJornada && !j.falta ? null : j.saldoMinutos,
+    falta: j.falta,
   };
 };
 
@@ -386,6 +391,8 @@ export interface TotaisDoEspelho {
   tolerancia: number;
   saldoPeriodo: number;
   saldoAcumulado: number;
+  /** O que as faltas tiraram do período (negativo), já com o que o líder decidiu. */
+  faltas: number;
 }
 
 /**
@@ -400,13 +407,17 @@ export interface TotaisDoEspelho {
 export const totaisDoEspelho = (resumo: ResumoPontoColaborador): TotaisDoEspelho => {
   const fechados = resumo.jornadas.filter((j) => j.minutosTrabalhados > 0);
   const relogio = fechados.reduce((s, j) => s + j.saldoBrutoMinutos, 0);
+  // As faltas ficam FORA do relógio e da tolerância, numa linha própria:
+  // senão "trabalhado − previsto = relógio" deixaria de fechar no papel
+  const faltas = resumo.jornadas.filter((j) => j.falta).reduce((s, j) => s + j.saldoMinutos, 0);
   return {
     trabalhado: fechados.reduce((s, j) => s + j.minutosTrabalhados, 0),
     previsto: fechados.reduce((s, j) => s + j.minutosPrevistosEfetivos, 0),
     relogio,
-    tolerancia: relogio - resumo.saldoPeriodoMinutos,
+    tolerancia: relogio + faltas - resumo.saldoPeriodoMinutos,
     saldoPeriodo: resumo.saldoPeriodoMinutos,
     saldoAcumulado: resumo.saldoAcumuladoMinutos,
+    faltas,
   };
 };
 
@@ -422,7 +433,16 @@ export const linhasDoRodape = (
   { rotulo: 'Total previsto (dias com jornada fechada)', minutos: t.previsto, comSinal: false, destaque: false },
   { rotulo: 'Relógio do período (trabalhado − previsto)', minutos: t.relogio, comSinal: true, destaque: false },
   { rotulo: 'Tolerância aplicada (pequenas variações que não contam)', minutos: t.tolerancia, comSinal: true, destaque: false },
-  { rotulo: 'Saldo do período (relógio − tolerância)', minutos: t.saldoPeriodo, comSinal: true, destaque: true },
+  // Só aparece quando há falta: os espelhos de antes de 01/10/2026 não mudam
+  ...(t.faltas !== 0
+    ? [{ rotulo: 'Faltas (dias sem batida)', minutos: t.faltas, comSinal: true, destaque: false }]
+    : []),
+  {
+    rotulo: t.faltas !== 0 ? 'Saldo do período (relógio − tolerância + faltas)' : 'Saldo do período (relógio − tolerância)',
+    minutos: t.saldoPeriodo,
+    comSinal: true,
+    destaque: true,
+  },
   { rotulo: 'Saldo acumulado no banco de horas', minutos: t.saldoAcumulado, comSinal: true, destaque: true },
 ];
 
@@ -1515,7 +1535,26 @@ class ServicoPonto {
      * da jornada normal continua sendo extra, como em qualquer dia.
      */
     const abonado = situacaoDoDia(colaboradorId, data) !== 'normal';
-    const saldoMinutos = abonado ? Math.max(0, tolerancia.saldoApurado) : tolerancia.saldoApurado;
+    let saldoMinutos = abonado ? Math.max(0, tolerancia.saldoApurado) : tolerancia.saldoApurado;
+    let saldoBrutoDoDia = saldoBrutoMinutos;
+
+    /**
+     * A FALTA DEBITA O DIA INTEIRO — até alguém decidir outra coisa.
+     *
+     * Dia sem batida passava em branco (ver `ehFalta`). Agora ele pesa o
+     * previsto inteiro no espelho, e vai para a fila do líder como "Falta":
+     * decidido, vale o que ele decidiu — o débito da jornada, ou zero se
+     * abonou.
+     */
+    const falta = this.ehFalta(colaborador, data, registros.length, minutosPrevistos);
+    if (falta) {
+      const decidido = this.obterAjusteDoDia(colaboradorId, data);
+      saldoBrutoDoDia = -minutosPrevistos;
+      saldoMinutos =
+        decidido && decidido.estado === 'aprovado' && decidido.tipo !== 'dia_incompleto'
+          ? minutosComSinal(decidido)
+          : -minutosPrevistos;
+    }
 
     return {
       data,
@@ -1527,11 +1566,39 @@ class ServicoPonto {
       minutosPrevistosEfetivos,
       abatidoPelaPausa,
       saldoMinutos,
-      saldoBrutoMinutos,
+      saldoBrutoMinutos: saldoBrutoDoDia,
       tolerancia,
       completa,
       emAndamento,
+      falta,
     };
+  }
+
+  /**
+   * ESTE DIA É FALTA?
+   *
+   * Até 30/09/2026 o dia sem nenhuma batida não gerava saldo: o comentário
+   * dizia que "falta tem caminho próprio", e esse caminho nunca existiu.
+   * No espelho ele passava em branco, e no banco também. O Elias viu.
+   *
+   * É falta o dia que:
+   *   - previa jornada — domingo, feriado, ausência aprovada e o sábado de
+   *     quem não vem já previam zero (`cargaPrevistaEmMinutos`);
+   *   - não teve batida nenhuma;
+   *   - já passou — hoje ainda dá tempo de chegar;
+   *   - é de 01/10/2026 em diante (`INICIO_DA_COBRANCA_DE_FALTAS`) e não
+   *     vem antes da admissão da pessoa.
+   */
+  ehFalta(
+    colaborador: Colaborador | undefined,
+    data: string,
+    batidas: number,
+    minutosPrevistos: number
+  ): boolean {
+    if (batidas > 0 || minutosPrevistos <= 0) return false;
+    if (data >= dataDeHoje() || data < INICIO_DA_COBRANCA_DE_FALTAS) return false;
+    if (colaborador?.dataAdmissao && data < colaborador.dataAdmissao) return false;
+    return true;
   }
 
   /** Jornadas de um período, um item por dia do intervalo. */
@@ -1798,9 +1865,14 @@ class ServicoPonto {
    * não há como apontar a causa, e o nome diz só o que se sabe.
    */
   rotuloDoAjuste(ajuste: Pick<AjusteJornada, 'tipo' | 'colaboradorId' | 'data'>): string {
+    if (ajuste.tipo === 'hora_extra') return ROTULO_TIPO_AJUSTE.hora_extra;
+
+    const jornada = this.obterJornadaDoDia(ajuste.colaboradorId, ajuste.data);
+    // Dia sem batida nenhuma não é "dia sem fechar" nem "horas a menos": é falta
+    if (jornada.falta) return 'Falta';
     if (ajuste.tipo !== 'debito') return ROTULO_TIPO_AJUSTE[ajuste.tipo];
 
-    const t = this.obterJornadaDoDia(ajuste.colaboradorId, ajuste.data).tolerancia;
+    const t = jornada.tolerancia;
     const causas: string[] = [];
     if (t.entradaESaida && t.entradaESaida.efeitoEntrada < 0) causas.push('atraso na entrada');
     if (t.intervalo && t.intervalo.efeito < 0) causas.push('intervalo estendido');
@@ -1972,14 +2044,20 @@ class ServicoPonto {
         // uma saida de almoco sao duas batidas e nenhuma delas fecha o dia
         const feitas = esperadas.filter((t) => !!jornada.marcacoes[t]).length;
 
-        // Domingo não tem jornada; dia fechado não é problema; dia sem
-        // nenhuma batida é falta, e falta tem caminho próprio
+        // Domingo não tem jornada; dia fechado não é problema
         if (ehDiaDeFolga(data)) continue;
         // Dia abonado não é dia pela metade: já foi decidido por outra via
         if (situacaoDoDia(pessoa.id, data) !== 'normal') continue;
         // Sem batida esperada o dia não é dela — sábado de quem não vem
         if (esperadas.length === 0) continue;
-        if (batidas === 0 || feitas >= esperadas.length) continue;
+        /*
+          A FALTA ENTRA NA MESMA FILA. O comentário daqui dizia que "falta
+          tem caminho próprio" — e o caminho nunca existiu: o dia sem batida
+          passava em branco. A decisão é a mesma do dia pela metade: abonar
+          (zero) ou contar o débito da jornada. Só a partir de 01/10/2026
+          (`ehFalta`).
+        */
+        if (!jornada.falta && (batidas === 0 || feitas >= esperadas.length)) continue;
 
         // Já levantado, decidido ou coberto por ausência aprovada: não repete
         if (this.obterAjusteDoDia(pessoa.id, data)) continue;
@@ -3353,7 +3431,7 @@ class ServicoPonto {
               ${celulas}
               <td class="num">${formatarMinutos(l.previsto)}</td>
               <td class="num">${formatarMinutos(l.trabalhado)}</td>
-              <td class="num">${l.relogio === null ? '—' : formatarSaldo(l.relogio)}</td>
+              <td class="num">${l.falta ? 'Falta' : l.relogio === null ? '—' : formatarSaldo(l.relogio)}</td>
               <td class="num ${(l.saldo ?? 0) < 0 ? 'neg' : ''}">${
                 l.saldo === null ? '—' : formatarSaldo(l.saldo)
               }</td>
