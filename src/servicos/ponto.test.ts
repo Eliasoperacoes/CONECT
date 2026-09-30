@@ -3764,3 +3764,52 @@ test('a tela do Banco de Horas também mostra todos os dias, e não deixa lança
   expect(semComentarios).toContain('const lancavel = podeCorrigirMarcacao && aceitaMarcacaoNoDia(jornada.data)');
   expect(semComentarios).toContain('disabled={!lancavel}');
 });
+
+// ============================================================
+// O PAPEL E A TELA SÃO O MESMO ESPELHO
+//
+// O Elias: "o espelho de ponto para imprimir não bate com o espelho do
+// painel?". Os números vinham da mesma conta, mas cada um montava a
+// própria grade — colunas diferentes, domingo diferente, rodapé diferente.
+// ============================================================
+
+test('o rodapé fecha a conta: trabalhado − previsto = relógio; relógio − tolerância = saldo', async () => {
+  const { totaisDoEspelho } = await import('./ponto');
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+  await baterDia(DO_TURNO_A, '2026-09-14', ['07:29', '12:30', '14:00', '17:12']); // +3, tolerado
+  await baterDia(DO_TURNO_A, '2026-09-15', ['07:24', '12:30', '14:00', '17:10']); // +6, conta
+
+  colaboradorLogado = ELIAS;
+  const resumo = servicoPonto
+    .obterResumoDoPeriodo('2026-09-01', '2026-09-30')
+    .find((r) => r.colaborador.id === DO_TURNO_A.id)!;
+  const t = totaisDoEspelho(resumo);
+
+  // Só os dias com jornada fechada: os outros 20 dias úteis do mês não entram no previsto
+  expect(t.trabalhado).toBe(493 + 496);
+  expect(t.previsto).toBe(490 + 490);
+  expect(t.relogio).toBe(t.trabalhado - t.previsto);
+  expect(t.relogio).toBe(9);
+  expect(t.tolerancia).toBe(3);
+  expect(t.saldoPeriodo).toBe(t.relogio - t.tolerancia);
+});
+
+test('o painel e o papel desenham a MESMA linha e o MESMO rodapé', async () => {
+  const semComentarios = (f: string) => f.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const tela = semComentarios(await Bun.file('src/componentes/BancoDeHoras.tsx').text());
+  const servico = semComentarios(await Bun.file('src/servicos/ponto.ts').text());
+  const papel = servico.slice(servico.indexOf('gerarHtmlEspelho('));
+
+  for (const fonte of [tela, papel]) {
+    expect(fonte).toContain('linhaDoEspelho(');
+    expect(fonte).toContain('linhasDoRodape(totaisDoEspelho(');
+  }
+  // As mesmas colunas no painel
+  for (const coluna of ['>Previsto<', '>Trabalhado<', '>Relógio<', '>Saldo<']) {
+    expect(tela).toContain(coluna);
+  }
+  // E nenhuma grade própria de novo
+  expect(tela).not.toContain('>Total</th>');
+  expect(papel).not.toContain('Total trabalhado no período');
+});

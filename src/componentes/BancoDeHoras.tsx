@@ -59,6 +59,9 @@ import {
   formatarDataBR,
   formatarDiaCurto,
   motivoSemMarcacao,
+  linhaDoEspelho,
+  totaisDoEspelho,
+  linhasDoRodape,
   aceitaMarcacaoNoDia,
   RECUSA_DE_DOMINGO,
   formatarMinutos,
@@ -1190,7 +1193,10 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                           {ROTULO_MARCACAO[tipo].replace(' para almoço', ' alm.').replace(' do almoço', ' alm.')}
                         </th>
                       ))}
-                      <th className="text-right font-bold px-3 py-2">Total</th>
+                      {/* As colunas do espelho impresso, na mesma ordem (linhaDoEspelho) */}
+                      <th className="text-right font-bold px-3 py-2">Previsto</th>
+                      <th className="text-right font-bold px-3 py-2">Trabalhado</th>
+                      <th className="text-right font-bold px-3 py-2">Relógio</th>
                       <th className="text-right font-bold px-3 py-2">Saldo</th>
                       <th className="text-left font-bold px-3 py-2 whitespace-nowrap">
                         Origem
@@ -1201,17 +1207,47 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                     {/* Todos os dias, como no espelho impresso: domingo e feriado inclusive */}
                     {detalhe.jornadas
                       .map((jornada: JornadaDia) => {
-                        const vazio = Object.keys(jornada.marcacoes).length === 0;
+                        const l = linhaDoEspelho(jornada, detalhe.colaborador);
+                        const vazio = l.semMarcacao;
+                        const lancavelNoDia = podeCorrigirMarcacao && aceitaMarcacaoNoDia(jornada.data);
                         return (
                           <tr
                             key={jornada.data}
                             className={vazio ? 'opacity-50' : 'hover:bg-[var(--c-superficie-2)]'}
                           >
-                            <td className="px-3 py-2 font-semibold text-[var(--c-texto)] whitespace-nowrap capitalize">
-                              {formatarDiaCurto(jornada.data)}
+                            <td className="px-3 py-2 font-semibold text-[var(--c-texto)] whitespace-nowrap">
+                              {formatarDataBR(l.data)} <span className="capitalize">{l.semana}</span>
                             </td>
 
-                            {ORDEM_MARCACOES.map((tipo) => {
+                            {/* O dia inteiro sem jornada é uma célula só, como no papel */}
+                            {l.diaSemJornada ? (
+                              <td colSpan={ORDEM_MARCACOES.length} className="px-2 py-2 text-center">
+                                <button
+                                  type="button"
+                                  disabled={!lancavelNoDia}
+                                  onClick={() =>
+                                    lancavelNoDia &&
+                                    setAjuste({
+                                      colaboradorId: detalhe.colaborador.id,
+                                      data: jornada.data,
+                                      tipo: 'entrada',
+                                      hora: '',
+                                      justificativa: '',
+                                    })
+                                  }
+                                  title={
+                                    !aceitaMarcacaoNoDia(jornada.data)
+                                      ? RECUSA_DE_DOMINGO
+                                      : lancavelNoDia
+                                      ? `${l.diaSemJornada}: o dia não prevê jornada. Clique para lançar assim mesmo — é hora extra.`
+                                      : l.diaSemJornada
+                                  }
+                                  className="px-1.5 py-0.5 rounded text-[10px] italic text-[var(--c-texto-3)] hover:bg-[var(--c-acento-suave)] transition-colors"
+                                >
+                                  {l.diaSemJornada}
+                                </button>
+                              </td>
+                            ) : ORDEM_MARCACOES.map((tipo) => {
                               const reg = jornada.marcacoes[tipo];
 
                               /**
@@ -1307,21 +1343,25 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                               );
                             })}
 
+                            <td className="px-3 py-2 text-right tabular-nums text-[var(--c-texto-2)]">
+                              {formatarMinutos(l.previsto)}
+                            </td>
                             <td className="px-3 py-2 text-right font-semibold tabular-nums text-[var(--c-texto)]">
-                              {formatarMinutos(jornada.minutosTrabalhados)}
+                              {formatarMinutos(l.trabalhado)}
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-[var(--c-texto-2)]">
+                              {l.relogio === null ? '—' : formatarSaldo(l.relogio)}
                             </td>
                             <td
                               className={`px-3 py-2 text-right font-bold tabular-nums ${
-                                jornada.minutosTrabalhados === 0
+                                l.saldo === null
                                   ? 'text-[var(--c-texto-3)]'
-                                  : jornada.saldoMinutos >= 0
+                                  : l.saldo >= 0
                                   ? 'text-emerald-600'
                                   : 'text-red-600'
                               }`}
                             >
-                              {jornada.minutosTrabalhados === 0
-                                ? '—'
-                                : formatarSaldo(jornada.saldoMinutos)}
+                              {l.saldo === null ? '—' : formatarSaldo(l.saldo)}
                             </td>
 
                             {/* Como cada ponto do dia foi comprovado */}
@@ -1365,6 +1405,27 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                         );
                       })}
                   </tbody>
+                  {/* O mesmo rodapé do papel, com a conta fechando (linhasDoRodape) */}
+                  <tfoot className="border-t-2 border-[var(--c-borda)]">
+                    {linhasDoRodape(totaisDoEspelho(detalhe)).map((linha) => (
+                      <tr
+                        key={linha.rotulo}
+                        className={linha.destaque ? 'bg-[var(--c-superficie-2)] font-bold' : ''}
+                      >
+                        <td colSpan={ORDEM_MARCACOES.length + 4} className="px-3 py-1.5 text-[var(--c-texto-2)]">
+                          {linha.rotulo}
+                        </td>
+                        <td
+                          className={`px-3 py-1.5 text-right tabular-nums ${
+                            linha.comSinal && linha.minutos < 0 ? 'text-red-600' : 'text-[var(--c-texto)]'
+                          }`}
+                        >
+                          {linha.comSinal ? formatarSaldo(linha.minutos) : formatarMinutos(linha.minutos)}
+                        </td>
+                        <td />
+                      </tr>
+                    ))}
+                  </tfoot>
                 </table>
               </div>
 

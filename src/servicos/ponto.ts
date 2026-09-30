@@ -311,6 +311,118 @@ export const motivoSemMarcacao = (
   return 'Sem intervalo';
 };
 
+/**
+ * ===================================================================
+ * A LINHA DO ESPELHO — uma montagem para o papel e para a tela
+ * ===================================================================
+ *
+ * O Elias perguntou por que o espelho impresso não batia com o do painel.
+ * Os números vinham da mesma conta, mas cada um montava a sua grade: o
+ * papel tinha Previsto, Trabalhado, Relógio e Saldo; a tela, "Total" e
+ * Saldo. O mesmo dia, lido lado a lado, parecia discordar — "8h13 · 0h00"
+ * numa, "+0h03 · 0h00" na outra.
+ *
+ * Agora as duas desenham a partir DESTA linha. O que muda entre elas é só
+ * o que é próprio de cada uma: a tela deixa clicar e mostra a origem; o
+ * papel tem assinatura.
+ */
+export interface CelulaDoEspelho {
+  tipo: TipoMarcacao;
+  registro?: RegistroPonto;
+  /** Por que está vazia, quando o dia não espera esta batida. */
+  motivo: string | null;
+}
+
+export interface LinhaDoEspelho {
+  data: string;
+  /** "Seg", "Ter"... sempre: o nome do feriado vai nas marcações. */
+  semana: string;
+  /**
+   * Domingo, feriado, folga, atestado: quando as quatro marcações dizem o
+   * mesmo nome, ele aparece uma vez, ocupando as quatro.
+   */
+  diaSemJornada: string | null;
+  celulas: CelulaDoEspelho[];
+  semMarcacao: boolean;
+  previsto: number;
+  trabalhado: number;
+  /** Trabalhado − previsto, como o relógio marcou. Nulo sem jornada fechada. */
+  relogio: number | null;
+  /** O que vale para o banco de horas, com a tolerância. Nulo sem jornada. */
+  saldo: number | null;
+}
+
+export const linhaDoEspelho = (j: JornadaDia, colaborador?: Colaborador): LinhaDoEspelho => {
+  const celulas = ORDEM_MARCACOES.map((tipo) => ({
+    tipo,
+    registro: j.marcacoes[tipo],
+    motivo: j.marcacoes[tipo] ? null : motivoSemMarcacao(j.data, tipo, colaborador),
+  }));
+  const primeiro = celulas[0].motivo;
+  const semJornada = j.minutosTrabalhados === 0;
+
+  return {
+    data: j.data,
+    semana: formatarDiaCurto(j.data).split(',')[0],
+    diaSemJornada: celulas.every((c) => !!c.motivo && c.motivo === primeiro) ? primeiro : null,
+    celulas,
+    semMarcacao: Object.keys(j.marcacoes).length === 0,
+    previsto: j.minutosPrevistosEfetivos,
+    trabalhado: j.minutosTrabalhados,
+    relogio: semJornada ? null : j.saldoBrutoMinutos,
+    saldo: semJornada ? null : j.saldoMinutos,
+  };
+};
+
+export interface TotaisDoEspelho {
+  trabalhado: number;
+  /** O previsto dos dias com jornada fechada: é o que faz trabalhado − previsto = relógio. */
+  previsto: number;
+  relogio: number;
+  /** O que a tolerância tirou do relógio. */
+  tolerancia: number;
+  saldoPeriodo: number;
+  saldoAcumulado: number;
+}
+
+/**
+ * O RODAPÉ FECHA A CONTA, e as linhas dele saem das colunas.
+ *
+ *   trabalhado − previsto = relógio;   relógio − tolerância = saldo
+ *
+ * O "total previsto" contava os dias ainda não trabalhados do mês ao lado
+ * de um trabalhado que só tinha os fechados — a subtração não dava o
+ * relógio, e ninguém conseguia conferir o papel com uma calculadora.
+ */
+export const totaisDoEspelho = (resumo: ResumoPontoColaborador): TotaisDoEspelho => {
+  const fechados = resumo.jornadas.filter((j) => j.minutosTrabalhados > 0);
+  const relogio = fechados.reduce((s, j) => s + j.saldoBrutoMinutos, 0);
+  return {
+    trabalhado: fechados.reduce((s, j) => s + j.minutosTrabalhados, 0),
+    previsto: fechados.reduce((s, j) => s + j.minutosPrevistosEfetivos, 0),
+    relogio,
+    tolerancia: relogio - resumo.saldoPeriodoMinutos,
+    saldoPeriodo: resumo.saldoPeriodoMinutos,
+    saldoAcumulado: resumo.saldoAcumuladoMinutos,
+  };
+};
+
+/**
+ * AS LINHAS DO RODAPÉ, na ordem e com os nomes que o papel e a tela
+ * mostram. Uma lista só: a tela não pode chamar de "Saldo" o que o papel
+ * chama de "Relógio".
+ */
+export const linhasDoRodape = (
+  t: TotaisDoEspelho
+): Array<{ rotulo: string; minutos: number; comSinal: boolean; destaque: boolean }> => [
+  { rotulo: 'Total trabalhado (dias com jornada fechada)', minutos: t.trabalhado, comSinal: false, destaque: false },
+  { rotulo: 'Total previsto (dias com jornada fechada)', minutos: t.previsto, comSinal: false, destaque: false },
+  { rotulo: 'Relógio do período (trabalhado − previsto)', minutos: t.relogio, comSinal: true, destaque: false },
+  { rotulo: 'Tolerância aplicada (pequenas variações que não contam)', minutos: t.tolerancia, comSinal: true, destaque: false },
+  { rotulo: 'Saldo do período (relógio − tolerância)', minutos: t.saldoPeriodo, comSinal: true, destaque: true },
+  { rotulo: 'Saldo acumulado no banco de horas', minutos: t.saldoAcumulado, comSinal: true, destaque: true },
+];
+
 /** 95 -> "1h35"; -95 -> "-1h35"; 0 -> "0h00" */
 export const formatarMinutos = (minutos: number): string => {
   const sinal = minutos < 0 ? '-' : '';
@@ -3076,13 +3188,17 @@ class ServicoPonto {
           .map((linha) => (linha.endsWith('</tr>') ? linha : `${linha}<td></td></tr>`))
           .join('\n');
 
-        /**
-         * O RELÓGIO DO PERÍODO, para o rodapé fechar a conta: relógio −
-         * tolerância aplicada = saldo do período. É a soma da coluna
-         * Relógio, dia a dia — e não total trabalhado − total previsto,
-         * que conta o previsto do contrato antes da pausa do estágio.
-         */
-        const relogioDoPeriodo = resumo.jornadas.reduce((s, j) => s + j.saldoBrutoMinutos, 0);
+        /* O rodapé fecha a conta (ver `totaisDoEspelho`) */
+        const rodape = linhasDoRodape(totaisDoEspelho(resumo))
+          .map(
+            (l) => `<tr class="${l.destaque ? 'destaque' : ''}">
+              <td>${escapar(l.rotulo)}</td>
+              <td class="num ${l.comSinal && l.minutos < 0 ? 'neg' : ''}">${
+                l.comSinal ? formatarSaldo(l.minutos) : formatarMinutos(l.minutos)
+              }</td>
+            </tr>`
+          )
+          .join('');
 
         /**
          * TODOS OS DIAS DO PERÍODO. Pedido do Elias: o espelho mostra a
@@ -3118,79 +3234,32 @@ class ServicoPonto {
          */
         const linhas = dias
           .map((j) => {
-            /**
-             * O QUE O DIA ESPERA, e não as quatro colunas sempre.
-             *
-             * No sábado não há almoço: a loja abre às 8 e fecha ao meio-dia,
-             * direto. O espelho imprimia `--:--` nas duas colunas do
-             * intervalo, e num documento de ponto isso se lê como batida
-             * esquecida — não como "não se aplica".
-             *
-             * Em feriado fechado não se espera nada, e as quatro colunas
-             * ficam traçadas.
-             */
-            /**
-             * O DIA INTEIRO SEM JORNADA É UMA CÉLULA SÓ.
-             *
-             * Domingo, feriado, folga, atestado, férias: as quatro marcações
-             * diziam o mesmo nome, e o do feriado quebrava em duas linhas em
-             * cada uma — a linha dobrava de altura e o mês não cabia na
-             * folha. Agora o nome aparece uma vez, ocupando as quatro.
-             */
-            const motivos = ORDEM_MARCACOES.map((t) =>
-              j.marcacoes[t] ? null : motivoSemMarcacao(j.data, t, resumo.colaborador)
-            );
-            const diaSemJornada =
-              motivos.every((m) => !!m && m === motivos[0]) ? motivos[0] : null;
+            const l = linhaDoEspelho(j, resumo.colaborador);
 
-            const celulas = diaSemJornada
-              ? `<td class="hora naoSeAplica diaSemJornada" colspan="${ORDEM_MARCACOES.length}">${escapar(
-                  diaSemJornada
+            /* O dia inteiro sem jornada é uma célula só (ver `linhaDoEspelho`) */
+            const celulas = l.diaSemJornada
+              ? `<td class="hora naoSeAplica diaSemJornada" colspan="${l.celulas.length}">${escapar(
+                  l.diaSemJornada
                 )}</td>`
-              : ORDEM_MARCACOES.map((t) => {
-              const motivo = motivoSemMarcacao(j.data, t, resumo.colaborador);
+              : l.celulas
+                  .map((c) => {
+                    /* O horário batido vence o rótulo: o documento mostra o que aconteceu */
+                    if (!c.registro && c.motivo) {
+                      return `<td class="hora naoSeAplica">${escapar(c.motivo)}</td>`;
+                    }
+                    const ajuste = c.registro && ehMarcacaoCorrigida(c.registro.metodo) ? ' *' : '';
+                    return `<td class="hora">${c.registro ? c.registro.horaFormatada + ajuste : '--:--'}</td>`;
+                  })
+                  .join('');
 
-              /**
-               * A célula que o dia não espera diz POR QUE está vazia.
-               *
-               * Se a pessoa bateu mesmo assim — hora extra no feriado, um
-               * domingo trabalhado — o horário vence o rótulo: o documento
-               * tem de mostrar o que aconteceu, não o que era previsto.
-               */
-              if (motivo && !j.marcacoes[t]) {
-                return `<td class="hora naoSeAplica">${escapar(motivo)}</td>`;
-              }
-
-              const reg = j.marcacoes[t];
-              const ajuste = reg && ehMarcacaoCorrigida(reg.metodo) ? ' *' : '';
-              return `<td class="hora">${reg ? reg.horaFormatada + ajuste : '--:--'}</td>`;
-            }).join('');
-
-            const semMarcacao = Object.keys(j.marcacoes).length === 0;
-            const semJornada = j.minutosTrabalhados === 0;
-
-            return `<tr class="${semMarcacao ? 'vazio' : ''}">
-              ${/*
-                DATA E DIA DA SEMANA NA MESMA LINHA.
-
-                Eram duas, com um <br> entre elas. Numa folha deitada isso
-                não custava nada; de pé, dobrar a altura de 31 linhas é o
-                que decide se o mês fecha numa página ou vira duas.
-
-                O feriado continua ganhando o nome inteiro — é a única
-                informação da coluna que explica um dia vazio, e vale a
-                linha extra nos poucos dias em que aparece.
-              */ ''}
-              <td class="dia">${formatarDataBR(j.data)} <span class="semana">${
-                /* Sempre o dia da semana: o nome do feriado vai nas marcações */
-                formatarDiaCurto(j.data).split(',')[0]
-              }</span></td>
+            return `<tr class="${l.semMarcacao ? 'vazio' : ''}">
+              <td class="dia">${formatarDataBR(l.data)} <span class="semana">${l.semana}</span></td>
               ${celulas}
-              <td class="num">${formatarMinutos(j.minutosPrevistosEfetivos)}</td>
-              <td class="num">${formatarMinutos(j.minutosTrabalhados)}</td>
-              <td class="num">${semJornada ? '—' : formatarSaldo(j.saldoBrutoMinutos)}</td>
-              <td class="num ${j.saldoMinutos < 0 ? 'neg' : ''}">${
-                semJornada ? '—' : formatarSaldo(j.saldoMinutos)
+              <td class="num">${formatarMinutos(l.previsto)}</td>
+              <td class="num">${formatarMinutos(l.trabalhado)}</td>
+              <td class="num">${l.relogio === null ? '—' : formatarSaldo(l.relogio)}</td>
+              <td class="num ${(l.saldo ?? 0) < 0 ? 'neg' : ''}">${
+                l.saldo === null ? '—' : formatarSaldo(l.saldo)
               }</td>
             </tr>`;
           })
@@ -3245,36 +3314,7 @@ class ServicoPonto {
             ela conta inteira. Por isso o Saldo pode ser menor que o Relógio, ou zero.
           </p>
 
-          <table class="totais">
-            <tr>
-              <td>Total trabalhado no período</td>
-              <td class="num">${formatarMinutos(resumo.minutosTrabalhados)}</td>
-            </tr>
-            <tr>
-              <td>Total previsto no período</td>
-              <td class="num">${formatarMinutos(resumo.minutosPrevistos)}</td>
-            </tr>
-            <tr>
-              <td>Relógio do período (soma da coluna Relógio)</td>
-              <td class="num">${formatarSaldo(relogioDoPeriodo)}</td>
-            </tr>
-            <tr>
-              <td>Tolerância aplicada (pequenas variações que não contam)</td>
-              <td class="num">${formatarSaldo(relogioDoPeriodo - resumo.saldoPeriodoMinutos)}</td>
-            </tr>
-            <tr class="destaque">
-              <td>Saldo do período</td>
-              <td class="num ${resumo.saldoPeriodoMinutos < 0 ? 'neg' : ''}">${formatarSaldo(
-                resumo.saldoPeriodoMinutos
-              )}</td>
-            </tr>
-            <tr class="destaque">
-              <td>Saldo acumulado no banco de horas</td>
-              <td class="num ${resumo.saldoAcumuladoMinutos < 0 ? 'neg' : ''}">${formatarSaldo(
-                resumo.saldoAcumuladoMinutos
-              )}</td>
-            </tr>
-          </table>
+          <table class="totais">${rodape}</table>
 
           ${/*
             A RELAÇÃO DE NOTAS SAIU DO PAPEL — decisão do Elias.

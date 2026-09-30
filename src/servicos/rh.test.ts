@@ -328,7 +328,7 @@ test('O ESPELHO CABE NUMA FOLHA: a origem saiu do papel', async () => {
 
   // O `*` FICA: é o rastro mínimo de que aquele horário não foi batido
   // pela pessoa, e ele não ocupa linha nenhuma
-  expect(espelho).toContain("ehMarcacaoCorrigida(reg.metodo) ? ' *' : ''");
+  expect(espelho).toContain("ehMarcacaoCorrigida(c.registro.metodo) ? ' *' : ''");
 
   // A data e o dia da semana na MESMA linha: dobrar 31 alturas decide a página
   expect(espelho).not.toContain('<td class="dia">${formatarDataBR(j.data)}<br>');
