@@ -94,6 +94,32 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
     });
   }, [colaborador]);
 
+  /**
+   * Os turnos que cabem neste contrato, e o escolhido.
+   *
+   * O perfil sai do SETOR/CARGO que já está sendo preenchido no
+   * formulário, e não do cadastro salvo: quem acabou de mudar o cargo
+   * para Estagiário precisa ver os turnos de estágio na hora, e não
+   * depois de salvar e reabrir.
+   */
+  const turnosOferecidos = turnosDoPerfil(ehDeEstagio(form));
+  const turnoEscolhido = turnoDe(form);
+
+  /**
+   * Trocar de contrato pode deixar a pessoa num turno que não existe mais
+   * para ela — um estagiário com o Turno A de 8h10. Aqui o turno cai para
+   * o primeiro da lista nova, em vez de ficar num valor que a tela nem
+   * mostra e que o espelho obedeceria em silêncio.
+   *
+   * Fica ANTES do `return null` abaixo: depois dele, o React contava um
+   * hook a mais quando a ficha abria, e o botão roxo "Cadastro" do Banco
+   * de Horas derrubava o app inteiro numa tela branca.
+   */
+  useEffect(() => {
+    if (turnosOferecidos.some((t) => t.chave === form.turno)) return;
+    setForm((atual) => ({ ...atual, turno: turnosOferecidos[0]?.chave || TURNO_PADRAO }));
+  }, [form.setor, form.cargo]);
+
   if (!colaborador) return null;
 
   const submeter = async (e: React.FormEvent) => {
@@ -136,17 +162,6 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
   };
 
   /**
-   * Os turnos que cabem neste contrato, e o escolhido.
-   *
-   * O perfil sai do SETOR/CARGO que já está sendo preenchido no
-   * formulário, e não do cadastro salvo: quem acabou de mudar o cargo
-   * para Estagiário precisa ver os turnos de estágio na hora, e não
-   * depois de salvar e reabrir.
-   */
-  const turnosOferecidos = turnosDoPerfil(ehDeEstagio(form));
-  const turnoEscolhido = turnoDe(form);
-
-  /**
    * O que o HORÁRIO desta pessoa soma na semana.
    *
    * É o número que o espelho usa de verdade — cinco dias do turno mais o
@@ -157,17 +172,6 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
   const semanaPeloHorario =
     minutosDoTurno(turnoEscolhido) * 5 +
     (trabalhaNoSabado({ ...form, turno: turnoEscolhido.chave }) ? MINUTOS_SABADO : 0);
-
-  /**
-   * Trocar de contrato pode deixar a pessoa num turno que não existe mais
-   * para ela — um estagiário com o Turno A de 8h10. Aqui o turno cai para
-   * o primeiro da lista nova, em vez de ficar num valor que a tela nem
-   * mostra e que o espelho obedeceria em silêncio.
-   */
-  useEffect(() => {
-    if (turnosOferecidos.some((t) => t.chave === form.turno)) return;
-    setForm((atual) => ({ ...atual, turno: turnosOferecidos[0]?.chave || TURNO_PADRAO }));
-  }, [form.setor, form.cargo]);
 
   const rotuloCampo =
     'block text-[11px] font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1';
