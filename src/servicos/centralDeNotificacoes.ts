@@ -17,6 +17,11 @@
  * tempo todo, e a notificação do sistema volta a ser só para quem não
  * está olhando.
  *
+ * O SINO SAIU DA TELA (pedido do Elias: "só as do sistema"). O que ele
+ * contava continua aqui e é a fonte de duas coisas: o número da aba
+ * Gerenciar (`contarPendenciasParaMim`) e a regra de quem é avisado
+ * pelo celular — a mesma `deveSerAvisadoSobre` que decide abaixo.
+ *
  * ===================================================================
  * DISPENSAR TIRA O AVISO, NUNCA O TRABALHO
  * ===================================================================
@@ -58,21 +63,9 @@ import {
   type Colaborador,
 } from '../tipos';
 
-/**
- * Para onde o toque leva.
- *
- * `conversa` abre a janela; o resto é seção do sistema. Nenhum abre aba
- * do navegador: o CONECTA roda como aplicativo, e sair dele para voltar
- * ao mesmo lugar é perder o contexto por nada.
- */
-export type SecaoDestino = 'aprovar_jornadas' | 'escala_folgas';
-
-export type DestinoNotificacao =
-  | { tipo: 'conversa'; conversaId: string }
-  | { tipo: 'secao'; secao: SecaoDestino }
-  /* A publicação da Central: leva à Central COM ela aberta, e não só
-     à lista — quem toca num aviso quer aquele aviso */
-  | { tipo: 'publicacao'; publicacaoId: string };
+/* Para onde o toque leva: mora em `destinoDoAviso`, sem dependências */
+import type { DestinoNotificacao } from './destinoDoAviso';
+export type { DestinoNotificacao, SecaoDestino } from './destinoDoAviso';
 
 export type TipoNotificacao =
   | 'mensagem'
@@ -310,6 +303,21 @@ export const listarNotificacoes = (): ItemNotificacao[] => {
     .filter((n) => !dispensadas.has(n.id))
     .sort((a, b) => (b.quando || '').localeCompare(a.quando || ''));
 };
+
+/**
+ * QUANTAS DECISÕES DO PONTO ESPERAM POR MIM — o número da aba Painel.
+ *
+ * O sino saiu, e com ele o único número que o gestor via sem abrir a
+ * fila. É a mesma conta do sino, pela mesma regra de quem acompanha
+ * quem (`meuParaAcompanhar`), e é a mesma regra que decide quem recebe
+ * o aviso do celular — então o número na aba e o aviso no bolso nunca
+ * discordam.
+ *
+ * Sem o filtro de dispensadas: o número é a fila, não o aviso. Ele só
+ * baixa quando a decisão é tomada.
+ */
+export const contarPendenciasParaMim = (): number =>
+  deJornadas().length + deAusencias().length + deFolgas().length;
 
 /** Quantas estão esperando. É o número do sino. */
 export const contarNotificacoes = (): number => listarNotificacoes().length;

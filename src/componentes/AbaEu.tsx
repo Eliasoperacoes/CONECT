@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useVoltar } from '../servicos/voltar';
+import { IndicadorNuvem } from './IndicadorNuvem';
 import { NIVEL_TI } from '../tipos';
 import {
   Bell,
@@ -134,6 +135,11 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
                 ADMIN
               </span>
             )}
+            {/* Morava na barra de cima, que saiu do celular. O modo local
+                não pode ser surpresa: o que se faz nele não chega às lojas. */}
+            <span className="md:hidden">
+              <IndicadorNuvem />
+            </span>
           </div>
           <p className="text-sm text-[var(--c-texto-2)] truncate">
             {colaboradorAtual.cargo} · {colaboradorAtual.loja}

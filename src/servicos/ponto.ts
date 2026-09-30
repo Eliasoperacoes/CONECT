@@ -66,7 +66,13 @@ import { podeUsar } from './permissoes';
  */
 import { agora as agoraSincronizado } from './relogio';
 import { linhasDeIdentificacao, contatoEmLinha } from './fichaColaborador';
-import { temAlcadaSobre, regraAutomaticaDeAlcada } from './organograma';
+import { temAlcadaSobre, regraAutomaticaDeAlcada, deveSerAvisadoSobre } from './organograma';
+import {
+  avisarPedidoDePonto,
+  avisarDecisaoDePonto,
+  quemAcompanha,
+  textoDaDecisao,
+} from './avisosDePonto';
 // A FOLHA, nunca o serviço: importar `justificativas` daqui refecharia o
 // ciclo que já derrubou o aplicativo uma vez
 import { situacaoDoDia } from './justificativasCache';
@@ -129,6 +135,18 @@ export const formatarDataBR = (data: string): string => {
   const [ano, mes, dia] = data.split('-');
   return `${dia}/${mes}/${ano}`;
 };
+
+/**
+ * O ajuste em uma linha: "Hora extra de 1h20 em 28/09/2026". É o texto do
+ * aviso do pedido e o da decisão — os dois falam do mesmo dia com as
+ * mesmas palavras.
+ */
+export const descreverAjuste = (ajuste: {
+  tipo: keyof typeof ROTULO_TIPO_AJUSTE;
+  minutos: number;
+  data: string;
+}): string =>
+  `${ROTULO_TIPO_AJUSTE[ajuste.tipo]} de ${formatarMinutos(ajuste.minutos)} em ${formatarDataBR(ajuste.data)}`;
 
 /** "seg, 14/09" — rótulo curto para listas. */
 export const formatarDiaCurto = (data: string): string => {
@@ -1774,6 +1792,13 @@ class ServicoPonto {
       } no dia ${formatarDataBR(ajuste.data)} de ${dono.nome}.`
     );
 
+    avisarDecisaoDePonto({
+      tabela: 'ajustes_jornada',
+      id: ajusteId,
+      texto: `${abonar ? 'Abonado' : 'Contado como débito'}: dia sem fechar em ${formatarDataBR(
+        ajuste.data
+      )}`,
+    });
     return { sucesso: true };
   }
 
@@ -2020,6 +2045,26 @@ class ServicoPonto {
     this.gravarAjustes(lista);
     this.notificar();
 
+    /**
+     * O DIA ENTROU NA FILA: quem acompanha é avisado.
+     *
+     * Só quando ele PASSA a esperar decisão. Reapurar um dia que já
+     * estava na fila (a pessoa juntou o motivo, o RH recalculou) não é
+     * novidade para ninguém, e avisar de novo ensinaria o gestor a
+     * ignorar o aviso.
+     */
+    const dono = bancoDados.obterColaboradorPorId(colaboradorId);
+    if (ajuste.estado === 'pendente' && existente?.estado !== 'pendente' && dono) {
+      const todos = bancoDados.obterColaboradores();
+      avisarPedidoDePonto({
+        tabela: 'ajustes_jornada',
+        id: ajuste.id,
+        destinatarios: quemAcompanha((quem) => deveSerAvisadoSobre(quem, dono, todos)),
+        secao: 'aprovar_jornadas',
+        texto: `${descreverAjuste(ajuste)} · aguarda sua decisão`,
+      });
+    }
+
     return { criou: true, ajuste };
   }
 
@@ -2160,6 +2205,13 @@ class ServicoPonto {
       }`
     );
     this.notificar();
+
+    // Quem pediu fica sabendo sem precisar abrir o Ponto para conferir
+    avisarDecisaoDePonto({
+      tabela: 'ajustes_jornada',
+      id: ajusteId,
+      texto: textoDaDecisao(aprovado, descreverAjuste(ajuste), aprovado ? undefined : observacao),
+    });
     return { sucesso: true };
   }
 

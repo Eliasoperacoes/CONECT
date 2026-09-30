@@ -9,6 +9,12 @@
  * A função acha quem participa da conversa, pega os aparelhos dessas
  * pessoas na tabela `aparelhos`, e pede ao Firebase para acordá-los.
  *
+ * Três caminhos: a mensagem enviada pelo aplicativo, a resposta vinda da
+ * notificação (o vale), e o PONTO — ajuste de jornada, ausência e folga
+ * quando entram na fila e quando são decididos (`avisosDePonto.ts`).
+ * O ponto lê o pedido com a sessão de quem chama, então também usa a
+ * chave pública (`SUPABASE_ANON_KEY`), que o Supabase já entrega.
+ *
  * É o passo 3 do caminho descrito em `src/servicos/pushNativo.ts`: o
  * único que precisa de uma chave que não pode estar no aplicativo.
  *
@@ -265,51 +271,34 @@ const aceitaRespostaRapida = (conversa: {
   conversa.tipo === 'individual' ||
   (conversa.id !== 'grupo-avisos-da-rede' && conversa.apenas_gestores_publicam !== true);
 
-// ---------------------------------------------------------------
-// AVISAR UMA CONVERSA
-//
-// Um caminho só, para os dois pedidos: a mensagem que o aplicativo
-// enviou e a resposta que veio da notificação. A resposta é mensagem
-// nova, e os outros participantes precisam saber dela igual.
-// ---------------------------------------------------------------
-
 type Banco = ReturnType<typeof createClient>;
 
-interface Conversa {
-  id: string;
-  tipo: string;
-  nome: string;
-  apenas_gestores_publicam: boolean | null;
-}
+// ---------------------------------------------------------------
+// ENTREGAR AOS APARELHOS
+//
+// A parte que não muda entre um aviso e outro: achar os aparelhos das
+// pessoas, falar com o Firebase, e tirar da tabela o aparelho que não
+// existe mais. A conversa e o ponto chegam aqui com os dados prontos.
+// ---------------------------------------------------------------
 
-const avisarConversa = async (
+const entregarAosAparelhos = async (
   banco: Banco,
-  remetente: { id: string; nome: string; loja: string },
-  conversa: Conversa,
-  mensagemId: string,
-  previa: string
+  pessoas: string[],
+  dados: Record<string, string>,
+  /** O que muda de uma pessoa para outra — o vale de resposta. */
+  dadosDaPessoa?: (colaboradorId: string) => Promise<Record<string, string>>
 ): Promise<{ entregues: number; removidos?: number; erro?: string }> => {
   const segredo = Deno.env.get('FCM_CONTA_SERVICO');
-  // Sem a chave, nada a fazer — e não é erro de quem enviou a mensagem
+  // Sem a chave, nada a fazer — e não é erro de quem pediu o aviso
   if (!segredo) return { entregues: 0, erro: 'FCM_CONTA_SERVICO não configurado.' };
+  if (pessoas.length === 0) return { entregues: 0 };
 
-  const eu = remetente;
-
-  const { data: participantes } = await banco
-    .from('participantes')
-    .select('colaborador_id, removida')
-    .eq('conversa_id', conversa.id)
-    .neq('colaborador_id', eu.id);
-
-  const candidatos = (participantes ?? [])
-    .filter((p) => p.removida !== true)
-    .map((p) => p.colaborador_id as string);
-  if (candidatos.length === 0) return { entregues: 0 };
-
+  // QUEM ESTÁ INATIVO NÃO É AVISADO: saiu da empresa, e o aparelho pode
+  // ter ficado com outra pessoa
   const { data: ativos } = await banco
     .from('colaboradores')
     .select('id')
-    .in('id', candidatos)
+    .in('id', pessoas)
     .eq('ativo', true);
   const destinatarios = (ativos ?? []).map((c) => c.id as string);
   if (destinatarios.length === 0) return { entregues: 0 };
@@ -321,23 +310,9 @@ const avisarConversa = async (
     .in('colaborador_id', destinatarios);
   if (!aparelhos || aparelhos.length === 0) return { entregues: 0 };
 
-  /**
-   * QUEM FALOU, O QUE DISSE, E EM QUE GRUPO — separados.
-   *
-   * O aparelho monta o aviso no estilo do WhatsApp (ServicoDeAvisos):
-   * "Malachias" no cabeçalho (é o nome do aplicativo), a conversa como
-   * título e cada mensagem empilhada como "Nome: texto". Para empilhar,
-   * ele precisa das partes, e não de um título já montado aqui.
-   */
-  const ehGrupo = conversa.tipo === 'grupo';
-
   const conta = JSON.parse(segredo) as ContaDeServico;
   const acesso = await obterTokenDoGoogle(conta);
   const endereco = `https://fcm.googleapis.com/v1/projects/${conta.project_id}/messages:send`;
-
-  const respondivel = aceitaRespostaRapida(conversa);
-  const respostaUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/enviar-aviso`;
-  const venceEm = Date.now() + VALIDADE_DO_VALE_MS;
 
   let entregues = 0;
   const vencidos: string[] = [];
@@ -353,26 +328,8 @@ const avisarConversa = async (
        * (`ServicoDeAvisos.java`), que monta o "Responder".
        *
        * O Firebase só carrega TEXTO aqui: todo valor vai como string.
-       * `tipo` e `conversaId` são o que `destinoDoPush` lê no toque.
        */
-      const dados: Record<string, string> = {
-        tipo: 'conversa',
-        conversaId: conversa.id,
-        mensagemId,
-        remetente: eu.nome,
-        texto: previa,
-        conversa: conversa.nome,
-        ehGrupo: ehGrupo ? 'true' : 'false',
-      };
-      if (respondivel) {
-        dados.vale = await assinarVale({
-          c: colaborador_id as string,
-          v: conversa.id,
-          m: mensagemId,
-          e: venceEm,
-        });
-        dados.respostaUrl = respostaUrl;
-      }
+      const deste = dadosDaPessoa ? await dadosDaPessoa(colaborador_id as string) : {};
 
       const resposta = await fetch(endereco, {
         method: 'POST',
@@ -383,7 +340,7 @@ const avisarConversa = async (
         body: JSON.stringify({
           message: {
             token,
-            data: dados,
+            data: { ...dados, ...deste },
             // ALTA: sem ela, o Android segura a mensagem de dados até o
             // aparelho acordar sozinho — minutos, no modo de economia
             android: { priority: 'HIGH' },
@@ -401,7 +358,7 @@ const avisarConversa = async (
        *
        * Aplicativo desinstalado, aparelho restaurado: o Firebase responde
        * UNREGISTERED. Deixar a linha é pagar uma ida ao Google por
-       * mensagem, para sempre, para um aparelho que não existe mais.
+       * aviso, para sempre, para um aparelho que não existe mais.
        */
       const erro = await resposta.json().catch(() => ({}));
       const codigos: string[] = (erro?.error?.details ?? []).map(
@@ -420,6 +377,118 @@ const avisarConversa = async (
   }
 
   return { entregues, removidos: vencidos.length };
+};
+
+// ---------------------------------------------------------------
+// AVISAR UMA CONVERSA
+//
+// Um caminho só, para os dois pedidos: a mensagem que o aplicativo
+// enviou e a resposta que veio da notificação. A resposta é mensagem
+// nova, e os outros participantes precisam saber dela igual.
+// ---------------------------------------------------------------
+
+interface Conversa {
+  id: string;
+  tipo: string;
+  nome: string;
+  apenas_gestores_publicam: boolean | null;
+}
+
+const avisarConversa = async (
+  banco: Banco,
+  remetente: { id: string; nome: string; loja: string },
+  conversa: Conversa,
+  mensagemId: string,
+  previa: string
+): Promise<{ entregues: number; removidos?: number; erro?: string }> => {
+  const eu = remetente;
+
+  const { data: participantes } = await banco
+    .from('participantes')
+    .select('colaborador_id, removida')
+    .eq('conversa_id', conversa.id)
+    .neq('colaborador_id', eu.id);
+
+  const candidatos = (participantes ?? [])
+    .filter((p) => p.removida !== true)
+    .map((p) => p.colaborador_id as string);
+
+  /**
+   * QUEM FALOU, O QUE DISSE, E EM QUE GRUPO — separados.
+   *
+   * O aparelho monta o aviso no estilo do WhatsApp (ServicoDeAvisos):
+   * "Malachias" no cabeçalho (é o nome do aplicativo), a conversa como
+   * título e cada mensagem empilhada como "Nome: texto". Para empilhar,
+   * ele precisa das partes, e não de um título já montado aqui.
+   */
+  const ehGrupo = conversa.tipo === 'grupo';
+
+  const respondivel = aceitaRespostaRapida(conversa);
+  const respostaUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/enviar-aviso`;
+  const venceEm = Date.now() + VALIDADE_DO_VALE_MS;
+
+  // `tipo` e `conversaId` são o que `destinoDoPush` lê no toque
+  return entregarAosAparelhos(
+    banco,
+    candidatos,
+    {
+      tipo: 'conversa',
+      conversaId: conversa.id,
+      mensagemId,
+      remetente: eu.nome,
+      texto: previa,
+      conversa: conversa.nome,
+      ehGrupo: ehGrupo ? 'true' : 'false',
+    },
+    respondivel
+      ? async (colaboradorId) => ({
+          vale: await assinarVale({ c: colaboradorId, v: conversa.id, m: mensagemId, e: venceEm }),
+          respostaUrl,
+        })
+      : undefined
+  );
+};
+
+// ---------------------------------------------------------------
+// OS AVISOS DO PONTO
+//
+// Ajuste de jornada, ausência e folga: quando entram na fila (avisa
+// quem decide) e quando são decididos (avisa quem pediu). Antes eles só
+// apareciam no sino, que saiu.
+//
+// O APARELHO DESENHA COMO CONVERSA. `ServicoDeAvisos.java` só sabe
+// desenhar "Nome: texto" empilhado — e é exatamente o que serve: as
+// pendências de uma seção se empilham num aviso só, com o título da
+// seção. Um formato novo exigiria um APK novo para as 89 pessoas.
+// `conversaId` leva a SEÇÃO: é o que empilha, e é o que o toque abre
+// (`destinoDoPush`).
+// ---------------------------------------------------------------
+
+const TABELAS_DE_PONTO = ['ajustes_jornada', 'justificativas_ausencia'];
+const SECOES_DO_PEDIDO = ['aprovar_jornadas', 'escala_folgas'];
+/** Uma cadeia de verdade tem poucos degraus; mais que isto é abuso. */
+const MAXIMO_DE_DESTINATARIOS = 30;
+
+/**
+ * A CHAVE PÚBLICA, nos dois formatos do Supabase — a mesma história da
+ * chave de serviço. É com ela, mais a sessão de quem chama, que a função
+ * lê o pedido COMO aquela pessoa, sob a RLS.
+ */
+const chavePublica = (): string => {
+  const antiga = Deno.env.get('SUPABASE_ANON_KEY');
+  if (antiga) return antiga;
+
+  const novas = Deno.env.get('SUPABASE_PUBLISHABLE_KEYS');
+  if (novas) {
+    try {
+      const lista = JSON.parse(novas) as Record<string, string>;
+      const primeira = lista.default ?? Object.values(lista)[0];
+      if (primeira) return primeira;
+    } catch {
+      return novas;
+    }
+  }
+  throw new Error('Sem chave pública no ambiente da função.');
 };
 
 // ---------------------------------------------------------------
@@ -523,14 +592,8 @@ Deno.serve(async (req) => {
     return responder({ gravada: id, ...aviso });
   }
 
-  // =============================================================
-  // CAMINHO 2 — O APLICATIVO ENVIOU UMA MENSAGEM
-  // =============================================================
-  const mensagemId = String(pedido.mensagemId || '');
-  const previa = String(pedido.previa || '').slice(0, 240);
-  if (!mensagemId) return responder({ erro: 'Falta mensagemId.' }, 400);
-
-  // Quem chama: pela sessão que veio no cabeçalho, e não pelo corpo
+  // Daqui para baixo quem chama é o APLICATIVO ABERTO: pela sessão que
+  // veio no cabeçalho, e não pelo corpo
   const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
   const { data: sessao } = await banco.auth.getUser(jwt);
   if (!sessao?.user) return responder({ erro: 'Sem sessão.' }, 401);
@@ -541,6 +604,101 @@ Deno.serve(async (req) => {
     .eq('auth_user_id', sessao.user.id)
     .maybeSingle();
   if (!eu) return responder({ erro: 'Sessão sem colaborador.' }, 403);
+
+  // =============================================================
+  // CAMINHO 3 — UM PEDIDO DO PONTO ENTROU NA FILA, OU FOI DECIDIDO
+  //
+  // O QUE A FUNÇÃO CONFERE, e o que ela não precisa conferir:
+  //
+  //  · O PEDIDO É LIDO COM A SESSÃO DE QUEM CHAMA. Se a RLS não deixa
+  //    ler, quem chama não é o dono nem está na alçada dele — e para
+  //    aí. A regra de quem enxerga o quê é a do banco (`posso_decidir_
+  //    jornada`), sem uma cópia aqui.
+  //
+  //  · NA DECISÃO, quem chama tem de ser quem decidiu, e quem recebe é
+  //    o dono — tirado do banco, nunca do corpo.
+  //
+  //  · NO PEDIDO, quem recebe vem do aparelho, calculado pela regra do
+  //    organograma (que não mora no banco). A função não refaz a conta,
+  //    e não precisa: o aviso só fala de um pedido que QUEM CHAMA pode
+  //    ver, com o nome do dono tirado do banco. Forjar a lista só
+  //    serviria para contar a alguém o que ele poderia mandar por
+  //    mensagem. O teto de destinatários impede usar isto de alto-falante.
+  // =============================================================
+  if (pedido.ponto && typeof pedido.ponto === 'object') {
+    const p = pedido.ponto as Record<string, unknown>;
+    const tabela = String(p.tabela || '');
+    const id = String(p.id || '');
+    const evento = String(p.evento || '');
+    const texto = String(p.texto || '').trim().slice(0, 240);
+    if (!TABELAS_DE_PONTO.includes(tabela) || !id || !texto) {
+      return responder({ erro: 'Pedido de aviso do ponto incompleto.' }, 400);
+    }
+
+    const comoQuemChama = createClient(url, chavePublica(), {
+      global: { headers: { Authorization: `Bearer ${jwt}` } },
+      auth: { persistSession: false },
+    });
+    const { data: linha } = await comoQuemChama
+      .from(tabela)
+      .select('id, colaborador_id, estado, aprovador_id')
+      .eq('id', id)
+      .maybeSingle();
+    if (!linha) return responder({ erro: 'Pedido fora do seu alcance.' }, 404);
+
+    let pessoas: string[];
+    let remetente: string;
+    let titulo: string;
+    let secao: string;
+
+    if (evento === 'pedido') {
+      if (linha.estado !== 'pendente') return responder({ erro: 'O pedido já foi decidido.' }, 409);
+      secao = String(p.secao || '');
+      if (!SECOES_DO_PEDIDO.includes(secao)) return responder({ erro: 'Seção inválida.' }, 400);
+
+      const lista = Array.isArray(p.destinatarios) ? p.destinatarios : [];
+      pessoas = [...new Set(lista.map(String))]
+        .filter((c) => c && c !== eu.id)
+        .slice(0, MAXIMO_DE_DESTINATARIOS);
+
+      const { data: dono } = await banco
+        .from('colaboradores')
+        .select('nome')
+        .eq('id', linha.colaborador_id)
+        .maybeSingle();
+      remetente = (dono?.nome as string) || 'Colaborador';
+      titulo = 'Aguardando sua decisão';
+    } else if (evento === 'decisao') {
+      if (linha.estado === 'pendente') return responder({ erro: 'O pedido ainda não foi decidido.' }, 409);
+      if (linha.aprovador_id !== eu.id) {
+        return responder({ erro: 'Só quem decidiu avisa da decisão.' }, 403);
+      }
+      pessoas = [linha.colaborador_id as string].filter((c) => c !== eu.id);
+      remetente = eu.nome;
+      titulo = 'Seu ponto';
+      secao = 'meu_ponto';
+    } else {
+      return responder({ erro: 'Evento desconhecido.' }, 400);
+    }
+
+    const aviso = await entregarAosAparelhos(banco, pessoas, {
+      tipo: 'secao',
+      conversaId: secao,
+      mensagemId: `ponto-${evento}-${id}`,
+      remetente,
+      texto,
+      conversa: titulo,
+      ehGrupo: 'true',
+    });
+    return responder(aviso, aviso.erro ? 503 : 200);
+  }
+
+  // =============================================================
+  // CAMINHO 2 — O APLICATIVO ENVIOU UMA MENSAGEM
+  // =============================================================
+  const mensagemId = String(pedido.mensagemId || '');
+  const previa = String(pedido.previa || '').slice(0, 240);
+  if (!mensagemId) return responder({ erro: 'Falta mensagemId.' }, 400);
 
   const { data: mensagem } = await banco
     .from('mensagens')

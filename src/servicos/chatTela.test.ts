@@ -856,15 +856,30 @@ test('o topo da conversa nao tem menu que repete o que esta a vista', async () =
  * Os dois cabeçalhos empilhados achatavam as mensagens. No computador o
  * topo fica: lá a conversa divide a tela com o resto do sistema.
  */
-test('com a conversa aberta, o topo do sistema sai no celular e fica no computador', async () => {
+test('o topo do sistema nao existe no celular, e no computador fica sem o sino', async () => {
+  /**
+   * Pedido do Elias: tudo o que a barra tinha já mora na aba Eu e na barra
+   * de baixo. No computador ela é a navegação, e fica. O sino saiu dos
+   * dois: os avisos são os do sistema.
+   */
   const app = semComentarios(
     await Bun.file(new URL('../App.tsx', import.meta.url)).text()
   );
 
   const topo = app.indexOf('<header');
   expect(topo).toBeGreaterThan(-1);
-  const abertura = app.slice(topo, app.indexOf('>', app.indexOf('}`}', topo)));
-  expect(abertura).toContain("conversaAtiva ? 'hidden md:flex' : 'flex'");
+  const abertura = app.slice(topo, app.indexOf('>', topo));
+  expect(abertura).toContain('className="hidden md:flex');
+  expect(app).not.toContain('SinoNotificacoes');
+
+  // O que a barra tinha e o celular não pode perder: o modo local, na aba Eu
+  const eu = await Bun.file(new URL('../componentes/AbaEu.tsx', import.meta.url)).text();
+  expect(eu).toContain('<IndicadorNuvem />');
+
+  // O número que o sino mostrava agora está na aba Gerenciar, pela mesma conta
+  const gerenciar = app.slice(app.indexOf("id: 'painel'"), app.indexOf("id: 'admin'"));
+  expect(gerenciar).toContain('contador: pendenciasParaMim');
+  expect(app).toContain('const total = contarPendenciasParaMim();');
 });
 
 /**

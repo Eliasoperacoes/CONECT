@@ -41,7 +41,7 @@ import {
 import { rodandoNoAplicativo } from './aplicativo';
 import { supabase, usandoNuvem } from './supabase';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
-import type { DestinoNotificacao } from './centralDeNotificacoes';
+import { ehSecaoDestino, type DestinoNotificacao } from './destinoDoAviso';
 
 /**
  * O que o servidor manda dentro do push.
@@ -72,6 +72,15 @@ export const destinoDoPush = (dados: DadosDoPush): DestinoNotificacao | null => 
   }
   if (dados.tipo === 'conversa' && dados.conversaId) {
     return { tipo: 'conversa', conversaId: dados.conversaId };
+  }
+  /**
+   * OS AVISOS DO PONTO trazem a SEÇÃO no `conversaId` — é o único campo
+   * além do tipo que o aparelho repassa no toque (`ServicoDeAvisos`).
+   * Só as seções que existem: um valor estranho abre a tela inicial, e
+   * não uma tela quebrada.
+   */
+  if (dados.tipo === 'secao' && ehSecaoDestino(dados.conversaId)) {
+    return { tipo: 'secao', secao: dados.conversaId };
   }
   return null;
 };

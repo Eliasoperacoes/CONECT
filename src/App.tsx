@@ -58,10 +58,10 @@ import { TelaConversa } from './componentes/TelaConversa';
 import { AbaEu } from './componentes/AbaEu';
 import { PainelRede } from './componentes/PainelRede';
 import { CentralAvisos } from './componentes/CentralAvisos';
-import { SinoNotificacoes } from './componentes/SinoNotificacoes';
-import type {
-  DestinoNotificacao,
-  SecaoDestino,
+import {
+  contarPendenciasParaMim,
+  type DestinoNotificacao,
+  type SecaoDestino,
 } from './servicos/centralDeNotificacoes';
 import { ModalNovaConversa } from './componentes/ModalNovaConversa';
 import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
@@ -82,11 +82,7 @@ import {
   assinarPreferencias,
   reexibirConversa,
 } from './servicos/preferenciasConversa';
-import {
-  pendenciasParaDecidir as pendenciasDeAusencia,
-  pendenciasDeFolga,
-  assinarJustificativas,
-} from './servicos/justificativas';
+import { assinarJustificativas } from './servicos/justificativas';
 import { servicoPonto } from './servicos/ponto';
 import { vigiarRelogio } from './servicos/relogio';
 import { usandoNuvem } from './servicos/supabase';
@@ -617,13 +613,21 @@ export default function App() {
   }, [autenticado, colaboradorAtual.id]);
 
   const refPendenciasVistas = useRef<number | null>(null);
+  /** O número da aba Painel: as decisões do ponto que esperam por mim. */
+  const [pendenciasParaMim, setPendenciasParaMim] = useState(0);
   useEffect(() => {
     const conferir = () => {
       if (!bancoDados.estaAutenticado()) return;
-      const total =
-        servicoPonto.obterPendenciasParaDecidir().length +
-        pendenciasDeAusencia().length +
-        pendenciasDeFolga().length;
+      /**
+       * A MESMA CONTA DO NÚMERO DA ABA E DO AVISO DO CELULAR.
+       *
+       * Contava tudo o que a pessoa PODE decidir; o celular avisa quem
+       * ACOMPANHA (a cadeia de cada um). O TI, que pode decidir sobre
+       * todos, recebia aviso da rede inteira no computador e nada no
+       * celular. Uma conta só, a de `contarPendenciasParaMim`.
+       */
+      const total = contarPendenciasParaMim();
+      setPendenciasParaMim(total);
       const antes = refPendenciasVistas.current;
       refPendenciasVistas.current = total;
 
@@ -640,9 +644,13 @@ export default function App() {
        * coisa velha é aviso que a pessoa aprende a ignorar, inclusive os
        * novos.
        *
-       * O SINO resolve a necessidade original sem o barulho: ele mostra o
-       * que está esperando o tempo todo, sem precisar interromper. Aqui
-       * fica só o que é novidade de verdade.
+       * O NÚMERO NA ABA PAINEL resolve a necessidade original sem o
+       * barulho: mostra o que está esperando o tempo todo. Aqui fica só o
+       * que é novidade de verdade.
+       *
+       * Este aviso é o do NAVEGADOR (computador e iPhone). No aplicativo
+       * Android quem avisa é o servidor (`avisosDePonto`), e
+       * `mostrarAvisoDeMensagem` não roda lá.
        */
       const primeiraPassada = antes === null;
       if (primeiraPassada) return;
@@ -652,10 +660,13 @@ export default function App() {
       mostrarAvisoDeMensagem({
         titulo:
           novas === 1
-            ? 'Uma jornada aguarda sua decisão'
-            : `${novas} jornadas aguardam você`,
-        corpo: 'Abra Equipe & Ponto e decida em Aprovar jornadas.',
+            ? 'Um pedido do ponto aguarda sua decisão'
+            : `${novas} pedidos do ponto aguardam sua decisão`,
+        corpo: 'Ajuste de jornada, ausência ou folga. Toque para decidir.',
         conversaId: 'fila-de-aprovacao',
+        // Levava a lugar nenhum: o toque abria o sistema na tela em que estava
+        aoClicar: () =>
+          irParaRef.current({ tipo: 'secao', secao: 'aprovar_jornadas' }),
       });
       tocarAvisoDeMensagem();
     };
@@ -1053,6 +1064,13 @@ export default function App() {
       return;
     }
 
+    // O aviso da decisão leva ao ponto de quem pediu, onde ela aparece
+    if (destino.secao === 'meu_ponto') {
+      setConversaAtivaId(null);
+      setAbaAtiva('ponto');
+      return;
+    }
+
     setAbaAtiva('painel');
     setConversaAtivaId(null);
     setSecaoAlvo(destino.secao);
@@ -1109,6 +1127,8 @@ export default function App() {
       visivel: podeVerRede,
       alvo: 'painel',
       exibeAviso: true,
+      // O número que o sino mostrava: as decisões do ponto que esperam por mim
+      contador: pendenciasParaMim,
     },
     {
       id: 'admin',
@@ -1190,20 +1210,20 @@ export default function App() {
       )}
 
       {/*
-        Topo Geral da Aplicação Principal.
+        Topo Geral da Aplicação — SÓ NO COMPUTADOR.
 
-        NO CELULAR, COM UMA CONVERSA ABERTA, ELE SAI. A conversa tem o
-        próprio cabeçalho (voltar, nome, lupa), e os dois empilhados
-        achatavam as mensagens — pedido do Elias: "caber mais mensagens
-        possível na vertical". O sino e o perfil ficam a um "voltar" de
-        distância. No computador a conversa divide a tela com o resto,
-        então o topo fica.
+        No celular ele saiu de vez, pedido do Elias: tudo o que tinha já
+        mora na aba Eu (perfil, Painel ADM, sair, o modo local) e na barra
+        de baixo (a navegação). Sobrava uma faixa de 60px repetindo o nome
+        do sistema em cima de cada tela.
+
+        No computador ele É a navegação — lá não há barra de baixo nem aba
+        Eu na lateral —, então fica.
+
+        O SINO SAIU DOS DOIS. Os avisos são os do sistema (Android e
+        navegador), e cada pendência já tem o número na própria aba.
       */}
-      <header
-        className={`px-4 py-2.5 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] items-center justify-between flex-shrink-0 z-10 ${
-          conversaAtiva ? 'hidden md:flex' : 'flex'
-        }`}
-      >
+      <header className="hidden md:flex px-4 py-2.5 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] items-center justify-between flex-shrink-0 z-10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shadow-xs">
             <MessageSquare className="w-4 h-4" />
@@ -1291,7 +1311,6 @@ export default function App() {
 
         {/* Ações Rápidas do Topo: Painel ADM e Perfil */}
         <div className="flex items-center gap-2">
-          <SinoNotificacoes aoIrPara={irParaNotificacao} />
 
           {ehAdmin && (
             <button

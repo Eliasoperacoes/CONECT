@@ -34,6 +34,7 @@ import {
   TipoAusencia,
   cuidaDePessoas,
   ehDoRh,
+  ROTULO_TIPO_AUSENCIA,
 } from '../tipos';
 import { deveSerAvisadoSobre } from './organograma';
 import {
@@ -43,7 +44,13 @@ import {
   situacaoDoDia,
 } from './justificativasCache';
 import { bancoDados } from './bancoDados';
-import { servicoPonto } from './ponto';
+import { servicoPonto, formatarDataBR } from './ponto';
+import {
+  avisarPedidoDePonto,
+  avisarDecisaoDePonto,
+  quemAcompanha,
+  textoDaDecisao,
+} from './avisosDePonto';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
 
@@ -122,6 +129,20 @@ export const deveSerAvisadoDeAusencia = (
   }
   return ehDoRh(quem) && quem.id !== dono.id;
 };
+
+/**
+ * A solicitação em uma linha: "Atestado médico em 28/09/2026", ou "de
+ * 28/09/2026 a 30/09/2026" quando é período. É o texto do aviso do pedido
+ * e o da decisão.
+ */
+export const descreverJustificativa = (j: {
+  tipo: TipoAusencia;
+  dataInicio: string;
+  dataFim: string;
+}): string =>
+  j.dataFim && j.dataFim !== j.dataInicio
+    ? `${ROTULO_TIPO_AUSENCIA[j.tipo]} de ${formatarDataBR(j.dataInicio)} a ${formatarDataBR(j.dataFim)}`
+    : `${ROTULO_TIPO_AUSENCIA[j.tipo]} em ${formatarDataBR(j.dataInicio)}`;
 
 /** Os dias de um período, inclusive as pontas. */
 const diasDoPeriodo = (inicio: string, fim: string): string[] => {
@@ -227,6 +248,17 @@ export const solicitarAusencia = async (dados: {
     `${eu.nome} solicitou ${dados.tipo} de ${dados.dataInicio} a ${dados.dataFim}.`
   );
 
+  // Quem decide fica sabendo — a regra de quem é a mesma do Painel
+  avisarPedidoDePonto({
+    tabela: 'justificativas_ausencia',
+    id: justificativa.id,
+    destinatarios: quemAcompanha((quem) =>
+      deveSerAvisadoDeAusencia(quem, eu, justificativa.tipo)
+    ),
+    secao: justificativa.tipo === 'folga_sabado' ? 'escala_folgas' : 'aprovar_jornadas',
+    texto: `${descreverJustificativa(justificativa)} · aguarda sua decisão`,
+  });
+
   return { sucesso: true, justificativa };
 };
 
@@ -323,6 +355,13 @@ export const lancarAusenciaPelaLideranca = async (dados: {
     'usuario',
     `${eu.nome} lançou ${dados.tipo} para ${pessoa.nome} de ${dados.dataInicio} a ${dados.dataFim}.`
   );
+
+  // A pessoa escalada sabe na hora, e não no sábado em que já devia ter vindo
+  avisarDecisaoDePonto({
+    tabela: 'justificativas_ausencia',
+    id: justificativa.id,
+    texto: `Lançado na sua escala: ${descreverJustificativa(justificativa)}`,
+  });
 
   return { sucesso: true, justificativa };
 };
@@ -454,6 +493,12 @@ export const decidirAusencia = async (
     'usuario',
     `${eu.nome} ${aprovada ? 'aprovou' : 'recusou'} ${alvo.tipo} de ${dono.nome}.`
   );
+
+  avisarDecisaoDePonto({
+    tabela: 'justificativas_ausencia',
+    id,
+    texto: textoDaDecisao(aprovada, descreverJustificativa(alvo), motivoRecusa),
+  });
 
   return { sucesso: true };
 };

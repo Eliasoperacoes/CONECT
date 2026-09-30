@@ -293,6 +293,19 @@ test('aviso com dado incompleto abre a tela inicial, e não uma janela vazia', a
   expect(destinoDoPush({ tipo: 'secao' })).toBeNull();
 });
 
+test('O AVISO DO PONTO leva à seção que veio no conversaId, e só às que existem', () => {
+  /* O aparelho só repassa `tipo` e `conversaId` no toque: a seção viaja ali */
+  expect(destinoDoPush({ tipo: 'secao', conversaId: 'aprovar_jornadas' })).toEqual({
+    tipo: 'secao',
+    secao: 'aprovar_jornadas',
+  });
+  expect(destinoDoPush({ tipo: 'secao', conversaId: 'meu_ponto' })).toEqual({
+    tipo: 'secao',
+    secao: 'meu_ponto',
+  });
+  expect(destinoDoPush({ tipo: 'secao', conversaId: 'painel-admin' })).toBeNull();
+});
+
 test('COM O APLICATIVO ABERTO o aviso não vira tarja na tela', async () => {
   /**
    * Mesma regra do aviso do navegador: uma tarja por cima de um sistema
