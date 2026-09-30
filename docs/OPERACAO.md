@@ -103,6 +103,7 @@ esquema.
 | `central-da-direcao.sql` | **Rode uma vez.** Dá à Central da Direção tipo, categoria, destinos e anexo, e põe o filtro de quem vê o quê no banco |
 | `resetar-senha-inicial.sql` | **Rode uma vez.** Cria a função do botão "Resetar para a senha padrão", na ficha do colaborador |
 | `apuracao-pode-zerar.sql` | **Rode uma vez.** Solta a trava que recusava apuração de ZERO minuto — sem ela, "Reapurar período" não consegue desfazer um débito errado, e a tela diz "0 dias mudaram" como se estivesse tudo certo. No fim ele **lista quem tem débito com cara de pausa cobrada**, sem alterar nada |
+| `lideres-publicam.sql` | **Rode uma vez.** O banco passa a aceitar publicação na Central do líder de setor para cima, como a tela já mostrava. Sem ele, o líder monta a publicação e é recusado no fim |
 | `resetar-acesso.sql` | Pessoa não entra e não lembra a senha, e o botão não está à mão |
 | `liberar-acesso.sql` | Contas de autenticação órfãs (sem ficha do outro lado) |
 | `conserto-login.sql` | Só se o cadastro duplicado voltar. Já aplicado |

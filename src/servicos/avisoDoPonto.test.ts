@@ -139,6 +139,7 @@ beforeEach(() => {
     justificativas_ausencia: [
       { id: 'folga-ana', colaborador_id: 'ana', estado: 'pendente', aprovador_id: null },
     ],
+    avisos_rede: [{ id: 'pub-1', titulo: 'Meta do mês', autor_id: 'bia' }],
   };
   // A Ana vê os próprios pedidos; a Bia, líder dela, também; o Caio não
   visiveisPara = {
@@ -272,4 +273,45 @@ test('a lista de destinatários tem teto: não vira alto-falante', async () => {
     'jwt-da-ana'
   );
   expect(entregas.length).toBe(30);
+});
+
+// ---------------------------------------------------------------
+// A PUBLICAÇÃO DIRIGIDA
+// ---------------------------------------------------------------
+
+const publicar = (publicacao: Record<string, unknown>, jwt?: string) =>
+  atender(
+    new Request('https://x/functions/v1/enviar-aviso', {
+      method: 'POST',
+      headers: jwt ? { Authorization: `Bearer ${jwt}` } : {},
+      body: JSON.stringify({ publicacao }),
+    })
+  );
+
+test('a publicação dirigida avisa quem ela alcança, e o toque abre a publicação', async () => {
+  const r = await publicar(
+    { id: 'pub-1', destinatarios: ['ana', 'caio', 'bia', 'zeca'], texto: 'Aviso: Meta do mês' },
+    'jwt-da-bia'
+  );
+  expect(r.status).toBe(200);
+  // O autor não se avisa; o desligado não recebe
+  expect(quemRecebeu()).toEqual(['ana', 'caio']);
+
+  const dados = entregas[0].data;
+  expect(dados.tipo).toBe('publicacao');
+  // O aparelho só repassa tipo e conversaId no toque: o id da publicação vai ali
+  expect(dados.conversaId).toBe('pub-1');
+  expect(dados.remetente).toBe('Bia');
+});
+
+test('SÓ O AUTOR avisa da própria publicação', async () => {
+  const r = await publicar({ id: 'pub-1', destinatarios: ['caio'], texto: 'x' }, 'jwt-da-ana');
+  expect(r.status).toBe(403);
+  expect(entregas).toEqual([]);
+});
+
+test('publicação que não existe não avisa ninguém', async () => {
+  const r = await publicar({ id: 'pub-falsa', destinatarios: ['caio'], texto: 'x' }, 'jwt-da-bia');
+  expect(r.status).toBe(404);
+  expect(entregas).toEqual([]);
 });

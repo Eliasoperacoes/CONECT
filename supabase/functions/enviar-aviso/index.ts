@@ -9,9 +9,10 @@
  * A função acha quem participa da conversa, pega os aparelhos dessas
  * pessoas na tabela `aparelhos`, e pede ao Firebase para acordá-los.
  *
- * Três caminhos: a mensagem enviada pelo aplicativo, a resposta vinda da
- * notificação (o vale), e o PONTO — ajuste de jornada, ausência e folga
- * quando entram na fila e quando são decididos (`avisosDePonto.ts`).
+ * Quatro caminhos: a mensagem enviada pelo aplicativo, a resposta vinda da
+ * notificação (o vale), o PONTO — ajuste de jornada, ausência e folga
+ * quando entram na fila e quando são decididos (`avisosDePonto.ts`) — e
+ * a PUBLICAÇÃO DIRIGIDA, que avisa só quem ela alcança.
  * O ponto lê o pedido com a sessão de quem chama, então também usa a
  * chave pública (`SUPABASE_ANON_KEY`), que o Supabase já entrega.
  *
@@ -468,6 +469,11 @@ const TABELAS_DE_PONTO = ['ajustes_jornada', 'justificativas_ausencia'];
 const SECOES_DO_PEDIDO = ['aprovar_jornadas', 'escala_folgas'];
 /** Uma cadeia de verdade tem poucos degraus; mais que isto é abuso. */
 const MAXIMO_DE_DESTINATARIOS = 30;
+/**
+ * A rede inteira tem ~89 pessoas; a publicação dirigida é uma parte
+ * dela. O teto só impede que o caminho vire alto-falante de outra coisa.
+ */
+const MAXIMO_DA_PUBLICACAO = 150;
 
 /**
  * A CHAVE PÚBLICA, nos dois formatos do Supabase — a mesma história da
@@ -688,6 +694,54 @@ Deno.serve(async (req) => {
       remetente,
       texto,
       conversa: titulo,
+      ehGrupo: 'true',
+    });
+    return responder(aviso, aviso.erro ? 503 : 200);
+  }
+
+  // =============================================================
+  // CAMINHO 4 — UMA PUBLICAÇÃO DIRIGIDA
+  //
+  // Publicação para a rede toda avisa pelo grupo de avisos (caminho 2).
+  // A dirigida a uma loja, um setor ou algumas pessoas avisa só quem ela
+  // alcança — e quem ela alcança é regra de `mural.ts`, que o aparelho
+  // do autor aplica. Aqui se confere que QUEM PEDE É O AUTOR, com o autor
+  // tirado do banco; o nome no aviso também sai do banco.
+  // =============================================================
+  if (pedido.publicacao && typeof pedido.publicacao === 'object') {
+    const p = pedido.publicacao as Record<string, unknown>;
+    const id = String(p.id || '');
+    const texto = String(p.texto || '').trim().slice(0, 240);
+    if (!id || !texto) return responder({ erro: 'Pedido de aviso da publicação incompleto.' }, 400);
+
+    const { data: publicacao } = await banco
+      .from('avisos_rede')
+      .select('id, autor_id')
+      .eq('id', id)
+      .maybeSingle();
+    if (!publicacao) return responder({ erro: 'Publicação não encontrada.' }, 404);
+    if (publicacao.autor_id !== eu.id) {
+      return responder({ erro: 'Só quem publicou avisa da publicação.' }, 403);
+    }
+
+    const lista = Array.isArray(p.destinatarios) ? p.destinatarios : [];
+    const pessoas = [...new Set(lista.map(String))]
+      .filter((c) => c && c !== eu.id)
+      .slice(0, MAXIMO_DA_PUBLICACAO);
+
+    /**
+     * `conversaId` leva a PUBLICAÇÃO: é o único campo além do tipo que o
+     * aparelho repassa no toque (`ServicoDeAvisos`), e é o que empilha —
+     * uma publicação, um aviso.
+     */
+    const aviso = await entregarAosAparelhos(banco, pessoas, {
+      tipo: 'publicacao',
+      conversaId: publicacao.id as string,
+      publicacaoId: publicacao.id as string,
+      mensagemId: `publicacao-${publicacao.id}`,
+      remetente: eu.nome,
+      texto,
+      conversa: 'Central',
       ehGrupo: 'true',
     });
     return responder(aviso, aviso.erro ? 503 : 200);

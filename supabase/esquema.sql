@@ -1058,10 +1058,14 @@ returns boolean language sql stable security definer set search_path = public as
   select public.meu_nivel() >= 4 or public.meu_setor() = 'RH';
 $$;
 
--- Publicar comunicado oficial da rede: Diretoria e TI
+-- Publicar na Central: do líder de setor para cima. É `publicaComunicado`
+-- (tipos.ts) — e esta é a trava que vale. Estava em 4 (Diretoria e TI)
+-- desde a migração dos cinco níveis, enquanto a tela já liberava o líder:
+-- ele montava a publicação inteira e o banco recusava no fim. Pedido do
+-- Elias: "líderes também poderão publicar avisos, conteúdos".
 drop policy if exists avisos_insercao on public.avisos_rede;
 create policy avisos_insercao on public.avisos_rede
-  for insert to authenticated with check (public.meu_nivel() >= 4);
+  for insert to authenticated with check (public.meu_nivel() >= 2);
 
 -- ============================================================
 -- ARQUIVOS DAS MENSAGENS

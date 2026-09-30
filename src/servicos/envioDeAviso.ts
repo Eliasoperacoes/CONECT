@@ -2,17 +2,21 @@
  * PEDE AO SERVIDOR O AVISO DE UMA MENSAGEM — CONECTA / Malachias Autopeças
  *
  * ===================================================================
- * POR QUE SÓ MENSAGEM
+ * MENSAGEM, E A PUBLICAÇÃO DIRIGIDA
  * ===================================================================
  *
- * Publicação também avisa — e avisa POR AQUI. Publicar já manda um
- * recado ao grupo de avisos da rede, e citar alguém já manda a ele uma
- * mensagem. As duas coisas são mensagens, e passam por este caminho.
+ * A publicação para a REDE TODA avisa como mensagem: o recado vai ao
+ * grupo de avisos da rede, onde estão todos, e sai por este caminho.
  *
- * É o que dispensa o servidor de saber quem uma publicação alcança. Essa
- * regra mora em `mural.ts` e já esteve escrita em dois lugares; o
- * servidor copiá-la seria a terceira cópia. Para mensagem, quem recebe é
- * quem PARTICIPA da conversa — e isso o banco sabe sozinho.
+ * A publicação DIRIGIDA (uma loja, um setor, algumas pessoas) não passa
+ * pelo grupo: o recado ali anunciava a rede inteira o título de algo que
+ * a maioria nem enxerga. Ela pede o aviso direto, para quem ela alcança
+ * (`pedirAvisoDaPublicacao`).
+ *
+ * Em nenhum dos dois o servidor sabe quem uma publicação alcança. Essa
+ * regra mora em `mural.ts` (`publicoAlvo`) e já esteve escrita em dois
+ * lugares; o servidor copiá-la seria a terceira cópia. O aparelho do
+ * autor manda a lista, e o servidor confere que quem pede é o autor.
  *
  * ===================================================================
  * O QUE O APARELHO MANDA, E O QUE O SERVIDOR CONFERE
@@ -55,6 +59,37 @@ export const pedirAvisoDaMensagem = (mensagemId: string, previa: string): void =
       })
       .then(({ error }) => {
         if (error) console.warn('Aviso da mensagem não saiu:', error.message);
+      })
+      .catch(() => {});
+  } catch {
+    /* sem cliente de funções (teste, modo local): sem aviso, sem erro */
+  }
+};
+
+/**
+ * AVISA QUEM UMA PUBLICAÇÃO DIRIGIDA ALCANÇA.
+ *
+ * Quem recebe é calculado por quem chama, com `publicoAlvo` — a mesma
+ * conta do "N de M leram". O servidor confere que quem pede é o autor;
+ * forjar a lista só serviria para avisar alguém de uma publicação que o
+ * próprio autor poderia mandar por mensagem.
+ */
+export const pedirAvisoDaPublicacao = (
+  publicacaoId: string,
+  destinatarios: string[],
+  texto: string
+): void => {
+  if (!supabase || !usandoNuvem() || destinatarios.length === 0) return;
+
+  try {
+    supabase.functions
+      .invoke(FUNCAO_DE_AVISO, {
+        body: {
+          publicacao: { id: publicacaoId, destinatarios, texto: texto.slice(0, LIMITE_DA_PREVIA) },
+        },
+      })
+      .then(({ error }) => {
+        if (error) console.warn('Aviso da publicação não saiu:', error.message);
       })
       .catch(() => {});
   } catch {

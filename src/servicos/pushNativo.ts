@@ -67,8 +67,11 @@ export interface DadosDoPush {
  * Uma conversa sem id levaria a uma janela vazia, que é pior.
  */
 export const destinoDoPush = (dados: DadosDoPush): DestinoNotificacao | null => {
-  if (dados.tipo === 'publicacao' && dados.publicacaoId) {
-    return { tipo: 'publicacao', publicacaoId: dados.publicacaoId };
+  /* No toque, o aparelho só repassa `tipo` e `conversaId` — o aviso da
+     publicação dirigida leva o id nos dois, e aqui vale qualquer um */
+  const publicacaoId = dados.publicacaoId || dados.conversaId;
+  if (dados.tipo === 'publicacao' && publicacaoId) {
+    return { tipo: 'publicacao', publicacaoId };
   }
   if (dados.tipo === 'conversa' && dados.conversaId) {
     return { tipo: 'conversa', conversaId: dados.conversaId };

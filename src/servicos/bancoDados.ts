@@ -19,7 +19,8 @@ import {
 } from '../tipos';
 import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
-import { alcanca, podeEditarPublicacao } from './mural';
+import { alcanca, podeEditarPublicacao, destinosDe, publicoAlvo } from './mural';
+import { pedirAvisoDaPublicacao } from './envioDeAviso';
 import { lerLista } from './cacheDeLeitura';
 import { semFormatacao, pessoasCitadas, citadosNovos } from './textoRico';
 import {
@@ -2999,8 +3000,16 @@ class BancoDadosConecta {
     fixadoNoTopo?: boolean;
   }): Promise<{ sucesso: boolean; aviso?: AvisoRede; erro?: string }> {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < NIVEL_DIRETORIA) {
-      return { sucesso: false, erro: 'Permissão restrita à gestão e supervisão.' };
+    /**
+     * QUEM PUBLICA É QUEM A REGRA DIZ — do líder de setor para cima.
+     *
+     * Aqui estava escrito `NIVEL_DIRETORIA` à mão, depois de a regra ter
+     * sido unificada em `publicaComunicado`. O líder via o botão, montava
+     * a publicação inteira e era recusado no fim. Pedido do Elias:
+     * "líderes também poderão publicar avisos, conteúdos".
+     */
+    if (!publicaComunicado(atual)) {
+      return { sucesso: false, erro: 'Publicar é da liderança: do líder de setor para cima.' };
     }
 
     if (!dados.titulo.trim() || !dados.conteudo.trim()) {
@@ -3079,23 +3088,51 @@ class BancoDadosConecta {
      * e o lugar onde se lê inteiro. A publicação mora na Central, que
      * desde agora é aba de todo mundo.
      */
-    const resumo = [
-      `📢 ${ROTULO_TIPO_PUBLICACAO_SINGULAR[novoAviso.tipo].toUpperCase()}: ${dados.titulo.trim()}`,
-      `${ROTULO_CATEGORIA[novoAviso.categoria]} · publicado por ${atual.nome}`,
-      novoAviso.exigeConfirmacao ? '⚠️ Pede ciência de quem recebe.' : '',
-      'Abra a aba Central para ler e confirmar.',
-    ]
-      .filter(Boolean)
-      .join('\n');
+    const citados = pessoasCitadas(novoAviso.conteudo);
 
-    await this.enviarMensagem('grupo-avisos-da-rede', {
-      tipo: 'texto',
-      texto: resumo,
-      /* É o que faz o botão do chat abrir ESTA publicação, e não a Central inteira */
-      publicacaoId: novoAviso.id,
-    });
+    /**
+     * O AVISO SEGUE O PÚBLICO DA PUBLICAÇÃO.
+     *
+     * Para a rede toda, o recado vai ao grupo de avisos da rede — onde
+     * estão todos — e o aviso do celular sai dele.
+     *
+     * Dirigida a uma loja, um setor ou algumas pessoas, o recado NÃO vai
+     * ao grupo: ele anunciava à rede inteira o título de algo que a
+     * maioria nem enxerga, e o celular de todo mundo tocava. O aviso vai
+     * direto para quem a publicação alcança, pela mesma conta do "N de M
+     * leram" (`publicoAlvo`). Quem foi citado fica de fora: já recebe a
+     * mensagem da citação, e dois avisos da mesma publicação é ruído.
+     */
+    const paraARedeToda = destinosDe(novoAviso).some((d) => d.alcance === 'rede');
+    const chamada = `${ROTULO_TIPO_PUBLICACAO_SINGULAR[novoAviso.tipo]}: ${dados.titulo.trim()}`;
 
-    await this.avisarCitados(novoAviso, pessoasCitadas(novoAviso.conteudo));
+    if (paraARedeToda) {
+      const resumo = [
+        `📢 ${chamada.toUpperCase()}`,
+        `${ROTULO_CATEGORIA[novoAviso.categoria]} · publicado por ${atual.nome}`,
+        novoAviso.exigeConfirmacao ? '⚠️ Pede ciência de quem recebe.' : '',
+        'Abra a aba Central para ler e confirmar.',
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      await this.enviarMensagem('grupo-avisos-da-rede', {
+        tipo: 'texto',
+        texto: resumo,
+        /* É o que faz o botão do chat abrir ESTA publicação, e não a Central inteira */
+        publicacaoId: novoAviso.id,
+      });
+    } else {
+      pedirAvisoDaPublicacao(
+        novoAviso.id,
+        publicoAlvo(novoAviso, this.obterColaboradores())
+          .map((c) => c.id)
+          .filter((id) => !citados.includes(id)),
+        novoAviso.exigeConfirmacao ? `${chamada} · pede sua ciência` : chamada
+      );
+    }
+
+    await this.avisarCitados(novoAviso, citados);
 
     this.registrarAuditoria('Publicação de Comunicado', 'aviso', `${atual.nome} publicou '${novoAviso.titulo}'.`);
     this.notificar();

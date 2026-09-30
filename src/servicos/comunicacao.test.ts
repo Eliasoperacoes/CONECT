@@ -57,6 +57,14 @@ mock.module('./supabase', () => ({
   supabase: null,
 }));
 
+/** Os avisos diretos de publicação dirigida: [id, destinatários, texto]. */
+let avisosDePublicacao: any[][] = [];
+mock.module('./envioDeAviso', () => ({
+  FUNCAO_DE_AVISO: 'enviar-aviso',
+  pedirAvisoDaMensagem: () => {},
+  pedirAvisoDaPublicacao: (...args: any[]) => avisosDePublicacao.push(args),
+}));
+
 let anexosEnviados: { conteudo: string; caminho: string }[] = [];
 let anexosApagados: string[] = [];
 let armazenamentoFalha = false;
@@ -253,6 +261,7 @@ beforeEach(() => {
   anexosEnviados = [];
   anexosApagados = [];
   armazenamentoFalha = false;
+  avisosDePublicacao = [];
 
   armazenamento.setItem(CHAVE_COLABORADORES, JSON.stringify([ELIAS, ANA]));
   armazenamento.setItem(CHAVE_CONVERSAS, JSON.stringify([CONVERSA_EQUIPE]));
@@ -526,6 +535,101 @@ test('comunicado publicado sobe e já nasce confirmado pelo autor', async () => 
     colaboradorId: 'colab-elias',
     confirmado: true,
   });
+});
+
+/**
+ * O AVISO SEGUE O PÚBLICO DA PUBLICAÇÃO.
+ *
+ * O recado no grupo de avisos da rede tocava o celular de todo mundo,
+ * inclusive de quem a publicação não alcança — e anunciava a eles o
+ * título de algo que não enxergam na Central.
+ */
+const recadosNoGrupoDaRede = () =>
+  bancoMensagens.filter((m) => m.conversaId === 'grupo-avisos-da-rede');
+
+/** O grupo de avisos da rede, onde estão todos. */
+const comGrupoDaRede = (pessoas: string[]) =>
+  armazenamento.setItem(
+    CHAVE_CONVERSAS,
+    JSON.stringify([
+      CONVERSA_EQUIPE,
+      { ...CONVERSA_EQUIPE, id: 'grupo-avisos-da-rede', nome: 'Avisos da Rede', participantesIds: pessoas, ehSistemaPadrao: true },
+    ])
+  );
+
+test('publicação para a rede toda avisa pelo grupo de avisos da rede', async () => {
+  comGrupoDaRede(['colab-elias', 'colab-ana']);
+  await bancoDados.criarAvisoRede({ titulo: 'Feriado', conteudo: 'Fechado', prioridade: 'geral' });
+
+  expect(recadosNoGrupoDaRede()).toHaveLength(1);
+  expect(avisosDePublicacao).toEqual([]);
+});
+
+test('PUBLICAÇÃO DIRIGIDA não vai ao grupo da rede: avisa só quem ela alcança', async () => {
+  const BIA = { ...ANA, id: 'colab-bia', nome: 'Bia', setor: 'Compras' };
+  armazenamento.setItem(CHAVE_COLABORADORES, JSON.stringify([ELIAS, ANA, BIA]));
+  comGrupoDaRede(['colab-elias', 'colab-ana', 'colab-bia']);
+
+  await bancoDados.criarAvisoRede({
+    titulo: 'Meta do mês',
+    conteudo: 'Vendas: bater a meta',
+    prioridade: 'geral',
+    exigeConfirmacao: true,
+    destinos: [{ alcance: 'setor', valor: 'Vendas' }],
+  });
+
+  expect(recadosNoGrupoDaRede()).toEqual([]);
+  expect(avisosDePublicacao).toHaveLength(1);
+  const [id, destinatarios, texto] = avisosDePublicacao[0];
+  expect(id).toBe(bancoAvisos[0].id);
+  // A Ana é de Vendas; a Bia, de Compras, não recebe; o autor também não
+  expect(destinatarios).toEqual(['colab-ana']);
+  expect(texto).toContain('Meta do mês');
+  expect(texto).toContain('pede sua ciência');
+});
+
+test('LÍDER DE SETOR PUBLICA; colaborador não', async () => {
+  const LIDER = { ...ANA, id: 'colab-lider', nome: 'Lider', nivel: 2 };
+  armazenamento.setItem(CHAVE_COLABORADORES, JSON.stringify([ELIAS, ANA, LIDER]));
+
+  entrarComo(LIDER);
+  const doLider = await bancoDados.criarAvisoRede({
+    titulo: 'Treino', conteudo: 'Sábado às 8h', prioridade: 'geral',
+  });
+  expect(doLider.sucesso).toBe(true);
+
+  entrarComo(ANA);
+  const daAna = await bancoDados.criarAvisoRede({
+    titulo: 'Nao', conteudo: 'nao pode', prioridade: 'geral',
+  });
+  expect(daAna.sucesso).toBe(false);
+  expect(bancoAvisos).toHaveLength(1);
+});
+
+test('o banco trava a publicação no MESMO nível da regra da tela', async () => {
+  /**
+   * A regra é `publicaComunicado` (líder de setor para cima) e a trava que
+   * vale é a política do banco. Estavam em 2 e 4: o líder via o botão e
+   * era recusado no fim. A ÚLTIMA definição no esquema é a que vale.
+   */
+  const esquema = await Bun.file('supabase/esquema.sql').text();
+  const definicoes = [
+    ...esquema.matchAll(
+      /create policy avisos_insercao on public\.avisos_rede\s+for insert to authenticated with check \(public\.meu_nivel\(\) >= (\d)\);/g
+    ),
+  ];
+  expect(definicoes.length).toBeGreaterThan(0);
+  const vale = Number(definicoes[definicoes.length - 1][1]);
+
+  const { NIVEL_LIDER_SETOR, publicaComunicado } = await import('../tipos');
+  expect(vale).toBe(NIVEL_LIDER_SETOR);
+  expect(publicaComunicado({ nivel: vale })).toBe(true);
+  expect(publicaComunicado({ nivel: vale - 1 })).toBe(false);
+
+  // E o serviço pergunta à regra, em vez de escrever o próprio número
+  const servico = await Bun.file('src/servicos/bancoDados.ts').text();
+  const criar = servico.slice(servico.indexOf('async criarAvisoRede('), servico.indexOf('async criarAvisoRede(') + 1500);
+  expect(criar).toContain('if (!publicaComunicado(atual))');
 });
 
 test('comunicado recusado pelo banco não aparece no aparelho', async () => {

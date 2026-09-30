@@ -306,6 +306,14 @@ test('O AVISO DO PONTO leva à seção que veio no conversaId, e só às que exi
   expect(destinoDoPush({ tipo: 'secao', conversaId: 'painel-admin' })).toBeNull();
 });
 
+test('o aviso da publicação dirigida abre a publicação pelo conversaId', () => {
+  /* O aparelho perde o `publicacaoId` no toque: só `tipo` e `conversaId` passam */
+  expect(destinoDoPush({ tipo: 'publicacao', conversaId: 'pub-7' })).toEqual({
+    tipo: 'publicacao',
+    publicacaoId: 'pub-7',
+  });
+});
+
 test('COM O APLICATIVO ABERTO o aviso não vira tarja na tela', async () => {
   /**
    * Mesma regra do aviso do navegador: uma tarja por cima de um sistema
