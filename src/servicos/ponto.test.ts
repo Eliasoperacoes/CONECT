@@ -1994,16 +1994,30 @@ test('DOMINGO NÃO ESPERA BATIDA NENHUMA', async () => {
   expect(marcacoesEsperadas('2026-09-21', ANA as any)).toHaveLength(4);
 });
 
-test('DOMINGO TRABALHADO AINDA PODE SER BATIDO', async () => {
+test('DOMINGO NÃO RECEBE HORÁRIO: nem batida, nem lançamento', async () => {
   /**
-   * O contrato não prevê jornada no domingo, mas a pessoa pode estar
-   * ali — e isso se chama hora extra. Sem a saída, quem foi trabalhar no
-   * domingo não conseguia nem registrar que esteve lá.
+   * Era "domingo trabalhado ainda pode ser batido", como hora extra.
+   * Decisão do Elias (29/09/2026): o domingo aparece no espelho escrito
+   * "Domingo", "sem a possibilidade de registrar hora". A trava é da
+   * regra, e não só da tela: a batida e a correção a respeitam.
    */
   equipe = [ELIAS, ANA];
   colaboradorLogado = ANA;
 
-  expect(servicoPonto.obterProximaMarcacao(ANA.id, '2026-09-20')).toBe('entrada');
+  // 2026-09-20 é domingo: não há próxima batida
+  expect(servicoPonto.obterProximaMarcacao(ANA.id, '2026-09-20')).toBeNull();
+
+  // Nem o RH lança horário no domingo
+  colaboradorLogado = ELIAS;
+  const res = await servicoPonto.ajustarMarcacao({
+    colaboradorId: ANA.id, data: '2026-09-20', tipo: 'entrada', hora: '08:00',
+    justificativa: 'Inventário',
+  });
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('Domingo');
+
+  // Sábado e dia útil continuam aceitando
+  expect(servicoPonto.obterProximaMarcacao(ANA.id, '2026-09-19')).toBe('entrada');
 });
 
 test('A CÉLULA VAZIA DIZ POR QUE ESTÁ VAZIA', async () => {
@@ -3711,4 +3725,42 @@ test('A LYVIA NO SÁBADO: 08:00 às 12:00 fecha com saldo 0h00, e não −0h45',
   // Saiu 11:45: 15 a menos — a pausa não perdoa no sábado, conta inteiro
   await baterSabado(LYVIA, '2026-09-05', '08:00', '11:45');
   expect(servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-05').saldoMinutos).toBe(-15);
+});
+
+test('O ESPELHO TRAZ TODOS OS DIAS: domingo escrito, feriado pelo nome', async () => {
+  /**
+   * Pedido do Elias: a semana inteira no espelho. Só entravam dias com
+   * batida ou com previsto, e o domingo e o feriado fechado sumiam.
+   */
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = ELIAS;
+
+  const html = comFeriados(
+    [{ id: 'f7', data: '2026-09-07', nome: 'Independência do Brasil', minutosPrevistos: 0, criadoEm: '' }],
+    () => servicoPonto.gerarHtmlEspelho('2026-09-06', '2026-09-08', [DO_TURNO_A.id])
+  );
+
+  // Os três dias, em ordem: domingo, feriado, terça
+  const linhas = html.slice(html.indexOf('<tbody>'), html.indexOf('</tbody>'));
+  expect(linhas.match(/<tr/g)?.length).toBe(3);
+  expect(linhas).toContain('06/09/2026');
+  expect(linhas).toContain('07/09/2026');
+  expect(linhas).toContain('08/09/2026');
+
+  // Domingo escrito nas células; feriado com o nome dele
+  const domingo = linhas.slice(linhas.indexOf('06/09/2026'), linhas.indexOf('07/09/2026'));
+  // Uma célula só, ocupando as quatro marcações: o nome aparece uma vez
+  expect(domingo.match(/>Domingo</g)?.length).toBe(1);
+  expect(domingo).toContain('colspan="4"');
+  const feriado = linhas.slice(linhas.indexOf('07/09/2026'), linhas.indexOf('08/09/2026'));
+  expect(feriado).toContain('Independência do Brasil');
+  expect(feriado.match(/Independência do Brasil/g)?.length).toBe(1);
+});
+
+test('a tela do Banco de Horas também mostra todos os dias, e não deixa lançar no domingo', async () => {
+  const tela = await Bun.file('src/componentes/BancoDeHoras.tsx').text();
+  const semComentarios = tela.replace(/\/\*[\s\S]*?\*\//g, '');
+  expect(semComentarios).not.toContain('Object.keys(j.marcacoes).length > 0 || j.minutosPrevistos > 0');
+  expect(semComentarios).toContain('const lancavel = podeCorrigirMarcacao && aceitaMarcacaoNoDia(jornada.data)');
+  expect(semComentarios).toContain('disabled={!lancavel}');
 });

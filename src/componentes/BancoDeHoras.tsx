@@ -59,6 +59,8 @@ import {
   formatarDataBR,
   formatarDiaCurto,
   motivoSemMarcacao,
+  aceitaMarcacaoNoDia,
+  RECUSA_DE_DOMINGO,
   formatarMinutos,
   formatarSaldo,
   primeiroDiaDoMes,
@@ -1196,11 +1198,8 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--c-borda)]">
+                    {/* Todos os dias, como no espelho impresso: domingo e feriado inclusive */}
                     {detalhe.jornadas
-                      .filter(
-                        (j: JornadaDia) =>
-                          Object.keys(j.marcacoes).length > 0 || j.minutosPrevistos > 0
-                      )
                       .map((jornada: JornadaDia) => {
                         const vazio = Object.keys(jornada.marcacoes).length === 0;
                         return (
@@ -1224,21 +1223,24 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                                * `--:--` ali acusa uma batida esquecida que
                                * nunca foi esperada.
                                *
-                               * A célula SEGUE CLICÁVEL: domingo e feriado
-                               * trabalhados existem, e é assim que a hora
-                               * extra entra.
+                               * A célula SEGUE CLICÁVEL no feriado: feriado
+                               * trabalhado existe, e é assim que a hora extra
+                               * entra. O DOMINGO NÃO: decisão do Elias, o
+                               * domingo não recebe horário (aceitaMarcacaoNoDia).
                                */
                               const motivo = reg
                                 ? null
                                 : motivoSemMarcacao(jornada.data, tipo, detalhe.colaborador);
+                              /* Domingo não recebe horário: só a escrita "Domingo" */
+                              const lancavel = podeCorrigirMarcacao && aceitaMarcacaoNoDia(jornada.data);
 
                               return (
                                 <td key={tipo} className="px-2 py-2 text-center">
                                   <button
                                     type="button"
-                                    disabled={!podeCorrigirMarcacao}
+                                    disabled={!lancavel}
                                     onClick={() =>
-                                      podeCorrigirMarcacao &&
+                                      lancavel &&
                                       setAjuste({
                                         colaboradorId: detalhe.colaborador.id,
                                         data: jornada.data,
@@ -1252,6 +1254,8 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                                         ? `Preenchido pelo horário do turno, por ${reg.ajustadoPorNome}: ${reg.justificativa}. NÃO foi batido pela pessoa.`
                                         : reg && ehMarcacaoCorrigida(reg.metodo)
                                         ? `Corrigido por ${reg.ajustadoPorNome}: ${reg.justificativa}`
+                                        : !aceitaMarcacaoNoDia(jornada.data)
+                                        ? RECUSA_DE_DOMINGO
                                         : motivo && podeCorrigirMarcacao
                                         ? `${motivo}: o dia não prevê esta marcação. Clique para lançar assim mesmo — é hora extra.`
                                         : podeCorrigirMarcacao

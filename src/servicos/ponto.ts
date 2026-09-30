@@ -172,6 +172,19 @@ export const ehSabado = (data: string): boolean =>
   deDataLocal(data).getDay() === 6;
 
 /**
+ * O DIA ACEITA HORÁRIO? No domingo, não.
+ *
+ * Decisão do Elias: o domingo aparece no espelho escrito "Domingo", "sem
+ * a possibilidade de registrar hora". Antes o domingo trabalhado podia
+ * ser batido e lançado como hora extra. A regra mora aqui, e a batida, a
+ * correção do RH/líder e a tela do Banco de Horas perguntam a ela — trava
+ * só na tela se contorna.
+ */
+export const aceitaMarcacaoNoDia = (data: string): boolean => !ehDiaDeFolga(data);
+
+export const RECUSA_DE_DOMINGO = 'Domingo não tem jornada: o ponto não registra horário no domingo.';
+
+/**
  * As marcações que fecham o dia.
  *
  * Sábado tem DUAS: entra às 8 e sai ao meio-dia, sem intervalo. Exigir as
@@ -618,6 +631,9 @@ class ServicoPonto {
    * fecharia.
    */
   obterProximaMarcacao(colaboradorId: string, data: string = dataDeHoje()): TipoMarcacao | null {
+    // Domingo não tem próxima batida: não se registra horário nele
+    if (!aceitaMarcacaoNoDia(data)) return null;
+
     const registradas = this.obterMarcacoesDoDia(colaboradorId, data).map((r) => r.tipo);
 
     /**
@@ -694,6 +710,7 @@ class ServicoPonto {
     // de ponto, e o aparelho não é fonte confiável para ele
     const momento = agoraSincronizado();
     const data = paraDataLocal(momento);
+    if (!aceitaMarcacaoNoDia(data)) return { sucesso: false, erro: RECUSA_DE_DOMINGO };
     const proxima = this.obterProximaMarcacao(atual.id, data);
     if (!proxima) {
       return {
@@ -2420,6 +2437,7 @@ class ServicoPonto {
     if (!colaborador) {
       return { sucesso: false, erro: 'Colaborador não encontrado.' };
     }
+    if (!aceitaMarcacaoNoDia(dados.data)) return { sucesso: false, erro: RECUSA_DE_DOMINGO };
 
     /**
      * QUEM CORRIGE: o RH, e quem responde pela pessoa.
@@ -3066,10 +3084,13 @@ class ServicoPonto {
          */
         const relogioDoPeriodo = resumo.jornadas.reduce((s, j) => s + j.saldoBrutoMinutos, 0);
 
-        // Só entram os dias com alguma marcação ou com jornada prevista
-        const dias = resumo.jornadas.filter(
-          (j) => Object.keys(j.marcacoes).length > 0 || j.minutosPrevistos > 0
-        );
+        /**
+         * TODOS OS DIAS DO PERÍODO. Pedido do Elias: o espelho mostra a
+         * semana inteira — domingo escrito "Domingo", feriado com o nome
+         * dele. Antes só entravam dias com batida ou com previsto, e o
+         * domingo e o feriado fechado sumiam, deixando buracos nas datas.
+         */
+        const dias = resumo.jornadas;
 
         /**
          * A ORIGEM DE CADA MARCAÇÃO NÃO SAI NESTE PAPEL.
@@ -3108,7 +3129,25 @@ class ServicoPonto {
              * Em feriado fechado não se espera nada, e as quatro colunas
              * ficam traçadas.
              */
-            const celulas = ORDEM_MARCACOES.map((t) => {
+            /**
+             * O DIA INTEIRO SEM JORNADA É UMA CÉLULA SÓ.
+             *
+             * Domingo, feriado, folga, atestado, férias: as quatro marcações
+             * diziam o mesmo nome, e o do feriado quebrava em duas linhas em
+             * cada uma — a linha dobrava de altura e o mês não cabia na
+             * folha. Agora o nome aparece uma vez, ocupando as quatro.
+             */
+            const motivos = ORDEM_MARCACOES.map((t) =>
+              j.marcacoes[t] ? null : motivoSemMarcacao(j.data, t, resumo.colaborador)
+            );
+            const diaSemJornada =
+              motivos.every((m) => !!m && m === motivos[0]) ? motivos[0] : null;
+
+            const celulas = diaSemJornada
+              ? `<td class="hora naoSeAplica diaSemJornada" colspan="${ORDEM_MARCACOES.length}">${escapar(
+                  diaSemJornada
+                )}</td>`
+              : ORDEM_MARCACOES.map((t) => {
               const motivo = motivoSemMarcacao(j.data, t, resumo.colaborador);
 
               /**
@@ -3127,7 +3166,6 @@ class ServicoPonto {
               return `<td class="hora">${reg ? reg.horaFormatada + ajuste : '--:--'}</td>`;
             }).join('');
 
-            const feriadoDoDia = feriadoEm(j.data, resumo.colaborador.loja);
             const semMarcacao = Object.keys(j.marcacoes).length === 0;
             const semJornada = j.minutosTrabalhados === 0;
 
@@ -3144,9 +3182,8 @@ class ServicoPonto {
                 linha extra nos poucos dias em que aparece.
               */ ''}
               <td class="dia">${formatarDataBR(j.data)} <span class="semana">${
-                feriadoDoDia
-                  ? escapar(feriadoDoDia.nome)
-                  : formatarDiaCurto(j.data).split(',')[0]
+                /* Sempre o dia da semana: o nome do feriado vai nas marcações */
+                formatarDiaCurto(j.data).split(',')[0]
               }</span></td>
               ${celulas}
               <td class="num">${formatarMinutos(j.minutosPrevistosEfetivos)}</td>
@@ -3296,8 +3333,14 @@ class ServicoPonto {
     num documento de ponto é o pior lugar para haver dúvida.
   */
   .marcacoes { font-size: 10px; table-layout: fixed; }
-  .marcacoes th { background: #eee; border: 1px solid #999; padding: 4px 2px; font-size: 9px; text-transform: uppercase; }
-  .marcacoes td { border: 1px solid #bbb; padding: 3px 2px; text-align: center; }
+  /*
+    O MÊS INTEIRO NUMA FOLHA. Com todos os dias no espelho (domingo e
+    feriado inclusive, pedido do Elias), 31 linhas mais o rodapé passavam
+    da página: as linhas ficaram mais baixas, e o rodapé também.
+  */
+  .marcacoes th { background: #eee; border: 1px solid #999; padding: 3px 2px; font-size: 8.5px; text-transform: uppercase; }
+  .marcacoes td { border: 1px solid #bbb; padding: 1.5px 2px; text-align: center; line-height: 1.25; }
+  .marcacoes .diaSemJornada { letter-spacing: 0.02em; }
   .marcacoes .dia { text-align: left; white-space: nowrap; font-weight: 600; font-size: 9px; }
   /* O dia da semana à vista: em cinza claro ele sumia na impressão */
   .semana { font-weight: 600; color: #222; text-transform: capitalize; }
@@ -3313,11 +3356,11 @@ class ServicoPonto {
   .notas ol { margin: 4px 0 0 16px; padding: 0; }
   .notas li { margin-bottom: 2px; }
   .naoSeAplica { color: #bbb; }
-  .legenda { margin-top: 6px; font-size: 8.5px; color: #333; line-height: 1.35; }
+  .legenda { margin-top: 5px; font-size: 8px; color: #333; line-height: 1.3; }
   .vazio td { background: #fafafa; }
   /* De pé, 60% de largura deixava o quadro de totais solto no meio */
-  .totais { margin-top: 12px; width: 85%; font-size: 11px; }
-  .totais td { border: 1px solid #bbb; padding: 5px 8px; }
+  .totais { margin-top: 8px; width: 85%; font-size: 10px; }
+  .totais td { border: 1px solid #bbb; padding: 2.5px 8px; }
   .totais .destaque td { font-weight: 700; background: #f2f2f2; }
       `,
       corpo: folhas || '<p>Nenhum colaborador no período selecionado.</p>',

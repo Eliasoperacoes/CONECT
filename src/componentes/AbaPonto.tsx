@@ -38,6 +38,7 @@ import {
   formatarDiaCurto,
   formatarMinutos,
   formatarSaldo,
+  aceitaMarcacaoNoDia,
 } from '../servicos/ponto';
 import { ModalBaterPonto } from './ModalBaterPonto';
 import { AbaJustificar } from './AbaJustificar';
@@ -222,6 +223,8 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
   };
 
   const jornadaCompleta = proximaMarcacao === null;
+  // Domingo não tem próxima batida porque não tem jornada — e não porque acabou
+  const ehDomingo = !aceitaMarcacaoNoDia(hoje);
 
   return (
     <div className="pb-24">
@@ -369,7 +372,9 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
               : 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] hover:brightness-110 active:scale-[0.99]'
           }`}
         >
-          {jornadaCompleta ? (
+          {ehDomingo ? (
+            <>Domingo · sem jornada</>
+          ) : jornadaCompleta ? (
             <>
               <CheckCircle2 className="w-5 h-5" />
               Jornada de hoje concluída
