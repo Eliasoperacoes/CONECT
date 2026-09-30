@@ -2759,8 +2759,12 @@ test('o SÁBADO carrega o que falta para fechar a semana', () => {
    */
   const turnoDe5h = { ...ESTAGIARIA_SABADO, turno: 'E3', trabalhaSabado: true };
 
-  // 5h × 5 = 25h; para fechar 30h, o sábado precisa de 5h
-  expect(previstoDe({ ...turnoDe5h, cargaSemanalMinutos: 1800 }, '2026-09-19')).toBe(300);
+  /**
+   * 5h × 5 = 25h; para fechar 30h faltariam 5h — mas a loja abre só das 8
+   * ao meio-dia. O sábado nunca passa das 4h da loja (decisão do Elias,
+   * 29/09/2026: a Lyvia devia 45 min todo sábado sem ter como cumprir).
+   */
+  expect(previstoDe({ ...turnoDe5h, cargaSemanalMinutos: 1800 }, '2026-09-19')).toBe(240);
 
   // Para fechar 29h, precisa das 4h de sempre
   expect(previstoDe({ ...turnoDe5h, cargaSemanalMinutos: 1740 }, '2026-09-19')).toBe(240);
@@ -3184,8 +3188,10 @@ test('o sábado do ESTÁGIO continua completando a semana', () => {
     trabalhaSabado: true, cargaHorariaDiariaMinutos: undefined,
   };
 
-  // 5h × 5 = 25h; para fechar 30h o sábado carrega as 5h que faltam
-  expect(previstoDe({ ...estagiaria, cargaSemanalMinutos: 1800 }, '2026-09-19')).toBe(300);
+  // 5h × 5 = 25h; faltariam 5h para as 30h, mas o sábado vai até as 4h da loja
+  expect(previstoDe({ ...estagiaria, cargaSemanalMinutos: 1800 }, '2026-09-19')).toBe(240);
+  // Com 3h faltando, o sábado carrega só as 3h
+  expect(previstoDe({ ...estagiaria, cargaSemanalMinutos: 1680 }, '2026-09-19')).toBe(180);
 });
 
 // ============================================================
@@ -3676,4 +3682,33 @@ test('ESTAGIÁRIO: a mesma regra, medida contra o turno de estágio dele', async
   // Entrou 07:37: 7 de atraso numa marcação só — conta inteiro
   await baterSabado(ESTAGIARIO, '2026-09-14', '07:37', '12:30');
   expect(servicoPonto.obterJornadaDoDia(ESTAGIARIO.id, '2026-09-14').saldoMinutos).toBe(-7);
+});
+
+test('A LYVIA NO SÁBADO: 08:00 às 12:00 fecha com saldo 0h00, e não −0h45', async () => {
+  /**
+   * Estagiária do E3 (5h por dia), contrato de 30h, vem ao sábado. O sábado
+   * previa 5h (a sobra até as 30h) e a pausa perdoava 15 min: −1h + 0h15 =
+   * −0h45 todo sábado, com a loja fechando ao meio-dia. Agora o sábado é
+   * de 4h, sem pausa, e a tolerância mede contra 08:00 e 12:00.
+   */
+  const LYVIA = {
+    ...ELIAS, id: 'lyvia-e3', nome: 'Lyvia', login: 'lyvia', nivel: 1,
+    setor: 'Estágio', cargo: 'Estagiária', turno: 'E3', trabalhaSabado: true,
+    cargaHorariaDiariaMinutos: undefined, cargaSemanalMinutos: 1800,
+  };
+  equipe = [ELIAS, LYVIA];
+  colaboradorLogado = LYVIA;
+
+  await baterSabado(LYVIA, '2026-09-19', '08:00', '12:00');
+  const cumpriu = servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-19');
+  expect(cumpriu.minutosPrevistos).toBe(240);
+  expect(cumpriu.saldoMinutos).toBe(0);
+
+  // Pequena variação: tolerada como a de qualquer um
+  await baterSabado(LYVIA, '2026-09-12', '08:03', '11:58');
+  expect(servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-12').saldoMinutos).toBe(0);
+
+  // Saiu 11:45: 15 a menos — a pausa não perdoa no sábado, conta inteiro
+  await baterSabado(LYVIA, '2026-09-05', '08:00', '11:45');
+  expect(servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-05').saldoMinutos).toBe(-15);
 });

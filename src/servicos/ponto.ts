@@ -887,7 +887,20 @@ class ServicoPonto {
        * dono, toda semana.
        */
       const uteis = minutosDeDiaUtilDe(colaborador) * 5;
-      return Math.max(0, cargaSemanalDe(colaborador) - uteis);
+
+      /**
+       * A SOBRA NUNCA PASSA DO HORÁRIO DA LOJA.
+       *
+       * O estagiário de 5h por dia (E2, E3) tem 25h na semana útil, e a
+       * sobra até as 30h dava sábado de 5h — com a loja abrindo das 8 ao
+       * meio-dia. Ele não tinha como cumprir: a Lyvia fechava todo sábado
+       * devendo 45 minutos (−1h, menos os 15 da pausa). Decisão do Elias:
+       * o sábado dele é de 4h, o horário da loja, e a semana fecha 29h.
+       *
+       * O estagiário de 6h (E1) continua com sábado ZERO: a sobra dele é
+       * nada, e o teto não inventa hora onde não falta.
+       */
+      return Math.min(MINUTOS_SABADO, Math.max(0, cargaSemanalDe(colaborador) - uteis));
     }
 
     /**
@@ -1306,7 +1319,11 @@ class ServicoPonto {
      * diferença é o previsto inteiro, e sem esta guarda a pausa
      * perdoaria 15 minutos de um dia em que a pessoa não veio.
      */
-    const pausa = minutosPausaDoTurno(turnoDe(colaborador));
+    /**
+     * A PAUSA NÃO VALE NO SÁBADO. Decisão do Elias: o sábado é de 4h
+     * corridas, sem pausa. Ela perdoava 15 minutos de falta também ali.
+     */
+    const pausa = ehSabado(data) ? 0 : minutosPausaDoTurno(turnoDe(colaborador));
     const faltando = minutosPrevistos - minutosTrabalhados;
     const abatidoPelaPausa =
       minutosTrabalhados > 0 && faltando > 0 ? Math.min(pausa, faltando) : 0;
