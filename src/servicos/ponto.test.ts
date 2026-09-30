@@ -3927,3 +3927,73 @@ test('hora extra continua hora extra', async () => {
   expect(ajuste.tipo).toBe('hora_extra');
   expect(servicoPonto.rotuloDoAjuste(ajuste)).toBe('Hora extra');
 });
+
+// ============================================================
+// AUSÊNCIA APROVADA NÃO TRANSFORMA TRABALHO EM HORA EXTRA
+//
+// A Fernanda teve atestado aprovado em 25/09 e bateu as quatro marcações:
+// o previsto zerou e as 8h13 trabalhadas viraram +8h13 no espelho.
+// ============================================================
+
+const comAusenciaAprovada = (quem: any, data: string, tipo: string) =>
+  armazenamento.setItem(
+    'conecta_v4_justificativas_ausencia',
+    JSON.stringify([
+      {
+        id: `aus-${data}`, colaboradorId: quem.id, dataInicio: data, dataFim: data,
+        tipo, estado: 'aprovada', criadoEm: new Date().toISOString(),
+      },
+    ])
+  );
+
+test('atestado aprovado + dia trabalhado inteiro: saldo zero, não +8h', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  comAusenciaAprovada(DO_TURNO_A, '2026-09-25', 'atestado');
+  baterParcial(DO_TURNO_A, '2026-09-25', {
+    entrada: '07:29', saida_almoco: '12:32', retorno_almoco: '14:03', saida: '17:13',
+  });
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-25');
+  expect(dia.minutosPrevistos).toBe(490);
+  expect(dia.saldoMinutos).toBe(0);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('declaração de comparecimento: a falta daquele dia está perdoada', () => {
+  // Saiu às 15:10 para a consulta: 2h a menos, que a declaração cobre
+  equipe = [GESTOR, DO_TURNO_A];
+  comAusenciaAprovada(DO_TURNO_A, '2026-09-25', 'comparecimento');
+  baterParcial(DO_TURNO_A, '2026-09-25', {
+    entrada: '07:30', saida_almoco: '12:30', retorno_almoco: '14:00', saida: '15:10',
+  });
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-25');
+  expect(dia.minutosTrabalhados).toBe(370);
+  expect(dia.saldoMinutos).toBe(0);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('o que passa da jornada normal continua sendo extra, com ou sem abono', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  comAusenciaAprovada(DO_TURNO_A, '2026-09-25', 'atestado');
+  baterParcial(DO_TURNO_A, '2026-09-25', {
+    entrada: '07:30', saida_almoco: '12:30', retorno_almoco: '14:00', saida: '18:10',
+  });
+
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-25').saldoMinutos).toBe(60);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('ausência aprovada SEM batida continua prevendo zero, sem débito', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  comAusenciaAprovada(DO_TURNO_A, '2026-09-25', 'atestado');
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-25');
+  expect(dia.minutosPrevistos).toBe(0);
+  expect(dia.saldoMinutos).toBe(0);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});

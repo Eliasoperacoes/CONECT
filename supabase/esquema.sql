@@ -1428,8 +1428,10 @@ create table if not exists public.ajustes_jornada (
   colaborador_id       text not null references public.colaboradores(id) on delete cascade,
   data                 date not null,
   tipo                 text not null check (tipo in ('hora_extra', 'debito')),
-  -- Sempre positivo: o sinal vem do tipo, para não haver dois jeitos de ler
-  minutos              integer not null check (minutos > 0),
+  -- Nunca negativo: o sinal vem do tipo, para não haver dois jeitos de ler.
+  -- ZERO vale (apuracao-pode-zerar.sql): é como a reapuração desfaz um
+  -- lançamento errado — o +8h13 da Fernanda no atestado de 25/09, por ex.
+  minutos              integer not null check (minutos >= 0),
   minutos_trabalhados  integer not null,
   minutos_previstos    integer not null,
   estado               text not null default 'pendente'

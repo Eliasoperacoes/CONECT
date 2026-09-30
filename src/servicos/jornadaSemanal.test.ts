@@ -266,8 +266,10 @@ test('a folga do sabado JA VEM DESCONTADA do previsto do ciclo', async () => {
    * Se alguém acrescentar um desconto de folga à parte, a folga passa a
    * ser descontada DUAS vezes e a pessoa fecha o ciclo com crédito falso.
    */
-  expect(codigo).toContain(
-    "if (colaborador && situacaoDoDia(colaborador.id, data) !== 'normal') return 0;"
+  // Sem batida no dia (ver o caso da Fernanda em ponto.test.ts): com
+  // batida, o previsto é a jornada normal e o saldo não desce de zero
+  expect(codigo.replace(/\s+/g, ' ')).toContain(
+    "situacaoDoDia(colaborador.id, data) !== 'normal' && this.obterMarcacoesDoDia(colaborador.id, data).length === 0 ) { return 0; }"
   );
 
   const inicio = codigo.indexOf('relacaoSemanalDaEquipe');

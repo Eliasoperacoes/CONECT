@@ -928,8 +928,21 @@ class ServicoPonto {
      * com 4 horas de débito por exercer um direito. O mesmo vale para
      * atestado e falta justificada: o dia foi abonado, e dia abonado não
      * cobra jornada.
+     *
+     * MAS SÓ QUANDO A PESSOA NÃO VEIO. A Fernanda teve atestado aprovado
+     * no dia 25/09 e bateu as quatro marcações: com previsto zero, as 8h13
+     * trabalhadas viraram 8h13 de HORA EXTRA. O abono perdoa o que falta;
+     * não transforma em extra o que foi trabalhado. Com batida no dia, o
+     * previsto é a jornada normal, e `obterJornadaDoDia` impede o saldo
+     * de ficar negativo — a falta daquele dia continua perdoada.
      */
-    if (colaborador && situacaoDoDia(colaborador.id, data) !== 'normal') return 0;
+    if (
+      colaborador &&
+      situacaoDoDia(colaborador.id, data) !== 'normal' &&
+      this.obterMarcacoesDoDia(colaborador.id, data).length === 0
+    ) {
+      return 0;
+    }
 
     /**
      * FERIADO NÃO COBRA JORNADA.
@@ -1492,7 +1505,17 @@ class ServicoPonto {
         intervalo: TOLERANCIA_INTERVALO_PADRAO_MINUTOS,
       },
     });
-    const saldoMinutos = tolerancia.saldoApurado;
+    /**
+     * DIA ABONADO NÃO DEVE HORA.
+     *
+     * Ausência aprovada com batida no dia — a declaração de comparecimento
+     * de quem saiu duas horas para a consulta, ou o atestado de quem veio
+     * mesmo assim — prevê a jornada normal (ver `cargaPrevistaEmMinutos`).
+     * O que faltou está perdoado: o saldo não desce de zero. O que passou
+     * da jornada normal continua sendo extra, como em qualquer dia.
+     */
+    const abonado = situacaoDoDia(colaboradorId, data) !== 'normal';
+    const saldoMinutos = abonado ? Math.max(0, tolerancia.saldoApurado) : tolerancia.saldoApurado;
 
     return {
       data,
