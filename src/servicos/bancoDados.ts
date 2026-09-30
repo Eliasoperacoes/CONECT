@@ -2195,18 +2195,18 @@ class BancoDadosConecta {
 
   // --- MENSAGENS ---
 
+  /** Conversa individual só é lida por quem participa dela. */
+  private podeLerConversa(conv: Conversa | undefined, atualId: string): boolean {
+    return !(conv && conv.tipo === 'individual' && !conv.participantesIds.includes(atualId));
+  }
+
   obterMensagens(conversaId: string): Mensagem[] {
     try {
       const atual = this.obterColaboradorAtual();
-      const todasConversas = this.obterTodasConversas();
-      const conv = todasConversas.find((c) => c.id === conversaId);
+      const conv = this.obterTodasConversas().find((c) => c.id === conversaId);
 
       // Proteção estrita: se for conversa individual, somente os 2 participantes podem ler as mensagens
-      if (conv && conv.tipo === 'individual') {
-        if (!conv.participantesIds.includes(atual.id)) {
-          return [];
-        }
-      }
+      if (!this.podeLerConversa(conv, atual.id)) return [];
 
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
       const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
@@ -2214,6 +2214,33 @@ class BancoDadosConecta {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * AS MENSAGENS DE VÁRIAS CONVERSAS, lendo o aparelho UMA vez.
+   *
+   * Para a busca da lista de conversas, que procura em todas a cada letra.
+   * `obterMensagens` decodifica o armazenamento inteiro por chamada: trinta
+   * conversas seriam trinta leituras por tecla, e o celular engasgaria no
+   * meio da palavra. A proteção é a mesma (`podeLerConversa`).
+   */
+  obterMensagensPorConversa(conversaIds: string[]): Map<string, Mensagem[]> {
+    const mapa = new Map<string, Mensagem[]>(conversaIds.map((id) => [id, []]));
+    try {
+      const atual = this.obterColaboradorAtual();
+      const conversas = this.obterTodasConversas();
+      const liberadas = new Set(
+        conversaIds.filter((id) => this.podeLerConversa(conversas.find((c) => c.id === id), atual.id))
+      );
+      const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+      const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
+      for (const m of todas) {
+        if (liberadas.has(m.conversaId)) mapa.get(m.conversaId)!.push(m);
+      }
+    } catch {
+      /* armazenamento ilegível: nada a buscar */
+    }
+    return mapa;
   }
 
   podePublicarNaConversa(conversaId: string): boolean {

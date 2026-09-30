@@ -20,6 +20,8 @@ import {
   Megaphone,
   ChevronUp,
   ChevronDown,
+  Search,
+  X,
 } from 'lucide-react';
 import { ABAS_PRINCIPAIS, AbaPrincipal, Colaborador, Conversa, Mensagem } from './tipos';
 
@@ -53,6 +55,7 @@ import {
   esquecerOndeParei,
 } from './servicos/navegacaoLembrada';
 import { ItemConversa } from './componentes/ItemConversa';
+import { ResultadosDaBusca } from './componentes/ResultadosDaBusca';
 import { FaixaAvisoDirecao } from './componentes/FaixaAvisoDirecao';
 import { TelaConversa } from './componentes/TelaConversa';
 import { AbaEu } from './componentes/AbaEu';
@@ -465,6 +468,13 @@ export default function App() {
    * empurrão para se redesenhar.
    */
   const [versaoPreferencias, setVersaoPreferencias] = useState(0);
+  /**
+   * A BUSCA DA LISTA DE CONVERSAS (estilo WhatsApp) e a mensagem a abrir.
+   * Fica no App porque sobrevive a abrir e voltar da conversa: quem
+   * procura algo costuma conferir mais de um resultado.
+   */
+  const [buscaConversas, setBuscaConversas] = useState('');
+  const [mensagemAlvo, setMensagemAlvo] = useState<{ conversaId: string; mensagemId: string } | null>(null);
 
   /**
    * QUANTAS PUBLICAÇÕES AINDA NÃO LI.
@@ -1169,7 +1179,8 @@ export default function App() {
   // Conversas: liberado para todos iniciarem bate-papo privado com colega
   // Grupos: liberado estritamente para o Administrador
   /* Grupos deixou de ser aba: criar grupo mora dentro de Conversas */
-  const deveExibirBotaoMais = abaAtiva === 'conversas';
+  // Durante a busca o "+" sai: os resultados ocupam a tela, e a ação principal é abrir um deles
+  const deveExibirBotaoMais = abaAtiva === 'conversas' && !buscaConversas.trim();
 
   return (
     <div className="w-full h-[100dvh] flex flex-col bg-[var(--c-canvas)] text-[var(--c-texto)] overflow-hidden">
@@ -1386,6 +1397,36 @@ export default function App() {
             conversaAtiva ? 'hidden' : 'flex'
           }`}
         >
+          {/*
+            A BARRA DE BUSCA, no alto da lista — pedido do Elias, estilo
+            WhatsApp. Procura no nome das conversas e dentro das mensagens.
+          */}
+          {abaAtiva === 'conversas' && (
+            <div className="px-3 pt-3 pb-2 bg-[var(--c-superficie)] flex-shrink-0">
+              <label className="flex items-center gap-2.5 h-11 px-4 rounded-full bg-[var(--c-superficie-2)] border border-transparent focus-within:border-[var(--c-acento)] transition-colors">
+                <Search className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
+                <input
+                  id="busca-conversas"
+                  type="search"
+                  value={buscaConversas}
+                  onChange={(e) => setBuscaConversas(e.target.value)}
+                  placeholder="Pesquisar conversas e mensagens"
+                  className="flex-1 min-w-0 bg-transparent outline-none text-[15px] text-[var(--c-texto)] placeholder:text-[var(--c-texto-3)] [&::-webkit-search-cancel-button]:hidden"
+                />
+                {buscaConversas && (
+                  <button
+                    type="button"
+                    onClick={() => setBuscaConversas('')}
+                    aria-label="Limpar a busca"
+                    className="w-7 h-7 -mr-1.5 rounded-full flex items-center justify-center text-[var(--c-texto-3)] active:bg-[var(--c-canvas)]"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </label>
+            </div>
+          )}
+
           {/* Faixa fixa no topo se houver aviso não lido da direção (apenas na aba Conversas) */}
           {abaAtiva === 'conversas' && avisoNaoLido && (
             <FaixaAvisoDirecao
@@ -1413,7 +1454,17 @@ export default function App() {
               quantas não lidas há dentro, que é o que faz alguém
               abrir.
             */}
-            {abaAtiva === 'conversas' && (
+            {abaAtiva === 'conversas' && buscaConversas.trim() && (
+              <ResultadosDaBusca
+                termo={buscaConversas}
+                conversas={[...conversasIndividuais, ...grupos]}
+                aoAbrir={(conversaId, mensagemId) => {
+                  setMensagemAlvo(mensagemId ? { conversaId, mensagemId } : null);
+                  abrirConversaEmTelaCheia(conversaId);
+                }}
+              />
+            )}
+            {abaAtiva === 'conversas' && !buscaConversas.trim() && (
               <>
                 {conversasIndividuais.length === 0 && grupos.length === 0 ? (
                   <div className="p-8 text-center text-[var(--c-texto-3)] text-xs space-y-3">
@@ -1691,6 +1742,9 @@ export default function App() {
               <TelaConversa
                 conversa={conversaAtiva}
                 colaboradorAtual={colaboradorAtual}
+                mensagemAlvoId={
+                  mensagemAlvo?.conversaId === conversaAtiva.id ? mensagemAlvo.mensagemId : undefined
+                }
                 aoVoltar={() => setConversaAtivaId(null)}
                 aoAbrirPublicacao={abrirPublicacao}
               />

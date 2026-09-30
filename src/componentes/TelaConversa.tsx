@@ -50,6 +50,7 @@ import { ModalCamera } from './ModalCamera';
 import { ModalVisualizadorImagem } from './ModalVisualizadorImagem';
 import { ModalEncaminharMensagem } from './ModalEncaminharMensagem';
 import { montarPreviaDaMensagem } from '../servicos/nuvemComunicacao';
+import { mensagemCasaComBusca } from '../servicos/buscaNasConversas';
 import { gravadorVoz, gravacaoDisponivel } from '../servicos/gravadorVoz';
 
 interface PropsTelaConversa {
@@ -64,6 +65,8 @@ interface PropsTelaConversa {
    * seria uma surpresa.
    */
   aoAbrirPublicacao?: (publicacaoId: string) => void;
+  /** Chegando pela busca da lista: a mensagem encontrada, para abrir nela. */
+  mensagemAlvoId?: string;
 }
 
 /**
@@ -141,6 +144,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   colaboradorAtual,
   aoVoltar,
   aoAbrirPublicacao,
+  mensagemAlvoId,
 }) => {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [textoMensagem, setTextoMensagem] = useState('');
@@ -645,20 +649,22 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     );
   };
 
-  const mensagensExibidas = mensagens.filter((m) => {
-    if (!termoBusca.trim()) return true;
-    const termo = termoBusca.toLowerCase();
-    if (m.tipo === 'texto' && m.texto) {
-      return m.texto.toLowerCase().includes(termo);
-    }
-    if (m.tipo === 'arquivo' && m.arquivoNome) {
-      return m.arquivoNome.toLowerCase().includes(termo);
-    }
-    if (m.tipo === 'imagem' && m.legenda) {
-      return m.legenda.toLowerCase().includes(termo);
-    }
-    return false;
-  });
+  /* A mesma regra da busca da lista de conversas (buscaNasConversas.ts) */
+  const mensagensExibidas = mensagens.filter((m) => mensagemCasaComBusca(m, termoBusca));
+
+  /**
+   * CHEGANDO PELA BUSCA DA LISTA, a conversa abre NA mensagem encontrada —
+   * rolada até ela e piscando, como no WhatsApp. Depois do primeiro
+   * desenho, porque a conversa abre rolada para a última mensagem.
+   */
+  const jaFoiAoAlvo = useRef<string | null>(null);
+  useEffect(() => {
+    if (!mensagemAlvoId || jaFoiAoAlvo.current === mensagemAlvoId) return;
+    if (!mensagens.some((m) => m.id === mensagemAlvoId)) return;
+    jaFoiAoAlvo.current = mensagemAlvoId;
+    const temporizador = setTimeout(() => irParaMensagem(mensagemAlvoId), 450);
+    return () => clearTimeout(temporizador);
+  }, [mensagemAlvoId, mensagens]);
 
   // Regra no banco: apenas pessoas com permissão veem os botões de envio
   const podePublicar = bancoDados.podePublicarNaConversa(conversa.id);
