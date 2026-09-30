@@ -75,7 +75,7 @@ Estas são as decisões que já estão tomadas. Mudá-las é o assunto.
 | Dia considerado "completo" | só com as **4** batidas | `obterJornadaDoDia` |
 | Jornada prevista | `cargaHorariaDiariaMinutos` da pessoa, ou 480 | `cargaPrevistaEmMinutos` |
 | Sábado e domingo | previsto = 0 | idem |
-| **Tolerância** | Entrada e saída: até 5 min em cada e 10 somadas, senão contam inteiras. Almoço: até 5 min somando saída e retorno. Sem horário conhecido: 10 min no dia. Aplicada no saldo do dia, antes de qualquer tela ou do banco de horas ler | `toleranciaDoPonto.ts`, chamada em `obterJornadaDoDia` |
+| **Tolerância** | Dia que fecha até 5 min acima ou abaixo do previsto: saldo zero. Entrada e saída: até 5 min em cada e 10 somadas, senão contam. Almoço: até 5 min somando saída e retorno. O saldo nunca passa do relógio. Sem horário conhecido: 10 min no dia. Aplicada no saldo do dia, antes de qualquer tela ou do banco de horas ler | `toleranciaDoPonto.ts`, chamada em `obterJornadaDoDia` |
 | Intervalo | só desconta se as duas batidas do almoço existirem | `obterJornadaDoDia` |
 | Saldo acumulado | soma **só** das apurações aprovadas | `obterSaldoAcumulado` |
 | Dia incompleto | **não gera apuração nenhuma** | `apurarDia` |

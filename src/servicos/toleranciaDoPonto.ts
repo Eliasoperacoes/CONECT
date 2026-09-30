@@ -192,6 +192,23 @@ export function aplicarTolerancia(dados: {
    * inverter. Aqui, +0h01.
    */
   const relogio = abaterPausa(diferenca, pausa);
+
+  /**
+   * O DIA QUE FECHA DENTRO DE 5 MINUTOS NÃO GERA SALDO — para mais ou
+   * para menos.
+   *
+   * O Elias: "tem o limite dos 5 min tanto pra ficar devendo horário
+   * quanto para considerar hora extra. Se não, qualquer 1 min é
+   * acúmulo." A Aline, 21/09, fechou o dia com +1 no relógio; como a
+   * saída de +6 passava da tolerância da marcação, o dia inteiro
+   * contava, e o +0h01 ia para o banco. Olhar só marcação por marcação
+   * deixava escapar o resultado do dia.
+   */
+  if (Math.abs(relogio) <= limites.porMarcacao) {
+    resultado.saldoApurado = 0;
+    return resultado;
+  }
+
   const calculado = abaterPausa(diferenca - neutralizado, pausa);
   resultado.saldoApurado =
     relogio >= 0

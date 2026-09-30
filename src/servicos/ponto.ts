@@ -3308,10 +3308,11 @@ class ServicoPonto {
             Previsto é a jornada do turno para aquele dia. Trabalhado é o tempo entre a
             entrada e a saída, descontado o almoço. Relógio é a diferença entre o trabalhado
             e o previsto, exatamente como o relógio marcou. Saldo é o que vale para o banco de
-            horas: pequenas variações de horário não contam — até 5 minutos na entrada e até
-            5 na saída, no máximo 10 somando as duas, e até 5 minutos somando a saída e a
-            volta do almoço (art. 58, §1º da CLT). Quando uma variação passa desses limites,
-            ela conta inteira. Por isso o Saldo pode ser menor que o Relógio, ou zero.
+            horas (art. 58, §1º da CLT): o dia que fecha até 5 minutos acima ou abaixo do
+            previsto não gera saldo; e pequenas variações de horário não contam —
+            até 5 minutos na entrada e até 5 na saída, no máximo 10 somando as duas,
+            e até 5 minutos somando a saída e a volta do almoço. Quando uma variação passa desses
+            limites, ela conta. O Saldo nunca passa do Relógio: pode ser menor, ou zero.
           </p>
 
           <table class="totais">${rodape}</table>

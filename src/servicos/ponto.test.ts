@@ -3814,7 +3814,7 @@ test('o painel e o papel desenham a MESMA linha e o MESMO rodapé', async () => 
   expect(papel).not.toContain('Total trabalhado no período');
 });
 
-test('ALINE, 21/09, no espelho: relógio +0h01 e saldo +0h01', async () => {
+test('ALINE, 21/09, no espelho: relógio +0h01 e saldo 0h00', async () => {
   equipe = [ELIAS, DO_TURNO_A];
   colaboradorLogado = DO_TURNO_A;
   await baterDia(DO_TURNO_A, '2026-09-21', ['07:30', '12:30', '14:05', '17:16']);
@@ -3822,5 +3822,6 @@ test('ALINE, 21/09, no espelho: relógio +0h01 e saldo +0h01', async () => {
   const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-21');
   expect(dia.minutosTrabalhados).toBe(491);
   expect(dia.saldoBrutoMinutos).toBe(1);
-  expect(dia.saldoMinutos).toBe(1);
+  expect(dia.saldoMinutos).toBe(0);
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-21')).toBeNull();
 });

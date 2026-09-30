@@ -189,7 +189,7 @@ test('12d. almoço e entrada/saída não dividem o mesmo limite', () => {
    * diz +5, e é isso que ela trabalhou a mais: a tolerância do almoço não
    * pode devolver os 3 minutos que ela não trabalhou. Era +8.
    */
-  expect(fora.saldoApurado).toBe(5);
+  expect(fora.saldoApurado).toBe(0); // e +5 no dia está dentro dos 5: nada conta
 });
 
 // ---------------------------------------------------------------
@@ -274,7 +274,7 @@ test('a tolerância é aplicada NUM lugar só, e todos leem o saldo dele', async
 // A tolerância nunca passa do relógio
 // ---------------------------------------------------------------
 
-test('ALINE, 21/09: relógio +0h01 não vira saldo +0h06', () => {
+test('ALINE, 21/09: relógio +0h01 não vira saldo — nem +0h06, nem +0h01', () => {
   /**
    * 07:30 · 12:30 · 14:05 · 17:16. Saída +6 (passou, conta inteira);
    * almoço 5 min mais longo (tolerado). O relógio: +1. A regra somada dava
@@ -283,12 +283,15 @@ test('ALINE, 21/09: relógio +0h01 não vira saldo +0h06', () => {
   const r = dia('07:30', '17:16', ['12:30', '14:05']);
   expect(r.entradaESaida?.tolerado).toBe(false);
   expect(r.intervalo?.tolerado).toBe(true);
-  expect(r.saldoApurado).toBe(1);
+  // O dia fechou +1: dentro dos 5 minutos, para mais ou para menos, não gera saldo
+  expect(r.saldoApurado).toBe(0);
 });
 
 test('o espelho do débito: a tolerância também não aumenta o que se deve', () => {
   // Entrou 6 atrasado (−6, conta) e almoçou 5 a menos (+5, tolerado): relógio −1
-  expect(dia('07:36', '17:10', ['12:30', '13:55']).saldoApurado).toBe(-1);
+  expect(dia('07:36', '17:10', ['12:30', '13:55']).saldoApurado).toBe(0);
+  // Entrou 12 atrasado, almoçou 3 a menos: relógio −9, e aí conta — o que o relógio diz
+  expect(dia('07:42', '17:10', ['12:30', '13:57']).saldoApurado).toBe(-9);
 });
 
 test('EM NENHUMA COMBINAÇÃO o saldo passa do relógio ou troca de sinal', () => {
@@ -308,6 +311,8 @@ test('EM NENHUMA COMBINAÇÃO o saldo passa do relógio ou troca de sinal', () =
           const r = dia(em('07:30', de), em('17:10', ds), [em('12:30', da), em('14:00', dr)]);
           const relogio = -de + ds + (da - dr);
           const s = r.saldoApurado;
+          // Dentro de 5 minutos no dia, para mais ou para menos: nada vai ao banco
+          if (Math.abs(relogio) <= 5) expect(s).toBe(0);
           if (relogio >= 0) {
             expect(s).toBeGreaterThanOrEqual(0);
             expect(s).toBeLessThanOrEqual(relogio);
