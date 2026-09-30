@@ -52,3 +52,26 @@ test('os horários A e B são os oficiais, e fecham 8h10', async () => {
   expect(minutosDoTurno(a)).toBe(490);
   expect(minutosDoTurno(b)).toBe(490);
 });
+
+test('O BANCO ACEITA TODO TURNO QUE A TELA OFERECE', async () => {
+  /**
+   * A trava do banco só conhecia A e B, e a tela oferecia também os turnos
+   * de estágio: nenhum estagiário conseguiu gravar o dele. A Lyvia ficou no
+   * A, com 8h10 de carga, e foi cobrada como integral. Descoberto quando o
+   * SQL que a punha no E3 foi recusado (29/09/2026).
+   */
+  const { TURNOS } = await import('../tipos');
+  const esquema = await Bun.file('supabase/esquema.sql').text();
+
+  const travas = [
+    ...esquema.matchAll(/colaboradores_turno_check\s+check \(turno in \(([^)]*)\)\)/g),
+  ];
+  expect(travas.length).toBeGreaterThan(0);
+  // A última definição é a que vale
+  const aceitos = travas[travas.length - 1][1]
+    .split(',')
+    .map((v) => v.trim().replace(/'/g, ''))
+    .sort();
+
+  expect(aceitos).toEqual(TURNOS.map((t) => t.chave).sort());
+});

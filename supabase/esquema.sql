@@ -45,6 +45,18 @@ create table if not exists public.colaboradores (
   criado_em                       timestamptz not null default now()
 );
 
+-- O TURNO DA ESCALA: decide o previsto do dia, o horário de cada batida e
+-- quantas batidas fecham o dia. Nasceu em `escala-turnos.sql` só com A e
+-- B — e o sistema oferecia também os turnos de estágio, que o banco
+-- recusava: nenhum estagiário conseguiu gravar o dele (29/09/2026). A lista
+-- é a de `TURNOS` (tipos.ts); um teste confere que as duas batem.
+alter table public.colaboradores
+  add column if not exists turno text not null default 'A';
+alter table public.colaboradores drop constraint if exists colaboradores_turno_check;
+alter table public.colaboradores
+  add constraint colaboradores_turno_check
+  check (turno in ('A', 'B', 'E0', 'E1', 'E2', 'E3'));
+
 create table if not exists public.conversas (
   id                        text primary key,
   tipo                      text not null check (tipo in ('individual', 'grupo')),

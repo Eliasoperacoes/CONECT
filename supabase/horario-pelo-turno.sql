@@ -17,6 +17,16 @@
 -- Os dias já apurados só mudam com "Reapurar período" de cada pessoa.
 -- ============================================================
 
+-- 1. O BANCO PASSA A ACEITAR OS TURNOS DE ESTÁGIO.
+-- A trava de `escala-turnos.sql` só conhecia A e B, e o sistema oferece
+-- também E0 a E3: nenhum estagiário conseguia gravar o turno dele. Foi o
+-- que recusou este script na primeira vez.
+alter table public.colaboradores drop constraint if exists colaboradores_turno_check;
+alter table public.colaboradores
+  add constraint colaboradores_turno_check
+  check (turno in ('A', 'B', 'E0', 'E1', 'E2', 'E3'));
+
+-- 2. A carga própria sai; o turno volta a mandar
 update public.colaboradores
    set carga_horaria_diaria_minutos = null
  where ativo
@@ -30,10 +40,13 @@ update public.colaboradores
      'Fernanda Metzner Ceccarelli'
    );
 
+-- 3. A Lyvia no turno de estágio da tarde
 update public.colaboradores
    set turno = 'E3'
  where ativo
    and nome = 'Lyvia Aparecida Souza Gonçalves';
+
+notify pgrst, 'reload schema';
 
 -- Conferência: as seis sem carga própria, e a Lyvia no E3
 select nome, setor, turno, carga_horaria_diaria_minutos
