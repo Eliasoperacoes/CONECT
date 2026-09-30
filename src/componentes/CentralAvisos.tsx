@@ -43,6 +43,8 @@ import {
   ShieldCheck,
   X,
   Upload,
+  SlidersHorizontal,
+  Check,
 } from 'lucide-react';
 import {
   Colaborador,
@@ -68,12 +70,14 @@ import {
   ordenarPublicacoes,
   podeEditarPublicacao,
   resumoDeLeitura,
+  quandoFoiPublicada,
 } from '../servicos/mural';
 import { enviarAnexo } from '../servicos/anexos';
 import { resumoCurto } from '../servicos/textoRico';
 import { NovaPublicacao } from './NovaPublicacao';
 import { PainelPublicacao } from './PainelPublicacao';
 import { FotoPresenca } from './FotoPresenca';
+import { FolhaInferior } from './FolhaInferior';
 
 interface PropsCentralAvisos {
   colaboradorAtual: Colaborador;
@@ -139,6 +143,46 @@ const LinhaFiltro: React.FC<{
   </button>
 );
 
+/** Um filtro ligado, à vista no celular, que sai com um toque. */
+const EtiquetaFiltro: React.FC<{ rotulo: string; aoRemover: () => void }> = ({ rotulo, aoRemover }) => (
+  <button
+    type="button"
+    onClick={aoRemover}
+    className="h-8 pl-3 pr-2 rounded-full bg-[var(--c-acento-suave)] text-[var(--c-acento)] text-[13px] font-semibold flex items-center gap-1 whitespace-nowrap flex-shrink-0"
+  >
+    {rotulo}
+    <X className="w-3.5 h-3.5" />
+  </button>
+);
+
+/** Uma opção da folha de filtros: o nome, quantas há, e se está escolhida. */
+const OpcaoFiltro: React.FC<{
+  ligado: boolean;
+  rotulo: string;
+  contagem?: number;
+  aoClicar: () => void;
+}> = ({ ligado, rotulo, contagem, aoClicar }) => (
+  <button
+    type="button"
+    onClick={aoClicar}
+    className="w-full flex items-center gap-3 px-4 h-12 text-left active:bg-[var(--c-superficie-2)]"
+  >
+    <span className={`flex-1 text-[15px] ${ligado ? 'font-semibold text-[var(--c-texto)]' : 'text-[var(--c-texto-2)]'}`}>
+      {rotulo}
+    </span>
+    {contagem !== undefined && (
+      <span className="text-[13px] text-[var(--c-texto-3)] tabular-nums">{contagem}</span>
+    )}
+    <span
+      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+        ligado ? 'bg-[var(--c-acento)] border-[var(--c-acento)] text-[var(--c-sobre-acento)]' : 'border-[var(--c-borda-forte)]'
+      }`}
+    >
+      {ligado && <Check className="w-3 h-3 stroke-[3]" />}
+    </span>
+  </button>
+);
+
 export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
   colaboradorAtual,
   publicacaoAAbrir,
@@ -160,6 +204,8 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
    * são os mesmos, e duas telas iguais divergem no primeiro ajuste.
    */
   const [editando, setEditando] = useState<AvisoRede | null>(null);
+  /** A folha de filtros do celular. */
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
 
   /**
    * AS COLUNAS DA ESQUERDA RECOLHEM, uma a uma.
@@ -273,6 +319,12 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
     return ordenarPublicacoes(filtradas);
   }, [doTipo, categoria, prioridade, unidade, busca, colaboradores]);
 
+  /** Quantos filtros estão ligados: o número no botão de filtros. */
+  const filtrosLigados =
+    (unidade !== 'todas' ? 1 : 0) +
+    (categoria !== 'todas' ? 1 : 0) +
+    (prioridade !== 'todas' ? 1 : 0);
+
   const limparFormulario = () => {
     setTitulo('');
     setConteudo('');
@@ -364,9 +416,114 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
   };
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col gap-4">
-      {/* Cabeçalho */}
-      <div className="flex items-start gap-3 flex-wrap">
+    <div className="p-4 sm:p-6 flex flex-col gap-4 pb-28 lg:pb-6">
+      {/*
+        NO CELULAR, A CENTRAL É UMA TELA DE APLICATIVO — pedido do Elias:
+        "não só funções espalhadas pela tela". Título curto, busca e um
+        botão de filtros; unidade, categoria e prioridade moram numa folha
+        que sobe de baixo. Publicar é o botão redondo no canto, onde o
+        polegar alcança. No computador a coluna de filtros continua.
+      */}
+      <div className="lg:hidden flex flex-col gap-3">
+        <div>
+          <h1 className="text-2xl font-black text-[var(--c-texto)] leading-tight">Central</h1>
+          <p className="text-[13px] text-[var(--c-texto-3)]">
+            Comunicados, documentos e tutoriais da rede
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="flex-1 flex items-center gap-2.5 h-11 px-4 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] focus-within:border-[var(--c-acento)] transition-colors">
+            <Search className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
+            <input
+              id="central-busca"
+              type="search"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar publicações"
+              className="flex-1 min-w-0 bg-transparent outline-none text-[15px] text-[var(--c-texto)] placeholder:text-[var(--c-texto-3)] [&::-webkit-search-cancel-button]:hidden"
+            />
+            {busca && (
+              <button
+                type="button"
+                onClick={() => setBusca('')}
+                aria-label="Limpar a busca"
+                className="w-7 h-7 -mr-1.5 rounded-full flex items-center justify-center text-[var(--c-texto-3)]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </label>
+          <button
+            type="button"
+            id="central-filtros"
+            onClick={() => setFiltrosAbertos(true)}
+            aria-label="Filtros"
+            className={`relative w-11 h-11 rounded-full border flex items-center justify-center flex-shrink-0 transition-colors ${
+              filtrosLigados > 0
+                ? 'bg-[var(--c-acento-suave)] border-[var(--c-acento)] text-[var(--c-acento)]'
+                : 'bg-[var(--c-superficie)] border-[var(--c-borda)] text-[var(--c-texto-2)]'
+            }`}
+          >
+            <SlidersHorizontal className="w-4.5 h-4.5" />
+            {filtrosLigados > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-[10px] font-bold flex items-center justify-center">
+                {filtrosLigados}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Avisos · Documentos · Tutoriais: uma linha, três partes iguais */}
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)]">
+          {TIPOS_PUBLICACAO.map((t) => {
+            const quantos = minhas.filter((p) => p.tipo === t).length;
+            const ativo = tipoAtivo === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                id={`central-tipo-${t}`}
+                onClick={() => setTipoAtivo(t)}
+                className={`h-10 rounded-xl text-[13px] font-semibold flex items-center justify-center gap-1.5 transition-colors ${
+                  ativo
+                    ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                    : 'text-[var(--c-texto-2)] active:bg-[var(--c-superficie-2)]'
+                }`}
+              >
+                {ROTULO_TIPO_PUBLICACAO[t]}
+                {quantos > 0 && (
+                  <span
+                    className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                      ativo ? 'bg-black/15' : 'bg-[var(--c-superficie-2)]'
+                    }`}
+                  >
+                    {quantos}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Os filtros ligados, à vista e removíveis com um toque */}
+        {filtrosLigados > 0 && (
+          <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4">
+            {unidade !== 'todas' && (
+              <EtiquetaFiltro rotulo={unidade} aoRemover={() => setUnidade('todas')} />
+            )}
+            {categoria !== 'todas' && (
+              <EtiquetaFiltro rotulo={ROTULO_CATEGORIA[categoria]} aoRemover={() => setCategoria('todas')} />
+            )}
+            {prioridade !== 'todas' && (
+              <EtiquetaFiltro rotulo={ROTULO_PRIORIDADE[prioridade]} aoRemover={() => setPrioridade('todas')} />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Cabeçalho do computador */}
+      <div className="hidden lg:flex items-start gap-3 flex-wrap">
         <div className="w-11 h-11 rounded-2xl bg-[var(--c-acento)]/10 flex items-center justify-center shrink-0">
           <Megaphone className="w-5 h-5 text-[var(--c-acento)]" />
         </div>
@@ -394,7 +551,7 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
 
       <div className="flex flex-col lg:flex-row gap-4 items-start">
         {/* Coluna da esquerda */}
-        <aside className="w-full lg:w-60 shrink-0 bg-[var(--c-superficie)] border border-[var(--c-borda)] rounded-2xl p-3 flex flex-col gap-3">
+        <aside className="hidden lg:flex w-60 shrink-0 bg-[var(--c-superficie)] border border-[var(--c-borda)] rounded-2xl p-3 flex-col gap-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--c-texto-3)]" />
             <input
@@ -404,48 +561,6 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
               placeholder="Buscar por assunto..."
               className="w-full pl-9 pr-3 py-2 text-xs bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)]"
             />
-          </div>
-
-          {/*
-            NO CELULAR, DOIS SELETORES NO LUGAR DE TREZE LINHAS.
-
-            A coluna da esquerda empilhava uma busca, sete unidades e
-            seis categorias — treze linhas de filtro antes da primeira
-            publicação. Numa tela de 390px isso é rolar duas vezes para
-            chegar ao que se veio ler.
-
-            Nativos de propósito: abrem a roda do sistema, que se gira
-            com o polegar. E levam a CONTAGEM no rótulo, que é o que a
-            coluna do computador mostra ao lado de cada linha.
-          */}
-          <div className="grid grid-cols-2 gap-2 lg:hidden">
-            <select
-              value={unidade}
-              onChange={(e) => setUnidade(e.target.value)}
-              aria-label="Unidade"
-              className="w-full px-2 py-2 text-xs bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)]"
-            >
-              <option value="todas">Todas as unidades ({doTipo.length})</option>
-              {INFORMACOES_LOJAS.map((loja) => (
-                <option key={loja.nome} value={loja.nome}>
-                  {loja.nome} ({contarUnidade(loja.nome)})
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={categoria}
-              onChange={(e) => setCategoria(e.target.value as CategoriaPublicacao | 'todas')}
-              aria-label="Categoria"
-              className="w-full px-2 py-2 text-xs bg-[var(--c-canvas)] border border-[var(--c-borda)] rounded-xl text-[var(--c-texto)]"
-            >
-              <option value="todas">Todas as categorias ({doTipo.length})</option>
-              {CATEGORIAS_PUBLICACAO.map((cat) => (
-                <option key={cat} value={cat}>
-                  {ROTULO_CATEGORIA[cat]} ({doTipo.filter((p) => p.categoria === cat).length})
-                </option>
-              ))}
-            </select>
           </div>
 
           <div className="hidden lg:block">
@@ -525,8 +640,8 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
 
         {/* Lista */}
         <div className="flex-1 min-w-0 w-full flex flex-col gap-3">
-          {/* Abas de tipo: a divisão mais grossa vem primeiro */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Abas de tipo: a divisão mais grossa vem primeiro (no celular, no topo) */}
+          <div className="hidden lg:flex items-center gap-1.5 flex-wrap">
             {TIPOS_PUBLICACAO.map((t) => {
               const quantos = minhas.filter((p) => p.tipo === t).length;
               return (
@@ -642,8 +757,14 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
                         )}
                       </div>
 
-                      <span className="block text-sm font-bold text-[var(--c-texto)] leading-snug truncate">
-                        {p.titulo}
+                      {/* Não lida: um ponto e o título em destaque, como numa caixa de entrada */}
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        {!(p.lidoPorIds || []).includes(colaboradorAtual.id) && (
+                          <span className="w-2 h-2 rounded-full bg-[var(--c-acento)] flex-shrink-0" aria-label="Não lida" />
+                        )}
+                        <span className="block text-[15px] font-bold text-[var(--c-texto)] leading-snug line-clamp-2">
+                          {p.titulo}
+                        </span>
                       </span>
                       {/*
                         O RESUMO É CORTADO NO TEXTO, e não só no CSS.
@@ -709,7 +830,7 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
 
                     <div className="flex flex-col items-end gap-1 shrink-0">
                       <span className="text-[10px] text-[var(--c-texto-3)] whitespace-nowrap">
-                        {p.dataPorExtenso}
+                        {quandoFoiPublicada(p)}
                       </span>
                       <ChevronRight className="w-4 h-4 text-[var(--c-texto-3)]" />
                     </div>
@@ -720,6 +841,98 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
           )}
         </div>
       </div>
+
+      {/* Publicar, no celular: o botão redondo no canto, acima da barra de baixo */}
+      {podeAdministrar && (
+        <button
+          type="button"
+          id="central-nova-publicacao"
+          onClick={() => setFormularioAberto(true)}
+          aria-label="Nova publicação"
+          className="lg:hidden fixed right-4 bottom-20 z-30 w-14 h-14 rounded-full bg-[var(--c-acento)] text-[var(--c-sobre-acento)] flex items-center justify-center shadow-[var(--s-3)] active:scale-95 transition-transform"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+      )}
+
+      <FolhaInferior
+        aberto={filtrosAbertos}
+        titulo="Filtros"
+        subtitulo={`${ROTULO_TIPO_PUBLICACAO[tipoAtivo]} · ${lista.length} ${lista.length === 1 ? 'resultado' : 'resultados'}`}
+        aoFechar={() => setFiltrosAbertos(false)}
+        rodape={
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setUnidade('todas');
+                setCategoria('todas');
+                setPrioridade('todas');
+              }}
+              disabled={filtrosLigados === 0}
+              className="h-12 px-5 rounded-xl border border-[var(--c-borda)] text-[15px] font-semibold text-[var(--c-texto-2)] disabled:opacity-40"
+            >
+              Limpar
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltrosAbertos(false)}
+              className="flex-1 h-12 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-[15px] font-bold"
+            >
+              Ver {lista.length} {lista.length === 1 ? 'resultado' : 'resultados'}
+            </button>
+          </div>
+        }
+      >
+        {/* Prioridade só recorta AVISO: documento e tutorial não têm urgência */}
+        {tipoAtivo === 'aviso' && (
+          <section className="py-2 border-b border-[var(--c-borda)]">
+            <h3 className="px-4 pt-2 pb-1 text-[12px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
+              Prioridade
+            </h3>
+            <OpcaoFiltro ligado={prioridade === 'todas'} rotulo="Todas" contagem={doTipo.length} aoClicar={() => setPrioridade('todas')} />
+            {PRIORIDADES_AVISO.map((p) => (
+              <OpcaoFiltro
+                key={p}
+                ligado={prioridade === p}
+                rotulo={ROTULO_PRIORIDADE[p]}
+                contagem={doTipo.filter((x) => x.prioridade === p).length}
+                aoClicar={() => setPrioridade(p)}
+              />
+            ))}
+          </section>
+        )}
+        <section className="py-2 border-b border-[var(--c-borda)]">
+          <h3 className="px-4 pt-2 pb-1 text-[12px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
+            Unidade
+          </h3>
+          <OpcaoFiltro ligado={unidade === 'todas'} rotulo="Todas as unidades" contagem={doTipo.length} aoClicar={() => setUnidade('todas')} />
+          {INFORMACOES_LOJAS.map((loja) => (
+            <OpcaoFiltro
+              key={loja.nome}
+              ligado={unidade === loja.nome}
+              rotulo={loja.nome}
+              contagem={contarUnidade(loja.nome)}
+              aoClicar={() => setUnidade(loja.nome)}
+            />
+          ))}
+        </section>
+        <section className="py-2">
+          <h3 className="px-4 pt-2 pb-1 text-[12px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
+            Categoria
+          </h3>
+          <OpcaoFiltro ligado={categoria === 'todas'} rotulo="Todas as categorias" contagem={doTipo.length} aoClicar={() => setCategoria('todas')} />
+          {CATEGORIAS_PUBLICACAO.map((cat) => (
+            <OpcaoFiltro
+              key={cat}
+              ligado={categoria === cat}
+              rotulo={ROTULO_CATEGORIA[cat]}
+              contagem={doTipo.filter((p) => p.categoria === cat).length}
+              aoClicar={() => setCategoria(cat)}
+            />
+          ))}
+        </section>
+      </FolhaInferior>
 
       {aberta && (
         <PainelPublicacao

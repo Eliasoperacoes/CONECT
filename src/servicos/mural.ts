@@ -315,3 +315,24 @@ export const contarPorTipo = (
   for (const p of lista) contagem[p.tipo] = (contagem[p.tipo] || 0) + 1;
   return contagem;
 };
+
+/**
+ * QUANDO FOI PUBLICADA, como se lê numa lista de aplicativo: a hora se
+ * foi hoje, "Ontem", ou o dia e o mês.
+ *
+ * Calculado do `criadoEm`, e não de `dataPorExtenso`: a publicação feita
+ * no aparelho nascia com "Hoje" escrito, e continuaria dizendo "Hoje"
+ * semanas depois até o banco trazer a versão dele.
+ */
+export const quandoFoiPublicada = (p: { criadoEm: string }, agora: Date = new Date()): string => {
+  const quando = new Date(p.criadoEm);
+  if (Number.isNaN(quando.getTime())) return '';
+  const dia = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  if (dia(quando) === dia(agora)) {
+    return quando.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+  const ontem = new Date(agora);
+  ontem.setDate(agora.getDate() - 1);
+  if (dia(quando) === dia(ontem)) return 'Ontem';
+  return `${String(quando.getDate()).padStart(2, '0')}/${String(quando.getMonth() + 1).padStart(2, '0')}`;
+};

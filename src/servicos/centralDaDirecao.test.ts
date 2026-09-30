@@ -571,15 +571,21 @@ test('NO CELULAR, OS FILTROS NÃO OCUPAM A TELA', async () => {
    * Numa tela de 390px isso é rolar duas vezes para chegar ao que se
    * veio ler.
    *
-   * Viram dois seletores nativos, com a contagem no rótulo — que é o
-   * que a coluna do computador mostra ao lado de cada linha.
+   * Viraram dois seletores nativos; depois, pedido do Elias ("funções
+   * espalhadas pela tela"), um botão de filtros com o número de filtros
+   * ligados, que abre uma folha de baixo com unidade, categoria e
+   * prioridade — cada opção com a contagem ao lado, como na coluna do
+   * computador. Os filtros ligados ficam à vista como etiquetas.
    */
   const tela = await lerTela();
 
-  expect(tela).toContain('<div className="grid grid-cols-2 gap-2 lg:hidden">');
-  expect(tela).toContain('aria-label="Unidade"');
-  expect(tela).toContain('aria-label="Categoria"');
-  expect(tela).toContain('({contarUnidade(loja.nome)})');
+  expect(tela).toContain('id="central-filtros"');
+  expect(tela).toContain('<FolhaInferior');
+  expect(tela).toContain('contagem={contarUnidade(loja.nome)}');
+  expect(tela).toContain('<EtiquetaFiltro rotulo={unidade}');
+
+  // A coluna inteira só existe a partir do computador
+  expect(tela).toContain('<aside className="hidden lg:flex');
 
   // E as listas longas só aparecem a partir do computador
   expect((tela.match(/<div className="hidden lg:block">/g) || []).length).toBe(2);
@@ -849,4 +855,14 @@ test('o campo ao vivo NÃO tem um segundo desenhador de texto', async () => {
   expect(aoVivo).toContain("import { escapar, enderecoSeguro } from './textoRico'");
   expect(aoVivo).not.toContain('const escapar =');
   expect(aoVivo).not.toContain('const enderecoSeguro =');
+});
+
+test('a data da publicação é calculada, e não o "Hoje" gravado para sempre', async () => {
+  const { quandoFoiPublicada } = await import('./mural');
+  const agora = new Date(2026, 8, 30, 15, 0);
+  expect(quandoFoiPublicada({ criadoEm: new Date(2026, 8, 30, 9, 5).toISOString() }, agora)).toBe('09:05');
+  expect(quandoFoiPublicada({ criadoEm: new Date(2026, 8, 29, 20, 0).toISOString() }, agora)).toBe('Ontem');
+  expect(quandoFoiPublicada({ criadoEm: new Date(2026, 8, 3, 8, 0).toISOString() }, agora)).toBe('03/09');
+  const tela = await Bun.file('src/componentes/CentralAvisos.tsx').text();
+  expect(tela).toContain('{quandoFoiPublicada(p)}');
 });
