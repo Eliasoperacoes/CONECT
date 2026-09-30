@@ -184,7 +184,12 @@ test('12d. almoço e entrada/saída não dividem o mesmo limite', () => {
 
   // Entrada/saída fora da tolerância não arrasta o almoço tolerado junto
   const fora = dia('07:22', '17:10', ['12:30', '14:03']);
-  expect(fora.saldoApurado).toBe(8); // só os 8 da entrada; os 3 do almoço, não
+  /**
+   * Entrou 8 antes (+8, conta) e almoçou 3 a mais (−3, tolerado). O relógio
+   * diz +5, e é isso que ela trabalhou a mais: a tolerância do almoço não
+   * pode devolver os 3 minutos que ela não trabalhou. Era +8.
+   */
+  expect(fora.saldoApurado).toBe(5);
 });
 
 // ---------------------------------------------------------------
@@ -263,4 +268,54 @@ test('a tolerância é aplicada NUM lugar só, e todos leem o saldo dele', async
   expect(apurar).toContain('const diferenca = jornada.saldoMinutos;');
   expect(apurar).not.toContain('maiorVariacaoDoDia');
   expect(apurar).not.toContain('obterToleranciaMinutos');
+});
+
+// ---------------------------------------------------------------
+// A tolerância nunca passa do relógio
+// ---------------------------------------------------------------
+
+test('ALINE, 21/09: relógio +0h01 não vira saldo +0h06', () => {
+  /**
+   * 07:30 · 12:30 · 14:05 · 17:16. Saída +6 (passou, conta inteira);
+   * almoço 5 min mais longo (tolerado). O relógio: +1. A regra somada dava
+   * +6 — a do almoço perdoava os 5 minutos que ela não trabalhou.
+   */
+  const r = dia('07:30', '17:16', ['12:30', '14:05']);
+  expect(r.entradaESaida?.tolerado).toBe(false);
+  expect(r.intervalo?.tolerado).toBe(true);
+  expect(r.saldoApurado).toBe(1);
+});
+
+test('o espelho do débito: a tolerância também não aumenta o que se deve', () => {
+  // Entrou 6 atrasado (−6, conta) e almoçou 5 a menos (+5, tolerado): relógio −1
+  expect(dia('07:36', '17:10', ['12:30', '13:55']).saldoApurado).toBe(-1);
+});
+
+test('EM NENHUMA COMBINAÇÃO o saldo passa do relógio ou troca de sinal', () => {
+  /**
+   * Varre entrada, saída e as duas marcações do almoço de −12 a +12 minutos
+   * em volta do turno A. Em cada dia: saldo entre zero e o relógio.
+   */
+  const em = (base: string, delta: number) => {
+    const m = min(base) + delta;
+    return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  };
+  let casos = 0;
+  for (const de of [-12, -7, -5, -3, 0, 3, 5, 7, 12])
+    for (const ds of [-12, -7, -5, -3, 0, 3, 5, 7, 12])
+      for (const da of [-6, -3, 0, 3, 6])
+        for (const dr of [-6, -3, 0, 3, 6]) {
+          const r = dia(em('07:30', de), em('17:10', ds), [em('12:30', da), em('14:00', dr)]);
+          const relogio = -de + ds + (da - dr);
+          const s = r.saldoApurado;
+          if (relogio >= 0) {
+            expect(s).toBeGreaterThanOrEqual(0);
+            expect(s).toBeLessThanOrEqual(relogio);
+          } else {
+            expect(s).toBeLessThanOrEqual(0);
+            expect(s).toBeGreaterThanOrEqual(relogio);
+          }
+          casos++;
+        }
+  expect(casos).toBe(2025);
 });

@@ -169,7 +169,34 @@ export function aplicarTolerancia(dados: {
     };
   }
 
-  resultado.saldoApurado = abaterPausa(diferenca - neutralizado, pausa);
+  /**
+   * ===============================================================
+   * A TOLERÂNCIA SÓ APROXIMA O SALDO DE ZERO — nunca passa do relógio.
+   * ===============================================================
+   *
+   * O caso que o Elias pegou, Aline, 21/09 (turno A):
+   *
+   *     07:30 · 12:30 · 14:05 · 17:16
+   *     saída +6 → passou de 5, conta inteira ........... +6
+   *     almoço 5 min mais longo → tolerado, não conta ...  0
+   *     relógio (o que ela trabalhou a mais) ............ +1
+   *
+   * Cada regra sozinha estava certa; somadas, a do almoço PERDOOU os 5
+   * minutos que ela não trabalhou, enquanto a saída cobrava os 6 — e o
+   * saldo saía +0h06 com o relógio em +0h01. A tolerância existe para
+   * desconsiderar pequenas variações, e não para criar hora que ninguém
+   * trabalhou (nem débito que ninguém deve).
+   *
+   * Por isso o saldo fica sempre ENTRE ZERO E O RELÓGIO, no mesmo sinal
+   * dele: a tolerância pode reduzir o que conta, nunca aumentar nem
+   * inverter. Aqui, +0h01.
+   */
+  const relogio = abaterPausa(diferenca, pausa);
+  const calculado = abaterPausa(diferenca - neutralizado, pausa);
+  resultado.saldoApurado =
+    relogio >= 0
+      ? Math.min(Math.max(calculado, 0), relogio)
+      : Math.max(Math.min(calculado, 0), relogio);
   return resultado;
 }
 
