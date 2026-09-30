@@ -20,6 +20,7 @@
 import {
   TOLERANCIA_PONTO_PADRAO_MINUTOS,
   TOLERANCIA_POR_MARCACAO_PADRAO_MINUTOS,
+  TOLERANCIA_INTERVALO_PADRAO_MINUTOS,
   TURNO_SABADO,
   MINUTOS_SABADO,
   minutosDoTurno,
@@ -67,6 +68,7 @@ import { podeUsar } from './permissoes';
 import { agora as agoraSincronizado } from './relogio';
 import { linhasDeIdentificacao, contatoEmLinha } from './fichaColaborador';
 import { temAlcadaSobre, regraAutomaticaDeAlcada, deveSerAvisadoSobre } from './organograma';
+import { aplicarTolerancia } from './toleranciaDoPonto';
 import {
   avisarPedidoDePonto,
   avisarDecisaoDePonto,
@@ -980,6 +982,7 @@ class ServicoPonto {
 
     let minutosTrabalhados = 0;
     let minutosPrevistos = 0;
+    let saldoMinutos = 0;
     const diasComPendencia: string[] = [];
     const hoje = dataDeHoje();
 
@@ -1047,6 +1050,15 @@ class ServicoPonto {
       if (jornada.minutosTrabalhados > 0) {
         minutosTrabalhados += jornada.minutosTrabalhados;
         minutosPrevistos += jornada.minutosPrevistosEfetivos;
+        /**
+         * O SALDO DA SEMANA É A SOMA DOS SALDOS DOS DIAS, e não
+         * `trabalhado − previsto` da semana. Com a tolerância, os dois
+         * deixam de ser iguais: um dia de 07:29 a 17:12 tem 3 minutos a
+         * mais no relógio e zero no saldo. Refazer a subtração aqui
+         * devolveria os minutos que a tolerância perdoou — a mesma
+         * divergência de quando a pausa paga só existia num dos lados.
+         */
+        saldoMinutos += jornada.saldoMinutos;
       }
 
       /**
@@ -1082,7 +1094,7 @@ class ServicoPonto {
       fim,
       minutosTrabalhados,
       minutosPrevistos,
-      saldoMinutos: minutosTrabalhados - minutosPrevistos,
+      saldoMinutos,
       diasComPendencia,
     };
   }
@@ -1303,8 +1315,35 @@ class ServicoPonto {
 
     // Dia sem nenhuma marcação em fim de semana não é falta nem saldo negativo;
     // dia útil sem jornada fechada também não gera saldo até o RH tratar.
-    const saldoMinutos =
+    const saldoBrutoMinutos =
       minutosTrabalhados > 0 ? minutosTrabalhados - minutosPrevistosEfetivos : 0;
+
+    /**
+     * ===============================================================
+     * A TOLERÂNCIA ENTRA AQUI, ANTES DE QUALQUER UM LER O SALDO.
+     * ===============================================================
+     *
+     * Ela era decidida só em `apurarDia`, na hora de gravar no banco de
+     * horas. O resultado: o espelho mostrava +0h05 num dia que o banco
+     * tratava como zero, a relação do ciclo somava os +0h05, e o saldo
+     * do período não fechava com o acumulado. Pedido do Elias: a
+     * correção na regra central, para todos receberem o mesmo número.
+     *
+     * A regra inteira, com os exemplos, está em `toleranciaDoPonto.ts`.
+     */
+    const tolerancia = aplicarTolerancia({
+      batidas: { entrada, saidaAlmoco, retornoAlmoco, saida },
+      esperados: this.horariosEsperadosDoDia(colaborador, data),
+      diferenca: minutosTrabalhados - minutosPrevistos,
+      pausa,
+      jornadaFechada: minutosTrabalhados > 0,
+      limites: {
+        porMarcacao: this.obterToleranciaPorMarcacaoMinutos(),
+        diaria: this.obterToleranciaMinutos(),
+        intervalo: TOLERANCIA_INTERVALO_PADRAO_MINUTOS,
+      },
+    });
+    const saldoMinutos = tolerancia.saldoApurado;
 
     return {
       data,
@@ -1316,6 +1355,8 @@ class ServicoPonto {
       minutosPrevistosEfetivos,
       abatidoPelaPausa,
       saldoMinutos,
+      saldoBrutoMinutos,
+      tolerancia,
       completa,
       emAndamento,
     };
@@ -1840,25 +1881,17 @@ class ServicoPonto {
 
     /**
      * ===============================================================
-     * OS DOIS LIMITES DA LEI, e vale o que for atingido primeiro.
+     * A TOLERÂNCIA JÁ VEM APLICADA no saldo — não se decide aqui.
      * ===============================================================
      *
-     * O art. 58 §1º diz "variações não excedentes de CINCO minutos,
-     * observado o limite máximo de DEZ minutos diários". O sistema
-     * conhecia só o segundo, e por isso era mais permissivo que a lei
-     * num caso: uma única variação de 6 a 10 minutos passava batida.
-     *
-     * A variação por marcação só entra quando o sistema SABE o horário
-     * esperado de cada batida. Para o estágio, que combina o horário
-     * com a área e não cumpre turno da rede, continua valendo só o
-     * limite do dia — comparar com um horário inventado seria pior.
+     * Aqui havia uma segunda conta: o saldo líquido do dia contra 10
+     * minutos e a maior variação de QUALQUER marcação, almoço incluído,
+     * contra 5. Era outra regra, e divergia do espelho, que mostrava o
+     * saldo sem tolerância nenhuma. Pedido do Elias: entrada e saída
+     * 5 + 5 (até 10), almoço com regra própria, e tudo na regra central
+     * (`toleranciaDoPonto.ts`, chamada em `obterJornadaDoDia`). O que
+     * chega aqui já é o que o dia vale; zero é "dentro da tolerância".
      */
-    const maiorVariacao = this.maiorVariacaoDoDia(colaboradorId, data);
-    const dentroDoDia = Math.abs(diferenca) <= this.obterToleranciaMinutos();
-    const dentroDaMarcacao =
-      maiorVariacao === null || maiorVariacao <= this.obterToleranciaPorMarcacaoMinutos();
-
-    const dentroDaTolerancia = dentroDoDia && dentroDaMarcacao;
 
     /**
      * ===============================================================
@@ -1898,7 +1931,7 @@ class ServicoPonto {
      * débito sumir. Reescrever tira da fila, preserva o histórico e não
      * abre nada.
      */
-    if (diferenca === 0 || dentroDaTolerancia) {
+    if (diferenca === 0) {
       /**
        * DIA JÁ DECIDIDO TAMBÉM PRECISA SER REESCRITO QUANDO A BATIDA MUDA.
        *

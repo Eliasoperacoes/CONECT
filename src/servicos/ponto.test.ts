@@ -1144,7 +1144,7 @@ test('DENTRO DA TOLERÂNCIA: o banco de horas recebe ZERO', async () => {
   expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(0);
 });
 
-test('O DIA CONTINUA FACTUAL no espelho, mesmo sem ir ao banco', async () => {
+test('O RELÓGIO CONTINUA NO ESPELHO; o saldo do dia é o apurado', async () => {
   /**
    * A tolerância filtra o que vira SALDO, e não o que aconteceu.
    * Documento de ponto mostra o que aconteceu: a pessoa entrou 08:00 e
@@ -1160,7 +1160,15 @@ test('O DIA CONTINUA FACTUAL no espelho, mesmo sem ir ao banco', async () => {
   await fecharJornada(CARLOS, '2026-09-16', '08:00', '17:07');
 
   const jornada = servicoPonto.obterJornadaDoDia(CARLOS.id, '2026-09-16');
-  expect(jornada.saldoMinutos).toBe(7);
+  /**
+   * O RELÓGIO continua no documento: 08:00, 17:07 e os 7 minutos a mais
+   * (`saldoBrutoMinutos`). O SALDO DO DIA passou a ser o apurado, com a
+   * tolerância — pedido do Elias, para o espelho, a semana e o banco de
+   * horas darem o mesmo número. Antes o espelho dizia +0h07 e o banco,
+   * zero.
+   */
+  expect(jornada.saldoBrutoMinutos).toBe(7);
+  expect(jornada.saldoMinutos).toBe(0);
   expect(jornada.marcacoes.entrada?.horaFormatada).toBe('08:00');
   expect(jornada.marcacoes.saida?.horaFormatada).toBe('17:07');
 
@@ -3323,7 +3331,14 @@ test('preencher EXPÕE a jornada da ficha que discorda do turno', async () => {
   const dia = servicoPonto.obterJornadaDoDia(PEDRO.id, '2026-09-15');
   expect(dia.minutosTrabalhados).toBe(490); // o turno
   expect(dia.minutosPrevistos).toBe(480); // a ficha
-  expect(dia.saldoMinutos).toBe(10);
+  // A divergência continua à vista no relógio: 10 minutos a mais, todo dia
+  expect(dia.saldoBrutoMinutos).toBe(10);
+  /**
+   * Mas o SALDO é o apurado. Sem horário conhecido (a ficha não fecha com
+   * o turno), vale o limite do dia, e 10 minutos cabem nele — é a regra
+   * da tolerância, aplicada no mesmo lugar para todos.
+   */
+  expect(dia.saldoMinutos).toBe(0);
 });
 
 test('não preenche dia de ATESTADO ou falta abonada', async () => {
@@ -3354,4 +3369,149 @@ test('não preenche dia de ATESTADO ou falta abonada', async () => {
     .toBeUndefined();
 
   armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+// ============================================================
+// A TOLERÂNCIA NA REGRA CENTRAL — do espelho ao banco de horas
+//
+// Pedido do Elias: a tolerância aplicada ANTES de o saldo do dia existir,
+// para o espelho, a semana, o fechamento do período e o banco de horas
+// receberem o mesmo número. A regra caso a caso está em
+// `toleranciaDoPonto.test.ts`; aqui, que ela chega a todos.
+// ============================================================
+
+/** Bate as quatro marcações de um dia e apura, como a 4ª batida faz. */
+const baterDia = async (quem: any, data: string, horas: [string, string, string, string]) => {
+  const tipos = ['entrada', 'saida_almoco', 'retorno_almoco', 'saida'];
+  // No banco E no aparelho: a correção e a reapuração sincronizam antes de agir
+  bancoRegistros = bancoRegistros.filter(
+    (r: any) => !(r.colaboradorId === quem.id && r.data === data)
+  );
+  bancoRegistros.push(
+    ...horas.map((hora, i) => ({
+      id: `d-${quem.id}-${data}-${tipos[i]}`, colaboradorId: quem.id, data, tipo: tipos[i],
+      horario: new Date(`${data}T${hora}:00`).toISOString(), horaFormatada: hora,
+      metodo: 'qrcode', loja: quem.loja, criadoEm: '',
+    }))
+  );
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
+  await servicoPonto.apurarDia(quem.id, data);
+};
+
+test('13. O BANCO DE HORAS RECEBE O SALDO APURADO, e não o do relógio', async () => {
+  equipe = [ELIAS, DO_TURNO];
+  colaboradorLogado = DO_TURNO;
+
+  // Segunda: 07:28 e 17:15 — +7 no relógio, dentro da tolerância
+  await baterDia(DO_TURNO, '2026-09-14', ['07:28', '12:30', '14:00', '17:15']);
+  // Terça: almoço de 12:32 a 13:56 — 6 min somados, passa da regra do almoço
+  await baterDia(DO_TURNO, '2026-09-15', ['07:30', '12:32', '13:56', '17:10']);
+
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-14')).toBeNull();
+  const terca = servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-15')!;
+  expect(terca.estado).toBe('pendente');
+  expect(terca.tipo).toBe('hora_extra');
+  expect(terca.minutos).toBe(6);
+
+  // Só o que foi decidido entra no saldo — e entra o apurado
+  colaboradorLogado = ELIAS;
+  await servicoPonto.decidirAjuste(terca.id, true);
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO.id)).toBe(6);
+});
+
+test('14. O FECHAMENTO DO PERÍODO e a semana somam os saldos apurados', async () => {
+  equipe = [ELIAS, DO_TURNO];
+  colaboradorLogado = DO_TURNO;
+
+  await baterDia(DO_TURNO, '2026-09-14', ['07:28', '12:30', '14:00', '17:15']); // relógio +7
+  await baterDia(DO_TURNO, '2026-09-15', ['07:29', '12:30', '14:00', '17:12']); // relógio +3
+
+  // O dia mostra o relógio E o saldo apurado, lado a lado
+  const segunda = servicoPonto.obterJornadaDoDia(DO_TURNO.id, '2026-09-14');
+  expect(segunda.saldoBrutoMinutos).toBe(7);
+  expect(segunda.saldoMinutos).toBe(0);
+
+  // A semana soma o apurado: 0, e não os 10 minutos do relógio
+  expect(servicoPonto.apurarSemana(DO_TURNO.id, '2026-09-15').saldoMinutos).toBe(0);
+
+  // O espelho do período, idem — e o acumulado bate com ele
+  colaboradorLogado = ELIAS;
+  const resumo = servicoPonto
+    .obterResumoDoPeriodo('2026-09-14', '2026-09-15')
+    .find((r) => r.colaborador.id === DO_TURNO.id)!;
+  expect(resumo.saldoPeriodoMinutos).toBe(0);
+  expect(resumo.saldoAcumuladoMinutos).toBe(0);
+  // O relógio continua no documento: 8h17 + 8h13 trabalhadas
+  expect(resumo.minutosTrabalhados).toBe(497 + 493);
+});
+
+test('16. A MARCAÇÃO CORRIGIDA PELO RH passa pela mesma tolerância', async () => {
+  equipe = [ELIAS, DO_TURNO];
+  colaboradorLogado = DO_TURNO;
+
+  // Saiu 17:20: 10 depois numa marcação só — pendência
+  await baterDia(DO_TURNO, '2026-09-15', ['07:30', '12:30', '14:00', '17:20']);
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-15')!.estado).toBe('pendente');
+
+  // O RH corrige a saída para 17:12: 2 depois, dentro da tolerância
+  colaboradorLogado = ELIAS;
+  const res = await servicoPonto.ajustarMarcacao({
+    colaboradorId: DO_TURNO.id, data: '2026-09-15', tipo: 'saida', hora: '17:12',
+    justificativa: 'Saída registrada tarde por fila no relógio',
+  });
+  expect(res.sucesso).toBe(true);
+
+  // A apuração é reescrita para zero, e não apagada
+  const depois = servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-15')!;
+  expect(depois.minutos).toBe(0);
+  expect(depois.estado).toBe('aprovado');
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO.id)).toBe(0);
+});
+
+test('13b. REAPURAR leva a regra nova ao que já estava gravado', async () => {
+  /**
+   * Os saldos gravados antes desta regra ficam com o número velho até
+   * alguém reapurar. Um débito de 8 minutos aprovado pela regra antiga,
+   * num dia que a nova tolera (entrou 4 atrasado, saiu 4 mais cedo):
+   */
+  equipe = [ELIAS, DO_TURNO];
+  colaboradorLogado = DO_TURNO;
+  await baterDia(DO_TURNO, '2026-09-15', ['07:34', '12:30', '14:00', '17:06']);
+  armazenamento.setItem(
+    'conecta_v4_ajustes_jornada',
+    JSON.stringify([
+      {
+        id: 'velho', colaboradorId: DO_TURNO.id, data: '2026-09-15',
+        tipo: 'debito', minutos: 8, minutosTrabalhados: 482, minutosPrevistos: 490,
+        estado: 'aprovado', origem: 'pendencia', criadoEm: '2026-09-15T18:00:00.000Z',
+      },
+    ])
+  );
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO.id)).toBe(-8);
+
+  colaboradorLogado = ELIAS;
+  const res = await servicoPonto.reapurarPeriodo(DO_TURNO.id, '2026-09-15', '2026-09-15');
+  expect(res.sucesso).toBe(true);
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO.id)).toBe(0);
+});
+
+test('15. DIA SEM MARCAÇÃO COMPLETA não vira saldo pela tolerância', async () => {
+  equipe = [ELIAS, DO_TURNO];
+  colaboradorLogado = DO_TURNO;
+
+  // Só a entrada: a jornada não fechou
+  armazenamento.setItem(
+    CHAVE_REGISTROS,
+    JSON.stringify([
+      {
+        id: 'so-entrada', colaboradorId: DO_TURNO.id, data: '2026-09-15', tipo: 'entrada',
+        horario: new Date('2026-09-15T07:29:00').toISOString(), horaFormatada: '07:29',
+        metodo: 'qrcode', loja: DO_TURNO.loja, criadoEm: '',
+      },
+    ])
+  );
+  const jornada = servicoPonto.obterJornadaDoDia(DO_TURNO.id, '2026-09-15');
+  expect(jornada.saldoMinutos).toBe(0);
+  expect(jornada.tolerancia.modo).toBe('sem_jornada');
+  expect(jornada.completa).toBe(false);
 });

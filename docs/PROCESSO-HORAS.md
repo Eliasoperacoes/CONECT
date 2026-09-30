@@ -75,7 +75,7 @@ Estas são as decisões que já estão tomadas. Mudá-las é o assunto.
 | Dia considerado "completo" | só com as **4** batidas | `obterJornadaDoDia` |
 | Jornada prevista | `cargaHorariaDiariaMinutos` da pessoa, ou 480 | `cargaPrevistaEmMinutos` |
 | Sábado e domingo | previsto = 0 | idem |
-| **Tolerância** | **nenhuma — qualquer diferença ≠ 0 vira pendência** | `apurarDia` |
+| **Tolerância** | Entrada e saída: até 5 min em cada e 10 somadas, senão contam inteiras. Almoço: até 5 min somando saída e retorno. Sem horário conhecido: 10 min no dia. Aplicada no saldo do dia, antes de qualquer tela ou do banco de horas ler | `toleranciaDoPonto.ts`, chamada em `obterJornadaDoDia` |
 | Intervalo | só desconta se as duas batidas do almoço existirem | `obterJornadaDoDia` |
 | Saldo acumulado | soma **só** das apurações aprovadas | `obterSaldoAcumulado` |
 | Dia incompleto | **não gera apuração nenhuma** | `apurarDia` |
@@ -92,6 +92,11 @@ Estas são as decisões que já estão tomadas. Mudá-las é o assunto.
 Esta é a parte que interessa. Em ordem de impacto.
 
 ### 4.1 Não há tolerância — e isso é o problema central
+
+> **Resolvido (2026-09-29).** A tolerância existe e vive na regra central
+> (`toleranciaDoPonto.ts`): o saldo do dia já sai dela, e o espelho, a
+> semana, o fechamento do período e o banco de horas leem o mesmo número.
+> O texto abaixo fica como registro de por que ela foi necessária.
 
 Qualquer diferença diferente de zero vira uma pendência de aprovação.
 **Um minuto a mais gera uma aprovação.**

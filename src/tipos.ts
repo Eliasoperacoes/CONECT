@@ -716,6 +716,17 @@ export const TOLERANCIA_PONTO_PADRAO_MINUTOS = 10;
  */
 export const TOLERANCIA_POR_MARCACAO_PADRAO_MINUTOS = 5;
 
+/**
+ * A tolerância do INTERVALO DE ALMOÇO, que é outra regra.
+ *
+ * Soma-se o quanto a saída e o retorno do almoço fugiram do horário; até
+ * 5 minutos no total não geram saldo. Não é a regra de 5 por marcação da
+ * entrada/saída, e o almoço não tem os 10 do dia. Decisão do Elias:
+ * "pequenas variações de marcação de até 5 minutos no total, somando as
+ * diferenças ocorridas no início e no término do intervalo".
+ */
+export const TOLERANCIA_INTERVALO_PADRAO_MINUTOS = 5;
+
 /** Comeco da jornada, quando a rede nao configurou outro. */
 export const HORARIO_ENTRADA_PADRAO = '08:00';
 
@@ -1170,8 +1181,23 @@ export interface JornadaDia {
   minutosPrevistosEfetivos: number;
   /** Quanto da pausa paga cobriu o que faltou no dia. Zero fora do estágio. */
   abatidoPelaPausa: number;
-  /** `trabalhados − previstosEfetivos`, e ZERO em dia que não fechou. */
+  /**
+   * O SALDO DO DIA, JÁ COM A TOLERÂNCIA (`toleranciaDoPonto.ts`), e ZERO
+   * em dia que não fechou.
+   *
+   * É o que o espelho mostra, o que a semana soma e o que `apurarDia`
+   * grava no banco de horas — uma conta só. Dentro da tolerância ele é
+   * zero mesmo com o relógio marcando 07:29 e 17:12: é o que a lei manda
+   * ("não serão descontadas nem computadas").
+   */
   saldoMinutos: number;
+  /**
+   * O fato do relógio, sem tolerância: `trabalhados − previstosEfetivos`.
+   * Só para quem precisa explicar a diferença entre os dois.
+   */
+  saldoBrutoMinutos: number;
+  /** Como a tolerância tratou o dia: entrada/saída, intervalo, modo. */
+  tolerancia: import('./servicos/toleranciaDoPonto').ResultadoDaTolerancia;
   completa: boolean; // as quatro marcações registradas
   emAndamento: boolean; // começou e ainda não encerrou
 }
