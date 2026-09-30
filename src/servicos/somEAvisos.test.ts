@@ -180,3 +180,39 @@ test('som novo exige canal novo no Android', async () => {
   const canal = java.match(/static final String CANAL = "([^"]+)"/)![1];
   expect(SOM_DE_CADA_CANAL[canal]).toBe(impressao);
 });
+
+// ------------------------------------------------------------------
+// Um aviso por mensagem, e não dois
+// ------------------------------------------------------------------
+
+test('aplicativo minimizado: o som é do Android, e a parte web fica calada', async () => {
+  const { tocarAvisoDeMensagem } = await import('./notificacoes');
+  let sonsCriados = 0;
+  class ContextoFalso {
+    state = 'running';
+    sampleRate = 8000;
+    currentTime = 0;
+    destination = {};
+    constructor() { sonsCriados++; }
+    resume() {}
+    createBuffer(_c: number, n: number) { return { sampleRate: 8000, getChannelData: () => new Float32Array(n) }; }
+    createBufferSource() { return { connect() {}, start() {}, buffer: null }; }
+  }
+  (globalThis as any).AudioContext = ContextoFalso;
+  const documento = (globalThis as any).document;
+  const comTela = (visivel: boolean) => {
+    (globalThis as any).document = { visibilityState: visivel ? 'visible' : 'hidden', hasFocus: () => visivel };
+  };
+
+  noAplicativo = true;
+  comTela(false);
+  tocarAvisoDeMensagem();
+  expect(sonsCriados).toBe(0);
+
+  // Na tela, o Android se cala (MainActivity.naTela) e o som é este
+  comTela(true);
+  tocarAvisoDeMensagem();
+  expect(sonsCriados).toBe(1);
+
+  (globalThis as any).document = documento;
+});

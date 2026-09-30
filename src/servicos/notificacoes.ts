@@ -182,6 +182,20 @@ let somPronto: AudioBuffer | null = null;
 export const tocarAvisoDeMensagem = (): void => {
   if (!somLigado() || typeof window === 'undefined') return;
 
+  /**
+   * NO APLICATIVO, COM A TELA ESCONDIDA, QUEM AVISA É O ANDROID.
+   *
+   * Minimizado, o aplicativo continua vivo por um tempo: a mensagem chega
+   * pelo tempo real e esta função tocava — e o Android, vendo que o
+   * CONECTA não estava na tela (`MainActivity.naTela`), mostrava o aviso
+   * dele com o som do canal. Dois avisos da mesma mensagem, o primeiro
+   * quase no instante do envio. Com a tela à vista, o Android se cala e
+   * o som é este; escondida, é o dele.
+   */
+  // Só a visibilidade, sem o foco: é o que acompanha o `naTela` do Android
+  // (com a cortina de notificações puxada falta foco, e ninguém tocaria)
+  if (rodandoNoAplicativo() && document.visibilityState !== 'visible') return;
+
   try {
     const Ctx =
       window.AudioContext ||
