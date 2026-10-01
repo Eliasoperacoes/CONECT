@@ -57,6 +57,7 @@ import {
   minutosDeDiaUtilDe,
   compensacaoDoSabadoDe,
   ROTULO_SITUACAO,
+  CompensacaoDoMes,
 } from '../tipos';
 import { bancoDados } from './bancoDados';
 import { podeUsar } from './permissoes';
@@ -83,6 +84,7 @@ import { situacaoDoDia } from './justificativasCache';
 import { feriadoEm } from './feriadosCache';
 import { montarDocumento } from './documento';
 import { nuvem } from './nuvem';
+import { fecharCompensacao, mesAnterior, CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { usandoNuvem } from './supabase';
 import { lerLista } from './cacheDeLeitura';
 /**
@@ -103,8 +105,9 @@ import {
   ehFalta,
   decidirApuracao,
   decidirLevantamento,
+  listarDatasDoPeriodo,
 } from './apuracaoDoDia';
-export { paraDataLocal, deDataLocal, ehDiaDeFolga, ehSabado, marcacoesEsperadas };
+export { paraDataLocal, deDataLocal, ehDiaDeFolga, ehSabado, marcacoesEsperadas, listarDatasDoPeriodo };
 
 const CHAVE_REGISTROS_PONTO = 'conecta_v4_registros_ponto';
 const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
@@ -381,8 +384,12 @@ export interface TotaisDoEspelho {
   compensacao: number;
   /** Quantos dias renderam compensação. */
   diasComCompensacao: number;
+  /** O saldo de compensação que veio do mês anterior. */
+  compensacaoAnterior: number;
   /** O que as folgas de sábado consumiram da compensação: até 4h cada, nunca além dela. */
   folgaConsumida: number;
+  /** O saldo de compensação que segue para o mês seguinte. */
+  compensacaoSegue: number;
 }
 
 /**
@@ -408,18 +415,27 @@ export const totaisDoEspelho = (resumo: ResumoPontoColaborador): TotaisDoEspelho
   // senão "trabalhado − previsto = relógio" deixaria de fechar no papel
   const faltas = resumo.jornadas.filter((j) => j.falta).reduce((s, j) => s + j.saldoMinutos, 0);
   const compensacao = resumo.compensacaoMinutos;
-  // "Consome só o crédito" (decisão do Elias): a folga nunca deixa devendo
-  const folgaConsumida = Math.min(compensacao, resumo.folgasDeSabado * MINUTOS_SABADO);
+  /*
+    A COMPENSAÇÃO É UM SALDO PRÓPRIO, que passa de um mês ao outro — a
+    Fernanda trocou a folga de setembro por uma em outubro, e as 3h30 de
+    setembro pagam a de outubro. A folga consome o que veio mais o que
+    juntou, até 4h, e nunca deixa devendo (`fecharCompensacao`).
+  */
+  const fechamento = fecharCompensacao(resumo.compensacaoAnteriorMinutos, compensacao, resumo.folgasDeSabado);
   return {
     trabalhado: fechados.reduce((s, j) => s + j.minutosTrabalhados, 0),
     previsto: fechados.reduce((s, j) => s + j.minutosPrevistosEfetivos, 0),
     relogio,
     // A compensação está no relógio e não é variação: não entra na tolerância
     tolerancia: relogio - compensacao + faltas - resumo.saldoPeriodoMinutos,
-    saldoPeriodo: resumo.saldoPeriodoMinutos + compensacao - folgaConsumida,
+    // O saldo do período é o do BANCO DE HORAS: só as variações. A
+    // compensação segue no saldo dela, mais abaixo
+    saldoPeriodo: resumo.saldoPeriodoMinutos,
     compensacao,
     diasComCompensacao: resumo.jornadas.filter((j) => j.compensacaoMinutos > 0).length,
-    folgaConsumida,
+    compensacaoAnterior: resumo.compensacaoAnteriorMinutos,
+    folgaConsumida: fechamento.consumida,
+    compensacaoSegue: fechamento.saldoFinal,
     saldoAcumulado: resumo.saldoAcumuladoMinutos,
     faltas,
     diasSemBatida: resumo.diasSemBatidaForaDaConta.length,
@@ -467,7 +483,7 @@ export const linhasDoRodape = (t: TotaisDoEspelho): LinhaDoRodape[] => {
   });
   const dias = (n: number) => `${n} ${n === 1 ? 'dia' : 'dias'}`;
   // Quem não tem o combinado (estágio, jornada própria) não vê linha nenhuma dele
-  const comCompensacao = t.compensacao > 0;
+  const comCompensacao = t.compensacao > 0 || t.compensacaoAnterior > 0 || t.folgaConsumida > 0;
   return [
     linha('Total trabalhado (dias com jornada fechada)', t.trabalhado, false),
     linha(
@@ -478,10 +494,10 @@ export const linhasDoRodape = (t: TotaisDoEspelho): LinhaDoRodape[] => {
       false
     ),
     linha('Relógio do período (trabalhado − previsto)', t.relogio, true),
-    ...(comCompensacao
+    ...(t.compensacao > 0
       ? [
           linha(
-            `   dos quais, compensação do sábado (10 min × ${dias(t.diasComCompensacao)})`,
+            `   dos quais, compensação do sábado (10 min × ${dias(t.diasComCompensacao)}) — vai para o saldo dela`,
             t.compensacao,
             true
           ),
@@ -490,9 +506,7 @@ export const linhasDoRodape = (t: TotaisDoEspelho): LinhaDoRodape[] => {
     linha('Tolerância aplicada (pequenas variações que não contam)', t.tolerancia, true),
     // Só aparece quando há falta: os espelhos de antes de 01/10/2026 não mudam
     ...(t.faltas !== 0 ? [linha('Faltas (dias sem batida)', t.faltas, true)] : []),
-    ...(t.folgaConsumida > 0
-      ? [linha('Folga de sábado (consome a compensação, até 4h)', -t.folgaConsumida, true)]
-      : []),
+
     ...(t.diasSemBatida > 0
       ? [
           {
@@ -506,8 +520,8 @@ export const linhasDoRodape = (t: TotaisDoEspelho): LinhaDoRodape[] => {
       : []),
     {
       ...linha(
-        `Saldo do período (relógio − tolerância${t.faltas !== 0 ? ' + faltas' : ''}${
-          t.folgaConsumida > 0 ? ' − folga' : ''
+        `Saldo do período (relógio − ${t.compensacao > 0 ? 'compensação − ' : ''}tolerância${
+          t.faltas !== 0 ? ' + faltas' : ''
         })${incompleto ? ' — provisório: espelho incompleto' : ''}`,
         t.saldoPeriodo,
         true,
@@ -516,6 +530,20 @@ export const linhasDoRodape = (t: TotaisDoEspelho): LinhaDoRodape[] => {
       alerta: incompleto,
     },
     linha('Saldo acumulado no banco de horas', t.saldoAcumulado, true, true),
+    // O SALDO DE COMPENSAÇÃO DO SÁBADO, à parte: o que veio, o que juntou, o
+    // que a folga consumiu e o que segue para o mês seguinte
+    ...(comCompensacao
+      ? [
+          ...(t.compensacaoAnterior > 0
+            ? [linha('Compensação do sábado vinda do mês anterior', t.compensacaoAnterior, true)]
+            : []),
+          ...(t.compensacao > 0 ? [linha('Compensação do sábado juntada no período', t.compensacao, true)] : []),
+          ...(t.folgaConsumida > 0
+            ? [linha('Folga de sábado (consome a compensação, até 4h)', -t.folgaConsumida, true)]
+            : []),
+          linha('Compensação do sábado que segue para o mês seguinte', t.compensacaoSegue, true, true),
+        ]
+      : []),
   ];
 };
 
@@ -564,19 +592,6 @@ export const semanaDe = (data: string): { inicio: string; fim: string } => {
   return { inicio: paraDataLocal(inicio), fim: paraDataLocal(fim) };
 };
 
-/** Lista de datas AAAA-MM-DD entre dois dias, inclusive. */
-export const listarDatasDoPeriodo = (dataInicio: string, dataFim: string): string[] => {
-  const datas: string[] = [];
-  const fim = deDataLocal(dataFim);
-  let atual = deDataLocal(dataInicio);
-  let limite = 0;
-  while (atual <= fim && limite < 400) {
-    datas.push(paraDataLocal(atual));
-    atual = new Date(atual.getFullYear(), atual.getMonth(), atual.getDate() + 1, 12);
-    limite++;
-  }
-  return datas;
-};
 
 /** Primeiro dia do mês corrente. */
 export const primeiroDiaDoMes = (referencia: Date = new Date()): string =>
@@ -2409,6 +2424,18 @@ class ServicoPonto {
     );
   }
 
+  /**
+   * O fechamento do saldo de compensação do sábado de uma pessoa num mês,
+   * como a apuração da madrugada o gravou (`compensacao_sabado`).
+   */
+  compensacaoFechada(colaboradorId: string, mes: string): CompensacaoDoMes | null {
+    return (
+      lerLista<CompensacaoDoMes>(CHAVE_COMPENSACAO).find(
+        (c) => c.colaboradorId === colaboradorId && c.mes === mes
+      ) ?? null
+    );
+  }
+
   /** Linhas consolidadas do painel de RH para o período escolhido. */
   obterResumoDoPeriodo(dataInicio: string, dataFim: string): ResumoPontoColaborador[] {
     const hoje = dataDeHoje();
@@ -2441,6 +2468,9 @@ class ServicoPonto {
         const folgasDeSabado = jornadas.filter(
           (j) => ehSabado(j.data) && situacaoDoDia(colaborador.id, j.data) === 'folga'
         ).length;
+        // O saldo que veio do mês anterior, como a madrugada o fechou
+        const compensacaoAnteriorMinutos =
+          this.compensacaoFechada(colaborador.id, mesAnterior(dataInicio.slice(0, 7)))?.saldoFinal ?? 0;
 
         return {
           colaborador,
@@ -2454,6 +2484,7 @@ class ServicoPonto {
           diasSemBatidaForaDaConta,
           compensacaoMinutos,
           folgasDeSabado,
+          compensacaoAnteriorMinutos,
           registrouHoje: this.obterMarcacoesDoDia(colaborador.id, hoje).length > 0,
           semBaterHoje: this.estaSemBaterHoje(colaborador),
         };

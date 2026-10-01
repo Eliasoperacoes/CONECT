@@ -1580,6 +1580,34 @@ create index if not exists ajustes_por_estado
 alter table public.ajustes_jornada enable row level security;
 
 
+-- O SALDO DE COMPENSAÇÃO DO SÁBADO, mês a mês (compensacao-sabado.sql). Os
+-- 10 min diários do turno integral pagam a folga de sábado; o que sobra
+-- passa ao mês seguinte. Gravado só pela apuração da madrugada (chave de
+-- serviço): não há política de escrita.
+create table if not exists public.compensacao_sabado (
+  colaborador_id  text not null references public.colaboradores(id) on delete cascade,
+  -- AAAA-MM
+  -- Sem cifrão na expressão: o conferidor de delimitadores o lê como corpo quebrado
+  mes             text not null check (length(mes) = 7 and mes ~ '^[0-9]{4}-[0-9]{2}'),
+  anterior        integer not null default 0 check (anterior >= 0),
+  juntada         integer not null default 0 check (juntada >= 0),
+  folgas          integer not null default 0 check (folgas >= 0),
+  consumida       integer not null default 0 check (consumida >= 0),
+  saldo_final     integer not null default 0 check (saldo_final >= 0),
+  atualizado_em   timestamptz not null default now(),
+  primary key (colaborador_id, mes)
+);
+
+alter table public.compensacao_sabado enable row level security;
+
+drop policy if exists compensacao_leitura on public.compensacao_sabado;
+create policy compensacao_leitura on public.compensacao_sabado
+  for select to authenticated
+  using (
+    colaborador_id = public.meu_colaborador_id()
+    or public.posso_decidir_jornada(colaborador_id)
+  );
+
 -- LEITURA: cada um vê a própria apuração; quem decide vê a de quem responde
 drop policy if exists ajustes_leitura on public.ajustes_jornada;
 create policy ajustes_leitura on public.ajustes_jornada

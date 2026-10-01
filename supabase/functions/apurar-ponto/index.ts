@@ -264,6 +264,18 @@ var deDataLocal = (data) => {
   const [ano, mes, dia] = data.split("-").map(Number);
   return new Date(ano, (mes || 1) - 1, dia || 1, 12, 0, 0);
 };
+var listarDatasDoPeriodo = (dataInicio, dataFim) => {
+  const datas = [];
+  const fim = deDataLocal(dataFim);
+  let atual = deDataLocal(dataInicio);
+  let limite = 0;
+  while (atual <= fim && limite < 400) {
+    datas.push(paraDataLocal(atual));
+    atual = new Date(atual.getFullYear(), atual.getMonth(), atual.getDate() + 1, 12);
+    limite++;
+  }
+  return datas;
+};
 var ehDiaDeFolga = (data) => deDataLocal(data).getDay() === 0;
 var ehSabado = (data) => deDataLocal(data).getDay() === 6;
 var marcacoesEsperadas = (data, colaborador) => {
@@ -884,6 +896,22 @@ var podeUsarComMapa = (chave, colaborador, mapa) => {
   return Array.isArray(niveis) && niveis.includes(colaborador.nivel);
 };
 
+// src/servicos/compensacaoDoSabado.ts
+var fecharCompensacao = (anterior, juntada, folgas) => {
+  const disponivel = Math.max(0, anterior) + Math.max(0, juntada);
+  const consumida = Math.min(disponivel, Math.max(0, folgas) * MINUTOS_SABADO);
+  return { consumida, saldoFinal: disponivel - consumida };
+};
+var mesAnterior = (mes) => {
+  const [ano, m] = mes.split("-").map(Number);
+  return m === 1 ? `${ano - 1}-12` : `${ano}-${String(m - 1).padStart(2, "0")}`;
+};
+var diasDoMes = (mes) => {
+  const [ano, m] = mes.split("-").map(Number);
+  const ultimo = new Date(ano, m, 0).getDate();
+  return { inicio: `${mes}-01`, fim: `${mes}-${String(ultimo).padStart(2, "0")}` };
+};
+
 // src/servidor/apurarPonto.ts
 var DIAS_REVISADOS = 35;
 var chave = (colaboradorId, data) => `${colaboradorId}|${data}`;
@@ -953,7 +981,30 @@ var planejarApuracao = (dados, opcoes) => {
       apurados++;
     }
   }
-  return { gravar, novosNaFila, resumo: { pessoas: pessoas.length, dias, diasFechados, faltas, apurados } };
+  const mes = mesAnterior(opcoes.hoje.slice(0, 7));
+  const { inicio, fim } = diasDoMes(mes);
+  const gravados = new Map((dados.compensacoes || []).map((c) => [`${c.colaboradorId}|${c.mes}`, c]));
+  const compensacoes = [];
+  for (const pessoa of pessoas) {
+    const datas = listarDatasDoPeriodo(inicio, fim);
+    const juntada = datas.reduce((t, d) => t + jornadaDoDia(pessoa.id, d).compensacaoMinutos, 0);
+    const folgas = datas.filter((d) => deDataLocal(d).getDay() === 6 && situacaoNaLista(dados.ausencias, pessoa.id, d) === "folga").length;
+    const anterior = gravados.get(`${pessoa.id}|${mesAnterior(mes)}`)?.saldoFinal ?? 0;
+    const atual = gravados.get(`${pessoa.id}|${mes}`);
+    if (!atual && juntada === 0 && anterior === 0 && folgas === 0)
+      continue;
+    const { consumida, saldoFinal } = fecharCompensacao(anterior, juntada, folgas);
+    const linha = { colaboradorId: pessoa.id, mes, anterior, juntada, folgas, consumida, saldoFinal };
+    const igual = atual && atual.anterior === anterior && atual.juntada === juntada && atual.folgas === folgas && atual.consumida === consumida && atual.saldoFinal === saldoFinal;
+    if (!igual)
+      compensacoes.push(linha);
+  }
+  return {
+    gravar,
+    novosNaFila,
+    compensacoes,
+    resumo: { pessoas: pessoas.length, dias, diasFechados, faltas, apurados }
+  };
 };
 
 // src/servicos/linhasDoBanco.ts
@@ -1060,6 +1111,24 @@ var paraFeriado = (l) => ({
   minutosPrevistos: Number(l.minutos_previstos) || 0,
   criadoEm: String(l.criado_em)
 });
+var paraCompensacao = (l) => ({
+  colaboradorId: l.colaborador_id,
+  mes: l.mes,
+  anterior: l.anterior,
+  juntada: l.juntada,
+  folgas: l.folgas,
+  consumida: l.consumida,
+  saldoFinal: l.saldo_final
+});
+var paraLinhaCompensacao = (c) => ({
+  colaborador_id: c.colaboradorId,
+  mes: c.mes,
+  anterior: c.anterior,
+  juntada: c.juntada,
+  folgas: c.folgas,
+  consumida: c.consumida,
+  saldo_final: c.saldoFinal
+});
 
 // src/servidor/funcaoApurarPonto.ts
 var chaveDeServico = () => {
@@ -1084,6 +1153,7 @@ var banco = () => {
   const url = `${Deno.env.get("SUPABASE_URL")}/rest/v1`;
   const chave = chaveDeServico();
   const cabecalhos = { apikey: chave, Authorization: `Bearer ${chave}` };
+  const ausentes = new Set;
   const ler = async (caminho, opcional = false) => {
     const todas = [];
     for (let de = 0;; de += 1000) {
@@ -1095,8 +1165,10 @@ var banco = () => {
         await new Promise((ok) => setTimeout(ok, 2000 * tentativa));
         r = await pedir();
       }
-      if (opcional && r.status === 404)
+      if (opcional && r.status === 404) {
+        ausentes.add(caminho.split("?")[0]);
         return [];
+      }
       if (!r.ok)
         throw new Error(`Leitura de ${caminho.split("?")[0]}: ${r.status} ${await r.text()}`);
       const pagina = await r.json();
@@ -1120,7 +1192,22 @@ var banco = () => {
         throw new Error(`Gravação das apurações: ${r.status} ${await r.text()}`);
     }
   };
-  return { ler, gravarAjustes };
+  const gravarCompensacoes = async (linhas) => {
+    if (linhas.length === 0 || ausentes.has("compensacao_sabado"))
+      return;
+    const r = await fetch(`${url}/compensacao_sabado?on_conflict=colaborador_id,mes`, {
+      method: "POST",
+      headers: {
+        ...cabecalhos,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates,return=minimal"
+      },
+      body: JSON.stringify(linhas.map((l) => ({ ...l, atualizado_em: new Date().toISOString() })))
+    });
+    if (!r.ok)
+      throw new Error(`Gravação da compensação do sábado: ${r.status} ${await r.text()}`);
+  };
+  return { ler, gravarAjustes, gravarCompensacoes, ausentes };
 };
 Deno.serve(async (req) => {
   const segredo = Deno.env.get("APURAR_SEGREDO");
@@ -1131,15 +1218,18 @@ Deno.serve(async (req) => {
     const hoje = hojeEmBrasilia();
     const primeiro = deDataLocal(hoje);
     primeiro.setDate(primeiro.getDate() - DIAS_REVISADOS - 1);
-    const inicio = paraDataLocal(primeiro);
-    const { ler, gravarAjustes } = banco();
-    const [colaboradores, batidas, ausencias, feriados, ajustes, configuracoes] = await Promise.all([
+    const mesFechado = mesAnterior(hoje.slice(0, 7));
+    const inicioDoMesFechado = diasDoMes(mesFechado).inicio;
+    const inicio = paraDataLocal(primeiro) < inicioDoMesFechado ? paraDataLocal(primeiro) : inicioDoMesFechado;
+    const { ler, gravarAjustes, gravarCompensacoes, ausentes } = banco();
+    const [colaboradores, batidas, ausencias, feriados, ajustes, configuracoes, compensacoes] = await Promise.all([
       ler("colaboradores?select=*&ativo=eq.true&order=id"),
       ler(`registros_ponto?select=*&data=gte.${inicio}&data=lt.${hoje}&order=id`),
       ler(`justificativas_ausencia?select=*&estado=eq.aprovada&data_fim=gte.${inicio}&order=id`),
       ler("feriados?select=*&order=id", true),
       ler(`ajustes_jornada?select=*&data=gte.${inicio}&order=id`),
-      ler("configuracoes?select=permissoes_ferramentas")
+      ler("configuracoes?select=permissoes_ferramentas"),
+      ler(`compensacao_sabado?select=*&mes=gte.${mesAnterior(mesFechado)}`, true)
     ]);
     const plano = planejarApuracao({
       colaboradores: colaboradores.map((l) => paraColaboradorDaLinha(l, "")),
@@ -1147,11 +1237,14 @@ Deno.serve(async (req) => {
       ausencias: ausencias.map(paraJustificativa),
       feriados: feriados.map(paraFeriado),
       ajustes: ajustes.map(paraAjuste),
-      permissoes: configuracoes[0]?.permissoes_ferramentas ?? null
+      permissoes: configuracoes[0]?.permissoes_ferramentas ?? null,
+      compensacoes: compensacoes.map(paraCompensacao)
     }, { hoje, agora: new Date().toISOString(), novoId: () => `ajuste-${crypto.randomUUID()}` });
     const simular = new URL(req.url).searchParams.has("simular");
-    if (!simular)
+    if (!simular) {
       await gravarAjustes(plano.gravar.map(paraLinhaAjuste));
+      await gravarCompensacoes(plano.compensacoes.map((c) => ({ ...paraLinhaCompensacao(c) })));
+    }
     const nomes = new Map(colaboradores.map((c) => [c.id, c.nome]));
     const resultado = {
       ok: true,
@@ -1168,8 +1261,14 @@ Deno.serve(async (req) => {
       },
       gravados: simular ? 0 : plano.gravar.length,
       novosNaFila: plano.novosNaFila.length,
+      compensacao: {
+        mes: mesFechado,
+        fechados: plano.compensacoes.length,
+        semTabela: ausentes.has("compensacao_sabado")
+      },
       ...simular ? {
-        seriaGravado: plano.gravar.map((a) => `${nomes.get(a.colaboradorId) ?? a.colaboradorId} · ${a.data} · ${a.tipo} ${a.minutos}min · ${a.estado}`)
+        seriaGravado: plano.gravar.map((a) => `${nomes.get(a.colaboradorId) ?? a.colaboradorId} · ${a.data} · ${a.tipo} ${a.minutos}min · ${a.estado}`),
+        compensacaoQueSeriaFechada: plano.compensacoes.map((c) => `${nomes.get(c.colaboradorId) ?? c.colaboradorId} · ${c.mes} · veio ${c.anterior} + juntou ${c.juntada} − folgas ${c.consumida} = segue ${c.saldoFinal}min`)
       } : {}
     };
     console.log("Apuração da madrugada:", JSON.stringify(resultado));

@@ -19,9 +19,13 @@
  */
 import { planejarApuracao, DIAS_REVISADOS } from './apurarPonto';
 import { hojeEmBrasilia, deDataLocal, paraDataLocal } from '../servicos/apuracaoDoDia';
+import { mesAnterior, diasDoMes } from '../servicos/compensacaoDoSabado';
 import {
   LinhaAjuste,
   LinhaColaborador,
+  LinhaCompensacao,
+  paraCompensacao,
+  paraLinhaCompensacao,
   LinhaRegistroPonto,
   paraAjuste,
   paraColaboradorDaLinha,
@@ -72,6 +76,9 @@ const banco = () => {
    * pedido e não avisa que cortou: sem paginar, a apuração veria um mês
    * pela metade e criaria falta onde houve batida.
    */
+  /** As tabelas opcionais que não existem no banco: nelas não se grava. */
+  const ausentes = new Set<string>();
+
   const ler = async <T>(caminho: string, opcional = false): Promise<T[]> => {
     const todas: T[] = [];
     for (let de = 0; ; de += 1000) {
@@ -96,7 +103,10 @@ const banco = () => {
         (01/10/2026): o app segue com os nacionais e municipais, que são
         calculados, e a primeira simulação parou aqui.
       */
-      if (opcional && r.status === 404) return [];
+      if (opcional && r.status === 404) {
+        ausentes.add(caminho.split('?')[0]);
+        return [];
+      }
       if (!r.ok) throw new Error(`Leitura de ${caminho.split('?')[0]}: ${r.status} ${await r.text()}`);
       const pagina = (await r.json()) as T[];
       todas.push(...pagina);
@@ -120,7 +130,22 @@ const banco = () => {
     }
   };
 
-  return { ler, gravarAjustes };
+  /** O fechamento do saldo de compensação: insere ou substitui por pessoa e mês. */
+  const gravarCompensacoes = async (linhas: Record<string, unknown>[]): Promise<void> => {
+    if (linhas.length === 0 || ausentes.has('compensacao_sabado')) return;
+    const r = await fetch(`${url}/compensacao_sabado?on_conflict=colaborador_id,mes`, {
+      method: 'POST',
+      headers: {
+        ...cabecalhos,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify(linhas.map((l) => ({ ...l, atualizado_em: new Date().toISOString() }))),
+    });
+    if (!r.ok) throw new Error(`Gravação da compensação do sábado: ${r.status} ${await r.text()}`);
+  };
+
+  return { ler, gravarAjustes, gravarCompensacoes, ausentes };
 };
 
 Deno.serve(async (req) => {
@@ -133,10 +158,17 @@ Deno.serve(async (req) => {
     const hoje = hojeEmBrasilia();
     const primeiro = deDataLocal(hoje);
     primeiro.setDate(primeiro.getDate() - DIAS_REVISADOS - 1);
-    const inicio = paraDataLocal(primeiro);
+    /*
+      A leitura cobre também o MÊS ANTERIOR inteiro: é ele que tem o saldo
+      de compensação do sábado fechado toda noite. Do dia 6 em diante, 35
+      dias para trás já não chegam ao dia 1 dele.
+    */
+    const mesFechado = mesAnterior(hoje.slice(0, 7));
+    const inicioDoMesFechado = diasDoMes(mesFechado).inicio;
+    const inicio = paraDataLocal(primeiro) < inicioDoMesFechado ? paraDataLocal(primeiro) : inicioDoMesFechado;
 
-    const { ler, gravarAjustes } = banco();
-    const [colaboradores, batidas, ausencias, feriados, ajustes, configuracoes] = await Promise.all([
+    const { ler, gravarAjustes, gravarCompensacoes, ausentes } = banco();
+    const [colaboradores, batidas, ausencias, feriados, ajustes, configuracoes, compensacoes] = await Promise.all([
       ler<LinhaColaborador>('colaboradores?select=*&ativo=eq.true&order=id'),
       ler<LinhaRegistroPonto>(`registros_ponto?select=*&data=gte.${inicio}&data=lt.${hoje}&order=id`),
       ler<Record<string, unknown>>(`justificativas_ausencia?select=*&estado=eq.aprovada&data_fim=gte.${inicio}&order=id`),
@@ -144,6 +176,8 @@ Deno.serve(async (req) => {
       ler<Record<string, unknown>>('feriados?select=*&order=id', true),
       ler<LinhaAjuste>(`ajustes_jornada?select=*&data=gte.${inicio}&order=id`),
       ler<{ permissoes_ferramentas: MapaDePermissoes | null }>('configuracoes?select=permissoes_ferramentas'),
+      // Os dois meses antes de hoje: o fechado agora e o anterior a ele
+      ler<LinhaCompensacao>(`compensacao_sabado?select=*&mes=gte.${mesAnterior(mesFechado)}`, true),
     ]);
 
     const plano = planejarApuracao(
@@ -155,6 +189,7 @@ Deno.serve(async (req) => {
         feriados: feriados.map(paraFeriado),
         ajustes: ajustes.map(paraAjuste),
         permissoes: configuracoes[0]?.permissoes_ferramentas ?? null,
+        compensacoes: compensacoes.map(paraCompensacao),
       },
       { hoje, agora: new Date().toISOString(), novoId: () => `ajuste-${crypto.randomUUID()}` }
     );
@@ -167,7 +202,10 @@ Deno.serve(async (req) => {
      * descobrir pela fila cheia.
      */
     const simular = new URL(req.url).searchParams.has('simular');
-    if (!simular) await gravarAjustes(plano.gravar.map(paraLinhaAjuste));
+    if (!simular) {
+      await gravarAjustes(plano.gravar.map(paraLinhaAjuste));
+      await gravarCompensacoes(plano.compensacoes.map((c) => ({ ...paraLinhaCompensacao(c) })));
+    }
 
     const nomes = new Map(colaboradores.map((c) => [c.id, c.nome]));
     const resultado = {
@@ -186,10 +224,20 @@ Deno.serve(async (req) => {
       },
       gravados: simular ? 0 : plano.gravar.length,
       novosNaFila: plano.novosNaFila.length,
+      // O saldo de compensação do sábado do mês anterior, fechado nesta noite
+      compensacao: {
+        mes: mesFechado,
+        fechados: plano.compensacoes.length,
+        semTabela: ausentes.has('compensacao_sabado'),
+      },
       ...(simular
         ? {
             seriaGravado: plano.gravar.map(
               (a) => `${nomes.get(a.colaboradorId) ?? a.colaboradorId} · ${a.data} · ${a.tipo} ${a.minutos}min · ${a.estado}`
+            ),
+            compensacaoQueSeriaFechada: plano.compensacoes.map(
+              (c) =>
+                `${nomes.get(c.colaboradorId) ?? c.colaboradorId} · ${c.mes} · veio ${c.anterior} + juntou ${c.juntada} − folgas ${c.consumida} = segue ${c.saldoFinal}min`
             ),
           }
         : {}),

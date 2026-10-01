@@ -607,6 +607,27 @@ export const CARGA_HORARIA_PADRAO_MINUTOS = JORNADA_CLT_DIA_UTIL;
  */
 export const MINUTOS_SEMANA_PADRAO = CARGA_HORARIA_PADRAO_MINUTOS * 5 + MINUTOS_SABADO;
 
+/**
+ * O FECHAMENTO DO SALDO DE COMPENSAÇÃO DO SÁBADO de uma pessoa num mês
+ * (tabela `compensacao_sabado`). A conta está em `compensacaoDoSabado.ts`.
+ */
+export interface CompensacaoDoMes {
+  colaboradorId: string;
+  /** AAAA-MM */
+  mes: string;
+  /** O saldo que veio do mês anterior. */
+  anterior: number;
+  /** Os 10 min de cada dia útil fechado no mês. */
+  juntada: number;
+  /** Folgas de sábado aprovadas no mês. */
+  folgas: number;
+  /** O que as folgas consumiram — até 4h cada, nunca além do disponível. */
+  consumida: number;
+  /** O que segue para o mês seguinte. */
+  saldoFinal: number;
+}
+
+
 /** A semana do estágio: 30 horas, cheguem elas como chegarem. */
 export const MINUTOS_SEMANA_ESTAGIO = 30 * 60;
 
@@ -1621,6 +1642,8 @@ export interface ResumoPontoColaborador {
   compensacaoMinutos: number;
   /** Quantas folgas de sábado o período tem — cada uma consome até 4h da compensação. */
   folgasDeSabado: number;
+  /** O saldo de compensação que veio do mês anterior ao período (`compensacao_sabado`). */
+  compensacaoAnteriorMinutos: number;
   /** Bateu alguma marcação hoje — presença, sem julgar a hora. */
   registrouHoje: boolean;
   /** Já passou da entrada dela (com a tolerância) e não bateu. É o "Sem bater hoje". */

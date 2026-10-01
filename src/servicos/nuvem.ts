@@ -57,7 +57,10 @@ import {
   paraLinhaJustificativa,
   paraJustificativa,
   paraFeriado,
+  LinhaCompensacao,
+  paraCompensacao,
 } from './linhasDoBanco';
+import { CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { acompanharCanal, definirRecarga, recarregarAoVoltar } from './reconexao';
 
 /**
@@ -1224,6 +1227,23 @@ class PonteNuvem {
     if (!data) return false;
 
     localStorage.setItem(CHAVE_AJUSTES, JSON.stringify(data.map(paraAjuste)));
+
+    /*
+      O SALDO DE COMPENSAÇÃO DO SÁBADO vem junto: uma linha por pessoa por
+      mês fechado, gravada pela apuração da madrugada. Sem a tabela
+      (compensacao-sabado.sql não rodado) segue sem ela — o espelho conta
+      o mês aberto sozinho, só não traz o saldo do mês anterior.
+    */
+    const { data: compensacoes, error: erroCompensacao } = await supabase
+      .from('compensacao_sabado')
+      .select('*');
+    if (!erroCompensacao && compensacoes) {
+      localStorage.setItem(
+        CHAVE_COMPENSACAO,
+        JSON.stringify((compensacoes as LinhaCompensacao[]).map(paraCompensacao))
+      );
+    }
+
     this.avisar();
     return true;
   }

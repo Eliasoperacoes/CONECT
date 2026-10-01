@@ -17,6 +17,7 @@
 import {
   AjusteJornada,
   Colaborador,
+  CompensacaoDoMes,
   Feriado,
   JustificativaAusencia,
   ORDEM_MARCACOES,
@@ -32,10 +33,12 @@ import {
   decidirLevantamento,
   deDataLocal,
   paraDataLocal,
+  listarDatasDoPeriodo,
 } from '../servicos/apuracaoDoDia';
 import { situacaoNaLista } from '../servicos/justificativasCache';
 import { feriadoNaLista } from '../servicos/feriadosCache';
 import { completarPermissoes, podeUsarComMapa, MapaDePermissoes } from '../servicos/permissoes';
+import { fecharCompensacao, mesAnterior, diasDoMes } from '../servicos/compensacaoDoSabado';
 
 /** O que o servidor lê do banco para apurar. */
 export interface DadosDaApuracao {
@@ -48,6 +51,8 @@ export interface DadosDaApuracao {
   ajustes: AjusteJornada[];
   /** `configuracoes.permissoes_ferramentas` — decide quem bate ponto. */
   permissoes: MapaDePermissoes | null;
+  /** Os fechamentos de compensação do sábado já gravados (`compensacao_sabado`). */
+  compensacoes?: CompensacaoDoMes[];
 }
 
 export interface PlanoDaApuracao {
@@ -55,6 +60,8 @@ export interface PlanoDaApuracao {
   gravar: AjusteJornada[];
   /** Os pedidos que PASSARAM a esperar decisão — quem acompanha deve saber. */
   novosNaFila: AjusteJornada[];
+  /** Os fechamentos do mês anterior a gravar em `compensacao_sabado`. */
+  compensacoes: CompensacaoDoMes[];
   /** `diasFechados`: quantos dias com a jornada completa foram avaliados. */
   resumo: { pessoas: number; dias: number; diasFechados: number; faltas: number; apurados: number };
 }
@@ -166,5 +173,41 @@ export const planejarApuracao = (
     }
   }
 
-  return { gravar, novosNaFila, resumo: { pessoas: pessoas.length, dias, diasFechados, faltas, apurados } };
+  /*
+    O FECHAMENTO DO SALDO DE COMPENSAÇÃO DO SÁBADO do mês anterior, de cada
+    pessoa. Refeito toda noite: uma batida corrigida no mês que passou muda
+    o que ele juntou. O que veio é o saldo final do mês antes dele.
+  */
+  const mes = mesAnterior(opcoes.hoje.slice(0, 7));
+  const { inicio, fim } = diasDoMes(mes);
+  const gravados = new Map((dados.compensacoes || []).map((c) => [`${c.colaboradorId}|${c.mes}`, c]));
+  const compensacoes: CompensacaoDoMes[] = [];
+  for (const pessoa of pessoas) {
+    const datas = listarDatasDoPeriodo(inicio, fim);
+    const juntada = datas.reduce((t, d) => t + jornadaDoDia(pessoa.id, d).compensacaoMinutos, 0);
+    const folgas = datas.filter(
+      (d) => deDataLocal(d).getDay() === 6 && situacaoNaLista(dados.ausencias, pessoa.id, d) === 'folga'
+    ).length;
+    const anterior = gravados.get(`${pessoa.id}|${mesAnterior(mes)}`)?.saldoFinal ?? 0;
+    const atual = gravados.get(`${pessoa.id}|${mes}`);
+    // Quem nunca teve compensação nem folga não ganha linha de zeros
+    if (!atual && juntada === 0 && anterior === 0 && folgas === 0) continue;
+    const { consumida, saldoFinal } = fecharCompensacao(anterior, juntada, folgas);
+    const linha: CompensacaoDoMes = { colaboradorId: pessoa.id, mes, anterior, juntada, folgas, consumida, saldoFinal };
+    const igual =
+      atual &&
+      atual.anterior === anterior &&
+      atual.juntada === juntada &&
+      atual.folgas === folgas &&
+      atual.consumida === consumida &&
+      atual.saldoFinal === saldoFinal;
+    if (!igual) compensacoes.push(linha);
+  }
+
+  return {
+    gravar,
+    novosNaFila,
+    compensacoes,
+    resumo: { pessoas: pessoas.length, dias, diasFechados, faltas, apurados },
+  };
 };

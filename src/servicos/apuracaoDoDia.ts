@@ -115,6 +115,20 @@ export const deDataLocal = (data: string): Date => {
   return new Date(ano, (mes || 1) - 1, dia || 1, 12, 0, 0);
 };
 
+/** Lista de datas AAAA-MM-DD entre dois dias, inclusive. */
+export const listarDatasDoPeriodo = (dataInicio: string, dataFim: string): string[] => {
+  const datas: string[] = [];
+  const fim = deDataLocal(dataFim);
+  let atual = deDataLocal(dataInicio);
+  let limite = 0;
+  while (atual <= fim && limite < 400) {
+    datas.push(paraDataLocal(atual));
+    atual = new Date(atual.getFullYear(), atual.getMonth(), atual.getDate() + 1, 12);
+    limite++;
+  }
+  return datas;
+};
+
 /**
  * A rede trabalha de segunda a SÁBADO. Só domingo não tem jornada.
  *

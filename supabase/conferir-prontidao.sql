@@ -182,6 +182,7 @@ operacoes (tabela, comando) as (values
   ('colaboradores', 'INSERT'),
   ('colaboradores', 'SELECT'),
   ('colaboradores', 'UPDATE'),
+  ('compensacao_sabado', 'SELECT'),
   ('configuracoes', 'SELECT'),
   ('configuracoes', 'UPDATE'),
   ('conversas', 'DELETE'),

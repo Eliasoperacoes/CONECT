@@ -4026,9 +4026,12 @@ test('o rodapé fecha a conta: trabalhado − previsto = relógio; relógio − 
   expect(t.relogio).toBe(29);
   expect(t.compensacao).toBe(20);
   expect(t.tolerancia).toBe(3);
-  // Sem folga no período, a compensação fica inteira no saldo
+  // O saldo do período é o do banco de horas: só a variação (+6). A
+  // compensação vai para o saldo dela, que segue inteiro sem folga no período
+  expect(t.saldoPeriodo).toBe(t.relogio - t.compensacao - t.tolerancia);
+  expect(t.saldoPeriodo).toBe(6);
   expect(t.folgaConsumida).toBe(0);
-  expect(t.saldoPeriodo).toBe(t.relogio - t.tolerancia);
+  expect(t.compensacaoSegue).toBe(20);
 });
 
 /*
@@ -4074,17 +4077,49 @@ test('a folga de sábado consome a compensação, até 4h — e nunca deixa deve
   // Juntou 20 minutos: a folga consome os 20, e não as 4h — ninguém fica devendo por ela
   expect(t.compensacao).toBe(20);
   expect(t.folgaConsumida).toBe(20);
+  expect(t.compensacaoSegue).toBe(0);
+  // O banco de horas não é tocado pela folga: só as variações
   expect(t.saldoPeriodo).toBe(0);
-  // A conta fecha no papel: relógio − tolerância − folga = saldo
-  expect(t.relogio - t.tolerancia - t.folgaConsumida).toBe(t.saldoPeriodo);
+  expect(t.relogio - t.compensacao - t.tolerancia).toBe(t.saldoPeriodo);
   const folga = linhasDoRodape(t).find((l) => l.rotulo.startsWith('Folga de sábado'))!;
   expect(folga.minutos).toBe(-20);
 
-  // Com o mês cheio de compensação, a folga para nas 4h
+  // Com o mês cheio de compensação, a folga para nas 4h, e o resto segue
   const muito = totaisDoEspelho({ ...resumo, compensacaoMinutos: 260 });
   expect(muito.folgaConsumida).toBe(240);
-  expect(muito.saldoPeriodo).toBe(20);
+  expect(muito.compensacaoSegue).toBe(20);
+  expect(muito.saldoPeriodo).toBe(0);
   armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('FERNANDA: a folga trocada de setembro para outubro é paga pelo saldo de setembro', async () => {
+  /*
+    01/10/2026: ela combinou com o Raphael de não folgar em setembro e folgar
+    em outubro. Setembro fechou com 3h30 de compensação (21 dias × 10 min) e
+    nenhuma folga: as 3h30 seguem. Em outubro ela tira as duas folgas — a do
+    mês e a trocada — e o saldo que veio paga a segunda.
+  */
+  const { totaisDoEspelho, linhasDoRodape } = await import('./ponto');
+  const { fecharCompensacao } = await import('./compensacaoDoSabado');
+  expect(fecharCompensacao(0, 210, 0)).toEqual({ consumida: 0, saldoFinal: 210 }); // setembro
+  expect(fecharCompensacao(210, 220, 2)).toEqual({ consumida: 430, saldoFinal: 0 }); // outubro
+
+  // No espelho de outubro, o saldo de setembro vem do fechamento gravado
+  equipe = [ELIAS, DO_TURNO_A];
+  armazenamento.setItem(
+    'conecta_v4_compensacao_sabado',
+    JSON.stringify([{ colaboradorId: DO_TURNO_A.id, mes: '2026-09', anterior: 0, juntada: 210, folgas: 0, consumida: 0, saldoFinal: 210 }])
+  );
+  const resumo = servicoPonto.obterResumoDoPeriodo('2026-10-01', '2026-10-31').find((r) => r.colaborador.id === DO_TURNO_A.id)!;
+  expect(resumo.compensacaoAnteriorMinutos).toBe(210);
+  const t = totaisDoEspelho({ ...resumo, compensacaoMinutos: 220, folgasDeSabado: 2 });
+  expect(t.compensacaoAnterior).toBe(210);
+  expect(t.folgaConsumida).toBe(430);
+  expect(t.compensacaoSegue).toBe(0);
+  const rotulos = linhasDoRodape(t).map((l) => l.rotulo);
+  expect(rotulos).toContain('Compensação do sábado vinda do mês anterior');
+  expect(rotulos).toContain('Compensação do sábado que segue para o mês seguinte');
+  armazenamento.removeItem('conecta_v4_compensacao_sabado');
 });
 
 test('o espelho com dia em branco não fecha 0h00 como se estivesse certo', async () => {
@@ -4110,8 +4145,9 @@ test('o espelho com dia em branco não fecha 0h00 como se estivesse certo', asyn
   const t = totaisDoEspelho(resumo);
   expect(t.diasSemBatida).toBe(3);
   expect(t.previstoSemBatida).toBe(480 + 480 + 240);
-  // Os dois dias batidos no horário: só os 20 da compensação do sábado
-  expect(t.saldoPeriodo).toBe(20);
+  // Os dois dias batidos no horário: nenhuma variação (a compensação vai ao saldo dela)
+  expect(t.saldoPeriodo).toBe(0);
+  expect(t.compensacaoSegue).toBe(20);
   expect(espelhoIncompleto(t)).toBe(true);
 
   const linhas = linhasDoRodape(t);

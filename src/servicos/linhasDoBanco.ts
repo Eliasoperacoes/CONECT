@@ -11,6 +11,7 @@
 import {
   AjusteJornada,
   Colaborador,
+  CompensacaoDoMes,
   EstadoAjuste,
   Feriado,
   JustificativaAusencia,
@@ -256,4 +257,35 @@ export const paraFeriado = (l: Record<string, unknown>): Feriado => ({
   loja: (l.loja as Loja) || undefined,
   minutosPrevistos: Number(l.minutos_previstos) || 0,
   criadoEm: String(l.criado_em),
+});
+
+/** Linha da tabela `compensacao_sabado` — o fechamento do mês de uma pessoa. */
+export interface LinhaCompensacao {
+  colaborador_id: string;
+  mes: string;
+  anterior: number;
+  juntada: number;
+  folgas: number;
+  consumida: number;
+  saldo_final: number;
+}
+
+export const paraCompensacao = (l: LinhaCompensacao): CompensacaoDoMes => ({
+  colaboradorId: l.colaborador_id,
+  mes: l.mes,
+  anterior: l.anterior,
+  juntada: l.juntada,
+  folgas: l.folgas,
+  consumida: l.consumida,
+  saldoFinal: l.saldo_final,
+});
+
+export const paraLinhaCompensacao = (c: CompensacaoDoMes): LinhaCompensacao => ({
+  colaborador_id: c.colaboradorId,
+  mes: c.mes,
+  anterior: c.anterior,
+  juntada: c.juntada,
+  folgas: c.folgas,
+  consumida: c.consumida,
+  saldo_final: c.saldoFinal,
 });

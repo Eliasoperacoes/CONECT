@@ -128,3 +128,38 @@ test('dia decidido não é reaberto, e ausência aprovada não vira falta', () =
   );
   expect(plano.gravar).toEqual([]);
 });
+
+test('a madrugada fecha o saldo de compensação do sábado do mês anterior', () => {
+  /*
+    Hoje é 08/10: o mês fechado é setembro. A Ana cumpriu dois dias úteis
+    de setembro no horário (2 × 10 min) e não folgou; agosto deixou 30 min.
+    Setembro fecha com 50, que seguem para outubro.
+  */
+  const setembro = [
+    ...dia('ana', '2026-09-14', ['07:30', '12:30', '14:00', '17:10']),
+    ...dia('ana', '2026-09-15', ['07:30', '12:30', '14:00', '17:10']),
+  ];
+  const agosto = { colaboradorId: 'ana', mes: '2026-08', anterior: 0, juntada: 30, folgas: 0, consumida: 0, saldoFinal: 30 };
+  const plano = planejarApuracao(dados({ batidas: [...semanaCerta(), ...setembro], compensacoes: [agosto] }), opcoes);
+  expect(plano.compensacoes).toEqual([
+    { colaboradorId: 'ana', mes: '2026-09', anterior: 30, juntada: 20, folgas: 0, consumida: 0, saldoFinal: 50 },
+  ]);
+
+  // Já gravado igual, não regrava
+  const deNovo = planejarApuracao(
+    dados({ batidas: [...semanaCerta(), ...setembro], compensacoes: [agosto, plano.compensacoes[0]] }),
+    opcoes
+  );
+  expect(deNovo.compensacoes).toEqual([]);
+
+  // Com a folga de sábado de 19/09 aprovada, ela consome os 50 — e não deixa devendo
+  const comFolga = planejarApuracao(
+    dados({
+      batidas: [...semanaCerta(), ...setembro],
+      compensacoes: [agosto],
+      ausencias: [{ id: 'f', colaboradorId: 'ana', dataInicio: '2026-09-19', dataFim: '2026-09-19', tipo: 'folga_sabado', estado: 'aprovada', criadoEm: '' } as any],
+    }),
+    opcoes
+  );
+  expect(comFolga.compensacoes[0]).toMatchObject({ folgas: 1, consumida: 50, saldoFinal: 0 });
+});
