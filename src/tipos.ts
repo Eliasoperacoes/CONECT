@@ -1567,6 +1567,12 @@ export interface ResumoPontoColaborador {
   saldoAcumuladoMinutos: number;
   diasCompletos: number;
   diasComPendencia: number;
+  /**
+   * Dias de trabalho sem batida nenhuma que NÃO viraram falta (antes de
+   * 01/10/2026 a falta não era cobrada): estão fora da conta do saldo, e
+   * o rodapé tem de dizer isso em vez de mostrar um 0h00 verde.
+   */
+  diasSemBatidaForaDaConta: string[];
   /** Bateu alguma marcação hoje — presença, sem julgar a hora. */
   registrouHoje: boolean;
   /** Já passou da entrada dela (com a tolerância) e não bateu. É o "Sem bater hoje". */

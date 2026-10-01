@@ -3893,6 +3893,53 @@ test('o rodapé fecha a conta: trabalhado − previsto = relógio; relógio − 
   expect(t.saldoPeriodo).toBe(t.relogio - t.tolerancia);
 });
 
+test('o espelho com dia em branco não fecha 0h00 como se estivesse certo', async () => {
+  /*
+    01/10/2026: setembro com seis dias úteis em branco, e o rodapé dizia
+    "Saldo do período 0h00". Antes da cobrança de falta o dia vazio não
+    entra no saldo — mas tem de aparecer, e o saldo se declara provisório.
+  */
+  const { totaisDoEspelho, linhasDoRodape, espelhoIncompleto } = await import('./ponto');
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+  // Relógio da suíte em 16/09 (quarta): 14 e 15 batidos; 10 e 11 em branco
+  await baterDia(DO_TURNO_A, '2026-09-14', ['07:30', '12:30', '14:00', '17:10']);
+  await baterDia(DO_TURNO_A, '2026-09-15', ['07:30', '12:30', '14:00', '17:10']);
+
+  colaboradorLogado = ELIAS;
+  const resumo = servicoPonto
+    .obterResumoDoPeriodo('2026-09-10', '2026-09-15')
+    .find((r) => r.colaborador.id === DO_TURNO_A.id)!;
+  // 10 e 11 (qui, sex) e o sábado 12 em branco; o domingo 13 não é de trabalho
+  expect(resumo.diasSemBatidaForaDaConta).toEqual(['2026-09-10', '2026-09-11', '2026-09-12']);
+
+  const t = totaisDoEspelho(resumo);
+  expect(t.diasSemBatida).toBe(3);
+  expect(t.previstoSemBatida).toBe(490 + 490 + 240);
+  expect(t.saldoPeriodo).toBe(0);
+  expect(espelhoIncompleto(t)).toBe(true);
+
+  const linhas = linhasDoRodape(t);
+  const semBatida = linhas.find((l) => l.rotulo.startsWith('Dias sem batida'))!;
+  expect(semBatida.alerta).toBe(true);
+  expect(semBatida.minutos).toBe(1220);
+  const saldo = linhas.find((l) => l.rotulo.startsWith('Saldo do período'))!;
+  expect(saldo.rotulo).toContain('provisório: espelho incompleto');
+  expect(saldo.alerta).toBe(true);
+
+  // O papel diz o mesmo
+  const papel = servicoPonto.gerarHtmlEspelho('2026-09-10', '2026-09-15', [DO_TURNO_A.id]);
+  expect(papel).toContain('provisório: espelho incompleto');
+  expect(papel).toContain('class=" alerta"');
+
+  // E o espelho completo continua limpo
+  const completo = totaisDoEspelho(
+    servicoPonto.obterResumoDoPeriodo('2026-09-14', '2026-09-15').find((r) => r.colaborador.id === DO_TURNO_A.id)!
+  );
+  expect(espelhoIncompleto(completo)).toBe(false);
+  expect(linhasDoRodape(completo).some((l) => l.alerta)).toBe(false);
+});
+
 test('o painel e o papel desenham a MESMA linha e o MESMO rodapé', async () => {
   const semComentarios = (f: string) => f.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   const tela = semComentarios(await Bun.file('src/componentes/BancoDeHoras.tsx').text());

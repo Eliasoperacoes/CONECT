@@ -1536,17 +1536,29 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                     {linhasDoRodape(totaisDoEspelho(detalhe)).map((linha) => (
                       <tr
                         key={linha.rotulo}
-                        className={linha.destaque ? 'bg-[var(--c-superficie-2)] font-bold' : ''}
+                        className={`${linha.destaque ? 'font-bold' : ''} ${
+                          linha.alerta ? 'bg-amber-500/10' : linha.destaque ? 'bg-[var(--c-superficie-2)]' : ''
+                        }`}
                       >
-                        <td colSpan={ORDEM_MARCACOES.length + 4} className="px-3 py-1.5 text-[var(--c-texto-2)]">
+                        <td
+                          colSpan={ORDEM_MARCACOES.length + 4}
+                          className={`px-3 py-1.5 ${
+                            linha.alerta ? 'text-amber-700 dark:text-amber-400 font-semibold' : 'text-[var(--c-texto-2)]'
+                          }`}
+                        >
                           {linha.rotulo}
                         </td>
                         <td
                           className={`px-3 py-1.5 text-right tabular-nums ${
-                            linha.comSinal && linha.minutos < 0 ? 'text-red-600' : 'text-[var(--c-texto)]'
+                            linha.alerta
+                              ? 'text-amber-700 dark:text-amber-400'
+                              : linha.comSinal && linha.minutos < 0
+                                ? 'text-red-600'
+                                : 'text-[var(--c-texto)]'
                           }`}
                         >
-                          {linha.comSinal ? formatarSaldo(linha.minutos) : formatarMinutos(linha.minutos)}
+                          {linha.texto ??
+                            (linha.comSinal ? formatarSaldo(linha.minutos) : formatarMinutos(linha.minutos))}
                         </td>
                         <td />
                       </tr>

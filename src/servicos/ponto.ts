@@ -456,6 +456,12 @@ export interface TotaisDoEspelho {
   saldoAcumulado: number;
   /** O que as faltas tiraram do período (negativo), já com o que o líder decidiu. */
   faltas: number;
+  /** Dias de trabalho em branco que não viraram falta: fora da conta. */
+  diasSemBatida: number;
+  /** O previsto desses dias — o tamanho do buraco que o saldo não enxerga. */
+  previstoSemBatida: number;
+  /** Dias que começaram e não fecharam. */
+  diasSemFechar: number;
 }
 
 /**
@@ -481,33 +487,82 @@ export const totaisDoEspelho = (resumo: ResumoPontoColaborador): TotaisDoEspelho
     saldoPeriodo: resumo.saldoPeriodoMinutos,
     saldoAcumulado: resumo.saldoAcumuladoMinutos,
     faltas,
+    diasSemBatida: resumo.diasSemBatidaForaDaConta.length,
+    previstoSemBatida: resumo.jornadas
+      .filter((j) => resumo.diasSemBatidaForaDaConta.includes(j.data))
+      .reduce((s, j) => s + j.minutosPrevistosEfetivos, 0),
+    diasSemFechar: resumo.diasComPendencia,
   };
 };
+
+export interface LinhaDoRodape {
+  rotulo: string;
+  minutos: number;
+  comSinal: boolean;
+  destaque: boolean;
+  /** Linha que avisa: o espelho está incompleto. A tela e o papel a pintam de âmbar. */
+  alerta: boolean;
+  /** Quando o valor não é hora — "2 dias". */
+  texto?: string;
+}
+
+/** O espelho tem dia em branco ou dia que não fechou: o saldo não é final. */
+export const espelhoIncompleto = (t: TotaisDoEspelho): boolean => t.diasSemBatida > 0 || t.diasSemFechar > 0;
 
 /**
  * AS LINHAS DO RODAPÉ, na ordem e com os nomes que o papel e a tela
  * mostram. Uma lista só: a tela não pode chamar de "Saldo" o que o papel
  * chama de "Relógio".
+ *
+ * O ESPELHO INCOMPLETO NÃO SE PASSA POR CERTO. O Elias abriu um espelho de
+ * setembro com seis dias úteis em branco e o rodapé dizia "Saldo 0h00", em
+ * verde: a conta só olhava os dias fechados, e os vazios (de antes da
+ * cobrança de falta) não apareciam em lugar nenhum. Agora eles têm linha
+ * própria, com o previsto que ficou de fora, e o saldo se declara
+ * provisório até o espelho ser acertado.
  */
-export const linhasDoRodape = (
-  t: TotaisDoEspelho
-): Array<{ rotulo: string; minutos: number; comSinal: boolean; destaque: boolean }> => [
-  { rotulo: 'Total trabalhado (dias com jornada fechada)', minutos: t.trabalhado, comSinal: false, destaque: false },
-  { rotulo: 'Total previsto (dias com jornada fechada)', minutos: t.previsto, comSinal: false, destaque: false },
-  { rotulo: 'Relógio do período (trabalhado − previsto)', minutos: t.relogio, comSinal: true, destaque: false },
-  { rotulo: 'Tolerância aplicada (pequenas variações que não contam)', minutos: t.tolerancia, comSinal: true, destaque: false },
-  // Só aparece quando há falta: os espelhos de antes de 01/10/2026 não mudam
-  ...(t.faltas !== 0
-    ? [{ rotulo: 'Faltas (dias sem batida)', minutos: t.faltas, comSinal: true, destaque: false }]
-    : []),
-  {
-    rotulo: t.faltas !== 0 ? 'Saldo do período (relógio − tolerância + faltas)' : 'Saldo do período (relógio − tolerância)',
-    minutos: t.saldoPeriodo,
-    comSinal: true,
-    destaque: true,
-  },
-  { rotulo: 'Saldo acumulado no banco de horas', minutos: t.saldoAcumulado, comSinal: true, destaque: true },
-];
+export const linhasDoRodape = (t: TotaisDoEspelho): LinhaDoRodape[] => {
+  const incompleto = espelhoIncompleto(t);
+  const linha = (rotulo: string, minutos: number, comSinal: boolean, destaque = false): LinhaDoRodape => ({
+    rotulo,
+    minutos,
+    comSinal,
+    destaque,
+    alerta: false,
+  });
+  const dias = (n: number) => `${n} ${n === 1 ? 'dia' : 'dias'}`;
+  return [
+    linha('Total trabalhado (dias com jornada fechada)', t.trabalhado, false),
+    linha('Total previsto (dias com jornada fechada)', t.previsto, false),
+    linha('Relógio do período (trabalhado − previsto)', t.relogio, true),
+    linha('Tolerância aplicada (pequenas variações que não contam)', t.tolerancia, true),
+    // Só aparece quando há falta: os espelhos de antes de 01/10/2026 não mudam
+    ...(t.faltas !== 0 ? [linha('Faltas (dias sem batida)', t.faltas, true)] : []),
+    ...(t.diasSemBatida > 0
+      ? [
+          {
+            ...linha(`Dias sem batida, fora da conta (${dias(t.diasSemBatida)}) — previsto não cumprido`, t.previstoSemBatida, false),
+            alerta: true,
+          },
+        ]
+      : []),
+    ...(t.diasSemFechar > 0
+      ? [{ ...linha('Dias que não fecharam (faltam batidas)', 0, false), alerta: true, texto: dias(t.diasSemFechar) }]
+      : []),
+    {
+      ...linha(
+        `${t.faltas !== 0 ? 'Saldo do período (relógio − tolerância + faltas)' : 'Saldo do período (relógio − tolerância)'}${
+          incompleto ? ' — provisório: espelho incompleto' : ''
+        }`,
+        t.saldoPeriodo,
+        true,
+        true
+      ),
+      alerta: incompleto,
+    },
+    linha('Saldo acumulado no banco de horas', t.saldoAcumulado, true, true),
+  ];
+};
 
 /** 95 -> "1h35"; -95 -> "-1h35"; 0 -> "0h00" */
 export const formatarMinutos = (minutos: number): string => {
@@ -3064,6 +3119,10 @@ class ServicoPonto {
         const diasComPendencia = jornadas.filter(
           (j) => this.batidasQueFaltam(colaborador, j.data).length > 0
         ).length;
+        // O dia vazio que virou falta já está no saldo; o que não virou, não
+        const diasSemBatidaForaDaConta = jornadas
+          .filter((j) => !j.falta && this.ehDiaVazio(colaborador, j.data, Object.keys(j.marcacoes).length))
+          .map((j) => j.data);
 
         return {
           colaborador,
@@ -3074,6 +3133,7 @@ class ServicoPonto {
           saldoAcumuladoMinutos: this.obterSaldoAcumulado(colaborador.id),
           diasCompletos,
           diasComPendencia,
+          diasSemBatidaForaDaConta,
           registrouHoje: this.obterMarcacoesDoDia(colaborador.id, hoje).length > 0,
           semBaterHoje: this.estaSemBaterHoje(colaborador),
         };
@@ -3736,10 +3796,10 @@ class ServicoPonto {
         /* O rodapé fecha a conta (ver `totaisDoEspelho`) */
         const rodape = linhasDoRodape(totaisDoEspelho(resumo))
           .map(
-            (l) => `<tr class="${l.destaque ? 'destaque' : ''}">
+            (l) => `<tr class="${l.destaque ? 'destaque' : ''} ${l.alerta ? 'alerta' : ''}">
               <td>${escapar(l.rotulo)}</td>
               <td class="num ${l.comSinal && l.minutos < 0 ? 'neg' : ''}">${
-                l.comSinal ? formatarSaldo(l.minutos) : formatarMinutos(l.minutos)
+                l.texto ?? (l.comSinal ? formatarSaldo(l.minutos) : formatarMinutos(l.minutos))
               }</td>
             </tr>`
           )
@@ -3948,6 +4008,8 @@ class ServicoPonto {
   .totais { margin-top: 8px; width: 85%; font-size: 10px; }
   .totais td { border: 1px solid #bbb; padding: 2.5px 8px; }
   .totais .destaque td { font-weight: 700; background: #f2f2f2; }
+  /* O espelho incompleto não sai no papel como se estivesse certo */
+  .totais .alerta td { background: #fff4dc; color: #8a4b00; font-weight: 600; }
       `,
       corpo: folhas || '<p>Nenhum colaborador no período selecionado.</p>',
     });
