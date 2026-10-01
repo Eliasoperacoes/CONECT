@@ -105,6 +105,7 @@ esquema.
 | `apuracao-pode-zerar.sql` | **Rode uma vez.** Solta a trava que recusava apuração de ZERO minuto — sem ela, "Reapurar período" não consegue desfazer um débito errado, e a tela diz "0 dias mudaram" como se estivesse tudo certo. No fim ele **lista quem tem débito com cara de pausa cobrada**, sem alterar nada |
 | `horario-pelo-turno.sql` | **Rode uma vez (29/09/2026).** Tira a carga própria que o Painel ADM gravava ao salvar a ficha, para o previsto e a tolerância saírem do turno; põe a Lyvia no turno de estágio da tarde (E3) |
 | `pontos-incompletos.sql` | **Rode uma vez (01/10/2026).** "Pontos incompletos", o aviso de Espelhos de ponto e o cartão do RH passam a perguntar ao banco quais dias têm batida faltando — antes liam o cache do aparelho, que muda com a tela aberta. Sem ele, continuam lendo o cache |
+| `apuracao-1-preparar.sql`, `apuracao-2-ver-simulacao.sql`, `apuracao-3-agendar.sql` | **Em ordem, uma vez (01/10/2026)**, depois de publicar a função `apurar-ponto` — ver "A apuração da madrugada" abaixo. Os valores em maiúsculas são trocados na entrega |
 | `dias-com-batida.sql` | **Rode uma vez (01/10/2026).** O espelho incompleto passa a contar também os dias de trabalho sem batida nenhuma, perguntando ao banco em que dias cada pessoa bateu (uma linha por pessoa). Sem ele, a conta alarga o cache do aparelho para o período |
 | `ponto-pelo-servidor.sql` | **Rode uma vez (01/10/2026), DEPOIS de a versão nova estar no ar e fora do horário de entrada e saída.** A batida passa a ser carimbada pelo servidor (dia e hora do banco, em Brasília) e o código do cartaz é conferido lá; o aparelho não grava mais batida própria direto na tabela, e só quem cuida do cartaz lê os códigos. Quem estiver com o sistema antigo aberto precisa recarregar. **Não rode de novo `corrigir-ponto-pelo-lider.sql` nem `ponto-do-lider-completo.sql`**: eles recriam a política antiga e reabrem a batida direta |
 | `limpar-dias-sem-fechar.sql` | **Rode uma vez (01/10/2026).** Apaga os pedidos PENDENTES de "dia sem fechar" de dias que têm batida — eles viraram "Pontos incompletos" (Equipe e ponto). As faltas ficam. Só dados, sem estrutura |
@@ -287,6 +288,36 @@ qualquer uma, o aviso simplesmente não chega, sem erro em lugar nenhum:
 
 Mudou o `index.ts`? Cole de novo em *enviar-aviso → Code* e publique:
 o repositório não chega à função sozinho, como chega à Vercel.
+
+### A apuração da madrugada (`apurar-ponto`)
+
+Toda madrugada, às 03:00 de Brasília, o servidor apura os últimos 35
+dias da rede com as mesmas regras do aplicativo (`apuracaoDoDia.ts`):
+cria a falta do dia sem batida, reapura o dia que se resolveu e
+transforma em pedido o dia fechado que nunca chegou à fila. Antes isso
+só acontecia quando alguém abria a fila no aparelho.
+
+| Peça | Onde |
+|---|---|
+| A fonte | `src/servidor/funcaoApurarPonto.ts` (+ `apurarPonto.ts`, testado) |
+| O arquivo colado no Supabase | `supabase/functions/apurar-ponto/index.ts` — **gerado**, não edite |
+| Gerar de novo | `bun scripts/gerar-funcao-apurar.ts` (há teste cobrando que esteja em dia) |
+
+1. **Gerar e colar.** Edge Functions → *Deploy a new function* → *Via
+   Editor*, nome **`apurar-ponto`**, colar o `index.ts` gerado, publicar.
+   **Desligar "Verify JWT"**: quem chama é o agendador do banco, que se
+   identifica pelo segredo, e não por sessão.
+2. **Segredo.** Edge Functions → *Secrets* → `APURAR_SEGREDO` = um valor
+   aleatório. O mesmo valor vai no passo seguinte.
+3. **`apuracao-1-preparar.sql`** — liga `pg_cron`/`pg_net`, guarda o
+   segredo no cofre e chama a função em **simulação** (não grava).
+4. **`apuracao-2-ver-simulacao.sql`** — ~20 s depois: o que ela gravaria.
+5. **`apuracao-3-agendar.sql`** — conferida a simulação, liga a madrugada.
+
+Nos SQLs do repositório o segredo e o endereço são marcadores
+(`COLE_O_SEGREDO`, `URL_DO_PROJETO`); os valores entram só na cópia
+entregue. Mudou alguma regra do ponto? Gere de novo e cole: o
+repositório não chega à função sozinho.
 
 ### A resposta rápida
 
