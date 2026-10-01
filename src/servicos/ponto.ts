@@ -1660,6 +1660,83 @@ class ServicoPonto {
   }
 
   /**
+   * O horário que o turno espera para esta batida, neste dia — "17:10".
+   * Serve de referência para quem completa o dia; não é preenchido sozinho,
+   * porque inventar o horário de alguém é o que a justificativa existe
+   * para impedir.
+   */
+  horarioPrevistoDaBatida(colaborador: Colaborador, data: string, tipo: TipoMarcacao): string | null {
+    const minutos = this.horariosEsperadosDoDia(colaborador, data)?.[tipo];
+    if (minutos === undefined) return null;
+    return `${String(Math.floor(minutos / 60)).padStart(2, '0')}:${String(minutos % 60).padStart(2, '0')}`;
+  }
+
+  /**
+   * COMPLETA O DIA: lança, de uma vez, as batidas que faltaram.
+   *
+   * Pedido do Elias: uma opção só por dia, e não um botão por batida. A
+   * ordem é conferida com as batidas que já existem — a saída antes do
+   * retorno do almoço viraria um dia de trabalho negativo no espelho.
+   */
+  async completarDia(dados: {
+    colaboradorId: string;
+    data: string;
+    horarios: Partial<Record<TipoMarcacao, string>>;
+    justificativa: string;
+  }): Promise<{ sucesso: boolean; lancadas: number; erro?: string }> {
+    const colaborador = bancoDados.obterColaboradorPorId(dados.colaboradorId);
+    if (!colaborador) return { sucesso: false, lancadas: 0, erro: 'Colaborador não encontrado.' };
+    if (!dados.justificativa.trim()) {
+      return { sucesso: false, lancadas: 0, erro: 'Escreva a justificativa: ela vai para a auditoria.' };
+    }
+
+    const faltam = this.batidasQueFaltam(colaborador, dados.data);
+    const novas = faltam.filter((t) => /^\d{2}:\d{2}$/.test(dados.horarios[t] || ''));
+    if (novas.length === 0) {
+      return { sucesso: false, lancadas: 0, erro: 'Preencha o horário de ao menos uma batida.' };
+    }
+
+    // Todas as batidas do dia, as feitas e as novas, na ordem do dia
+    const feitas = new Map(this.obterMarcacoesDoDia(colaborador.id, dados.data).map((r) => [r.tipo, r.horaFormatada]));
+    const sequencia = ORDEM_MARCACOES.map((t) => ({ tipo: t, hora: feitas.get(t) || dados.horarios[t] })).filter(
+      (b): b is { tipo: TipoMarcacao; hora: string } => !!b.hora && /^\d{2}:\d{2}$/.test(b.hora)
+    );
+    for (let i = 1; i < sequencia.length; i++) {
+      if (sequencia[i].hora <= sequencia[i - 1].hora) {
+        return {
+          sucesso: false,
+          lancadas: 0,
+          erro: `${ROTULO_MARCACAO[sequencia[i].tipo]} (${sequencia[i].hora}) tem de vir depois de ${ROTULO_MARCACAO[
+            sequencia[i - 1].tipo
+          ].toLowerCase()} (${sequencia[i - 1].hora}).`,
+        };
+      }
+    }
+
+    let lancadas = 0;
+    for (const tipo of novas) {
+      const res = await this.ajustarMarcacao({
+        colaboradorId: colaborador.id,
+        data: dados.data,
+        tipo,
+        hora: dados.horarios[tipo]!,
+        justificativa: dados.justificativa.trim(),
+      });
+      if (!res.sucesso) {
+        return {
+          sucesso: false,
+          lancadas,
+          erro: `${ROTULO_MARCACAO[tipo]}: ${res.erro || 'não foi possível lançar.'}${
+            lancadas ? ` (${lancadas} já lançada${lancadas > 1 ? 's' : ''})` : ''
+          }`,
+        };
+      }
+      lancadas++;
+    }
+    return { sucesso: true, lancadas };
+  }
+
+  /**
    * OS DIAS QUE NÃO FECHARAM, da equipe de quem pergunta.
    *
    * Pedido do Elias: "o espelho não pode fechar incompleto", e cada dia tem

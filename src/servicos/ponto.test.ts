@@ -4261,3 +4261,59 @@ test('o dia de hoje não é incompleto: a pessoa ainda está trabalhando', () =>
   baterParcial(DO_TURNO_A, dataDeHoje(), { entrada: '07:30' });
   expect(servicoPonto.obterPontosIncompletos(diasAtras(5), dataDeHoje())).toHaveLength(0);
 });
+
+// ============================================================
+// COMPLETAR O DIA: uma ação, as batidas que faltam de uma vez
+// ============================================================
+
+test('completar o dia lança as batidas que faltam, de uma vez', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30', saida_almoco: '12:30' });
+
+  const res = await servicoPonto.completarDia({
+    colaboradorId: DO_TURNO_A.id,
+    data: diasAtras(3),
+    horarios: { retorno_almoco: '14:00', saida: '17:10' },
+    justificativa: 'Esqueceu as duas; confirmado com ele',
+  });
+
+  expect(res).toEqual({ sucesso: true, lancadas: 2 });
+  expect(servicoPonto.obterPontosIncompletos(diasAtras(10), diasAtras(1))).toHaveLength(0);
+});
+
+test('completar o dia confere a ordem com as batidas que já existem', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30', saida_almoco: '12:30' });
+
+  // Retorno antes da saída para o almoço: o dia ficaria negativo
+  const res = await servicoPonto.completarDia({
+    colaboradorId: DO_TURNO_A.id,
+    data: diasAtras(3),
+    horarios: { retorno_almoco: '12:00', saida: '17:10' },
+    justificativa: 'Teste',
+  });
+
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('Retorno do almoço (12:00) tem de vir depois de saída para almoço (12:30)');
+  expect(res.lancadas).toBe(0);
+});
+
+test('sem justificativa, nada é lançado', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
+  const res = await servicoPonto.completarDia({
+    colaboradorId: DO_TURNO_A.id, data: diasAtras(3), horarios: { saida: '17:10' }, justificativa: '  ',
+  });
+  expect(res.sucesso).toBe(false);
+  expect(res.lancadas).toBe(0);
+});
+
+test('o horário do turno aparece como referência de cada batida', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  // 16/09/2026 é quarta: turno A, 07:30 às 17:10 com almoço 12:30–14:00
+  expect(servicoPonto.horarioPrevistoDaBatida(DO_TURNO_A as any, '2026-09-16', 'saida')).toBe('17:10');
+  expect(servicoPonto.horarioPrevistoDaBatida(DO_TURNO_A as any, '2026-09-16', 'retorno_almoco')).toBe('14:00');
+});

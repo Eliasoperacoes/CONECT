@@ -22,6 +22,7 @@ mock.module('../servicos/ponto', () => ({
   formatarDataBR: (d: string) => d,
   formatarDiaCurto: (d: string) => d,
   descreverPontoIncompleto: () => '',
+  marcacoesEsperadas: () => [],
   descreverBatidasQueFaltam: () => '',
 }));
 
@@ -43,11 +44,17 @@ test('a sub-aba existe em Equipe e ponto, com o número de dias, ao lado de Apro
   expect(gestao).toContain('servicoPonto.assinarAlteracoes(() => setVersaoDoPonto((v) => v + 1))');
 });
 
-test('cada dia diz quem, quantas de quantas, o que falta — e o líder lança a batida', () => {
+test('UMA ação por dia, que abre as batidas do dia — e não um botão por batida', () => {
+  // A primeira versão punha um botão por batida que faltava: a linha do
+  // Tiago tinha três, quebrava em duas linhas, e o Elias achou "horrível"
   const tela = ler('PontosIncompletos.tsx');
-  expect(tela).toContain('{descreverPontoIncompleto(p)}');
-  expect(tela).toContain('descreverBatidasQueFaltam(p.faltam)');
-  expect(tela).toContain('servicoPonto.ajustarMarcacao({');
+  expect(tela).toContain('Bateu {p.feitas} de {p.esperadas} — não fechou o dia');
+  expect(tela).toContain('Completar dia');
+  expect(tela).not.toContain('Lançar {ROTULO_MARCACAO');
+  expect(tela).not.toMatch(/p\.faltam\.map\(/);
+  // O dia inteiro na folha: feitas com o horário, faltantes com o campo
+  expect(tela).toContain('batidasDoDia(aberto).map((b)');
+  expect(tela).toContain('servicoPonto.completarDia({');
   // As batidas vêm do banco: o cache do aparelho pode ser outra janela
   expect(tela).toContain('servicoPonto\n      .garantirBatidasDoPeriodo(periodo.inicio, periodo.fim)');
 });
