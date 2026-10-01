@@ -87,12 +87,21 @@ var turnoDe = (colaborador) => {
   return doPerfil.find((t) => t.chave === colaborador?.turno) || doPerfil[0];
 };
 var MINUTOS_SABADO = emMinutos(TURNO_SABADO.saida) - emMinutos(TURNO_SABADO.entrada);
-var CARGA_HORARIA_PADRAO_MINUTOS = minutosDoTurno(TURNOS[0]);
+var JORNADA_CLT_DIA_UTIL = 8 * 60;
+var compensacaoDoSabadoDe = (colaborador) => {
+  if (colaborador?.cargaHorariaDiariaMinutos != null)
+    return 0;
+  const turno = turnoDe(colaborador);
+  if (turno.perfil !== "integral")
+    return 0;
+  return Math.max(0, minutosDoTurno(turno) - JORNADA_CLT_DIA_UTIL);
+};
+var CARGA_HORARIA_PADRAO_MINUTOS = JORNADA_CLT_DIA_UTIL;
 var MINUTOS_SEMANA_PADRAO = CARGA_HORARIA_PADRAO_MINUTOS * 5 + MINUTOS_SABADO;
 var MINUTOS_SEMANA_ESTAGIO = 30 * 60;
 var MINUTOS_DIA_ESTAGIO = 6 * 60;
 var ehDeEstagio = (colaborador) => (colaborador?.setor || "").toLowerCase().includes("está") || (colaborador?.setor || "").toLowerCase().includes("esta") || (colaborador?.cargo || "").toLowerCase().includes("estagi");
-var minutosDeDiaUtilDe = (colaborador) => colaborador?.cargaHorariaDiariaMinutos != null ? colaborador.cargaHorariaDiariaMinutos : minutosDoTurno(turnoDe(colaborador));
+var minutosDeDiaUtilDe = (colaborador) => colaborador?.cargaHorariaDiariaMinutos != null ? colaborador.cargaHorariaDiariaMinutos : minutosDoTurno(turnoDe(colaborador)) - compensacaoDoSabadoDe(colaborador);
 var cargaSemanalDe = (colaborador) => {
   if (colaborador?.cargaSemanalMinutos != null) {
     return colaborador.cargaSemanalMinutos;
@@ -294,6 +303,13 @@ var cargaPrevistaEmMinutos = (colaborador, data) => {
   }
   return minutosDeDiaUtilDe(colaborador);
 };
+var compensacaoEsperadaDoDia = (colaborador, data) => {
+  if (!colaborador || ehDiaDeFolga(data) || ehSabado(data))
+    return 0;
+  if (fonte.feriadoEm(data, colaborador.loja))
+    return 0;
+  return compensacaoDoSabadoDe(colaborador);
+};
 var horariosEsperadosDoDia = (colaborador, data) => {
   const esperadas = marcacoesEsperadas(data, colaborador);
   if (esperadas.length === 0)
@@ -318,8 +334,9 @@ var horariosEsperadosDoDia = (colaborador, data) => {
   if (Object.keys(horarios).length === 0)
     return null;
   const implicado = ehSabado(data) ? (horarios.saida ?? 0) - (horarios.entrada ?? 0) : (horarios.saida_almoco ?? 0) - (horarios.entrada ?? 0) + ((horarios.saida ?? 0) - (horarios.retorno_almoco ?? 0));
-  if (implicado !== cargaPrevistaEmMinutos(colaborador, data))
+  if (implicado !== cargaPrevistaEmMinutos(colaborador, data) + compensacaoEsperadaDoDia(colaborador, data)) {
     return null;
+  }
   return horarios;
 };
 var jornadaDoDia = (colaboradorId, data) => {
@@ -355,10 +372,11 @@ var jornadaDoDia = (colaboradorId, data) => {
   const abatidoPelaPausa = minutosTrabalhados > 0 && faltando > 0 ? Math.min(pausa, faltando) : 0;
   const minutosPrevistosEfetivos = minutosPrevistos - abatidoPelaPausa;
   const saldoBrutoMinutos = minutosTrabalhados > 0 ? minutosTrabalhados - minutosPrevistosEfetivos : 0;
+  const compensacaoEsperada = compensacaoEsperadaDoDia(colaborador, data);
   const tolerancia = aplicarTolerancia({
     batidas: { entrada, saidaAlmoco, retornoAlmoco, saida },
     esperados: horariosEsperadosDoDia(colaborador, data),
-    diferenca: minutosTrabalhados - minutosPrevistos,
+    diferenca: minutosTrabalhados - minutosPrevistos - compensacaoEsperada,
     pausa,
     jornadaFechada: minutosTrabalhados > 0,
     limites: {
@@ -385,6 +403,7 @@ var jornadaDoDia = (colaboradorId, data) => {
     minutosPrevistos,
     minutosPrevistosEfetivos,
     abatidoPelaPausa,
+    compensacaoMinutos: minutosTrabalhados > 0 && completa ? compensacaoEsperada : 0,
     saldoMinutos,
     saldoBrutoMinutos: saldoBrutoDoDia,
     tolerancia,

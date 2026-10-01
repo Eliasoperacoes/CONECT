@@ -22,6 +22,8 @@ import {
   turnoDe,
   turnosDoPerfil,
   minutosDoTurno,
+  minutosDeDiaUtilDe,
+  compensacaoDoSabadoDe,
   marcacoesDoTurno,
   minutosDeIntervaloDe,
   cargaSemanalDe,
@@ -550,7 +552,13 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                   que ninguém tinha escolhido para ela.
                 */}
                 <option value="">
-                  Padrão do turno · {formatarMinutos(minutosDoTurno(turnoEscolhido))}
+                  {/* A jornada da CLT, e os 10 min do integral como compensação do sábado */}
+                  Padrão do turno ·{' '}
+                  {formatarMinutos(
+                    minutosDeDiaUtilDe({ turno: turnoEscolhido.chave, setor: form.setor, cargo: form.cargo })
+                  )}
+                  {compensacaoDoSabadoDe({ turno: turnoEscolhido.chave, setor: form.setor, cargo: form.cargo }) > 0 &&
+                    ' + 0h10 de compensação do sábado'}
                 </option>
                 <option value={240}>4h00</option>
                 <option value={300}>5h00</option>

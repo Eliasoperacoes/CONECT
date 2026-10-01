@@ -68,12 +68,14 @@ test('a hora da batida é lida no relógio de Brasília, não no da máquina', (
   expect(hojeEmBrasilia(new Date('2026-10-02T02:30:00.000Z'))).toBe('2026-10-01');
 });
 
-test('o dia do turno A, vindo do banco em UTC, fecha em 8h10 e saldo zero', () => {
+test('o dia do turno A, vindo do banco em UTC: 8h10 trabalhadas, 8h previstas, 10 de compensação e saldo zero', () => {
   diaInteiro('2026-10-06', ['07:30', '12:30', '14:00', '17:10']);
   const j = jornadaDoDia('ana', '2026-10-06');
   expect(j.completa).toBe(true);
   expect(j.minutosTrabalhados).toBe(490);
-  expect(j.minutosPrevistos).toBe(490);
+  // As 8h da CLT; os 10 minutos são a compensação do sábado (01/10/2026)
+  expect(j.minutosPrevistos).toBe(480);
+  expect(j.compensacaoMinutos).toBe(10);
   expect(j.saldoMinutos).toBe(0);
 });
 
@@ -105,7 +107,7 @@ test('dia já decidido não reabre sozinho; dentro da tolerância, o pendente vo
 test('o levantamento: dia útil sem batida vira falta; abonado e domingo, nada', () => {
   // 06/10/2026 é terça; o "hoje" do servidor é 08/10
   const d = decidirLevantamento(ANA, '2026-10-06', 'agora');
-  expect(d).toMatchObject({ acao: 'criarFalta', ajuste: { id: 'inc-ana-2026-10-06', tipo: 'dia_incompleto', minutos: 490 } });
+  expect(d).toMatchObject({ acao: 'criarFalta', ajuste: { id: 'inc-ana-2026-10-06', tipo: 'dia_incompleto', minutos: 480 } });
 
   ausencias.push({ colaboradorId: 'ana', data: '2026-10-07', situacao: 'atestado' });
   expect(decidirLevantamento(ANA, '2026-10-07', 'agora').acao).toBe('nada');

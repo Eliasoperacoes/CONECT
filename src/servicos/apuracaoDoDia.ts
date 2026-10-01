@@ -36,6 +36,7 @@ import {
   TURNO_SABADO,
   TipoMarcacao,
   cargaSemanalDe,
+  compensacaoDoSabadoDe,
   minutosComSinal,
   minutosDeDiaUtilDe,
   minutosPausaDoTurno,
@@ -403,6 +404,24 @@ export const cargaPrevistaEmMinutos = (colaborador: Colaborador | undefined, dat
 };
 
 /**
+ * A COMPENSAÇÃO DO SÁBADO QUE ESTE DIA CARREGA — os 10 minutos do turno
+ * integral acima das 8h da CLT (`compensacaoDoSabadoDe`, em tipos.ts).
+ *
+ * Só no dia útil: o sábado é de 4h corridas, sem os 10 minutos; feriado e
+ * domingo não carregam combinado nenhum.
+ *
+ * O DIA ABONADO EM QUE A PESSOA VEIO CARREGA. Quem tem atestado e trabalhou
+ * o horário inteiro cumpriu os 10 minutos como em qualquer dia — sem isto
+ * eles viravam hora extra. O abonado SEM batida não rende nada sozinho: o
+ * previsto dele é zero e a compensação só conta em dia que fechou.
+ */
+export const compensacaoEsperadaDoDia = (colaborador: Colaborador | undefined, data: string): number => {
+  if (!colaborador || ehDiaDeFolga(data) || ehSabado(data)) return 0;
+  if (fonte.feriadoEm(data, colaborador.loja)) return 0;
+  return compensacaoDoSabadoDe(colaborador);
+};
+
+/**
  * O horário que o contrato espera para CADA batida daquele dia.
  *
  * Devolve `null` quando o sistema não tem como saber — e aí o limite por
@@ -478,7 +497,10 @@ export const horariosEsperadosDoDia = (
       (horarios.entrada ?? 0) +
       ((horarios.saida ?? 0) - (horarios.retorno_almoco ?? 0));
 
-  if (implicado !== cargaPrevistaEmMinutos(colaborador, data)) return null;
+  // O relógio do turno é o previsto (8h) MAIS a compensação do sábado (10)
+  if (implicado !== cargaPrevistaEmMinutos(colaborador, data) + compensacaoEsperadaDoDia(colaborador, data)) {
+    return null;
+  }
 
   return horarios;
 };
@@ -609,10 +631,16 @@ export const jornadaDoDia = (colaboradorId: string, data: string): JornadaDia =>
    *
    * A regra inteira, com os exemplos, está em `toleranciaDoPonto.ts`.
    */
+  /*
+    O DESVIO SE MEDE CONTRA O HORÁRIO COMBINADO, e não contra as 8h.
+    Quem sai às 17:10 saiu no horário: os 10 minutos são a compensação do
+    sábado (`compensacaoMinutos`), e não hora extra para a fila.
+  */
+  const compensacaoEsperada = compensacaoEsperadaDoDia(colaborador, data);
   const tolerancia = aplicarTolerancia({
     batidas: { entrada, saidaAlmoco, retornoAlmoco, saida },
     esperados: horariosEsperadosDoDia(colaborador, data),
-    diferenca: minutosTrabalhados - minutosPrevistos,
+    diferenca: minutosTrabalhados - minutosPrevistos - compensacaoEsperada,
     pausa,
     jornadaFechada: minutosTrabalhados > 0,
     limites: {
@@ -661,6 +689,8 @@ export const jornadaDoDia = (colaboradorId: string, data: string): JornadaDia =>
     minutosPrevistos,
     minutosPrevistosEfetivos,
     abatidoPelaPausa,
+    // Os 10 minutos rendem só no dia que FECHOU: dia pela metade não paga folga
+    compensacaoMinutos: minutosTrabalhados > 0 && completa ? compensacaoEsperada : 0,
     saldoMinutos,
     saldoBrutoMinutos: saldoBrutoDoDia,
     tolerancia,

@@ -70,7 +70,7 @@ test('o dia útil sem batida vira falta na fila — e o gerente, que não bate p
   const plano = planejarApuracao(dados({ batidas: [...semTerca, ...sabado] }), opcoes);
 
   expect(plano.gravar.map((a) => `${a.colaboradorId} ${a.data} ${a.tipo}`)).toEqual(['ana 2026-10-06 dia_incompleto']);
-  expect(plano.gravar[0]).toMatchObject({ minutos: 490, estado: 'pendente', id: 'inc-ana-2026-10-06' });
+  expect(plano.gravar[0]).toMatchObject({ minutos: 480, estado: 'pendente', id: 'inc-ana-2026-10-06' });
   expect(plano.novosNaFila).toHaveLength(1);
   expect(plano.resumo).toMatchObject({ pessoas: 1, faltas: 1 });
 });

@@ -114,7 +114,7 @@ test('simulando, diz o que gravaria e não grava nada', async () => {
   expect(corpo.lidos).toEqual({ colaboradores: 1, batidas: 18, ausencias: 0, feriados: 0, apuracoes: 0 });
   // Quinta 01, sexta 02, sábado 03, segunda 05 e quarta 07 fecharam
   expect(corpo.diasFechados).toBe(5);
-  expect(corpo.seriaGravado).toEqual(['Ana · 2026-10-06 · dia_incompleto 490min · pendente']);
+  expect(corpo.seriaGravado).toEqual(['Ana · 2026-10-06 · dia_incompleto 480min · pendente']);
   expect(pedidos.filter((p) => p.metodo === 'POST')).toHaveLength(0);
   pedidos.length = 0;
 });
@@ -135,5 +135,5 @@ test('com o segredo, lê o banco paginando e grava a falta da terça', async () 
   expect(gravacoes).toHaveLength(1);
   const linhas = JSON.parse(gravacoes[0].corpo!);
   expect(linhas.map((l: any) => l.id)).toEqual(['inc-ana-2026-10-06']);
-  expect(linhas[0]).toMatchObject({ tipo: 'dia_incompleto', minutos: 490, estado: 'pendente' });
+  expect(linhas[0]).toMatchObject({ tipo: 'dia_incompleto', minutos: 480, estado: 'pendente' });
 });

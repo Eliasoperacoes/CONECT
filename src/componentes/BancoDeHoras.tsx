@@ -45,6 +45,7 @@ import {
   ROTULO_MARCACAO,
   turnoDe,
   minutosDeDiaUtilDe,
+  compensacaoDoSabadoDe,
   INFORMACOES_LOJAS,
   ehMarcacaoCorrigida,
   ehMarcacaoPreenchida,
@@ -1134,6 +1135,9 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                     consulta.
                   */}
                   Jornada diária: {formatarMinutos(minutosDeDiaUtilDe(detalhe.colaborador))}
+                  {/* Os 10 min do turno integral: a compensação do sábado, e não jornada */}
+                  {compensacaoDoSabadoDe(detalhe.colaborador) > 0 &&
+                    ` + ${formatarMinutos(compensacaoDoSabadoDe(detalhe.colaborador))} de compensação do sábado`}
                   {' · '}
                   {turnoDe(detalhe.colaborador).nome}
                 </p>

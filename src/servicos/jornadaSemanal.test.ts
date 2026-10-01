@@ -26,14 +26,18 @@ import {
   MINUTOS_SABADO,
 } from '../tipos';
 
-test('a semana do colaborador sai do relogio do turno, e nao de um numero escolhido', () => {
-  // 8h10 por dia, com o almoço de 1h30 que a rede pratica
-  expect(CARGA_HORARIA_PADRAO_MINUTOS).toBe(490);
+test('a semana do colaborador é a da CLT: 8h por dia útil e 4h de sábado', () => {
+  /*
+    01/10/2026, Elias com a Dani: a jornada é a da CLT. O relógio do turno
+    dá 8h10 (07:30–17:10 com 1h30 de almoço); os 10 minutos são a
+    compensação do sábado (`compensacaoDoSabadoDe`), e não jornada.
+  */
+  expect(CARGA_HORARIA_PADRAO_MINUTOS).toBe(480);
   expect(MINUTOS_SABADO).toBe(240);
 
   // Cinco dias úteis mais o sábado
-  expect(MINUTOS_SEMANA_PADRAO).toBe(490 * 5 + 240);
-  expect(MINUTOS_SEMANA_PADRAO).toBe(2690); // 44h50
+  expect(MINUTOS_SEMANA_PADRAO).toBe(480 * 5 + 240);
+  expect(MINUTOS_SEMANA_PADRAO).toBe(2640); // 44h
 });
 
 /**

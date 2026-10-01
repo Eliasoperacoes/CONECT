@@ -553,21 +553,57 @@ export const MINUTOS_SABADO =
   emMinutos(TURNO_SABADO.saida) - emMinutos(TURNO_SABADO.entrada);
 
 /**
- * Jornada padrão quando o colaborador não tem carga própria cadastrada.
+ * ===================================================================
+ * O DIA ÚTIL É DE 8h PELA CLT. OS 10 MINUTOS SÃO A COMPENSAÇÃO DO SÁBADO.
+ * ===================================================================
  *
- * É a do turno A — que é igual à do B: os dois fecham 8h10. A rede não tem
- * dia útil de 8h00.
+ * Os turnos A e B vão das 07:30 às 17:10 e das 08:20 às 18:00 com 1h30
+ * de almoço: 8h10 no relógio. O sistema cobrava as 8h10 como jornada, e
+ * o Elias corrigiu, com a Dani (01/10/2026): a jornada é a da CLT, 8h, e
+ * os 10 minutos são um COMBINADO interno — é com eles que a pessoa paga a
+ * folga de sábado do mês (cerca de 22 dias × 10 min ≈ 3h40, contra as 4h
+ * do sábado).
+ *
+ * Então o dia útil prevê 8h (o que vai no espelho e na carga semanal, que
+ * fica em 44h), e os 10 minutos cumpridos viram CRÉDITO de compensação —
+ * que a folga de sábado consome, até as 4h dela. Quem cumpre o horário e
+ * tira a folga fecha o mês em zero; ninguém fica devendo por causa dela.
+ *
+ * O horário do turno não muda: quem sai às 17:10 saiu no horário, e não
+ * fez hora extra. Os pedidos na fila continuam medidos contra o RELÓGIO
+ * do turno (`apuracaoDoDia`).
+ *
+ * Só o turno integral sem jornada própria na ficha. Estágio não tem o
+ * combinado, e contrato individual manda mais que a escala.
  */
-export const CARGA_HORARIA_PADRAO_MINUTOS = minutosDoTurno(TURNOS[0]);
+export const JORNADA_CLT_DIA_UTIL = 8 * 60;
+
+/** Os minutos de compensação do sábado que o dia útil desta pessoa carrega. */
+export const compensacaoDoSabadoDe = (colaborador?: {
+  cargaHorariaDiariaMinutos?: number | null;
+  turno?: string;
+  setor?: string;
+  cargo?: string;
+}): number => {
+  // `!= null`: ver `minutosDeDiaUtilDe`
+  if (colaborador?.cargaHorariaDiariaMinutos != null) return 0;
+  const turno = turnoDe(colaborador);
+  if (turno.perfil !== 'integral') return 0;
+  return Math.max(0, minutosDoTurno(turno) - JORNADA_CLT_DIA_UTIL);
+};
+
+/**
+ * Jornada padrão quando o colaborador não tem carga própria cadastrada:
+ * as 8h da CLT (o turno A e o B fecham 8h10 no relógio — ver acima).
+ */
+export const CARGA_HORARIA_PADRAO_MINUTOS = JORNADA_CLT_DIA_UTIL;
 
 /**
  * A semana contratada de quem cumpre o turno inteiro.
  *
- * Cinco dias úteis de 8h10 mais quatro horas de sábado: 44h50.
- *
- * É o relógio dos turnos cadastrados, com o almoço de 1h30 que a rede
- * pratica — não um número escolhido. Se a jornada contratada for outra, o
- * lugar de mudar é a ficha de cada pessoa, e não este padrão.
+ * Cinco dias úteis de 8h mais quatro horas de sábado: 44h, a da CLT. Os
+ * 10 minutos diários do relógio são a compensação do sábado, e não
+ * jornada (ver `JORNADA_CLT_DIA_UTIL`).
  */
 export const MINUTOS_SEMANA_PADRAO = CARGA_HORARIA_PADRAO_MINUTOS * 5 + MINUTOS_SABADO;
 
@@ -629,7 +665,8 @@ export const minutosDeDiaUtilDe = (colaborador?: {
 }): number =>
   colaborador?.cargaHorariaDiariaMinutos != null
     ? colaborador.cargaHorariaDiariaMinutos
-    : minutosDoTurno(turnoDe(colaborador));
+    : // O relógio do turno menos a compensação do sábado: o A e o B dão 8h
+      minutosDoTurno(turnoDe(colaborador)) - compensacaoDoSabadoDe(colaborador);
 
 /**
  * A carga da semana desta pessoa.
@@ -1221,6 +1258,13 @@ export interface JornadaDia {
   /** Quanto da pausa paga cobriu o que faltou no dia. Zero fora do estágio. */
   abatidoPelaPausa: number;
   /**
+   * Os minutos de COMPENSAÇÃO DO SÁBADO que o dia rendeu: os 10 do turno
+   * integral, quando o dia útil fechou (`JORNADA_CLT_DIA_UTIL`). Estão no
+   * relógio (`saldoBrutoMinutos`), e NÃO no saldo — o saldo é o desvio do
+   * horário combinado, o que vai para a fila. A folga de sábado os consome.
+   */
+  compensacaoMinutos: number;
+  /**
    * O SALDO DO DIA, JÁ COM A TOLERÂNCIA (`toleranciaDoPonto.ts`), e ZERO
    * em dia que não fechou.
    *
@@ -1573,6 +1617,10 @@ export interface ResumoPontoColaborador {
    * o rodapé tem de dizer isso em vez de mostrar um 0h00 verde.
    */
   diasSemBatidaForaDaConta: string[];
+  /** A compensação do sábado juntada no período (10 min por dia útil fechado). */
+  compensacaoMinutos: number;
+  /** Quantas folgas de sábado o período tem — cada uma consome até 4h da compensação. */
+  folgasDeSabado: number;
   /** Bateu alguma marcação hoje — presença, sem julgar a hora. */
   registrouHoje: boolean;
   /** Já passou da entrada dela (com a tolerância) e não bateu. É o "Sem bater hoje". */

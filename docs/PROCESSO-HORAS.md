@@ -73,7 +73,8 @@ Estas são as decisões que já estão tomadas. Mudá-las é o assunto.
 |---|---|---|
 | Batidas por dia | 4, fixas | `ORDEM_MARCACOES` |
 | Dia considerado "completo" | só com as **4** batidas | `obterJornadaDoDia` |
-| Jornada prevista | `cargaHorariaDiariaMinutos` da pessoa, ou 480 | `cargaPrevistaEmMinutos` |
+| Jornada prevista | `cargaHorariaDiariaMinutos` da pessoa, ou as **8h da CLT** no turno integral (o relógio do turno dá 8h10) | `minutosDeDiaUtilDe`, `cargaPrevistaEmMinutos` |
+| **Compensação do sábado** (01/10/2026, Elias com a Dani) | Os 10 min do turno A/B acima das 8h são um combinado: rendem como crédito em todo dia útil fechado, e a folga de sábado os consome, até 4h — nunca deixa devendo. Os pedidos na fila seguem medidos contra o horário do turno: sair às 17:10 não é hora extra. Estágio, jornada própria na ficha, sábado e feriado não têm o combinado | `compensacaoDoSabadoDe` (tipos.ts), `compensacaoEsperadaDoDia` (apuracaoDoDia.ts), `totaisDoEspelho` |
 | Sábado e domingo | previsto = 0 | idem |
 | **Tolerância** | Dia que fecha até 5 min acima ou abaixo do previsto: saldo zero. Entrada e saída: até 5 min em cada e 10 somadas, senão contam. Almoço: até 5 min somando saída e retorno. O saldo nunca passa do relógio. Sem horário conhecido: 10 min no dia. Aplicada no saldo do dia, antes de qualquer tela ou do banco de horas ler | `toleranciaDoPonto.ts`, chamada em `obterJornadaDoDia` |
 | Intervalo | só desconta se as duas batidas do almoço existirem | `obterJornadaDoDia` |

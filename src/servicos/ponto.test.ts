@@ -1494,14 +1494,15 @@ const fecharSabado = async (quem: any, data: string, entrada: string, saida: str
   await servicoPonto.apurarDia(quem.id, data);
 };
 
-test('os dois turnos preveem a MESMA jornada: 8h10', () => {
+test('os dois turnos preveem a MESMA jornada: 8h da CLT (o relógio dá 8h10)', () => {
+  // 01/10/2026: os 10 minutos do relógio são a compensação do sábado
   equipe = [GESTOR, DO_TURNO_A, DO_TURNO_B];
 
   const a = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-16');
   const b = servicoPonto.obterJornadaDoDia(DO_TURNO_B.id, '2026-09-16');
 
-  expect(a.minutosPrevistos).toBe(490);
-  expect(b.minutosPrevistos).toBe(490);
+  expect(a.minutosPrevistos).toBe(480);
+  expect(b.minutosPrevistos).toBe(480);
 });
 
 test('SÁBADO PREVÊ 4 HORAS, não zero', () => {
@@ -1794,8 +1795,8 @@ test('MARCAR DÉBITO: o dia vira a jornada prevista, negativa', async () => {
   const alvo = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06')!;
   await servicoPonto.decidirDiaIncompleto(alvo.id, false);
 
-  // 8h10 = 490 minutos, negativos
-  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO_A.id)).toBe(-490);
+  // A jornada da CLT, 8h = 480 minutos, negativos (01/10/2026: era 8h10)
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO_A.id)).toBe(-480);
 });
 
 test('O DIA DE HOJE NÃO ENTRA NA FILA', async () => {
@@ -3082,7 +3083,7 @@ test('quem NÃO vem ao sábado não tem o sábado na conta da semana', () => {
 
 test('o INTEGRAL não se mexe: a razão é 1', () => {
   /**
-   * 8h10 × 5 + 4h de sábado é exatamente a carga semanal padrão. A escala
+   * 8h × 5 + 4h de sábado é exatamente a carga semanal padrão. A escala
    * só entra quando alguém tem contrato diferente do próprio horário —
    * para o resto da rede, a conta é a mesma de antes.
    */
@@ -3091,7 +3092,8 @@ test('o INTEGRAL não se mexe: a razão é 1', () => {
     cargaHorariaDiariaMinutos: undefined, cargaSemanalMinutos: undefined,
   };
 
-  expect(previstoDe(balconista, '2026-09-15')).toBe(490);
+  // As 8h da CLT no dia útil (o relógio dá 8h10: compensação do sábado)
+  expect(previstoDe(balconista, '2026-09-15')).toBe(480);
   expect(previstoDe(balconista, '2026-09-19')).toBe(240);
 });
 
@@ -3783,9 +3785,11 @@ test('HORÁRIO A: 07:29 e 17:12 fecham com saldo 0h00, não +0h03', async () => 
   await baterDia(DO_TURNO_A, '2026-09-15', ['07:29', '12:30', '14:00', '17:12']);
 
   const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-15');
-  expect(dia.minutosPrevistos).toBe(490); // 8h10, do turno
+  expect(dia.minutosPrevistos).toBe(480); // 8h, da CLT
   expect(dia.minutosTrabalhados).toBe(493);
-  expect(dia.saldoBrutoMinutos).toBe(3);
+  // O relógio conta contra as 8h: 10 de compensação do sábado + 3 de variação
+  expect(dia.saldoBrutoMinutos).toBe(13);
+  expect(dia.compensacaoMinutos).toBe(10);
   expect(dia.saldoMinutos).toBe(0);
   expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-15')).toBeNull();
 });
@@ -3808,8 +3812,10 @@ test('HORÁRIO B: entrada 08:22 não gera −0h02', async () => {
   await baterDia(DO_TURNO_B, '2026-09-15', ['08:22', '11:00', '12:30', '18:00']);
 
   const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_B.id, '2026-09-15');
-  expect(dia.minutosPrevistos).toBe(490);
-  expect(dia.saldoBrutoMinutos).toBe(-2);
+  expect(dia.minutosPrevistos).toBe(480);
+  // 8h08 trabalhadas: +8 contra as 8h — os 10 da compensação menos os 2 do atraso
+  expect(dia.saldoBrutoMinutos).toBe(8);
+  expect(dia.compensacaoMinutos).toBe(10);
   expect(dia.saldoMinutos).toBe(0);
   // Medido contra o horário do B, e não contra o do A
   expect(dia.tolerancia.entradaESaida).toEqual({ efeitoEntrada: -2, efeitoSaida: 0, tolerado: true });
@@ -3865,17 +3871,22 @@ test('o espelho mostra a conta de cada dia: previsto, relógio, variações, tol
   expect(legenda).toContain('até 5 minutos na entrada');
   for (const simbolo of ['✓', '✗', '(E =', '(S)', '(R)']) expect(legenda).not.toContain(simbolo);
 
-  // Segunda tolerada (relógio +0h03, saldo 0h00); terça fora (+0h06 nos dois)
-  expect(html).toContain('+0h03');
+  // O relógio conta contra as 8h da CLT: segunda +0h13 (10 de compensação +
+  // 3 tolerados, saldo 0h00); terça +0h16 (10 + 6 que contam, saldo +0h06)
+  expect(html).toContain('+0h13');
+  expect(html).toContain('+0h16');
   expect(html).toContain('+0h06');
 
-  // O rodapé fecha a conta: relógio +9, tolerância +3, saldo +6
+  // O rodapé fecha a conta: relógio +29 (dos quais +20 de compensação),
+  // tolerância +3, saldo +26
   expect(html).toContain('Relógio do período');
+  expect(html).toContain('dos quais, compensação do sábado (10 min × 2 dias)');
   expect(html).toContain('Tolerância aplicada');
 
-  // A jornada do documento é a do turno, e não "8h00 por dia útil"
+  // A jornada do documento: as 8h da CLT, e os 10 min como compensação —
+  // decisão do Elias com a Dani (01/10/2026). O horário do turno segue lá.
   expect(html).toContain('Turno A · 07:30 às 17:10');
-  expect(html).not.toContain('8h00 por dia útil');
+  expect(html).toContain('8h00 por dia útil + 0h10 de compensação do sábado');
 });
 
 test('o CSV traz as mesmas colunas de auditoria', async () => {
@@ -4006,11 +4017,72 @@ test('o rodapé fecha a conta: trabalhado − previsto = relógio; relógio − 
 
   // Só os dias com jornada fechada: os outros 20 dias úteis do mês não entram no previsto
   expect(t.trabalhado).toBe(493 + 496);
-  expect(t.previsto).toBe(490 + 490);
+  // As 8h da CLT por dia útil (01/10/2026: era o relógio do turno, 8h10)
+  expect(t.previsto).toBe(480 + 480);
   expect(t.relogio).toBe(t.trabalhado - t.previsto);
-  expect(t.relogio).toBe(9);
+  // +29: os 20 da compensação do sábado (10 × 2 dias) e as variações +3 e +6
+  expect(t.relogio).toBe(29);
+  expect(t.compensacao).toBe(20);
   expect(t.tolerancia).toBe(3);
+  // Sem folga no período, a compensação fica inteira no saldo
+  expect(t.folgaConsumida).toBe(0);
   expect(t.saldoPeriodo).toBe(t.relogio - t.tolerancia);
+});
+
+/*
+  A COMPENSAÇÃO DO SÁBADO (01/10/2026, Elias com a Dani). A jornada é a da
+  CLT, 8h; os 10 minutos do turno integral são o combinado com que a pessoa
+  paga a folga de sábado do mês — e a folga consome só esse crédito, até 4h.
+*/
+test('a compensação rende 10 min no dia útil fechado do turno integral — e só nele', async () => {
+  const ESTAGIO = { ...DO_TURNO_A, id: 'est', login: 'est', setor: 'Estágio', cargo: 'Estagiária', turno: 'E1' };
+  const PROPRIA = { ...DO_TURNO_A, id: 'mp', login: 'mp', cargaHorariaDiariaMinutos: 480 };
+  equipe = [ELIAS, DO_TURNO_A, ESTAGIO, PROPRIA];
+  colaboradorLogado = DO_TURNO_A;
+  await baterDia(DO_TURNO_A, '2026-09-14', ['07:30', '12:30', '14:00', '17:10']);
+  baterParcial(DO_TURNO_A, '2026-09-15', { entrada: '07:30' });
+  baterParcial(DO_TURNO_A, '2026-09-12', { entrada: '08:00', saida: '12:00' });
+  baterParcial(ESTAGIO, '2026-09-14', { entrada: '07:30', saida: '13:30' });
+  baterParcial(PROPRIA, '2026-09-14', { entrada: '07:30', saida_almoco: '12:30', retorno_almoco: '14:00', saida: '17:00' });
+
+  const comp = (quem: any, data: string) => servicoPonto.obterJornadaDoDia(quem.id, data).compensacaoMinutos;
+  expect(comp(DO_TURNO_A, '2026-09-14')).toBe(10); // dia útil fechado
+  expect(comp(DO_TURNO_A, '2026-09-15')).toBe(0); // pela metade não paga folga
+  expect(comp(DO_TURNO_A, '2026-09-12')).toBe(0); // sábado: 4h corridas, sem combinado
+  expect(comp(ESTAGIO, '2026-09-14')).toBe(0); // estágio não tem o combinado
+  expect(comp(PROPRIA, '2026-09-14')).toBe(0); // jornada própria na ficha manda
+  // E o horário do turno segue sendo o horário: sair às 17:10 não é hora extra
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-14').saldoMinutos).toBe(0);
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-14')).toBeNull();
+});
+
+test('a folga de sábado consome a compensação, até 4h — e nunca deixa devendo', async () => {
+  const { totaisDoEspelho, linhasDoRodape } = await import('./ponto');
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+  await baterDia(DO_TURNO_A, '2026-09-14', ['07:30', '12:30', '14:00', '17:10']);
+  await baterDia(DO_TURNO_A, '2026-09-15', ['07:30', '12:30', '14:00', '17:10']);
+  // Sábado 19/09 de folga, aprovada
+  comAusenciaAprovada(DO_TURNO_A, '2026-09-19', 'folga_sabado');
+
+  colaboradorLogado = ELIAS;
+  const resumo = servicoPonto.obterResumoDoPeriodo('2026-09-14', '2026-09-19').find((r) => r.colaborador.id === DO_TURNO_A.id)!;
+  expect(resumo.folgasDeSabado).toBe(1);
+  const t = totaisDoEspelho(resumo);
+  // Juntou 20 minutos: a folga consome os 20, e não as 4h — ninguém fica devendo por ela
+  expect(t.compensacao).toBe(20);
+  expect(t.folgaConsumida).toBe(20);
+  expect(t.saldoPeriodo).toBe(0);
+  // A conta fecha no papel: relógio − tolerância − folga = saldo
+  expect(t.relogio - t.tolerancia - t.folgaConsumida).toBe(t.saldoPeriodo);
+  const folga = linhasDoRodape(t).find((l) => l.rotulo.startsWith('Folga de sábado'))!;
+  expect(folga.minutos).toBe(-20);
+
+  // Com o mês cheio de compensação, a folga para nas 4h
+  const muito = totaisDoEspelho({ ...resumo, compensacaoMinutos: 260 });
+  expect(muito.folgaConsumida).toBe(240);
+  expect(muito.saldoPeriodo).toBe(20);
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
 });
 
 test('o espelho com dia em branco não fecha 0h00 como se estivesse certo', async () => {
@@ -4035,14 +4107,15 @@ test('o espelho com dia em branco não fecha 0h00 como se estivesse certo', asyn
 
   const t = totaisDoEspelho(resumo);
   expect(t.diasSemBatida).toBe(3);
-  expect(t.previstoSemBatida).toBe(490 + 490 + 240);
-  expect(t.saldoPeriodo).toBe(0);
+  expect(t.previstoSemBatida).toBe(480 + 480 + 240);
+  // Os dois dias batidos no horário: só os 20 da compensação do sábado
+  expect(t.saldoPeriodo).toBe(20);
   expect(espelhoIncompleto(t)).toBe(true);
 
   const linhas = linhasDoRodape(t);
   const semBatida = linhas.find((l) => l.rotulo.startsWith('Dias sem batida'))!;
   expect(semBatida.alerta).toBe(true);
-  expect(semBatida.minutos).toBe(1220);
+  expect(semBatida.minutos).toBe(1200);
   const saldo = linhas.find((l) => l.rotulo.startsWith('Saldo do período'))!;
   expect(saldo.rotulo).toContain('provisório: espelho incompleto');
   expect(saldo.alerta).toBe(true);
@@ -4079,14 +4152,16 @@ test('o painel e o papel desenham a MESMA linha e o MESMO rodapé', async () => 
   expect(papel).not.toContain('Total trabalhado no período');
 });
 
-test('ALINE, 21/09, no espelho: relógio +0h01 e saldo 0h00', async () => {
+test('ALINE, 21/09, no espelho: relógio +0h11 (10 de compensação + 1) e saldo 0h00', async () => {
   equipe = [ELIAS, DO_TURNO_A];
   colaboradorLogado = DO_TURNO_A;
   await baterDia(DO_TURNO_A, '2026-09-21', ['07:30', '12:30', '14:05', '17:16']);
 
   const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-21');
   expect(dia.minutosTrabalhados).toBe(491);
-  expect(dia.saldoBrutoMinutos).toBe(1);
+  // O relógio conta contra as 8h da CLT: os 10 da compensação e +1 de variação
+  expect(dia.saldoBrutoMinutos).toBe(11);
+  expect(dia.compensacaoMinutos).toBe(10);
   expect(dia.saldoMinutos).toBe(0);
   expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-21')).toBeNull();
 });
@@ -4218,7 +4293,10 @@ test('atestado aprovado + dia trabalhado inteiro: saldo zero, não +8h', () => {
   });
 
   const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-25');
-  expect(dia.minutosPrevistos).toBe(490);
+  expect(dia.minutosPrevistos).toBe(480);
+  // Veio e cumpriu o horário: os 10 minutos são a compensação, como em
+  // qualquer dia, e não hora extra sobre o abono
+  expect(dia.compensacaoMinutos).toBe(10);
   expect(dia.saldoMinutos).toBe(0);
 
   armazenamento.removeItem('conecta_v4_justificativas_ausencia');
@@ -4279,7 +4357,8 @@ test('dia útil sem batida, já passado, é falta: o débito da jornada inteira'
 
   const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-10-06');
   expect(dia.falta).toBe(true);
-  expect(dia.saldoMinutos).toBe(-490);
+  // A jornada da CLT: 8h (01/10/2026)
+  expect(dia.saldoMinutos).toBe(-480);
 });
 
 test('o sábado de quem vem ao sábado também é falta, das 4 horas', () => {
@@ -4321,7 +4400,7 @@ test('a falta vai para a fila do líder, com o nome "Falta"', async () => {
   const ajuste = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06');
   expect(ajuste?.tipo).toBe('dia_incompleto');
   expect(ajuste?.estado).toBe('pendente');
-  expect(ajuste?.minutosPrevistos).toBe(490);
+  expect(ajuste?.minutosPrevistos).toBe(480);
   expect(servicoPonto.rotuloDoAjuste(ajuste!)).toBe('Falta');
   // Setembro não entra na fila
   expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-29')).toBeNull();
@@ -4335,7 +4414,8 @@ test('o líder confirma: débito; abona: zero — e o espelho mostra o decidido'
 
   const terca = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06')!;
   await servicoPonto.decidirDiaIncompleto(terca.id, false);
-  expect(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-10-06').saldoMinutos).toBe(-490);
+  // A jornada da CLT, 8h (01/10/2026)
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-10-06').saldoMinutos).toBe(-480);
 
   const segunda = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-05')!;
   await servicoPonto.decidirDiaIncompleto(segunda.id, true);
@@ -4350,17 +4430,19 @@ test('o espelho escreve "Falta" e o rodapé soma as faltas numa linha própria',
 
   const linha = linhaDoEspelho(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-10-06'), DO_TURNO_A as any);
   expect(linha.falta).toBe(true);
-  expect(linha.saldo).toBe(-490);
+  expect(linha.saldo).toBe(-480);
 
   // 05 e 06/10 sem batida; o relógio não muda, a linha de faltas soma as duas
   const resumo = servicoPonto
     .obterResumoDoPeriodo('2026-10-05', '2026-10-06')
     .find((r) => r.colaborador.id === DO_TURNO_A.id)!;
   const t = totaisDoEspelho(resumo);
-  expect(t.faltas).toBe(-980);
+  expect(t.faltas).toBe(-960);
   expect(t.relogio).toBe(0);
   expect(t.tolerancia).toBe(0);
-  expect(t.saldoPeriodo).toBe(-980);
+  // Dia sem batida não rende compensação do sábado
+  expect(t.compensacao).toBe(0);
+  expect(t.saldoPeriodo).toBe(-960);
   expect(linhasDoRodape(t).map((l) => l.rotulo)).toContain('Faltas (dias sem batida)');
 
   expect(servicoPonto.gerarHtmlEspelho('2026-10-05', '2026-10-06', [DO_TURNO_A.id])).toContain('>Falta<');

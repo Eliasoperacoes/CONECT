@@ -264,7 +264,9 @@ test('trabalhado − previsto efetivo É o saldo, sempre', () => {
     for (const d of UTEIS) {
       const j = servicoPonto.obterJornadaDoDia(quem, d);
       if (j.minutosTrabalhados === 0) continue;
-      expect(j.saldoMinutos).toBe(j.minutosTrabalhados - j.minutosPrevistosEfetivos);
+      // A compensação do sábado (os 10 min do turno integral, 01/10/2026)
+      // está no relógio e não é saldo: é o combinado, e a folga a consome
+      expect(j.saldoMinutos).toBe(j.minutosTrabalhados - j.minutosPrevistosEfetivos - j.compensacaoMinutos);
     }
   }
 });

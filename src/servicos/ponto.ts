@@ -55,6 +55,7 @@ import {
   temIntervaloNoDia,
   cargaSemanalDe,
   minutosDeDiaUtilDe,
+  compensacaoDoSabadoDe,
   ROTULO_SITUACAO,
 } from '../tipos';
 import { bancoDados } from './bancoDados';
@@ -376,16 +377,29 @@ export interface TotaisDoEspelho {
   previstoSemBatida: number;
   /** Dias que começaram e não fecharam. */
   diasSemFechar: number;
+  /** A compensação do sábado juntada (10 min por dia útil fechado). Está DENTRO do relógio. */
+  compensacao: number;
+  /** Quantos dias renderam compensação. */
+  diasComCompensacao: number;
+  /** O que as folgas de sábado consumiram da compensação: até 4h cada, nunca além dela. */
+  folgaConsumida: number;
 }
 
 /**
  * O RODAPÉ FECHA A CONTA, e as linhas dele saem das colunas.
  *
- *   trabalhado − previsto = relógio;   relógio − tolerância = saldo
+ *   trabalhado − previsto = relógio
+ *   relógio − tolerância + faltas − folga consumida = saldo do período
  *
  * O "total previsto" contava os dias ainda não trabalhados do mês ao lado
  * de um trabalhado que só tinha os fechados — a subtração não dava o
  * relógio, e ninguém conseguia conferir o papel com uma calculadora.
+ *
+ * A COMPENSAÇÃO DO SÁBADO (01/10/2026): o previsto do dia útil passou a ser
+ * as 8h da CLT, e os 10 minutos do turno viraram crédito que a folga de
+ * sábado consome (`JORNADA_CLT_DIA_UTIL`). Eles ficam no relógio — é o que
+ * a pessoa trabalhou além das 8h — e a folga os consome, até as 4h dela.
+ * Quem cumpriu o horário e tirou a folga fecha em zero.
  */
 export const totaisDoEspelho = (resumo: ResumoPontoColaborador): TotaisDoEspelho => {
   const fechados = resumo.jornadas.filter((j) => j.minutosTrabalhados > 0);
@@ -393,12 +407,19 @@ export const totaisDoEspelho = (resumo: ResumoPontoColaborador): TotaisDoEspelho
   // As faltas ficam FORA do relógio e da tolerância, numa linha própria:
   // senão "trabalhado − previsto = relógio" deixaria de fechar no papel
   const faltas = resumo.jornadas.filter((j) => j.falta).reduce((s, j) => s + j.saldoMinutos, 0);
+  const compensacao = resumo.compensacaoMinutos;
+  // "Consome só o crédito" (decisão do Elias): a folga nunca deixa devendo
+  const folgaConsumida = Math.min(compensacao, resumo.folgasDeSabado * MINUTOS_SABADO);
   return {
     trabalhado: fechados.reduce((s, j) => s + j.minutosTrabalhados, 0),
     previsto: fechados.reduce((s, j) => s + j.minutosPrevistosEfetivos, 0),
     relogio,
-    tolerancia: relogio + faltas - resumo.saldoPeriodoMinutos,
-    saldoPeriodo: resumo.saldoPeriodoMinutos,
+    // A compensação está no relógio e não é variação: não entra na tolerância
+    tolerancia: relogio - compensacao + faltas - resumo.saldoPeriodoMinutos,
+    saldoPeriodo: resumo.saldoPeriodoMinutos + compensacao - folgaConsumida,
+    compensacao,
+    diasComCompensacao: resumo.jornadas.filter((j) => j.compensacaoMinutos > 0).length,
+    folgaConsumida,
     saldoAcumulado: resumo.saldoAcumuladoMinutos,
     faltas,
     diasSemBatida: resumo.diasSemBatidaForaDaConta.length,
@@ -445,13 +466,33 @@ export const linhasDoRodape = (t: TotaisDoEspelho): LinhaDoRodape[] => {
     alerta: false,
   });
   const dias = (n: number) => `${n} ${n === 1 ? 'dia' : 'dias'}`;
+  // Quem não tem o combinado (estágio, jornada própria) não vê linha nenhuma dele
+  const comCompensacao = t.compensacao > 0;
   return [
     linha('Total trabalhado (dias com jornada fechada)', t.trabalhado, false),
-    linha('Total previsto (dias com jornada fechada)', t.previsto, false),
+    linha(
+      comCompensacao
+        ? 'Total previsto (dias com jornada fechada · 8h por dia útil, CLT)'
+        : 'Total previsto (dias com jornada fechada)',
+      t.previsto,
+      false
+    ),
     linha('Relógio do período (trabalhado − previsto)', t.relogio, true),
+    ...(comCompensacao
+      ? [
+          linha(
+            `   dos quais, compensação do sábado (10 min × ${dias(t.diasComCompensacao)})`,
+            t.compensacao,
+            true
+          ),
+        ]
+      : []),
     linha('Tolerância aplicada (pequenas variações que não contam)', t.tolerancia, true),
     // Só aparece quando há falta: os espelhos de antes de 01/10/2026 não mudam
     ...(t.faltas !== 0 ? [linha('Faltas (dias sem batida)', t.faltas, true)] : []),
+    ...(t.folgaConsumida > 0
+      ? [linha('Folga de sábado (consome a compensação, até 4h)', -t.folgaConsumida, true)]
+      : []),
     ...(t.diasSemBatida > 0
       ? [
           {
@@ -465,9 +506,9 @@ export const linhasDoRodape = (t: TotaisDoEspelho): LinhaDoRodape[] => {
       : []),
     {
       ...linha(
-        `${t.faltas !== 0 ? 'Saldo do período (relógio − tolerância + faltas)' : 'Saldo do período (relógio − tolerância)'}${
-          incompleto ? ' — provisório: espelho incompleto' : ''
-        }`,
+        `Saldo do período (relógio − tolerância${t.faltas !== 0 ? ' + faltas' : ''}${
+          t.folgaConsumida > 0 ? ' − folga' : ''
+        })${incompleto ? ' — provisório: espelho incompleto' : ''}`,
         t.saldoPeriodo,
         true,
         true
@@ -1091,7 +1132,9 @@ class ServicoPonto {
        */
       if (jornada.minutosTrabalhados > 0) {
         minutosTrabalhados += jornada.minutosTrabalhados;
-        minutosPrevistos += jornada.minutosPrevistosEfetivos;
+        // O horário combinado: as 8h e a compensação do sábado. O saldo da
+        // semana é o desvio dele — e assim trabalhado − previsto = saldo
+        minutosPrevistos += jornada.minutosPrevistosEfetivos + jornada.compensacaoMinutos;
         /**
          * O SALDO DA SEMANA É A SOMA DOS SALDOS DOS DIAS, e não
          * `trabalhado − previsto` da semana. Com a tolerância, os dois
@@ -2393,6 +2436,11 @@ class ServicoPonto {
         const diasSemBatidaForaDaConta = jornadas
           .filter((j) => !j.falta && this.ehDiaVazio(colaborador, j.data, Object.keys(j.marcacoes).length))
           .map((j) => j.data);
+        // A compensação do sábado juntada no período, e as folgas que a consomem
+        const compensacaoMinutos = jornadas.reduce((t, j) => t + j.compensacaoMinutos, 0);
+        const folgasDeSabado = jornadas.filter(
+          (j) => ehSabado(j.data) && situacaoDoDia(colaborador.id, j.data) === 'folga'
+        ).length;
 
         return {
           colaborador,
@@ -2404,6 +2452,8 @@ class ServicoPonto {
           diasCompletos,
           diasComPendencia,
           diasSemBatidaForaDaConta,
+          compensacaoMinutos,
+          folgasDeSabado,
           registrouHoje: this.obterMarcacoesDoDia(colaborador.id, hoje).length > 0,
           semBaterHoje: this.estaSemBaterHoje(colaborador),
         };
@@ -3020,12 +3070,16 @@ class ServicoPonto {
          * turno, e é a mesma precedência de `cargaPrevistaEmMinutos`.
          */
         const turnoDaPessoa = turnoDe(c);
-        const jornadaContratada = c.cargaHorariaDiariaMinutos ?? minutosDoTurno(turnoDaPessoa);
+        // A jornada da CLT (8h no turno integral), e não o relógio do turno
+        const jornadaContratada = minutosDeDiaUtilDe(c);
+        const compensacao = compensacaoDoSabadoDe(c);
         const horarioContratado =
           c.cargaHorariaDiariaMinutos != null
             ? `${formatarMinutos(jornadaContratada)} por dia útil (carga própria da ficha)`
             : /* O turno já tem linha própria na ficha: aqui, a carga e o almoço */
               `${formatarMinutos(jornadaContratada)} por dia útil${
+                compensacao > 0 ? ` + ${formatarMinutos(compensacao)} de compensação do sábado` : ''
+              }${
                 turnoDaPessoa.intervalo?.desconta
                   ? ` · almoço ${turnoDaPessoa.intervalo.saida} às ${turnoDaPessoa.intervalo.retorno}`
                   : ''
