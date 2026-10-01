@@ -45,6 +45,8 @@ import {
 } from '../servicos/meuRH';
 import { FolhaInferior } from './FolhaInferior';
 import { CartaoSolicitacao } from './AbaJustificar';
+import { mostrarDocumento, usaVisor } from '../servicos/visorDeDocumento';
+import { rodandoNoAplicativo } from '../servicos/aplicativo';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -210,7 +212,12 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
   };
 
   const abrirArquivo = async (caminho: string, chave: string) => {
-    const janela = abrirJanelaParaDepois();
+    /*
+      No aplicativo não se abre janela antes: ela seria a própria tela do
+      sistema, coberta pelo "Carregando…". O endereço do arquivo é de fora
+      do sistema, e o aplicativo o entrega ao navegador do celular.
+    */
+    const janela = rodandoNoAplicativo() ? null : abrirJanelaParaDepois();
     setAbrindo(chave);
     const url = await abrirDocumento(caminho);
     setAbrindo(null);
@@ -223,13 +230,23 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
   };
 
   const abrirEspelho = async (mes: string) => {
-    const janela = abrirJanelaParaDepois();
+    /*
+      NO CELULAR, O VISOR — e nenhuma janela aberta antes. No aplicativo
+      Android a "janela" é a própria página: o "Carregando…" e depois o
+      espelho eram escritos por cima do sistema, e não havia como voltar.
+    */
+    const noVisor = usaVisor();
+    const janela = noVisor ? null : abrirJanelaParaDepois();
     setAbrindo(mes);
     const res = await prepararMeuEspelho(eu.id, mes, hoje);
     setAbrindo(null);
     if (!res.html) {
       janela?.close();
       return mostrarAviso(res.erro || 'Não foi possível montar o espelho.');
+    }
+    if (noVisor) {
+      mostrarDocumento(res.html);
+      return;
     }
     if (!janela) return mostrarAviso('O navegador bloqueou a janela. Permita pop-ups para o CONECTA.');
     janela.document.open();

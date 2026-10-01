@@ -59,6 +59,7 @@ import { ResultadosDaBusca } from './componentes/ResultadosDaBusca';
 import { FaixaAvisoDirecao } from './componentes/FaixaAvisoDirecao';
 import { TelaConversa } from './componentes/TelaConversa';
 import { ConviteAvisos } from './componentes/ConviteAvisos';
+import { VisorDeDocumento } from './componentes/VisorDeDocumento';
 import { TituloDaPagina } from './componentes/TituloDaPagina';
 import { AbaEu } from './componentes/AbaEu';
 import { PainelRede } from './componentes/PainelRede';
@@ -1492,6 +1493,10 @@ export default function App() {
 
       {/* Só no computador, só enquanto dá para pedir: ver `deveConvidarParaAvisos` */}
       <ConviteAvisos />
+
+      {/* O espelho, a escala, as férias: no celular abrem aqui, e não por cima
+          do sistema (ver `mostrarDocumento`) */}
+      <VisorDeDocumento />
 
       {/* Estrutura responsiva:
           - No celular (< 768px): ou vê a lista de abas, ou vê a conversa ativa

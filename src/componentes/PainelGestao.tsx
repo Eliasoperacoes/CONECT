@@ -60,6 +60,7 @@ import { PontosIncompletos, periodoDosPontosIncompletos } from './PontosIncomple
 import { AbaFerias } from './AbaFerias';
 import { TabelaEquipe } from './TabelaEquipe';
 import type { SecaoDestino } from '../servicos/centralDeNotificacoes';
+import { mostrarDocumento } from '../servicos/visorDeDocumento';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -319,11 +320,8 @@ export const PainelGestao: React.FC<Props> = ({
   }, [equipe]);
 
   const abrirEspelho = (id: string) => {
-    const html = servicoPonto.gerarHtmlEspelho(dataInicio, dataFim, [id]);
-    const janela = window.open('', '_blank');
-    if (!janela) return;
-    janela.document.write(html);
-    janela.document.close();
+    // No celular, o visor (com Voltar); no computador, uma janela nova
+    mostrarDocumento(servicoPonto.gerarHtmlEspelho(dataInicio, dataFim, [id]));
   };
 
   /**

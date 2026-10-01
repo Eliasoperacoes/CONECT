@@ -58,9 +58,9 @@ import {
   cabecalho,
   rodape,
   assinaturas,
-  imprimirDocumento,
   emitidoHoje,
 } from '../servicos/documento';
+import { imprimirDocumento } from '../servicos/visorDeDocumento';
 
 interface Props {
   colaboradorAtual: Colaborador;

@@ -135,22 +135,6 @@ export const montarDocumento = (dados: {
 </style></head><body>${dados.corpo}</body></html>`;
 };
 
-/**
- * Abre o documento numa janela à parte e manda imprimir.
- *
- * Numa janela, e não na mesma aba: a pessoa volta para onde estava com um
- * toque, e o sistema não recarrega atrás do papel.
- */
-export const imprimirDocumento = (html: string): boolean => {
-  const janela = window.open('', '_blank');
-  if (!janela) return false;
-
-  janela.document.write(html);
-  janela.document.close();
-  janela.focus();
-  janela.print();
-  return true;
-};
 
 /** Hoje, em DD/MM/AAAA, para a linha de emissão. */
 export const emitidoHoje = (): string => {

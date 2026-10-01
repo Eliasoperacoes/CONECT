@@ -53,6 +53,7 @@ import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
 import { SeletorDeMes, periodoDoMesNaLista } from './SeletorDeMes';
 import { periodoDosPontosIncompletos } from './PontosIncompletos';
 import { EspelhosIncompletos } from './EspelhosIncompletos';
+import { mostrarDocumento } from '../servicos/visorDeDocumento';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
 import { FotoPresenca } from './FotoPresenca';
 import {
@@ -523,17 +524,10 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
       return;
     }
 
-    const janela = window.open('', '_blank');
-    if (!janela) {
+    // No celular, o visor (com Voltar); no computador, a janela de impressão
+    if (!mostrarDocumento(servicoPonto.gerarHtmlEspelho(dataInicio, dataFim, alvos), { imprimir: true })) {
       exibirToast('Permita as janelas pop-up para imprimir o espelho.', true);
-      return;
     }
-
-    janela.document.write(servicoPonto.gerarHtmlEspelho(dataInicio, dataFim, alvos));
-    janela.document.close();
-    janela.focus();
-    // Espera o layout fechar antes de chamar a impressão
-    setTimeout(() => janela.print(), 250);
   };
 
   const regenerarCodigo = async (loja: Loja) => {
@@ -1637,24 +1631,19 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        const janela = window.open('', '_blank');
-                        if (!janela) {
-                          exibirToast('Permita as janelas pop-up para imprimir.', true);
-                          return;
-                        }
-                        janela.document.write(
+                        const cartaz =
                           `<title>Ponto ${item.loja}</title>` +
-                            `<div style="font-family:system-ui,sans-serif;text-align:center;padding:40px">` +
-                            `<h1 style="margin:0 0 4px">CONECTA · Registro de Ponto</h1>` +
-                            `<h2 style="margin:0 0 24px;font-weight:500">Loja ${item.loja}</h2>` +
-                            `<img src="${item.imagem}" style="width:340px;height:340px" />` +
-                            `<p style="margin:24px 0 4px;font-size:14px">Sem câmera? Digite o código:</p>` +
-                            `<p style="font-family:monospace;font-size:44px;letter-spacing:10px;margin:0;font-weight:700">${item.codigo}</p>` +
-                            `</div>`
-                        );
-                        janela.document.close();
-                        janela.focus();
-                        janela.print();
+                          `<div style="font-family:system-ui,sans-serif;text-align:center;padding:40px">` +
+                          `<h1 style="margin:0 0 4px">CONECTA · Registro de Ponto</h1>` +
+                          `<h2 style="margin:0 0 24px;font-weight:500">Loja ${item.loja}</h2>` +
+                          `<img src="${item.imagem}" style="width:340px;height:340px" />` +
+                          `<p style="margin:24px 0 4px;font-size:14px">Sem câmera? Digite o código:</p>` +
+                          `<p style="font-family:monospace;font-size:44px;letter-spacing:10px;margin:0;font-weight:700">${item.codigo}</p>` +
+                          `</div>`;
+                        // No celular, o visor (com Voltar); no computador, a janela de impressão
+                        if (!mostrarDocumento(cartaz, { imprimir: true })) {
+                          exibirToast('Permita as janelas pop-up para imprimir.', true);
+                        }
                       }}
                       className="py-2 rounded-lg bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-[11px] font-bold text-[var(--c-texto)] hover:border-[var(--c-acento)] flex items-center justify-center gap-1 transition-all"
                     >
