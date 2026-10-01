@@ -2021,6 +2021,32 @@ class ServicoPonto {
     let resolvidos = 0;
 
     /**
+     * AS BATIDAS DOS DIAS ANALISADOS VÊM DO BANCO, NÃO DO QUE O APARELHO TINHA.
+     *
+     * A fila lia o cache — e o cache é uma JANELA que outras telas trocam:
+     * o espelho do RH, aberto em "Outubro (em andamento)", deixava no
+     * aparelho só o dia 1º. Aberta a fila em seguida, o 30/09 aparecia sem
+     * batida nenhuma: o pedido parado não era revisto (Fernanda, Aline e
+     * Lyvia, 01/10). E quem deixou a tela aberta desde a véspera criava
+     * pedidos com o dia pela metade, por falta das batidas que chegaram
+     * depois — os três nasceram com 0 minuto trabalhado.
+     *
+     * A janela é ALARGADA para cobrir os dias analisados, e não trocada:
+     * a tela que pediu outro período continua com ele.
+     */
+    if (usandoNuvem()) {
+      const atual = nuvem.obterJanelaDoPonto();
+      const primeiro = deDataLocal(hoje);
+      primeiro.setDate(primeiro.getDate() - diasParaTras - 1);
+      const necessario = paraDataLocal(primeiro);
+      await nuvem.sincronizarPonto({
+        inicio: atual.inicio < necessario ? atual.inicio : necessario,
+        fim: atual.fim > hoje ? atual.fim : hoje,
+      });
+      await nuvem.sincronizarAjustes();
+    }
+
+    /**
      * Só quem eu aprovo — e agora isso pode me incluir.
      *
      * A pergunta é a MESMA da fila de decisão (`podeDecidirSobre`), e por

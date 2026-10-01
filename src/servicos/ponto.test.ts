@@ -36,6 +36,8 @@ let bancoAjustes: any[] = [];
 /** Liga a recusa do banco, para provar que a tela não mente quando ele nega. */
 let bancoRecusaAjuste = false;
 let sincronizacoes = 0;
+/** A última janela de batidas que o serviço pediu ao banco. */
+let janelaPedida: { inicio: string; fim: string } | null = null;
 
 mock.module('./supabase', () => ({
   usandoNuvem: () => modoNuvem,
@@ -76,8 +78,10 @@ const CHAVE_CODIGOS = 'conecta_v4_codigos_ponto_loja';
 mock.module('./nuvem', () => ({
   nuvem: {
     assinarAtualizacoes: () => () => {},
+    obterJanelaDoPonto: () => janelaPedida || { inicio: '2026-01-01', fim: '2026-12-31' },
     // Espelha o banco simulado no cache, como faz a ponte de verdade
-    sincronizarPonto: async () => {
+    sincronizarPonto: async (periodo?: { inicio: string; fim: string }) => {
+      if (periodo) janelaPedida = periodo;
       sincronizacoes++;
       armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify(bancoRegistros));
       armazenamento.setItem(CHAVE_CODIGOS, JSON.stringify(bancoCodigos));
@@ -151,6 +155,7 @@ beforeEach(() => {
   bancoCodigos = [];
   bancoAjustes = [];
   sincronizacoes = 0;
+  janelaPedida = null;
   modoNuvem = true;
   colaboradorLogado = ELIAS;
   equipe = [ELIAS, ANA];
@@ -4177,4 +4182,30 @@ test('o dia de hoje e o de ontem saem do MESMO relógio', async () => {
   reiniciarRelogio();
 
   expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-30')?.tipo).toBe('dia_incompleto');
+});
+
+test('a fila busca no banco as batidas dos dias que analisa', async () => {
+  /*
+    Fernanda, Aline e Lyvia, 01/10: o espelho do RH em "Outubro" deixou no
+    aparelho só o dia 1º, e a fila viu o 30/09 sem batida nenhuma — o
+    pedido parado não foi revisto. As batidas estão no BANCO.
+  */
+  emOutubro();
+  colaboradorLogado = GESTOR;
+  equipe = [GESTOR, DO_TURNO_A];
+  pedidoParado(DO_TURNO_A, '2026-10-06');
+  baterParcial(DO_TURNO_A, '2026-10-06', {
+    entrada: '07:31', saida_almoco: '12:30', retorno_almoco: '14:00', saida: '17:12',
+  });
+  // O aparelho, porém, só tem o mês corrente até ontem... vazio para o dia 6
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify([]));
+  // A tela do RH tinha pedido o mês inteiro de outubro
+  janelaPedida = { inicio: '2026-10-08', fim: '2026-10-31' };
+
+  await servicoPonto.levantarDiasIncompletos();
+
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06')?.estado).not.toBe('pendente');
+  // A janela foi ALARGADA para trás, sem perder o que a tela tinha pedido
+  expect(janelaPedida!.inicio <= '2026-09-07').toBe(true);
+  expect(janelaPedida!.fim).toBe('2026-10-31');
 });
