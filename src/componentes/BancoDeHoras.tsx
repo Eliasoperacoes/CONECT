@@ -68,6 +68,7 @@ import {
   formatarMinutos,
   formatarSaldo,
   primeiroDiaDoMes,
+  descreverBatidasQueFaltam,
 } from '../servicos/ponto';
 import { podeUsar } from '../servicos/permissoes';
 import { nuvem } from '../servicos/nuvem';
@@ -1141,6 +1142,44 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                 setDataFim(fim);
               }}
             />
+
+            {/*
+              O ESPELHO NÃO FECHA INCOMPLETO — pedido do Elias: o
+              responsável é avisado para conferir e editar. A regra é a de
+              "Pontos incompletos" (`batidasQueFaltam`), e cada dia diz o
+              que falta.
+            */}
+            {(() => {
+              const incompletos = detalhe.jornadas
+                .map((j) => ({ data: j.data, faltam: servicoPonto.batidasQueFaltam(detalhe.colaborador, j.data) }))
+                .filter((d) => d.faltam.length > 0);
+              if (incompletos.length === 0) return null;
+              return (
+                <div
+                  id="aviso-espelho-incompleto"
+                  role="alert"
+                  className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3.5 flex gap-3"
+                >
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex flex-col gap-1">
+                    <span className="text-sm font-bold text-[var(--c-texto)]">
+                      Este espelho tem {incompletos.length} dia{incompletos.length === 1 ? '' : 's'} sem fechar
+                    </span>
+                    <span className="text-xs text-[var(--c-texto-2)]">
+                      Confira e lance as batidas que faltam antes de fechar o mês — clique no horário
+                      vazio da linha.
+                    </span>
+                    <ul className="mt-1 flex flex-col gap-0.5">
+                      {incompletos.map((d) => (
+                        <li key={d.data} className="text-xs text-[var(--c-texto)]">
+                          <strong>{formatarDataBR(d.data)}</strong> — {descreverBatidasQueFaltam(d.faltam)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              );
+            })()}
 
             {podeReapurar && (
               <div className="flex flex-wrap gap-2">

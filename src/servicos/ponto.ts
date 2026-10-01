@@ -337,6 +337,30 @@ export interface CelulaDoEspelho {
   motivo: string | null;
 }
 
+/** Um dia que começou e não fechou: quem, quando, e o que falta. */
+export interface PontoIncompleto {
+  colaborador: Colaborador;
+  data: string;
+  /** Quantas das batidas esperadas a pessoa fez. */
+  feitas: number;
+  esperadas: number;
+  faltam: TipoMarcacao[];
+}
+
+/**
+ * A frase específica, como o Elias pediu: "Yan Geremias Ferrari bateu 2 de
+ * 4 — não fechou o dia". Uma batida feita é "bateu 1".
+ */
+export const descreverPontoIncompleto = (p: PontoIncompleto): string =>
+  `${p.colaborador.nome} bateu ${p.feitas} de ${p.esperadas} — não fechou o dia`;
+
+/** "Faltam: retorno do almoço e saída" */
+export const descreverBatidasQueFaltam = (faltam: TipoMarcacao[]): string => {
+  const nomes = faltam.map((t) => ROTULO_MARCACAO[t].toLowerCase());
+  const lista = nomes.length === 1 ? nomes[0] : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`;
+  return `${nomes.length === 1 ? 'Falta' : 'Faltam'}: ${lista}`;
+};
+
 export interface LinhaDoEspelho {
   data: string;
   /** "Seg", "Ter"... sempre: o nome do feriado vai nas marcações. */
@@ -1601,6 +1625,63 @@ class ServicoPonto {
     return true;
   }
 
+  /**
+   * AS BATIDAS DO PERÍODO, TRAZIDAS DO BANCO — sem encolher o que já havia.
+   *
+   * O cache de batidas é uma janela que as telas trocam (o espelho do RH em
+   * "Outubro" deixava só o dia 1º). Quem analisa dias passados — a fila de
+   * decisão, os pontos incompletos — pede o período ao banco antes, e a
+   * janela é ALARGADA para cobri-lo: a tela que pediu outro período
+   * continua com ele.
+   */
+  async garantirBatidasDoPeriodo(inicio: string, fim: string): Promise<void> {
+    if (!usandoNuvem()) return;
+    const atual = nuvem.obterJanelaDoPonto();
+    await nuvem.sincronizarPonto({
+      inicio: atual.inicio < inicio ? atual.inicio : inicio,
+      fim: atual.fim > fim ? atual.fim : fim,
+    });
+    await nuvem.sincronizarAjustes();
+  }
+
+  /**
+   * AS BATIDAS QUE FALTARAM NUM DIA QUE COMEÇOU.
+   *
+   * Vazio quando o dia fechou, quando ainda é hoje (dá tempo), quando não
+   * teve batida nenhuma (aí é falta, que tem a fila própria) e quando o dia
+   * não esperava batida (domingo, feriado, ausência aprovada). É a regra de
+   * "Pontos incompletos", do aviso no espelho e do "sem bater" do RH.
+   */
+  batidasQueFaltam(colaborador: Colaborador, data: string): TipoMarcacao[] {
+    if (data >= dataDeHoje()) return [];
+    const feitas = new Set(this.obterMarcacoesDoDia(colaborador.id, data).map((r) => r.tipo));
+    if (feitas.size === 0) return [];
+    return marcacoesEsperadas(data, colaborador).filter((tipo) => !feitas.has(tipo));
+  }
+
+  /**
+   * OS DIAS QUE NÃO FECHARAM, da equipe de quem pergunta.
+   *
+   * Pedido do Elias: "o espelho não pode fechar incompleto", e cada dia tem
+   * de dizer exatamente o que houve — "Yan bateu 2 de 4". A equipe é a da
+   * alçada (`podeDecidirSobre`): é quem pode lançar a batida esquecida.
+   */
+  obterPontosIncompletos(dataInicio: string, dataFim: string): PontoIncompleto[] {
+    const equipe = this.obterColaboradoresVisiveis().filter((c) => this.podeDecidirSobre(c));
+    const lista: PontoIncompleto[] = [];
+    for (const colaborador of equipe) {
+      for (const data of listarDatasDoPeriodo(dataInicio, dataFim)) {
+        const faltam = this.batidasQueFaltam(colaborador, data);
+        if (faltam.length === 0) continue;
+        const esperadas = marcacoesEsperadas(data, colaborador).length;
+        lista.push({ colaborador, data, feitas: esperadas - faltam.length, esperadas, faltam });
+      }
+    }
+    return lista.sort(
+      (a, b) => b.data.localeCompare(a.data) || a.colaborador.nome.localeCompare(b.colaborador.nome)
+    );
+  }
+
   /** Jornadas de um período, um item por dia do intervalo. */
   obterJornadasDoPeriodo(colaboradorId: string, dataInicio: string, dataFim: string): JornadaDia[] {
     return listarDatasDoPeriodo(dataInicio, dataFim).map((data) =>
@@ -2034,17 +2115,9 @@ class ServicoPonto {
      * A janela é ALARGADA para cobrir os dias analisados, e não trocada:
      * a tela que pediu outro período continua com ele.
      */
-    if (usandoNuvem()) {
-      const atual = nuvem.obterJanelaDoPonto();
-      const primeiro = deDataLocal(hoje);
-      primeiro.setDate(primeiro.getDate() - diasParaTras - 1);
-      const necessario = paraDataLocal(primeiro);
-      await nuvem.sincronizarPonto({
-        inicio: atual.inicio < necessario ? atual.inicio : necessario,
-        fim: atual.fim > hoje ? atual.fim : hoje,
-      });
-      await nuvem.sincronizarAjustes();
-    }
+    const primeiro = deDataLocal(hoje);
+    primeiro.setDate(primeiro.getDate() - diasParaTras - 1);
+    await this.garantirBatidasDoPeriodo(paraDataLocal(primeiro), hoje);
 
     /**
      * Só quem eu aprovo — e agora isso pode me incluir.
@@ -2113,7 +2186,12 @@ class ServicoPonto {
           continue;
         }
 
-        if (!jornada.falta && batidas === 0) continue;
+        /*
+          Só a FALTA vira pedido. O dia pela metade (batidas > 0) não entra
+          na fila: aparece em "Pontos incompletos" (`obterPontosIncompletos`),
+          que lê as batidas na hora e some sozinho quando a batida é lançada.
+        */
+        if (!jornada.falta) continue;
 
         // Já levantado, decidido ou coberto por ausência aprovada: não repete
         if (existente) continue;
@@ -2540,6 +2618,20 @@ class ServicoPonto {
   obterPendenciasParaDecidir(): { ajuste: AjusteJornada; colaborador: Colaborador }[] {
     return this.lerAjustes()
       .filter((a) => a.estado === 'pendente')
+      /*
+        O DIA PELA METADE NÃO É DECISÃO: É BATIDA A LANÇAR.
+
+        Decisão do Elias: "Aprovar jornadas" fica com hora extra, débito e
+        falta (dia sem batida nenhuma). O dia que começou e não fechou vai
+        para "Pontos incompletos", onde o líder lança a batida esquecida.
+        Os pedidos antigos de "dia sem fechar" com batida no dia saem daqui;
+        a falta — o mesmo tipo, sem batida — fica.
+      */
+      .filter(
+        (a) =>
+          a.tipo !== 'dia_incompleto' ||
+          this.obterMarcacoesDoDia(a.colaboradorId, a.data).length === 0
+      )
       .map((ajuste) => ({
         ajuste,
         colaborador: bancoDados.obterColaboradorPorId(ajuste.colaboradorId),
@@ -2738,12 +2830,10 @@ class ServicoPonto {
 
         const diasCompletos = jornadas.filter((j) => j.completa).length;
         // Pendência: começou o dia e não fechou, ou dia útil passado sem jornada
-        const diasComPendencia = jornadas.filter((j) => {
-          if (j.completa) return false;
-          const temAlgo = Object.keys(j.marcacoes).length > 0;
-          if (temAlgo) return j.data !== hoje;
-          return false;
-        }).length;
+        // A mesma regra de "Pontos incompletos" e do aviso no espelho
+        const diasComPendencia = jornadas.filter(
+          (j) => this.batidasQueFaltam(colaborador, j.data).length > 0
+        ).length;
 
         return {
           colaborador,

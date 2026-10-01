@@ -1535,19 +1535,60 @@ const diasAtras = (n: number): string => {
   ).padStart(2, '0')}`;
 };
 
-test('DIA SEM FECHAR VAI PARA A FILA DO RESPONSÁVEL', async () => {
+test('DIA PELA METADE VAI PARA "PONTOS INCOMPLETOS", NÃO PARA A FILA', async () => {
+  /*
+    Decisão do Elias (01/10/2026): a fila de decisão fica com hora extra,
+    débito e falta. O dia que começou e não fechou pede a batida esquecida,
+    e é dito com todas as letras: "bateu 2 de 4".
+  */
   equipe = [GESTOR, DO_TURNO_A];
   colaboradorLogado = GESTOR;
+  const { descreverPontoIncompleto, descreverBatidasQueFaltam } = await import('./ponto');
 
   // Entrou e foi almoçar; nunca voltou a bater
   baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30', saida_almoco: '12:30' });
 
-  const criados = await servicoPonto.levantarDiasIncompletos();
-  expect(criados).toBe(1);
+  expect(await servicoPonto.levantarDiasIncompletos()).toBe(0);
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(0);
 
-  const fila = servicoPonto.obterPendenciasParaDecidir();
-  expect(fila).toHaveLength(1);
-  expect(fila[0].ajuste.tipo).toBe('dia_incompleto');
+  const [dia] = servicoPonto.obterPontosIncompletos(diasAtras(10), diasAtras(1));
+  expect(dia.data).toBe(diasAtras(3));
+  expect(dia.feitas).toBe(2);
+  expect(dia.esperadas).toBe(4);
+  expect(descreverPontoIncompleto(dia)).toBe('Do turno A bateu 2 de 4 — não fechou o dia');
+  expect(descreverBatidasQueFaltam(dia.faltam)).toBe('Faltam: retorno do almoço e saída');
+});
+
+test('lançada a batida que falta, o dia sai de "Pontos incompletos"', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), {
+    entrada: '07:30', saida_almoco: '12:30', retorno_almoco: '14:00',
+  });
+  expect(servicoPonto.obterPontosIncompletos(diasAtras(10), diasAtras(1))).toHaveLength(1);
+
+  const res = await servicoPonto.ajustarMarcacao({
+    colaboradorId: DO_TURNO_A.id, data: diasAtras(3), tipo: 'saida', hora: '17:10',
+    justificativa: 'Esqueceu de bater a saída; confirmado com o líder',
+  });
+  expect(res.sucesso).toBe(true);
+  expect(servicoPonto.obterPontosIncompletos(diasAtras(10), diasAtras(1))).toHaveLength(0);
+});
+
+test('pedido antigo de "dia sem fechar" com batida no dia sai da fila', () => {
+  // Os que nasceram antes da regra nova (Yan, Beatriz, 30/09) não somem
+  // do banco — só deixam de pedir decisão, porque são batida a lançar
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
+  bancoAjustes.push({
+    id: 'antigo', colaboradorId: DO_TURNO_A.id, data: diasAtras(3), tipo: 'dia_incompleto',
+    minutos: 490, minutosTrabalhados: 0, minutosPrevistos: 490, estado: 'pendente',
+    origem: 'pendencia', criadoEm: new Date().toISOString(),
+  });
+  armazenamento.setItem('conecta_v4_ajustes_jornada', JSON.stringify(bancoAjustes));
+
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(0);
 });
 
 test('dia sem fechar NÃO mexe no saldo enquanto ninguém decide', async () => {
@@ -1563,26 +1604,28 @@ test('dia sem fechar NÃO mexe no saldo enquanto ninguém decide', async () => {
 });
 
 test('ABONAR: o dia conta como jornada normal, saldo zero', async () => {
+  emOutubro();
   equipe = [GESTOR, DO_TURNO_A];
   colaboradorLogado = GESTOR;
-  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
   await servicoPonto.levantarDiasIncompletos();
 
-  const alvo = servicoPonto.obterPendenciasParaDecidir()[0].ajuste;
+  // Só a falta de terça: as outras faltas da semana ficam na fila
+  const alvo = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06')!;
+  const outras = servicoPonto.obterPendenciasParaDecidir().length - 1;
   const res = await servicoPonto.decidirDiaIncompleto(alvo.id, true);
 
   expect(res.sucesso).toBe(true);
   expect(servicoPonto.obterSaldoAcumulado(DO_TURNO_A.id)).toBe(0);
-  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(0);
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(outras);
 });
 
 test('MARCAR DÉBITO: o dia vira a jornada prevista, negativa', async () => {
+  emOutubro();
   equipe = [GESTOR, DO_TURNO_A];
   colaboradorLogado = GESTOR;
-  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
   await servicoPonto.levantarDiasIncompletos();
 
-  const alvo = servicoPonto.obterPendenciasParaDecidir()[0].ajuste;
+  const alvo = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06')!;
   await servicoPonto.decidirDiaIncompleto(alvo.id, false);
 
   // 8h10 = 490 minutos, negativos
@@ -1617,13 +1660,14 @@ test('dia completo não entra', async () => {
 
 test('o levantamento não repete o mesmo dia', async () => {
   // Abrir a fila duas vezes não pode criar duas pendências do mesmo dia
+  emOutubro();
   equipe = [GESTOR, DO_TURNO_A];
   colaboradorLogado = GESTOR;
-  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
 
-  expect(await servicoPonto.levantarDiasIncompletos()).toBe(1);
+  const primeira = await servicoPonto.levantarDiasIncompletos();
+  expect(primeira).toBeGreaterThan(0);
   expect(await servicoPonto.levantarDiasIncompletos()).toBe(0);
-  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(1);
+  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(primeira);
 });
 
 test('só levanta de quem eu aprovo', async () => {
@@ -1642,11 +1686,11 @@ test('só levanta de quem eu aprovo', async () => {
 });
 
 test('quem não responde por ninguém não decide o dia de outro', async () => {
+  emOutubro();
   equipe = [GESTOR, DO_TURNO_A, DO_TURNO_B];
   colaboradorLogado = GESTOR;
-  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
   await servicoPonto.levantarDiasIncompletos();
-  const alvo = servicoPonto.obterPendenciasParaDecidir()[0].ajuste;
+  const alvo = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06')!;
 
   colaboradorLogado = DO_TURNO_B;
   const res = await servicoPonto.decidirDiaIncompleto(alvo.id, true);
@@ -4168,20 +4212,20 @@ test('o dia de hoje e o de ontem saem do MESMO relógio', async () => {
   */
   colaboradorLogado = GESTOR;
   equipe = [GESTOR, DO_TURNO_A];
-  setSystemTime(new Date(2026, 8, 30, 23, 30, 0));
+  setSystemTime(new Date(2026, 9, 8, 23, 30, 0));
   const { sincronizarRelogio, reiniciarRelogio } = await import('./relogio');
   const fetchOriginal = globalThis.fetch;
   (globalThis as any).fetch = async () => ({
-    headers: { get: () => new Date(2026, 9, 1, 0, 30, 0).toUTCString() },
+    headers: { get: () => new Date(2026, 9, 9, 0, 30, 0).toUTCString() },
   });
   await sincronizarRelogio('https://servidor.exemplo');
   globalThis.fetch = fetchOriginal;
 
-  baterParcial(DO_TURNO_A, '2026-09-30', { entrada: '07:30', saida_almoco: '12:30', retorno_almoco: '14:00' });
+  // 08/10 sem batida nenhuma: é falta, e é ontem pelo relógio que vale
   await servicoPonto.levantarDiasIncompletos();
   reiniciarRelogio();
 
-  expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-30')?.tipo).toBe('dia_incompleto');
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-08')?.tipo).toBe('dia_incompleto');
 });
 
 test('a fila busca no banco as batidas dos dias que analisa', async () => {
@@ -4208,4 +4252,12 @@ test('a fila busca no banco as batidas dos dias que analisa', async () => {
   // A janela foi ALARGADA para trás, sem perder o que a tela tinha pedido
   expect(janelaPedida!.inicio <= '2026-09-07').toBe(true);
   expect(janelaPedida!.fim).toBe('2026-10-31');
+});
+
+test('o dia de hoje não é incompleto: a pessoa ainda está trabalhando', () => {
+  // De manhã ninguém bateu a saída — e não esqueceu, ela só sai às 17h
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, dataDeHoje(), { entrada: '07:30' });
+  expect(servicoPonto.obterPontosIncompletos(diasAtras(5), dataDeHoje())).toHaveLength(0);
 });

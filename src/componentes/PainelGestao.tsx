@@ -56,6 +56,7 @@ import { FichaColaborador } from './FichaColaborador';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { EscalaDeFolgas } from './EscalaDeFolgas';
 import { SeletorDeMes } from './SeletorDeMes';
+import { PontosIncompletos, periodoDosPontosIncompletos } from './PontosIncompletos';
 import { AbaFerias } from './AbaFerias';
 import { TabelaEquipe } from './TabelaEquipe';
 import type { SecaoDestino } from '../servicos/centralDeNotificacoes';
@@ -100,7 +101,7 @@ interface Props {
  * que existe HOJE: aba removida ou escrita à mão no console cai no
  * padrão, em vez de deixar a tela em branco.
  */
-const ABAS = ['equipe', 'sem_bater', 'aprovacoes', 'folgas', 'ferias', 'rede', 'qr'] as const;
+const ABAS = ['equipe', 'sem_bater', 'incompletos', 'aprovacoes', 'folgas', 'ferias', 'rede', 'qr'] as const;
 
 type Aba = (typeof ABAS)[number];
 
@@ -208,6 +209,7 @@ export const PainelGestao: React.FC<Props> = ({
     if (
       (abaEscolhida === 'equipe' ||
         abaEscolhida === 'sem_bater' ||
+        abaEscolhida === 'incompletos' ||
         abaEscolhida === 'aprovacoes') &&
       !temEquipe
     ) {
@@ -285,6 +287,18 @@ export const PainelGestao: React.FC<Props> = ({
   );
 
   const pendencias = servicoPonto.obterPendenciasParaDecidir();
+  /**
+   * O número da aba "Pontos incompletos": a mesma regra da própria aba.
+   * Refeito a cada mudança no ponto — lançada a batida esquecida, a lista
+   * esvaziava e o número ficava no "1".
+   */
+  const [versaoDoPonto, setVersaoDoPonto] = useState(0);
+  useEffect(() => servicoPonto.assinarAlteracoes(() => setVersaoDoPonto((v) => v + 1)), []);
+  const incompletos = useMemo(() => {
+    void versaoDoPonto;
+    const { inicio, fim } = periodoDosPontosIncompletos(dataDeHoje());
+    return servicoPonto.obterPontosIncompletos(inicio, fim).length;
+  }, [equipe, versaoDoPonto]);
 
   /**
    * Quem não bateu hoje. Sai do mesmo resumo da equipe — não há segunda
@@ -390,6 +404,12 @@ export const PainelGestao: React.FC<Props> = ({
               ...(totais.semBaterHoje > 0
                 ? [{ id: 'sem_bater' as Aba, rotulo: 'Sem bater hoje', contador: totais.semBaterHoje }]
                 : []),
+              /*
+                O DIA PELA METADE TEM A SUB-ABA DELE (pedido do Elias): ali o
+                líder lança a batida esquecida. "Aprovar jornadas" fica com
+                o que é decisão — hora extra, débito e falta.
+              */
+              { id: 'incompletos' as Aba, rotulo: 'Pontos incompletos', contador: incompletos },
               { id: 'aprovacoes' as Aba, rotulo: 'Aprovar jornadas', contador: pendencias.length },
               ...(veEscala ? [{ id: 'folgas' as Aba, rotulo: 'Escala de folgas' }] : []),
               /*
@@ -506,6 +526,8 @@ export const PainelGestao: React.FC<Props> = ({
             <div className="-m-4 sm:-m-6">
               <AbaFerias colaboradorAtual={colaboradorAtual} />
             </div>
+          ) : aba === 'incompletos' ? (
+            <PontosIncompletos colaboradorAtual={colaboradorAtual} />
           ) : aba === 'aprovacoes' ? (
             <div className="-m-4 sm:-m-6">
               <AprovacaoJornada colaboradorAtual={colaboradorAtual} />
