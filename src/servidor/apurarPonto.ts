@@ -55,7 +55,8 @@ export interface PlanoDaApuracao {
   gravar: AjusteJornada[];
   /** Os pedidos que PASSARAM a esperar decisão — quem acompanha deve saber. */
   novosNaFila: AjusteJornada[];
-  resumo: { pessoas: number; dias: number; faltas: number; apurados: number };
+  /** `diasFechados`: quantos dias com a jornada completa foram avaliados. */
+  resumo: { pessoas: number; dias: number; diasFechados: number; faltas: number; apurados: number };
 }
 
 /** Quantos dias para trás a madrugada revisa: o mês que fecha cabe inteiro. */
@@ -131,6 +132,7 @@ export const planejarApuracao = (
   const dias = opcoes.diasParaTras ?? DIAS_REVISADOS;
   let faltas = 0;
   let apurados = 0;
+  let diasFechados = 0;
 
   for (const pessoa of pessoas) {
     for (let i = 1; i <= dias; i++) {
@@ -152,7 +154,10 @@ export const planejarApuracao = (
         resolveu (o 'reapurar' do levantamento). Dia já decidido não reabre:
         `decidirApuracao` devolve 'nada'.
       */
-      if (!jornadaDoDia(pessoa.id, data).completa) continue;
+      const jornada = jornadaDoDia(pessoa.id, data);
+      if (!jornada.completa) continue;
+      // Domingo e feriado "fecham" sem batida nenhuma: não contam como dia avaliado
+      if (Object.keys(jornada.marcacoes).length > 0) diasFechados++;
       const apuracao = decidirApuracao(pessoa.id, data, { agora: opcoes.agora, novoId: opcoes.novoId });
       if (apuracao.acao === 'nada') continue;
       if (!mudou(ajusteDoDia.get(chave(pessoa.id, data)) ?? undefined, apuracao.ajuste)) continue;
@@ -161,5 +166,5 @@ export const planejarApuracao = (
     }
   }
 
-  return { gravar, novosNaFila, resumo: { pessoas: pessoas.length, dias, faltas, apurados } };
+  return { gravar, novosNaFila, resumo: { pessoas: pessoas.length, dias, diasFechados, faltas, apurados } };
 };

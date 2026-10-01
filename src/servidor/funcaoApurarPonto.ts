@@ -75,9 +75,21 @@ const banco = () => {
   const ler = async <T>(caminho: string, opcional = false): Promise<T[]> => {
     const todas: T[] = [];
     for (let de = 0; ; de += 1000) {
-      const r = await fetch(`${url}/${caminho}`, {
-        headers: { ...cabecalhos, Range: `${de}-${de + 999}`, 'Range-Unit': 'items' },
-      });
+      const pedir = () =>
+        fetch(`${url}/${caminho}`, {
+          headers: { ...cabecalhos, Range: `${de}-${de + 999}`, 'Range-Unit': 'items' },
+        });
+      /*
+        "JWT issued at future" (401): o relógio de uma peça do Supabase
+        segundos atrás do de outra. Passageiro — a segunda tentativa, na
+        primeira simulação em produção, passou. A madrugada não pode
+        falhar por isso: espera um pouco e tenta de novo, até três vezes.
+      */
+      let r = await pedir();
+      for (let tentativa = 1; r.status === 401 && tentativa <= 3; tentativa++) {
+        await new Promise((ok) => setTimeout(ok, 2000 * tentativa));
+        r = await pedir();
+      }
       /*
         TABELA QUE NÃO EXISTE, quando ela é opcional, é lista vazia — como
         no aplicativo. A de feriados cadastrados não existia na produção
@@ -164,6 +176,14 @@ Deno.serve(async (req) => {
       hoje,
       revisados: `${inicio} a ${hoje}`,
       ...plano.resumo,
+      // O que veio do banco: "nada a gravar" só convence se houve o que ler
+      lidos: {
+        colaboradores: colaboradores.length,
+        batidas: batidas.length,
+        ausencias: ausencias.length,
+        feriados: feriados.length,
+        apuracoes: ajustes.length,
+      },
       gravados: simular ? 0 : plano.gravar.length,
       novosNaFila: plano.novosNaFila.length,
       ...(simular

@@ -908,6 +908,7 @@ var planejarApuracao = (dados, opcoes) => {
   const dias = opcoes.diasParaTras ?? DIAS_REVISADOS;
   let faltas = 0;
   let apurados = 0;
+  let diasFechados = 0;
   for (const pessoa of pessoas) {
     for (let i = 1;i <= dias; i++) {
       const referencia = deDataLocal(opcoes.hoje);
@@ -919,8 +920,11 @@ var planejarApuracao = (dados, opcoes) => {
         faltas++;
         continue;
       }
-      if (!jornadaDoDia(pessoa.id, data).completa)
+      const jornada = jornadaDoDia(pessoa.id, data);
+      if (!jornada.completa)
         continue;
+      if (Object.keys(jornada.marcacoes).length > 0)
+        diasFechados++;
       const apuracao = decidirApuracao(pessoa.id, data, { agora: opcoes.agora, novoId: opcoes.novoId });
       if (apuracao.acao === "nada")
         continue;
@@ -930,7 +934,7 @@ var planejarApuracao = (dados, opcoes) => {
       apurados++;
     }
   }
-  return { gravar, novosNaFila, resumo: { pessoas: pessoas.length, dias, faltas, apurados } };
+  return { gravar, novosNaFila, resumo: { pessoas: pessoas.length, dias, diasFechados, faltas, apurados } };
 };
 
 // src/servicos/linhasDoBanco.ts
@@ -1064,9 +1068,14 @@ var banco = () => {
   const ler = async (caminho, opcional = false) => {
     const todas = [];
     for (let de = 0;; de += 1000) {
-      const r = await fetch(`${url}/${caminho}`, {
+      const pedir = () => fetch(`${url}/${caminho}`, {
         headers: { ...cabecalhos, Range: `${de}-${de + 999}`, "Range-Unit": "items" }
       });
+      let r = await pedir();
+      for (let tentativa = 1;r.status === 401 && tentativa <= 3; tentativa++) {
+        await new Promise((ok) => setTimeout(ok, 2000 * tentativa));
+        r = await pedir();
+      }
       if (opcional && r.status === 404)
         return [];
       if (!r.ok)
@@ -1131,6 +1140,13 @@ Deno.serve(async (req) => {
       hoje,
       revisados: `${inicio} a ${hoje}`,
       ...plano.resumo,
+      lidos: {
+        colaboradores: colaboradores.length,
+        batidas: batidas.length,
+        ausencias: ausencias.length,
+        feriados: feriados.length,
+        apuracoes: ajustes.length
+      },
       gravados: simular ? 0 : plano.gravar.length,
       novosNaFila: plano.novosNaFila.length,
       ...simular ? {

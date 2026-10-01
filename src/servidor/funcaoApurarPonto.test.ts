@@ -31,6 +31,7 @@ test('o segredo e o endereço do projeto não entram no repositório', () => {
 });
 
 let tratar: (req: Request) => Promise<Response>;
+let falharUmaVez = false;
 const pedidos: { url: string; metodo: string; corpo?: string; range?: string }[] = [];
 
 const ANA = {
@@ -57,6 +58,11 @@ beforeAll(async () => {
     pedidos.push({ url, metodo: init.method || 'GET', corpo: init.body as string, range: headers.Range });
     const tabela = new URL(url).pathname.split('/').pop();
     if (init.method === 'POST') return new Response(null, { status: 201 });
+    // O "JWT issued at future" da primeira simulação em produção: passa na segunda
+    if (tabela === 'colaboradores' && falharUmaVez) {
+      falharUmaVez = false;
+      return new Response(JSON.stringify({ code: 'PGRST303', message: 'JWT issued at future' }), { status: 401 });
+    }
     // Como na produção em 01/10/2026: a tabela de feriados cadastrados não existe
     if (tabela === 'feriados') {
       return new Response(JSON.stringify({ code: 'PGRST205', message: "Could not find the table 'public.feriados'" }), { status: 404 });
@@ -95,11 +101,19 @@ test('sem o segredo, a porta não abre', async () => {
 });
 
 test('simulando, diz o que gravaria e não grava nada', async () => {
+  falharUmaVez = true;
   const r = await tratar(
     new Request('https://f/apurar-ponto?simular=1', { method: 'POST', headers: { 'x-apurar-segredo': 'segredo' } })
   );
   const corpo = await r.json();
+  // O 401 passageiro da primeira leitura foi tentado de novo, e passou
+  expect(falharUmaVez).toBe(false);
+  expect(r.status).toBe(200);
   expect(corpo).toMatchObject({ simulacao: true, gravados: 0, faltas: 1 });
+  // "Nada a gravar" só convence se houve o que ler: os números vêm na resposta
+  expect(corpo.lidos).toEqual({ colaboradores: 1, batidas: 18, ausencias: 0, feriados: 0, apuracoes: 0 });
+  // Quinta 01, sexta 02, sábado 03, segunda 05 e quarta 07 fecharam
+  expect(corpo.diasFechados).toBe(5);
   expect(corpo.seriaGravado).toEqual(['Ana · 2026-10-06 · dia_incompleto 490min · pendente']);
   expect(pedidos.filter((p) => p.metodo === 'POST')).toHaveLength(0);
   pedidos.length = 0;
