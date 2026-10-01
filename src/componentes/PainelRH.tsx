@@ -51,6 +51,7 @@ import { AbaHolerites } from './AbaHolerites';
 import { AbaAdvertencias } from './AbaAdvertencias';
 import { AbaAtestados } from './AbaAtestados';
 import { AbaFerias } from './AbaFerias';
+import { periodoDosPontosIncompletos, pessoasComEspelhoIncompleto } from './PontosIncompletos';
 import { SeparacaoPorSetor } from './SeparacaoPorSetor';
 
 /**
@@ -147,6 +148,19 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
    * ninguém. Indicador que depende de alguém lembrar de atualizar está
    * errado no dia seguinte.
    */
+  /** Quantas pessoas estão com o espelho incompleto: perguntado ao banco, como a sub-aba. */
+  const [espelhosIncompletos, setEspelhosIncompletos] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    const { inicio, fim } = periodoDosPontosIncompletos(dataDeHoje());
+    servicoPonto
+      .buscarPontosIncompletos(inicio, fim)
+      .then((lista) => vivo && setEspelhosIncompletos(pessoasComEspelhoIncompleto(lista).length));
+    return () => {
+      vivo = false;
+    };
+  }, [versao]);
+
   const numeros = useMemo(() => {
     void versao;
 
@@ -253,14 +267,20 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
     });
   }
 
-  if (numeros.comPendencia > 0) {
+  /*
+    O ESPELHO INCOMPLETO, pela regra de "Pontos incompletos" e do aviso de
+    Espelhos de ponto. Contava "sem bater" pela semana — inclusive o dia
+    sem batida nenhuma de quem nem usa o sistema (8 pessoas em 01/10), e
+    levava a uma tela que não mostrava quem.
+  */
+  if (espelhosIncompletos > 0) {
     pendencias.push({
-      id: 'sem-bater',
-      titulo: `${numeros.comPendencia} ${
-        numeros.comPendencia === 1 ? 'pessoa ficou' : 'pessoas ficaram'
-      } sem bater`,
-      explicacao: 'Faltou batida num dia que já fechou — o espelho não fecha assim',
-      acao: 'Ver espelhos',
+      id: 'espelho-incompleto',
+      titulo: `${espelhosIncompletos} ${
+        espelhosIncompletos === 1 ? 'pessoa com espelho incompleto' : 'pessoas com espelho incompleto'
+      }`,
+      explicacao: 'Dias que começaram e não fecharam — o espelho não fecha assim',
+      acao: 'Ver quem',
       icone: <AlertTriangle className="w-4 h-4" />,
       aoAbrir: () => setSecao('espelhos'),
     });

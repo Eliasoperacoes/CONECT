@@ -879,7 +879,8 @@ test('o topo do sistema nao existe no celular, e no computador fica sem o sino',
   // O número que o sino mostrava agora está na aba Gerenciar, pela mesma conta
   const gerenciar = app.slice(app.indexOf("id: 'painel'"), app.indexOf("id: 'admin'"));
   expect(gerenciar).toContain('contador: pendenciasParaMim');
-  expect(app).toContain('const total = contarPendenciasParaMim();');
+  expect(app).toContain('const ids = idsDasPendenciasParaMim();');
+  expect(app).toContain('setPendenciasParaMim(ids.length);');
 });
 
 /**

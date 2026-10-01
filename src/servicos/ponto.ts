@@ -345,6 +345,16 @@ export interface PontoIncompleto {
   feitas: number;
   esperadas: number;
   faltam: TipoMarcacao[];
+  /** Os horários das batidas feitas — "08:21". A tela mostra sem depender do cache. */
+  horas: Partial<Record<TipoMarcacao, string>>;
+}
+
+/** Um dia com as batidas que teve, venha do banco ou do aparelho. */
+interface DiaComBatidas {
+  colaboradorId: string;
+  data: string;
+  tipos: TipoMarcacao[];
+  horas: string[];
 }
 
 /**
@@ -1690,6 +1700,12 @@ class ServicoPonto {
       return { sucesso: false, lancadas: 0, erro: 'Escreva a justificativa: ela vai para a auditoria.' };
     }
 
+    // As batidas do dia vêm do banco: o aparelho pode não ter aquele dia, e a
+    // ordem tem de ser conferida contra o que existe de verdade
+    if (usandoNuvem()) {
+      await nuvem.trazerMarcacoesDe(colaborador.id, { inicio: dados.data, fim: dados.data });
+    }
+
     const faltam = this.batidasQueFaltam(colaborador, dados.data);
     const novas = faltam.filter((t) => /^\d{2}:\d{2}$/.test(dados.horarios[t] || ''));
     if (novas.length === 0) {
@@ -1745,14 +1761,67 @@ class ServicoPonto {
    */
   obterPontosIncompletos(dataInicio: string, dataFim: string): PontoIncompleto[] {
     const equipe = this.obterColaboradoresVisiveis().filter((c) => this.podeDecidirSobre(c));
-    const lista: PontoIncompleto[] = [];
+    const dias: DiaComBatidas[] = [];
     for (const colaborador of equipe) {
       for (const data of listarDatasDoPeriodo(dataInicio, dataFim)) {
-        const faltam = this.batidasQueFaltam(colaborador, data);
-        if (faltam.length === 0) continue;
-        const esperadas = marcacoesEsperadas(data, colaborador).length;
-        lista.push({ colaborador, data, feitas: esperadas - faltam.length, esperadas, faltam });
+        const registros = this.obterMarcacoesDoDia(colaborador.id, data);
+        if (registros.length === 0) continue;
+        dias.push({
+          colaboradorId: colaborador.id,
+          data,
+          tipos: registros.map((r) => r.tipo),
+          horas: registros.map((r) => r.horaFormatada),
+        });
       }
+    }
+    return this.montarPontosIncompletos(dias);
+  }
+
+  /**
+   * OS PONTOS INCOMPLETOS PERGUNTADOS AO BANCO — o caminho das telas.
+   *
+   * O cache é uma janela que as telas trocam: lido dele, a lista oscilava
+   * e o espelho de outubro escondia os dias de setembro sem fechar. O banco
+   * (`dias_com_batida_incompleta`) devolve só os dias com batida faltando,
+   * filtrados pela segurança de quem pergunta. Sem a função no banco
+   * (pontos-incompletos.sql não rodado), volta ao cache.
+   */
+  async buscarPontosIncompletos(dataInicio: string, dataFim: string): Promise<PontoIncompleto[]> {
+    if (usandoNuvem()) {
+      const dias = await nuvem.buscarDiasComBatidaIncompleta(dataInicio, dataFim);
+      if (dias) return this.montarPontosIncompletos(dias as DiaComBatidas[]);
+    }
+    return this.obterPontosIncompletos(dataInicio, dataFim);
+  }
+
+  /**
+   * De quem são, e o que falta, a partir dos dias com batida. Uma regra só,
+   * venham os dias do banco ou do cache: só dia que já passou, só de quem
+   * eu decido, e só o que a pessoa esperava bater — o estágio de 2 batidas
+   * com as 2 feitas não está incompleto.
+   */
+  private montarPontosIncompletos(dias: DiaComBatidas[]): PontoIncompleto[] {
+    const hoje = dataDeHoje();
+    const lista: PontoIncompleto[] = [];
+    for (const d of dias) {
+      if (d.data >= hoje || d.tipos.length === 0) continue;
+      const colaborador = bancoDados.obterColaboradorPorId(d.colaboradorId);
+      if (!colaborador || colaborador.ativo === false || !this.podeDecidirSobre(colaborador)) continue;
+      const esperadas = marcacoesEsperadas(d.data, colaborador);
+      const faltam = esperadas.filter((tipo) => !d.tipos.includes(tipo));
+      if (faltam.length === 0) continue;
+      const horas: Partial<Record<TipoMarcacao, string>> = {};
+      d.tipos.forEach((tipo, i) => {
+        horas[tipo] = d.horas[i];
+      });
+      lista.push({
+        colaborador,
+        data: d.data,
+        feitas: esperadas.length - faltam.length,
+        esperadas: esperadas.length,
+        faltam,
+        horas,
+      });
     }
     return lista.sort(
       (a, b) => b.data.localeCompare(a.data) || a.colaborador.nome.localeCompare(b.colaborador.nome)
@@ -2696,19 +2765,16 @@ class ServicoPonto {
     return this.lerAjustes()
       .filter((a) => a.estado === 'pendente')
       /*
-        O DIA PELA METADE NÃO É DECISÃO: É BATIDA A LANÇAR.
+        A FILA É O QUE ESTÁ NO BANCO, sem filtro que dependa do aparelho.
 
-        Decisão do Elias: "Aprovar jornadas" fica com hora extra, débito e
-        falta (dia sem batida nenhuma). O dia que começou e não fechou vai
-        para "Pontos incompletos", onde o líder lança a batida esquecida.
-        Os pedidos antigos de "dia sem fechar" com batida no dia saem daqui;
-        a falta — o mesmo tipo, sem batida — fica.
+        Houve um filtro aqui tirando o "dia sem fechar" com batida no dia
+        (o dia pela metade foi para "Pontos incompletos"). Ele perguntava ao
+        CACHE se havia batida — e o cache é uma janela que as telas trocam:
+        a fila oscilava entre 1 e 6, e cada subida virava um aviso
+        (01/10/2026). Os pedidos antigos saem do BANCO
+        (limpar-dias-sem-fechar.sql); os novos não nascem mais — o
+        levantamento só cria a falta.
       */
-      .filter(
-        (a) =>
-          a.tipo !== 'dia_incompleto' ||
-          this.obterMarcacoesDoDia(a.colaboradorId, a.data).length === 0
-      )
       .map((ajuste) => ({
         ajuste,
         colaborador: bancoDados.obterColaboradorPorId(ajuste.colaboradorId),

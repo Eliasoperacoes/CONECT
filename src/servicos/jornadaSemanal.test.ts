@@ -475,10 +475,21 @@ test('O AVISO NAO REPETE COISA VELHA A CADA LOGIN', async () => {
    */
   const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
 
-  expect(app).toContain('const primeiraPassada = antes === null');
+  expect(app).toContain('const primeiraPassada = vistas === null');
   expect(app).toContain('if (primeiraPassada) return');
-  expect(app).toContain('if (total <= antes) return');
-  expect(app).toContain('const novas = total - antes');
+
+  /**
+   * E É POR PEDIDO, NÃO PELO NÚMERO (01/10/2026).
+   *
+   * Comparava o total com o da passada anterior. A fila oscilava entre 1
+   * e 6 (o cache trocava de janela) e cada subida virava notificação: o
+   * Elias recebia aviso sem parar da mesma pendência. Agora só avisa o
+   * pedido que nunca foi visto — o número indo e voltando não toca nada.
+   */
+  expect(app).toContain('const novas = ids.filter((id) => !vistas.has(id)).length;');
+  expect(app).toContain('if (novas === 0) return;');
+  expect(app).toContain('refPendenciasVistas.current = new Set([...(vistas || []), ...ids]);');
+  expect(app).not.toContain('const novas = total - antes');
 });
 
 test('AVISO DO SISTEMA SO QUANDO A TELA NAO ESTA A VISTA', async () => {

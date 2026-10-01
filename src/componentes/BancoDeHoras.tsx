@@ -50,7 +50,8 @@ import {
   ehMarcacaoPreenchida,
 } from '../tipos';
 import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
-import { SeletorDeMes } from './SeletorDeMes';
+import { SeletorDeMes, periodoDoMesNaLista } from './SeletorDeMes';
+import { periodoDosPontosIncompletos, pessoasComEspelhoIncompleto } from './PontosIncompletos';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
 import { FotoPresenca } from './FotoPresenca';
 import {
@@ -110,6 +111,27 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
   const podeEditarCadastros = bancoDados.podeGerenciarPessoas(colaboradorAtual);
   const [versaoDados, setVersaoDados] = useState(0);
   const [toast, setToast] = useState<{ texto: string; erro: boolean } | null>(null);
+
+  /**
+   * QUEM ESTÁ COM O ESPELHO INCOMPLETO, no mês passado e no atual —
+   * qualquer que seja o mês escolhido na tela. O Elias abriu Espelhos no
+   * dia 1º de outubro e não achou ninguém: o mês aberto era outubro, e os
+   * dias sem fechar eram de setembro. Perguntado ao banco, como a sub-aba
+   * "Pontos incompletos" (a mesma regra).
+   */
+  const [espelhosIncompletos, setEspelhosIncompletos] = useState<
+    ReturnType<typeof pessoasComEspelhoIncompleto>
+  >([]);
+  useEffect(() => {
+    let vivo = true;
+    const { inicio, fim } = periodoDosPontosIncompletos(dataDeHoje());
+    servicoPonto
+      .buscarPontosIncompletos(inicio, fim)
+      .then((lista) => vivo && setEspelhosIncompletos(pessoasComEspelhoIncompleto(lista)));
+    return () => {
+      vivo = false;
+    };
+  }, [versaoDados]);
 
   // Ajuste de marcação
   /**
@@ -600,6 +622,57 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
         {/* ---------- BANCO DE HORAS ---------- */}
         {abaEfetiva === 'banco_horas' && !detalhe && (
           <div className="p-4 flex flex-col gap-4">
+            {/*
+              QUEM TEM ESPELHO INCOMPLETO, no alto e fora do período
+              escolhido: cada nome abre o espelho da pessoa já no mês do dia
+              que não fechou.
+            */}
+            {espelhosIncompletos.length > 0 && (
+              <div
+                id="espelhos-incompletos"
+                role="region"
+                aria-label="Espelhos incompletos"
+                className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3.5 flex flex-col gap-2.5"
+              >
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <span className="block text-sm font-bold text-[var(--c-texto)]">
+                      {espelhosIncompletos.length}{' '}
+                      {espelhosIncompletos.length === 1
+                        ? 'colaborador com espelho incompleto'
+                        : 'colaboradores com espelho incompleto'}
+                    </span>
+                    <span className="block text-xs text-[var(--c-texto-2)]">
+                      Dias deste mês e do anterior que começaram e não fecharam. Abra o espelho e
+                      lance as batidas que faltam.
+                    </span>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {espelhosIncompletos.map((e) => (
+                    <button
+                      key={e.colaborador.id}
+                      type="button"
+                      id={`espelho-incompleto-${e.colaborador.id}`}
+                      onClick={() => {
+                        const { inicio, fim } = periodoDoMesNaLista(e.maisRecente.slice(0, 7), dataDeHoje());
+                        setDataInicio(inicio);
+                        setDataFim(fim);
+                        setDetalheId(e.colaborador.id);
+                      }}
+                      className="h-9 px-3 rounded-xl bg-[var(--c-superficie)] border border-amber-500/40 text-xs font-semibold text-[var(--c-texto)] hover:border-amber-500 transition-colors flex items-center gap-1.5"
+                    >
+                      {e.colaborador.nome}
+                      <span className="text-amber-700 dark:text-amber-400 font-bold">
+                        · {e.dias} {e.dias === 1 ? 'dia' : 'dias'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Período e filtros */}
             <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-3.5 flex flex-col gap-3">
               <div className="flex items-center gap-2 text-xs font-bold text-[var(--c-texto-3)] uppercase tracking-wider">
@@ -723,7 +796,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                   { rotulo: 'Colaboradores', valor: String(t.pessoas), cor: 'text-[var(--c-texto)]' },
                   { rotulo: 'Bateram hoje', valor: String(t.presentesHoje), cor: 'text-emerald-600' },
                   {
-                    rotulo: 'Pendências',
+                    rotulo: 'Dias sem fechar',
                     valor: String(t.pendencias),
                     cor: t.pendencias > 0 ? 'text-amber-600' : 'text-[var(--c-texto)]',
                   },
@@ -813,7 +886,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[var(--c-texto-3)]">Pendências:</span>
+                          <span className="text-[var(--c-texto-3)]">Dias sem fechar:</span>
                           <span
                             className={
                               unidade.pendencias > 0
@@ -994,11 +1067,11 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                           {resumo.diasComPendencia > 0 ? (
                             <span className="font-bold text-amber-600 flex items-center gap-1">
                               <AlertTriangle className="w-3 h-3" />
-                              {resumo.diasComPendencia} pendente
-                              {resumo.diasComPendencia > 1 ? 's' : ''}
+                              {resumo.diasComPendencia}{' '}
+                              {resumo.diasComPendencia > 1 ? 'dias sem fechar' : 'dia sem fechar'}
                             </span>
                           ) : (
-                            <span className="text-emerald-600 font-semibold">Sem pendências</span>
+                            <span className="text-emerald-600 font-semibold">Espelho completo</span>
                           )}
                         </div>
 

@@ -1011,6 +1011,30 @@ class PonteNuvem {
   }
 
   /**
+   * OS DIAS COM ALGUMA BATIDA E MENOS DE QUATRO, perguntados ao banco.
+   *
+   * Para "Pontos incompletos" e o aviso de Espelhos de ponto, que liam o
+   * cache — uma janela que as telas trocam (a lista oscilava). A função
+   * `dias_com_batida_incompleta` obedece à segurança de leitura do ponto.
+   * `null` quando ela ainda não existe (pontos-incompletos.sql não rodado):
+   * quem chama volta ao cache.
+   */
+  async buscarDiasComBatidaIncompleta(
+    inicio: string,
+    fim: string
+  ): Promise<Array<{ colaboradorId: string; data: string; tipos: string[]; horas: string[] }> | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc('dias_com_batida_incompleta', { inicio, fim });
+    if (error) {
+      console.warn('Dias incompletos pelo banco indisponíveis; usando o aparelho:', error.message);
+      return null;
+    }
+    return ((data || []) as Array<{ colaborador_id: string; data: string; tipos: string[]; horas: string[] }>).map(
+      (l) => ({ colaboradorId: l.colaborador_id, data: l.data, tipos: l.tipos || [], horas: l.horas || [] })
+    );
+  }
+
+  /**
    * AS BATIDAS DE UMA PESSOA NUM MÊS FECHADO, somadas ao cache.
    *
    * Para o espelho do mês na aba Eu. Não troca a janela, de propósito:

@@ -64,7 +64,7 @@ import { AbaEu } from './componentes/AbaEu';
 import { PainelRede } from './componentes/PainelRede';
 import { CentralAvisos } from './componentes/CentralAvisos';
 import {
-  contarPendenciasParaMim,
+  idsDasPendenciasParaMim,
   type DestinoNotificacao,
   type SecaoDestino,
 } from './servicos/centralDeNotificacoes';
@@ -666,7 +666,14 @@ export default function App() {
     });
   }, [autenticado, colaboradorAtual.id]);
 
-  const refPendenciasVistas = useRef<number | null>(null);
+  /**
+   * AS PENDÊNCIAS JÁ AVISADAS, por identificador — e não a contagem.
+   *
+   * Comparando números, a fila oscilando entre 1 e 6 (01/10/2026) virava
+   * um aviso a cada subida, sem parar. O conjunto só cresce: o pedido que
+   * some e volta não é novidade, e não avisa de novo.
+   */
+  const refPendenciasVistas = useRef<Set<string> | null>(null);
   /** O número da aba Painel: as decisões do ponto que esperam por mim. */
   const [pendenciasParaMim, setPendenciasParaMim] = useState(0);
   useEffect(() => {
@@ -683,12 +690,12 @@ export default function App() {
        * Contava tudo o que a pessoa PODE decidir; o celular avisa quem
        * ACOMPANHA (a cadeia de cada um). O TI, que pode decidir sobre
        * todos, recebia aviso da rede inteira no computador e nada no
-       * celular. Uma conta só, a de `contarPendenciasParaMim`.
+       * celular. Uma conta só, a de `idsDasPendenciasParaMim`.
        */
-      const total = contarPendenciasParaMim();
-      setPendenciasParaMim(total);
-      const antes = refPendenciasVistas.current;
-      refPendenciasVistas.current = total;
+      const ids = idsDasPendenciasParaMim();
+      setPendenciasParaMim(ids.length);
+      const vistas = refPendenciasVistas.current;
+      refPendenciasVistas.current = new Set([...(vistas || []), ...ids]);
 
       /**
        * A PRIMEIRA PASSADA VOLTOU A FICAR CALADA.
@@ -711,11 +718,11 @@ export default function App() {
        * Android quem avisa é o servidor (`avisosDePonto`), e
        * `mostrarAvisoDeMensagem` não roda lá.
        */
-      const primeiraPassada = antes === null;
+      const primeiraPassada = vistas === null;
       if (primeiraPassada) return;
-      if (total <= antes) return;
+      const novas = ids.filter((id) => !vistas.has(id)).length;
+      if (novas === 0) return;
 
-      const novas = total - antes;
       mostrarAvisoDeMensagem({
         titulo:
           novas === 1

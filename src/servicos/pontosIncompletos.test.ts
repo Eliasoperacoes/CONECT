@@ -26,7 +26,9 @@ mock.module('../servicos/ponto', () => ({
   descreverBatidasQueFaltam: () => '',
 }));
 
-const { periodoDosPontosIncompletos } = await import('../componentes/PontosIncompletos');
+const { periodoDosPontosIncompletos, pessoasComEspelhoIncompleto } = await import(
+  '../componentes/PontosIncompletos'
+);
 const ler = (arq: string) => readFileSync(join(import.meta.dir, '../componentes', arq), 'utf8');
 
 test('olha do 1º do mês passado até ontem: o mês que vai fechar está incluído', () => {
@@ -39,9 +41,11 @@ test('olha do 1º do mês passado até ontem: o mês que vai fechar está inclu�
 test('a sub-aba existe em Equipe e ponto, com o número de dias, ao lado de Aprovar jornadas', () => {
   const gestao = ler('PainelGestao.tsx');
   expect(gestao).toContain("{ id: 'incompletos' as Aba, rotulo: 'Pontos incompletos', contador: incompletos }");
-  expect(gestao).toContain('<PontosIncompletos colaboradorAtual={colaboradorAtual} />');
-  // O número acompanha o ponto: lançada a batida, ele cai
-  expect(gestao).toContain('servicoPonto.assinarAlteracoes(() => setVersaoDoPonto((v) => v + 1))');
+  // O número vem do banco, e a própria aba o atualiza quando a batida é lançada
+  expect(gestao).toContain('servicoPonto.buscarPontosIncompletos(inicio, fim)');
+  expect(gestao).toContain(
+    '<PontosIncompletos colaboradorAtual={colaboradorAtual} aoMudarTotal={setIncompletos} />'
+  );
 });
 
 test('UMA ação por dia, que abre as batidas do dia — e não um botão por batida', () => {
@@ -55,8 +59,42 @@ test('UMA ação por dia, que abre as batidas do dia — e não um botão por ba
   // O dia inteiro na folha: feitas com o horário, faltantes com o campo
   expect(tela).toContain('batidasDoDia(aberto).map((b)');
   expect(tela).toContain('servicoPonto.completarDia({');
-  // As batidas vêm do banco: o cache do aparelho pode ser outra janela
-  expect(tela).toContain('servicoPonto\n      .garantirBatidasDoPeriodo(periodo.inicio, periodo.fim)');
+  // Perguntado ao banco, e não ao cache: lido do cache, a lista oscilava
+  expect(tela).toContain('servicoPonto.buscarPontosIncompletos(periodo.inicio, periodo.fim)');
+  expect(tela).not.toContain('obterPontosIncompletos(');
+  // Os horários do dia vêm com o ponto, não do cache
+  expect(tela).toContain('hora: p.horas[tipo] || null');
+});
+
+test('quem tem espelho incompleto: uma linha por pessoa, com os dias e o mais recente', () => {
+  const ana = { id: 'ana', nome: 'Ana' } as any;
+  const yan = { id: 'yan', nome: 'Yan' } as any;
+  const ponto = (colaborador: any, data: string) =>
+    ({ colaborador, data, feitas: 2, esperadas: 4, faltam: [], horas: {} }) as any;
+
+  expect(
+    pessoasComEspelhoIncompleto([ponto(ana, '2026-09-29'), ponto(yan, '2026-09-12'), ponto(yan, '2026-09-30')])
+  ).toEqual([
+    { colaborador: yan, dias: 2, maisRecente: '2026-09-30' },
+    { colaborador: ana, dias: 1, maisRecente: '2026-09-29' },
+  ]);
+});
+
+test('Espelhos de ponto mostra no alto quem tem espelho incompleto, fora do mês escolhido', () => {
+  // No dia 1º de outubro o espelho abria em outubro, e os dias sem fechar
+  // eram de setembro: o Elias não achou ninguém
+  const espelho = ler('BancoDeHoras.tsx');
+  expect(espelho).toContain('id="espelhos-incompletos"');
+  expect(espelho).toContain('pessoasComEspelhoIncompleto(lista)');
+  // Cada nome abre o espelho da pessoa já no mês do dia que não fechou
+  expect(espelho).toContain('periodoDoMesNaLista(e.maisRecente.slice(0, 7), dataDeHoje())');
+  expect(espelho).toContain('setDetalheId(e.colaborador.id);');
+});
+
+test('o cartão do painel do RH conta o espelho incompleto pela mesma regra', () => {
+  const rh = ler('PainelRH.tsx');
+  expect(rh).toContain('pessoasComEspelhoIncompleto(lista).length');
+  expect(rh).toContain("'pessoas com espelho incompleto'");
 });
 
 test('o espelho da pessoa avisa o responsável dos dias sem fechar', () => {

@@ -288,17 +288,19 @@ export const PainelGestao: React.FC<Props> = ({
 
   const pendencias = servicoPonto.obterPendenciasParaDecidir();
   /**
-   * O número da aba "Pontos incompletos": a mesma regra da própria aba.
-   * Refeito a cada mudança no ponto — lançada a batida esquecida, a lista
-   * esvaziava e o número ficava no "1".
+   * O número da aba "Pontos incompletos", perguntado ao banco como a própria
+   * aba — e atualizado POR ELA (`aoMudarTotal`) quando uma batida é
+   * lançada, sem uma segunda consulta. Lido do cache, ele oscilava.
    */
-  const [versaoDoPonto, setVersaoDoPonto] = useState(0);
-  useEffect(() => servicoPonto.assinarAlteracoes(() => setVersaoDoPonto((v) => v + 1)), []);
-  const incompletos = useMemo(() => {
-    void versaoDoPonto;
+  const [incompletos, setIncompletos] = useState(0);
+  useEffect(() => {
+    let vivo = true;
     const { inicio, fim } = periodoDosPontosIncompletos(dataDeHoje());
-    return servicoPonto.obterPontosIncompletos(inicio, fim).length;
-  }, [equipe, versaoDoPonto]);
+    servicoPonto.buscarPontosIncompletos(inicio, fim).then((lista) => vivo && setIncompletos(lista.length));
+    return () => {
+      vivo = false;
+    };
+  }, [colaboradorAtual.id]);
 
   /**
    * Quem não bateu hoje. Sai do mesmo resumo da equipe — não há segunda
@@ -527,7 +529,7 @@ export const PainelGestao: React.FC<Props> = ({
               <AbaFerias colaboradorAtual={colaboradorAtual} />
             </div>
           ) : aba === 'incompletos' ? (
-            <PontosIncompletos colaboradorAtual={colaboradorAtual} />
+            <PontosIncompletos colaboradorAtual={colaboradorAtual} aoMudarTotal={setIncompletos} />
           ) : aba === 'aprovacoes' ? (
             <div className="-m-4 sm:-m-6">
               <AprovacaoJornada colaboradorAtual={colaboradorAtual} />

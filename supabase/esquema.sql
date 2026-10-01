@@ -824,6 +824,29 @@ create policy codigos_escrita on public.codigos_ponto_loja
 
 -- PONTO: cada um vê e bate o próprio; RH, Administrador e gestores
 -- enxergam a equipe; só RH e Administrador corrigem.
+-- Os dias com batida faltando, para "Pontos incompletos" e o aviso do
+-- espelho, perguntados ao banco e não ao cache (pontos-incompletos.sql).
+-- SECURITY INVOKER: valem as regras de leitura logo abaixo.
+create or replace function public.dias_com_batida_incompleta(inicio date, fim date)
+returns table (colaborador_id text, data date, tipos text[], horas text[])
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select r.colaborador_id,
+         r.data,
+         array_agg(r.tipo order by r.horario),
+         array_agg(r.hora_formatada order by r.horario)
+    from public.registros_ponto r
+   where r.data between inicio and fim
+   group by r.colaborador_id, r.data
+  having count(*) < 4;
+$$;
+
+grant execute on function public.dias_com_batida_incompleta(date, date) to authenticated;
+
+
 drop policy if exists ponto_leitura on public.registros_ponto;
 create policy ponto_leitura on public.registros_ponto
   for select to authenticated

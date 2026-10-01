@@ -319,6 +319,16 @@ export const listarNotificacoes = (): ItemNotificacao[] => {
 export const contarPendenciasParaMim = (): number =>
   deJornadas().length + deAusencias().length + deFolgas().length;
 
+/**
+ * QUAIS pendências esperam por mim — a mesma lista da contagem acima.
+ *
+ * O aviso de "pedido novo" comparava NÚMEROS: subiu, avisava. Quando a
+ * fila oscilou entre 1 e 6 (01/10/2026), cada subida virou um aviso, sem
+ * parar. Com os identificadores, avisa-se só o pedido que nunca foi visto.
+ */
+export const idsDasPendenciasParaMim = (): string[] =>
+  [...deJornadas(), ...deAusencias(), ...deFolgas()].map((p) => p.id);
+
 /** Quantas estão esperando. É o número do sino. */
 export const contarNotificacoes = (): number => listarNotificacoes().length;
 

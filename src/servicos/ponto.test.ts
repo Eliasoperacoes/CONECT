@@ -36,6 +36,8 @@ let bancoAjustes: any[] = [];
 /** Liga a recusa do banco, para provar que a tela não mente quando ele nega. */
 let bancoRecusaAjuste = false;
 let sincronizacoes = 0;
+/** A função do banco `dias_com_batida_incompleta` existe? (pontos-incompletos.sql) */
+let funcaoDosIncompletos = true;
 /** A última janela de batidas que o serviço pediu ao banco. */
 let janelaPedida: { inicio: string; fim: string } | null = null;
 
@@ -79,6 +81,29 @@ mock.module('./nuvem', () => ({
   nuvem: {
     assinarAtualizacoes: () => () => {},
     obterJanelaDoPonto: () => janelaPedida || { inicio: '2026-01-01', fim: '2026-12-31' },
+    // As batidas de uma pessoa num período, do banco para o cache
+    trazerMarcacoesDe: async (id: string, p: { inicio: string; fim: string }) => {
+      const doBanco = bancoRegistros.filter((r) => r.colaboradorId === id && r.data >= p.inicio && r.data <= p.fim);
+      const noCache = JSON.parse(armazenamento.getItem(CHAVE_REGISTROS) || '[]').filter(
+        (r: any) => !(r.colaboradorId === id && r.data >= p.inicio && r.data <= p.fim)
+      );
+      armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify([...noCache, ...doBanco]));
+      return true;
+    },
+    // A função dias_com_batida_incompleta: dias com batida e menos de 4
+    buscarDiasComBatidaIncompleta: async (inicio: string, fim: string) => {
+      if (!funcaoDosIncompletos) return null;
+      const dias = new Map<string, any>();
+      for (const r of bancoRegistros) {
+        if (r.data < inicio || r.data > fim) continue;
+        const chave = `${r.colaboradorId}|${r.data}`;
+        const d = dias.get(chave) || { colaboradorId: r.colaboradorId, data: r.data, tipos: [], horas: [] };
+        d.tipos.push(r.tipo);
+        d.horas.push(r.horaFormatada);
+        dias.set(chave, d);
+      }
+      return [...dias.values()].filter((d) => d.tipos.length < 4);
+    },
     // Espelha o banco simulado no cache, como faz a ponte de verdade
     sincronizarPonto: async (periodo?: { inicio: string; fim: string }) => {
       if (periodo) janelaPedida = periodo;
@@ -156,6 +181,7 @@ beforeEach(() => {
   bancoAjustes = [];
   sincronizacoes = 0;
   janelaPedida = null;
+  funcaoDosIncompletos = true;
   modoNuvem = true;
   colaboradorLogado = ELIAS;
   equipe = [ELIAS, ANA];
@@ -1575,9 +1601,13 @@ test('lançada a batida que falta, o dia sai de "Pontos incompletos"', async () 
   expect(servicoPonto.obterPontosIncompletos(diasAtras(10), diasAtras(1))).toHaveLength(0);
 });
 
-test('pedido antigo de "dia sem fechar" com batida no dia sai da fila', () => {
-  // Os que nasceram antes da regra nova (Yan, Beatriz, 30/09) não somem
-  // do banco — só deixam de pedir decisão, porque são batida a lançar
+test('a fila mostra o que está no banco: o número não oscila com o cache', () => {
+  /*
+    01/10/2026: um filtro perguntava ao CACHE se o dia tinha batida, e o
+    cache é uma janela que as telas trocam — a fila ia de 1 a 6 e de volta,
+    e cada subida virava aviso. O mesmo pedido tem de contar igual com ou
+    sem as batidas no aparelho.
+  */
   equipe = [GESTOR, DO_TURNO_A];
   colaboradorLogado = GESTOR;
   baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
@@ -1588,7 +1618,12 @@ test('pedido antigo de "dia sem fechar" com batida no dia sai da fila', () => {
   });
   armazenamento.setItem('conecta_v4_ajustes_jornada', JSON.stringify(bancoAjustes));
 
-  expect(servicoPonto.obterPendenciasParaDecidir()).toHaveLength(0);
+  const comBatidas = servicoPonto.obterPendenciasParaDecidir().length;
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify([]));
+  const semBatidas = servicoPonto.obterPendenciasParaDecidir().length;
+
+  expect(comBatidas).toBe(1);
+  expect(semBatidas).toBe(comBatidas);
 });
 
 test('dia sem fechar NÃO mexe no saldo enquanto ninguém decide', async () => {
@@ -4316,4 +4351,39 @@ test('o horário do turno aparece como referência de cada batida', () => {
   // 16/09/2026 é quarta: turno A, 07:30 às 17:10 com almoço 12:30–14:00
   expect(servicoPonto.horarioPrevistoDaBatida(DO_TURNO_A as any, '2026-09-16', 'saida')).toBe('17:10');
   expect(servicoPonto.horarioPrevistoDaBatida(DO_TURNO_A as any, '2026-09-16', 'retorno_almoco')).toBe('14:00');
+});
+
+test('os pontos incompletos vêm do BANCO, mesmo com o aparelho sem as batidas', async () => {
+  /*
+    01/10/2026: o espelho aberto em outubro deixava no aparelho só o dia 1º,
+    e os dias de setembro sem fechar sumiam da lista. Perguntado ao banco,
+    o cache não importa.
+  */
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30', saida_almoco: '12:30' });
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify([]));
+
+  const pontos = await servicoPonto.buscarPontosIncompletos(diasAtras(10), diasAtras(1));
+  expect(pontos).toHaveLength(1);
+  expect(pontos[0].faltam).toEqual(['retorno_almoco', 'saida']);
+  // Os horários feitos vêm junto: a tela não depende do cache
+  expect(pontos[0].horas).toEqual({ entrada: '07:30', saida_almoco: '12:30' });
+});
+
+test('sem a função no banco, os pontos incompletos voltam ao aparelho', async () => {
+  funcaoDosIncompletos = false;
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
+  const pontos = await servicoPonto.buscarPontosIncompletos(diasAtras(10), diasAtras(1));
+  expect(pontos).toHaveLength(1);
+});
+
+test('o estágio de 2 batidas, com as 2 feitas, não está incompleto', async () => {
+  const ESTAGIARIA = { ...DO_TURNO_A, id: 'est', login: 'est', setor: 'Estágio', cargo: 'Estagiária', turno: 'E3' };
+  equipe = [GESTOR, ESTAGIARIA];
+  colaboradorLogado = GESTOR;
+  baterParcial(ESTAGIARIA, diasAtras(3), { entrada: '13:00', saida: '18:00' });
+  expect(await servicoPonto.buscarPontosIncompletos(diasAtras(10), diasAtras(1))).toHaveLength(0);
 });

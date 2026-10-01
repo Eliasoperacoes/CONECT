@@ -34,6 +34,8 @@ import { FolhaInferior } from './FolhaInferior';
 
 interface Props {
   colaboradorAtual: Colaborador;
+  /** Quantos dias há — para o número da aba sem uma segunda consulta. */
+  aoMudarTotal?: (total: number) => void;
 }
 
 /**
@@ -49,13 +51,36 @@ export const periodoDosPontosIncompletos = (hoje: string): { inicio: string; fim
   return { inicio: paraDataLocal(inicio), fim: paraDataLocal(ontem) };
 };
 
-/** As batidas do dia, na ordem, cada uma com o horário feito (ou nenhum). */
-const batidasDoDia = (p: PontoIncompleto): Array<{ tipo: TipoMarcacao; hora: string | null }> => {
-  const feitas = new Map(
-    servicoPonto.obterMarcacoesDoDia(p.colaborador.id, p.data).map((r) => [r.tipo, r.horaFormatada])
+/**
+ * QUEM ESTÁ COM O ESPELHO INCOMPLETO: uma linha por pessoa, com quantos
+ * dias e o mais recente (para abrir o espelho no mês certo). Usado no topo
+ * de Espelhos de ponto e no cartão do painel do RH — a mesma lista desta
+ * sub-aba, agrupada.
+ */
+export const pessoasComEspelhoIncompleto = (
+  pontos: PontoIncompleto[]
+): Array<{ colaborador: Colaborador; dias: number; maisRecente: string }> => {
+  const porPessoa = new Map<string, { colaborador: Colaborador; dias: number; maisRecente: string }>();
+  for (const p of pontos) {
+    const atual = porPessoa.get(p.colaborador.id);
+    if (!atual) porPessoa.set(p.colaborador.id, { colaborador: p.colaborador, dias: 1, maisRecente: p.data });
+    else {
+      atual.dias++;
+      if (p.data > atual.maisRecente) atual.maisRecente = p.data;
+    }
+  }
+  return [...porPessoa.values()].sort(
+    (a, b) => b.dias - a.dias || a.colaborador.nome.localeCompare(b.colaborador.nome)
   );
-  return marcacoesEsperadas(p.data, p.colaborador).map((tipo) => ({ tipo, hora: feitas.get(tipo) || null }));
 };
+
+/**
+ * As batidas do dia, na ordem, cada uma com o horário feito (ou nenhum).
+ * Os horários vêm com o próprio ponto (`p.horas`), do banco — e não do
+ * cache do aparelho, que pode não ter aquele dia.
+ */
+const batidasDoDia = (p: PontoIncompleto): Array<{ tipo: TipoMarcacao; hora: string | null }> =>
+  marcacoesEsperadas(p.data, p.colaborador).map((tipo) => ({ tipo, hora: p.horas[tipo] || null }));
 
 /** As quatro marcas da linha: cheia = batida feita; vazada = falta. */
 const MarcasDoDia: React.FC<{ batidas: Array<{ tipo: TipoMarcacao; hora: string | null }> }> = ({ batidas }) => (
@@ -72,9 +97,10 @@ const MarcasDoDia: React.FC<{ batidas: Array<{ tipo: TipoMarcacao; hora: string 
   </span>
 );
 
-export const PontosIncompletos: React.FC<Props> = ({ colaboradorAtual }) => {
+export const PontosIncompletos: React.FC<Props> = ({ colaboradorAtual, aoMudarTotal }) => {
   const [versao, setVersao] = useState(0);
   const [carregando, setCarregando] = useState(true);
+  const [pontos, setPontos] = useState<PontoIncompleto[]>([]);
   const [aberto, setAberto] = useState<PontoIncompleto | null>(null);
   const [horarios, setHorarios] = useState<Partial<Record<TipoMarcacao, string>>>({});
   const [justificativa, setJustificativa] = useState('');
@@ -84,22 +110,23 @@ export const PontosIncompletos: React.FC<Props> = ({ colaboradorAtual }) => {
 
   const periodo = useMemo(() => periodoDosPontosIncompletos(dataDeHoje()), []);
 
-  // As batidas do período vêm do banco: o cache do aparelho pode ser outro
+  /*
+    PERGUNTADO AO BANCO, não ao cache: o cache é uma janela que as telas
+    trocam, e lida dele a lista oscilava (01/10/2026). Volta a perguntar
+    quando o ponto muda — uma batida lançada aqui ou chegada de outro lugar.
+  */
+  useEffect(() => servicoPonto.assinarAlteracoes(() => setVersao((v) => v + 1)), []);
   useEffect(() => {
     let vivo = true;
-    servicoPonto
-      .garantirBatidasDoPeriodo(periodo.inicio, periodo.fim)
-      .finally(() => vivo && setCarregando(false));
-    const cancelar = servicoPonto.assinarAlteracoes(() => setVersao((v) => v + 1));
+    servicoPonto.buscarPontosIncompletos(periodo.inicio, periodo.fim).then((lista) => {
+      if (!vivo) return;
+      setPontos(lista);
+      setCarregando(false);
+      aoMudarTotal?.(lista.length);
+    });
     return () => {
       vivo = false;
-      cancelar();
     };
-  }, [periodo.inicio, periodo.fim]);
-
-  const pontos = useMemo(() => {
-    void versao;
-    return servicoPonto.obterPontosIncompletos(periodo.inicio, periodo.fim);
   }, [versao, periodo.inicio, periodo.fim, colaboradorAtual.id]);
 
   const abrir = (p: PontoIncompleto) => {
