@@ -344,7 +344,9 @@ test('o painel do ciclo mostra so quem precisa de decisao', async () => {
  * ser marcado.
  */
 test('a jornada da semana chega ao banco nos dois sentidos', async () => {
-  const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+  const ponte =
+    (await Bun.file(new URL('./nuvem.ts', import.meta.url)).text()) +
+    (await Bun.file(new URL('./linhasDoBanco.ts', import.meta.url)).text());
 
   // Sobe
   expect(ponte).toContain('carga_semanal_minutos: c.cargaSemanalMinutos ?? null');
@@ -358,7 +360,9 @@ test('a jornada da semana chega ao banco nos dois sentidos', async () => {
 });
 
 test('VAZIO quer dizer "padrao do setor", e nunca zero', async () => {
-  const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+  const ponte =
+    (await Bun.file(new URL('./nuvem.ts', import.meta.url)).text()) +
+    (await Bun.file(new URL('./linhasDoBanco.ts', import.meta.url)).text());
 
   /**
    * Uma carga semanal de ZERO faria a pessoa fechar todo ciclo com crédito

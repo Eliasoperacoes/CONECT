@@ -60,8 +60,20 @@ export const aplicarFeriadosDaNuvem = (lista: Feriado[]): void => {
  * pessoa ser ignorado, que é justamente o caso que a coluna existe para
  * resolver.
  */
-export const feriadoEm = (data: string, loja?: Loja): Feriado | undefined => {
-  const doDia = lerFeriados().filter((f) => f.data === data);
+export const feriadoEm = (data: string, loja?: Loja): Feriado | undefined =>
+  feriadoNaLista(lerFeriados(), data, loja);
+
+/**
+ * A MESMA PERGUNTA, sobre uma lista dada — sem ler o aparelho. É o que a
+ * função de servidor `apurar-ponto` usa com os feriados vindos do banco:
+ * a regra de qual feriado vale é uma só, para a tela e para o servidor.
+ */
+export const feriadoNaLista = (
+  cadastrados: Feriado[],
+  data: string,
+  loja?: Loja
+): Feriado | undefined => {
+  const doDia = cadastrados.filter((f) => f.data === data);
 
   const cadastrado =
     doDia.find((f) => f.loja && f.loja === loja) || doDia.find((f) => !f.loja);

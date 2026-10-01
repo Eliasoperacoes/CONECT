@@ -77,17 +77,26 @@ const lerCache = (): MapaDePermissoes | null => {
  */
 export const obterPermissoes = (): MapaDePermissoes => {
   if (!emMemoria) emMemoria = lerCache();
+  return completarPermissoes(emMemoria);
+};
 
+/**
+ * O mapa em vigor a partir do que está GRAVADO — sem ler o aparelho. É o
+ * que a função de servidor `apurar-ponto` usa com o campo
+ * `permissoes_ferramentas` vindo do banco: "quem bate ponto" é a mesma
+ * resposta lá e na tela.
+ */
+export const completarPermissoes = (gravadas: MapaDePermissoes | null): MapaDePermissoes => {
   const padrao = permissoesPadrao();
-  if (!emMemoria) return { ...padrao, [CHAVE_VERSAO]: [VERSAO_REGRAS] as never };
+  if (!gravadas) return { ...padrao, [CHAVE_VERSAO]: [VERSAO_REGRAS] as never };
 
   const completo: MapaDePermissoes = { ...padrao };
   for (const ferramenta of FERRAMENTAS) {
-    const gravado = emMemoria[ferramenta.chave];
+    const gravado = gravadas[ferramenta.chave];
     if (Array.isArray(gravado)) completo[ferramenta.chave] = gravado;
   }
 
-  const versaoGravada = Number((emMemoria[CHAVE_VERSAO] as unknown as number[])?.[0] ?? 0);
+  const versaoGravada = Number((gravadas[CHAVE_VERSAO] as unknown as number[])?.[0] ?? 0);
 
   /**
    * Configuração salva antes de uma regra nova: o teto do catálogo é
@@ -117,7 +126,15 @@ export const obterPermissoes = (): MapaDePermissoes => {
  * não deveria estar sendo perguntada, e responder "sim" por descuido
  * abriria tela sem ninguém ter decidido isso.
  */
-export const podeUsar = (chave: string, colaborador: Colaborador): boolean => {
+export const podeUsar = (chave: string, colaborador: Colaborador): boolean =>
+  podeUsarComMapa(chave, colaborador, obterPermissoes());
+
+/** A mesma pergunta, com um mapa dado (o servidor passa o do banco). */
+export const podeUsarComMapa = (
+  chave: string,
+  colaborador: Colaborador,
+  mapa: MapaDePermissoes
+): boolean => {
   const ferramenta = acharFerramenta(chave);
   if (!ferramenta) return false;
 
@@ -125,7 +142,7 @@ export const podeUsar = (chave: string, colaborador: Colaborador): boolean => {
   // contrário — é a saída de emergência de quem administra o sistema.
   if (ferramenta.sempreParaTI && colaborador.nivel >= NIVEL_TI) return true;
 
-  const niveis = obterPermissoes()[ferramenta.chave];
+  const niveis = mapa[ferramenta.chave];
   return Array.isArray(niveis) && niveis.includes(colaborador.nivel);
 };
 

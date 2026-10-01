@@ -3109,7 +3109,9 @@ test('a ponte do banco traduz null para "vale o turno"', async () => {
    * E na volta nunca 490: salvar uma ficha qualquer — trocar um ramal —
    * desfaria a migração para aquela pessoa, sem ninguém notar.
    */
-  const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+  const ponte =
+    (await Bun.file(new URL('./nuvem.ts', import.meta.url)).text()) +
+    (await Bun.file(new URL('./linhasDoBanco.ts', import.meta.url)).text());
 
   expect(ponte).toContain(
     'cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos ?? undefined'

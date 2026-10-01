@@ -72,8 +72,19 @@ export const aplicarJustificativasDaNuvem = (lista: JustificativaAusencia[]): vo
  * de alguém decidir, do mesmo jeito que hora extra não entra no saldo sem
  * aprovação.
  */
-export const situacaoDoDia = (colaboradorId: string, data: string): SituacaoDoDia => {
-  const achada = lerJustificativas().find(
+export const situacaoDoDia = (colaboradorId: string, data: string): SituacaoDoDia =>
+  situacaoNaLista(lerJustificativas(), colaboradorId, data);
+
+/**
+ * A MESMA PERGUNTA, sobre uma lista dada — sem ler o aparelho. É o que a
+ * função de servidor `apurar-ponto` usa com as ausências vindas do banco.
+ */
+export const situacaoNaLista = (
+  ausencias: JustificativaAusencia[],
+  colaboradorId: string,
+  data: string
+): SituacaoDoDia => {
+  const achada = ausencias.find(
     (j) =>
       j.colaboradorId === colaboradorId &&
       j.estado === 'aprovada' &&

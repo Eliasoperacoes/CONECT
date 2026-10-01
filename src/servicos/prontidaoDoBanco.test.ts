@@ -37,10 +37,11 @@ import { test, expect } from 'bun:test';
 /** Qual mapeador escreve em qual tabela. */
 const MAPEADORES: { arquivo: string; funcao: string; tabela: string }[] = [
   { arquivo: 'src/servicos/nuvem.ts', funcao: 'paraLinha', tabela: 'colaboradores' },
-  { arquivo: 'src/servicos/nuvem.ts', funcao: 'paraLinhaPonto', tabela: 'registros_ponto' },
-  { arquivo: 'src/servicos/nuvem.ts', funcao: 'paraLinhaAjuste', tabela: 'ajustes_jornada' },
+  // Os de ponto e ausência moram em `linhasDoBanco` (o servidor os usa)
+  { arquivo: 'src/servicos/linhasDoBanco.ts', funcao: 'paraLinhaPonto', tabela: 'registros_ponto' },
+  { arquivo: 'src/servicos/linhasDoBanco.ts', funcao: 'paraLinhaAjuste', tabela: 'ajustes_jornada' },
   {
-    arquivo: 'src/servicos/nuvem.ts',
+    arquivo: 'src/servicos/linhasDoBanco.ts',
     funcao: 'paraLinhaJustificativa',
     tabela: 'justificativas_ausencia',
   },
