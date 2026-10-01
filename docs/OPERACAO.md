@@ -118,6 +118,7 @@ esquema.
 | `medir-chat.sql` | Chat lento: mede o custo de uma sincronização |
 | `testar-cadastro.sql` | Cadastro recusado sem motivo claro |
 | `diagnostico-*.sql`, `verificar-*.sql` | Investigações pontuais, já resolvidas. Servem de modelo |
+| `corrigir-turno-maria-clara.sql` | Já aplicado (01/10/2026). Modelo para corrigir o turno de alguém pelo SQL Editor: o gatilho aceita a troca e grava a confirmação |
 | `acessos.sql` | **Não rode.** Está vazio de propósito — leia o cabeçalho dele |
 
 ### Como entregar um SQL para o Elias
