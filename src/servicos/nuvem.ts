@@ -1138,6 +1138,39 @@ class PonteNuvem {
     return { sucesso: true };
   }
 
+  /**
+   * A BATIDA DE QUEM ESTÁ NA LOJA, carimbada pelo SERVIDOR (bater_ponto).
+   *
+   * O aparelho só diz o que leu no cartaz e qual batida é a próxima. A
+   * hora e o dia saem do relógio do banco, e é o banco que confere o
+   * código da loja: antes os dois vinham prontos do aparelho, e o banco
+   * aceitava qualquer horário que chegasse (ponto-pelo-servidor.sql).
+   *
+   * `semFuncao`: o script ainda não rodou. Quem chama volta ao caminho
+   * antigo, para o ponto não parar entre a publicação e o SQL.
+   */
+  async baterPonto(dados: {
+    codigo: string;
+    loja: string | null;
+    tipo: TipoMarcacao;
+  }): Promise<{ sucesso: boolean; registro?: RegistroPonto; erro?: string; duplicado?: boolean; semFuncao?: boolean }> {
+    if (!supabase) return { sucesso: false, semFuncao: true };
+    const { data, error } = await supabase.rpc('bater_ponto', {
+      p_codigo: dados.codigo,
+      p_loja: dados.loja,
+      p_tipo: dados.tipo,
+    });
+    if (error) {
+      if (error.code === 'PGRST202' || error.code === '42883') return { sucesso: false, semFuncao: true };
+      if (error.code === '23505') return { sucesso: false, duplicado: true };
+      // A recusa escrita pelo próprio banco ("Código não reconhecido...") vai como está
+      if (error.code === 'P0001') return { sucesso: false, erro: error.message };
+      console.error('Falha ao bater o ponto no banco:', error.message);
+      return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
+    }
+    return { sucesso: true, registro: paraRegistroPonto(data as LinhaRegistroPonto) };
+  }
+
   /** Lança ou corrige a marcação do RH — aqui sobrescrever é o objetivo. */
   async salvarAjustePonto(
     registro: RegistroPonto

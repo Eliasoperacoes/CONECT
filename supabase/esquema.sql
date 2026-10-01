@@ -787,11 +787,11 @@ drop policy if exists avisos_leitura_atualizacao on public.avisos_leitura;
 create policy avisos_leitura_atualizacao on public.avisos_leitura
   for update to authenticated using (colaborador_id = public.meu_colaborador_id());
 
--- CÓDIGOS DE PONTO: todos precisam ler para validar a batida;
--- só RH e Administrador geram um novo.
+-- CÓDIGOS DE PONTO: só quem cuida do cartaz lê e gera (a função está logo
+-- abaixo). Quem bate não precisa ler: `bater_ponto` confere o código no
+-- servidor. Antes todos liam os códigos das cinco lojas para o app
+-- validar, e o código deixava de ser segredo de quem está na loja.
 drop policy if exists codigos_leitura on public.codigos_ponto_loja;
-create policy codigos_leitura on public.codigos_ponto_loja
-  for select to authenticated using (true);
 
 /**
  * O cartaz de ponto de uma loja é cuidado pelo GERENTE dela, além de RH,
@@ -815,6 +815,9 @@ returns boolean language sql stable security definer set search_path = public as
          and loja = alvo
     );
 $$;
+
+create policy codigos_leitura on public.codigos_ponto_loja
+  for select to authenticated using (public.cuido_do_qr_da_loja(loja));
 
 drop policy if exists codigos_escrita on public.codigos_ponto_loja;
 create policy codigos_escrita on public.codigos_ponto_loja
@@ -887,11 +890,11 @@ drop policy if exists ponto_batida on public.registros_ponto;
 create policy ponto_batida on public.registros_ponto
   for insert to authenticated
   with check (
-    (
-      colaborador_id = public.meu_colaborador_id()
-      and metodo not in ('ajuste_rh', 'ajuste_lider', 'preenchimento_turno')
-    )
-    or public.cuido_de_pessoas()
+    -- A batida da PRÓPRIA pessoa não entra por aqui: só por `bater_ponto`,
+    -- que confere o código e carimba a hora no servidor
+    -- (ponto-pelo-servidor.sql). Antes o aparelho mandava dia e hora
+    -- prontos, e o banco aceitava qualquer horário.
+    public.cuido_de_pessoas()
     -- O responsável lança a batida que faltou, na fila de aprovação. Sem
     -- isto ele só podia aprovar o dia errado ou recusar — e recusar não
     -- conserta o espelho de ninguém.
@@ -903,6 +906,90 @@ create policy ponto_batida on public.registros_ponto
       and metodo in ('ajuste_lider', 'preenchimento_turno')
     )
   );
+
+-- A BATIDA DE QUEM ESTÁ NA LOJA: o aparelho manda o que leu no cartaz e
+-- qual batida é a próxima; o banco confere o código e carimba dia e hora
+-- pelo relógio dele, em Brasília (ponto-pelo-servidor.sql).
+create or replace function public.bater_ponto(p_codigo text, p_loja text, p_tipo text)
+returns public.registros_ponto
+language plpgsql
+volatile
+security definer
+set search_path = public
+as $$
+declare
+  eu public.colaboradores;
+  agora timestamptz := now();
+  em_brasilia timestamp := now() at time zone 'America/Sao_Paulo';
+  hoje date := (now() at time zone 'America/Sao_Paulo')::date;
+  ordem text[] := array['entrada', 'saida_almoco', 'retorno_almoco', 'saida'];
+  codigo_lido text := upper(regexp_replace(coalesce(p_codigo, ''), '\s', '', 'g'));
+  v_loja text;
+  v_metodo text;
+  novo public.registros_ponto;
+begin
+  select * into eu from public.colaboradores where id = public.meu_colaborador_id();
+  if eu.id is null then
+    raise exception 'Sessão sem cadastro. Saia e entre de novo para bater o ponto.' using errcode = 'P0001';
+  end if;
+  if not eu.ativo then
+    raise exception 'Esta conta está desativada. Procure o RH.' using errcode = 'P0001';
+  end if;
+  if p_tipo is null or not (p_tipo = any (ordem)) then
+    raise exception 'Marcação desconhecida.' using errcode = 'P0001';
+  end if;
+
+  -- O código do cartaz: pela loja do QR, ou só pelo código digitado
+  if coalesce(p_loja, '') <> '' then
+    select c.loja into v_loja from public.codigos_ponto_loja c
+     where c.loja = p_loja and upper(c.codigo) = codigo_lido;
+    v_metodo := 'qrcode';
+  else
+    select c.loja into v_loja from public.codigos_ponto_loja c
+     where upper(c.codigo) = codigo_lido
+     limit 1;
+    v_metodo := 'codigo_manual';
+  end if;
+  if v_loja is null then
+    raise exception 'Código não reconhecido. Use o QR afixado na sua loja.' using errcode = 'P0001';
+  end if;
+
+  -- Domingo não tem jornada (RECUSA_DE_DOMINGO, ponto.ts). A tela recusa
+  -- antes; aqui é a trava que vale
+  if extract(dow from em_brasilia) = 0 then
+    raise exception 'Domingo não tem jornada: o ponto não registra horário no domingo.' using errcode = 'P0001';
+  end if;
+
+  -- A ordem do dia: nada depois de uma batida que vem mais adiante, e nada
+  -- sem a entrada. Qual é a próxima (sábado e estágio pulam o almoço) quem
+  -- sabe é o aplicativo; o banco só impede batida fora de ordem.
+  if exists (
+    select 1 from public.registros_ponto r
+     where r.colaborador_id = eu.id and r.data = hoje
+       and array_position(ordem, r.tipo) > array_position(ordem, p_tipo)
+  ) or (
+    p_tipo <> 'entrada' and not exists (
+      select 1 from public.registros_ponto r
+       where r.colaborador_id = eu.id and r.data = hoje and r.tipo = 'entrada'
+    )
+  ) then
+    raise exception 'Batida fora de ordem. Atualize a tela e tente de novo.' using errcode = 'P0001';
+  end if;
+
+  -- A repetida cai na restrição única (23505), que o app já trata
+  insert into public.registros_ponto
+    (id, colaborador_id, data, tipo, horario, hora_formatada, metodo, loja, criado_em)
+  values
+    ('ponto-' || replace(gen_random_uuid()::text, '-', ''), eu.id, hoje, p_tipo, agora,
+     to_char(em_brasilia, 'HH24:MI'), v_metodo, v_loja, agora)
+  returning * into novo;
+
+  return novo;
+end;
+$$;
+
+revoke all on function public.bater_ponto(text, text, text) from public, anon;
+grant execute on function public.bater_ponto(text, text, text) to authenticated;
 
 drop policy if exists ponto_ajuste on public.registros_ponto;
 create policy ponto_ajuste on public.registros_ponto

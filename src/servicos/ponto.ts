@@ -717,8 +717,11 @@ class ServicoPonto {
     }
 
     const publicados = this.lerCodigos();
+    const eu = bancoDados.obterColaboradorAtual();
     const faltando: CodigoPontoLoja[] = LOJAS_COM_PONTO.filter(
-      (loja) => !publicados.some((c) => c.loja === loja)
+      // Só as lojas de quem cuida do cartaz: o gerente não enxerga o código
+      // das outras (ponto-pelo-servidor.sql), e "faltando" não é "não existe"
+      (loja) => this.podeCuidarDoQrDaLoja(eu, loja) && !publicados.some((c) => c.loja === loja)
     ).map((loja) => ({
       loja,
       codigo: gerarCodigoAleatorio(),
@@ -803,15 +806,12 @@ class ServicoPonto {
   }
 
   /**
-   * Aceita tanto o conteúdo completo do QR quanto o código de 6 caracteres
-   * digitado à mão, e devolve a loja correspondente.
+   * O QUE O CARTAZ DIZ, sem conferir se vale: a loja (no QR) e o código.
+   * No modo rede quem confere é o banco (`bater_ponto`) — o aparelho nem
+   * enxerga mais os códigos das lojas. Aqui é só a leitura do texto.
    */
-  private resolverLojaDoCodigo(
-    conteudo: string
-  ): { loja: Loja; metodo: MetodoMarcacao } | null {
+  private lerConteudoDoCartaz(conteudo: string): { loja: Loja | null; codigo: string } | null {
     let limpo = conteudo.trim();
-    if (!limpo) return null;
-
     /**
      * ENDEREÇO TAMBÉM VALE, e o texto antigo continua valendo.
      *
@@ -822,26 +822,36 @@ class ServicoPonto {
      */
     if (/^https?:\/\//i.test(limpo)) {
       try {
-        const endereco = new URL(limpo);
-        const doParametro = endereco.searchParams.get('ponto');
+        const doParametro = new URL(limpo).searchParams.get('ponto');
         if (doParametro) limpo = doParametro.trim();
       } catch {
         // Endereço ilegível: segue como se fosse código digitado
       }
     }
-
     if (limpo.toUpperCase().startsWith(`${PREFIXO_QR}:`)) {
       const partes = limpo.split(':');
       if (partes.length < 3) return null;
-      const loja = partes[1] as Loja;
-      const codigo = partes[2].toUpperCase();
-      const oficial = this.lerCodigos().find((c) => c.loja === loja);
-      if (!oficial || oficial.codigo.toUpperCase() !== codigo) return null;
-      return { loja, metodo: 'qrcode' };
+      return { loja: partes[1] as Loja, codigo: partes[2].toUpperCase() };
     }
-
     const digitado = limpo.toUpperCase().replace(/\s/g, '');
-    const porCodigo = this.obterTodosCodigos().find((c) => c.codigo.toUpperCase() === digitado);
+    return digitado ? { loja: null, codigo: digitado } : null;
+  }
+
+  /**
+   * Aceita tanto o conteúdo completo do QR quanto o código de 6 caracteres
+   * digitado à mão, e devolve a loja correspondente.
+   */
+  private resolverLojaDoCodigo(
+    conteudo: string
+  ): { loja: Loja; metodo: MetodoMarcacao } | null {
+    const lido = this.lerConteudoDoCartaz(conteudo);
+    if (!lido) return null;
+    if (lido.loja) {
+      const oficial = this.lerCodigos().find((c) => c.loja === lido.loja);
+      if (!oficial || oficial.codigo.toUpperCase() !== lido.codigo) return null;
+      return { loja: lido.loja, metodo: 'qrcode' };
+    }
+    const porCodigo = this.obterTodosCodigos().find((c) => c.codigo.toUpperCase() === lido.codigo);
     return porCodigo ? { loja: porCodigo.loja, metodo: 'codigo_manual' } : null;
   }
 
@@ -951,16 +961,12 @@ class ServicoPonto {
       await nuvem.sincronizarPonto();
     }
 
-    const resolvido = this.resolverLojaDoCodigo(conteudoLido);
-    if (!resolvido) {
-      return {
-        sucesso: false,
-        erro: 'Código não reconhecido. Use o QR afixado na sua loja.',
-      };
-    }
+    const recusaDoCodigo = 'Código não reconhecido. Use o QR afixado na sua loja.';
+    const lido = this.lerConteudoDoCartaz(conteudoLido);
+    if (!lido) return { sucesso: false, erro: recusaDoCodigo };
 
-    // A hora da batida sai do relógio sincronizado: é O dado do registro
-    // de ponto, e o aparelho não é fonte confiável para ele
+    // O relógio sincronizado decide só QUAL é a próxima batida e se é
+    // domingo. A hora gravada, no modo rede, é a do servidor
     const momento = agoraSincronizado();
     const data = paraDataLocal(momento);
     if (!aceitaMarcacaoNoDia(data)) return { sucesso: false, erro: RECUSA_DE_DOMINGO };
@@ -972,48 +978,64 @@ class ServicoPonto {
       };
     }
 
-    const registro: RegistroPonto = {
-      id: `ponto-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      colaboradorId: atual.id,
-      data,
-      tipo: proxima,
-      horario: momento.toISOString(),
-      horaFormatada: momento.toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      metodo: resolvido.metodo,
-      loja: resolvido.loja,
-      criadoEm: momento.toISOString(),
+    /**
+     * O APARELHO SÓ MARCA. No modo rede, `bater_ponto` confere o código da
+     * loja e carimba a hora e o dia com o relógio do banco: antes os dois
+     * vinham prontos daqui, e o banco gravava qualquer horário que
+     * chegasse — "entrada 07:30" enviada às 09:00 passava.
+     */
+    /**
+     * O MOTIVO DO BANCO VAI PARA A TELA, como no chat.
+     *
+     * Este é o caminho mais crítico do sistema: alguém no balcão, com o
+     * celular na mão, tentando registrar a jornada. "Verifique a conexão"
+     * manda essa pessoa fazer a única coisa que não resolve — e foi assim
+     * que o chat da rede ficou parado por dias com a causa escrita no
+     * console de quem enviava.
+     */
+    const recusa = (erro?: string) => ({
+      sucesso: false,
+      erro: erro || 'Não foi possível gravar a marcação. Tente de novo.',
+    });
+    // A restrição de um registro por passo do dia vale para a pessoa, não
+    // para o aparelho: é ela que impede a batida repetida vinda do celular
+    // e do computador.
+    const jaRegistrada = async () => {
+      await nuvem.sincronizarPonto();
+      return recusa(`${ROTULO_MARCACAO[proxima]} já foi registrada hoje, em outro aparelho.`);
     };
 
-    // No modo rede quem confirma a batida é o banco. A restrição de um
-    // registro por passo do dia vale para a pessoa, não para o aparelho:
-    // é ela que impede a batida repetida vinda do celular e do computador.
+    let registro: RegistroPonto | null = null;
     if (usandoNuvem()) {
-      const res = await nuvem.salvarRegistroPonto(registro);
-      if (res.duplicado) {
-        await nuvem.sincronizarPonto();
-        return {
-          sucesso: false,
-          erro: `${ROTULO_MARCACAO[proxima]} já foi registrada hoje, em outro aparelho.`,
-        };
-      }
-      if (!res.sucesso) {
-        /**
-         * O MOTIVO DO BANCO VAI PARA A TELA, como no chat.
-         *
-         * Este é o caminho mais crítico do sistema: alguém no balcão,
-         * com o celular na mão, tentando registrar a jornada. "Verifique
-         * a conexão" manda essa pessoa fazer a única coisa que não
-         * resolve — e foi assim que o chat da rede ficou parado por dias
-         * com a causa escrita no console de quem enviava.
-         */
-        return {
-          sucesso: false,
-          erro:
-            res.erro || 'Não foi possível gravar a marcação. Tente de novo.',
-        };
+      const res = await nuvem.baterPonto({ codigo: lido.codigo, loja: lido.loja, tipo: proxima });
+      if (res.duplicado) return jaRegistrada();
+      if (!res.sucesso && !res.semFuncao) return recusa(res.erro);
+      registro = res.registro ?? null;
+    }
+
+    // Modo local, ou o banco ainda sem `bater_ponto` (ponto-pelo-servidor.sql
+    // não rodado): o caminho antigo, conferido e carimbado aqui
+    if (!registro) {
+      const resolvido = this.resolverLojaDoCodigo(conteudoLido);
+      if (!resolvido) return recusa(recusaDoCodigo);
+      registro = {
+        id: `ponto-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        colaboradorId: atual.id,
+        data,
+        tipo: proxima,
+        horario: momento.toISOString(),
+        horaFormatada: momento.toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        metodo: resolvido.metodo,
+        loja: resolvido.loja,
+        criadoEm: momento.toISOString(),
+      };
+      if (usandoNuvem()) {
+        const res = await nuvem.salvarRegistroPonto(registro);
+        if (res.duplicado) return jaRegistrada();
+        if (!res.sucesso) return recusa(res.erro);
       }
     }
 
@@ -1027,21 +1049,22 @@ class ServicoPonto {
      * pendência nasce. Sem guardar, a pessoa escreveria a explicação na
      * entrada e o aprovador receberia o dia mudo às 18h.
      */
+    // O dia que vale é o do registro: no modo rede, o que o banco carimbou
     if (justificativa?.motivo?.trim() || justificativa?.anexoCaminho) {
-      this.guardarJustificativaDoDia(atual.id, data, justificativa);
+      this.guardarJustificativaDoDia(atual.id, registro.data, justificativa);
     }
 
     // Fechou a jornada: levanta a diferença e manda para o responsável.
     // É aqui que o caminho começa — sem este passo, hora extra viraria saldo
     // sozinha e ninguém teria decidido nada.
     if (proxima === 'saida') {
-      await this.apurarDia(atual.id, data, justificativa);
+      await this.apurarDia(atual.id, registro.data, justificativa);
     }
 
     bancoDados.registrarAuditoria(
       'Registro de Ponto',
       'sistema',
-      `${atual.nome} registrou ${ROTULO_MARCACAO[proxima].toLowerCase()} às ${registro.horaFormatada} na loja ${resolvido.loja}.`
+      `${atual.nome} registrou ${ROTULO_MARCACAO[proxima].toLowerCase()} às ${registro.horaFormatada} na loja ${registro.loja}.`
     );
     this.notificar();
     return { sucesso: true, registro };

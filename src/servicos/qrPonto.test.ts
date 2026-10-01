@@ -31,22 +31,23 @@ test('o cartaz leva um ENDERECO, e nao um texto solto', async () => {
  */
 test('o formato antigo continua valendo, e o digitado tambem', async () => {
   const codigo = semComentarios(await lerPonto());
-  const inicio = codigo.indexOf('resolverLojaDoCodigo');
+  const inicio = codigo.indexOf('lerConteudoDoCartaz(conteudo');
   const corpo = codigo.slice(inicio, inicio + 2000);
 
   // Endereço: pega o parâmetro e segue pelo mesmo caminho de sempre
-  expect(corpo).toContain("endereco.searchParams.get('ponto')");
+  expect(corpo).toContain("new URL(limpo).searchParams.get('ponto')");
 
   // Texto solto: o ramo antigo continua lá
   expect(corpo).toContain('startsWith(`${PREFIXO_QR}:`)');
 
-  // E o código de 6 caracteres, para quando a câmera falha
-  expect(corpo).toContain('codigo_manual');
+  // E o código de 6 caracteres, para quando a câmera falha (o banco o
+  // confere e marca como digitado: `bater_ponto`)
+  expect(corpo).toContain('return digitado ? { loja: null, codigo: digitado } : null;');
 });
 
 test('endereco ilegivel nao derruba a leitura', async () => {
   const codigo = semComentarios(await lerPonto());
-  const inicio = codigo.indexOf('resolverLojaDoCodigo');
+  const inicio = codigo.indexOf('lerConteudoDoCartaz(conteudo');
   const corpo = codigo.slice(inicio, inicio + 2000);
 
   /**

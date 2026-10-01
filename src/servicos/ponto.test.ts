@@ -40,6 +40,15 @@ let sincronizacoes = 0;
 let funcaoDosIncompletos = true;
 /** A função do banco `dias_com_batida` existe? (dias-com-batida.sql) */
 let funcaoDosDiasComBatida = true;
+/** A função do banco `bater_ponto` existe? (ponto-pelo-servidor.sql) */
+let funcaoBaterPonto = false;
+/** O relógio do SERVIDOR na batida — de propósito diferente do aparelho. */
+let horaDoServidor = '09:00';
+let diaDoServidor = '2026-09-16';
+/** O banco responde que a batida já existe (corrida entre dois aparelhos). */
+let baterPontoJaExiste = false;
+/** A recusa escrita pelo banco (P0001), quando há. */
+let baterPontoRecusa: string | null = null;
 /** A última janela de batidas que o serviço pediu ao banco. */
 let janelaPedida: { inicio: string; fim: string } | null = null;
 
@@ -124,6 +133,31 @@ mock.module('./nuvem', () => ({
       armazenamento.setItem(CHAVE_CODIGOS, JSON.stringify(bancoCodigos));
       return true;
     },
+    /*
+      A função bater_ponto: confere o código no "banco" e carimba a hora
+      pelo relógio DELE (horaDoServidor), não pelo do aparelho. Desligada,
+      responde como o banco sem o script (semFuncao).
+    */
+    baterPonto: async (d: { codigo: string; loja: string | null; tipo: string }) => {
+      if (!funcaoBaterPonto) return { sucesso: false, semFuncao: true };
+      if (baterPontoJaExiste) return { sucesso: false, duplicado: true };
+      if (baterPontoRecusa) return { sucesso: false, erro: baterPontoRecusa };
+      const oficial = bancoCodigos.find((c) =>
+        d.loja ? c.loja === d.loja && c.codigo.toUpperCase() === d.codigo : c.codigo.toUpperCase() === d.codigo
+      );
+      if (!oficial) return { sucesso: false, erro: 'Código não reconhecido. Use o QR afixado na sua loja.' };
+      const r = {
+        id: `ponto-srv-${bancoRegistros.length}`, colaboradorId: colaboradorLogado.id, data: diaDoServidor,
+        tipo: d.tipo, horario: new Date(`${diaDoServidor}T${horaDoServidor}:00`).toISOString(),
+        horaFormatada: horaDoServidor, metodo: d.loja ? 'qrcode' : 'codigo_manual', loja: oficial.loja,
+        criadoEm: new Date().toISOString(),
+      };
+      if (bancoRegistros.some((x) => x.colaboradorId === r.colaboradorId && x.data === r.data && x.tipo === r.tipo)) {
+        return { sucesso: false, duplicado: true };
+      }
+      bancoRegistros.push(r);
+      return { sucesso: true, registro: r };
+    },
     salvarRegistroPonto: async (r: any) => {
       const choque = bancoRegistros.some(
         (x) => x.colaboradorId === r.colaboradorId && x.data === r.data && x.tipo === r.tipo
@@ -195,6 +229,11 @@ beforeEach(() => {
   janelaPedida = null;
   funcaoDosIncompletos = true;
   funcaoDosDiasComBatida = true;
+  funcaoBaterPonto = false;
+  horaDoServidor = '09:00';
+  diaDoServidor = '2026-09-16';
+  baterPontoJaExiste = false;
+  baterPontoRecusa = null;
   modoNuvem = true;
   colaboradorLogado = ELIAS;
   equipe = [ELIAS, ANA];
@@ -268,6 +307,63 @@ test('a batida vai para o banco, não só para o aparelho', async () => {
   expect(res.registro!.tipo).toBe('entrada');
   expect(bancoRegistros).toHaveLength(1);
   expect(bancoRegistros[0].colaboradorId).toBe('colab-elias');
+});
+
+/*
+  O APARELHO SÓ MARCA (01/10/2026). A hora e o dia gravados são os do
+  servidor; o código é conferido lá. O relógio da suíte (o "aparelho") está
+  em 16/09 09:00 — o servidor, nestes testes, diz outra coisa.
+*/
+test('com bater_ponto no banco, a hora gravada é a do servidor, não a do aparelho', async () => {
+  const codigo = await publicarCodigos();
+  funcaoBaterPonto = true;
+  horaDoServidor = '09:07';
+
+  const res = await servicoPonto.registrarMarcacaoPorCodigo(codigo);
+  expect(res.sucesso).toBe(true);
+  expect(res.registro!.horaFormatada).toBe('09:07');
+  expect(bancoRegistros).toHaveLength(1);
+  expect(bancoRegistros[0].horaFormatada).toBe('09:07');
+  // O aparelho guarda o que o servidor devolveu
+  expect(servicoPonto.obterMarcacoesDoDia(ELIAS.id, '2026-09-16')[0].horaFormatada).toBe('09:07');
+});
+
+test('o código é conferido pelo banco: o aparelho nem precisa conhecê-lo', async () => {
+  const codigo = await publicarCodigos();
+  funcaoBaterPonto = true;
+  // O aparelho de quem bate não enxerga mais os códigos das lojas
+  armazenamento.removeItem('conecta_v4_codigos_ponto_loja');
+
+  expect((await servicoPonto.registrarMarcacaoPorCodigo(codigo)).sucesso).toBe(true);
+
+  const errado = await servicoPonto.registrarMarcacaoPorCodigo('ZZZ999');
+  expect(errado.sucesso).toBe(false);
+  expect(errado.erro).toContain('Código não reconhecido');
+  expect(bancoRegistros).toHaveLength(1);
+});
+
+test('o que o banco recusa não é gravado pelo aparelho por outro caminho', async () => {
+  const codigo = await publicarCodigos();
+  funcaoBaterPonto = true;
+  // Código válido, mas o banco recusa (batida fora de ordem, conta desativada...)
+  baterPontoRecusa = 'Batida fora de ordem. Atualize a tela e tente de novo.';
+  const res = await servicoPonto.registrarMarcacaoPorCodigo(codigo);
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toBe('Batida fora de ordem. Atualize a tela e tente de novo.');
+  expect(bancoRegistros).toHaveLength(0);
+});
+
+test('batida repetida pelo bater_ponto é recusada como vinda de outro aparelho', async () => {
+  const codigo = await publicarCodigos();
+  funcaoBaterPonto = true;
+  // O outro aparelho gravou a entrada no instante entre a sincronização e
+  // a batida deste: o banco responde pela restrição única
+  baterPontoJaExiste = true;
+  const res = await servicoPonto.registrarMarcacaoPorCodigo(codigo);
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('Entrada já foi registrada hoje, em outro aparelho');
+  // E não caiu no caminho antigo gravando por conta própria
+  expect(bancoRegistros).toHaveLength(0);
 });
 
 test('CELULAR E COMPUTADOR: o segundo aparelho continua a jornada, não recomeça', async () => {
