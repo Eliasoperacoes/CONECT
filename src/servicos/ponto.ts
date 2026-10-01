@@ -2018,6 +2018,7 @@ class ServicoPonto {
     const eu = bancoDados.obterColaboradorAtual();
     const hoje = dataDeHoje();
     let criados = 0;
+    let resolvidos = 0;
 
     /**
      * Só quem eu aprovo — e agora isso pode me incluir.
@@ -2032,7 +2033,14 @@ class ServicoPonto {
 
     for (const pessoa of equipe) {
       for (let i = 1; i <= diasParaTras; i++) {
-        const referencia = new Date();
+        /*
+          UM RELÓGIO SÓ. "Hoje" vinha do relógio sincronizado com o servidor
+          e os dias para trás, do relógio do APARELHO. Com o aparelho
+          adiantado ou noutro fuso, os dois discordavam e o dia corrente
+          entrava como se já tivesse passado: o "dia sem fechar" da Fernanda
+          em 30/09 foi criado às 17:12 do próprio dia 30.
+        */
+        const referencia = deDataLocal(hoje);
         referencia.setDate(referencia.getDate() - i);
         const data = paraDataLocal(referencia);
         if (data >= hoje) continue;
@@ -2057,10 +2065,32 @@ class ServicoPonto {
           (zero) ou contar o débito da jornada. Só a partir de 01/10/2026
           (`ehFalta`).
         */
-        if (!jornada.falta && (batidas === 0 || feitas >= esperadas.length)) continue;
+        const existente = this.obterAjusteDoDia(pessoa.id, data);
+        const fechou = batidas > 0 && feitas >= esperadas.length;
+
+        /*
+          O PEDIDO QUE O DIA JÁ RESOLVEU SAI DA FILA.
+
+          O "dia sem fechar" era criado e nunca mais revisto: a batida que
+          chegava depois ao aparelho, ou a correção lançada por outro
+          caminho, fechava o dia — e o pedido ficava lá, pedindo decisão
+          sobre um dia com as quatro batidas (Fernanda e Aline, 30/09).
+          A cada abertura da fila, o dia que fechou é apurado de novo: dentro
+          da tolerância sai da fila; fora dela, vira hora extra ou débito
+          com o valor de verdade.
+        */
+        if (fechou) {
+          if (existente?.tipo === 'dia_incompleto' && existente.estado === 'pendente') {
+            const res = await this.apurarDia(pessoa.id, data);
+            if (!res.erro) resolvidos++;
+          }
+          continue;
+        }
+
+        if (!jornada.falta && batidas === 0) continue;
 
         // Já levantado, decidido ou coberto por ausência aprovada: não repete
-        if (this.obterAjusteDoDia(pessoa.id, data)) continue;
+        if (existente) continue;
 
         const ajuste: AjusteJornada = {
           id: `inc-${pessoa.id}-${data}`,
@@ -2089,7 +2119,7 @@ class ServicoPonto {
       }
     }
 
-    if (criados > 0) this.notificar();
+    if (criados > 0 || resolvidos > 0) this.notificar();
     return criados;
   }
 

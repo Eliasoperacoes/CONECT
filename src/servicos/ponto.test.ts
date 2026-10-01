@@ -4101,3 +4101,80 @@ test('o espelho escreve "Falta" e o rodapé soma as faltas numa linha própria',
 
   expect(servicoPonto.gerarHtmlEspelho('2026-10-05', '2026-10-06', [DO_TURNO_A.id])).toContain('>Falta<');
 });
+
+// ============================================================
+// O "DIA SEM FECHAR" QUE O DIA JÁ RESOLVEU SAI DA FILA
+//
+// Fernanda e Aline, 30/09: as quatro batidas no espelho, e o pedido de
+// "dia sem fechar" parado em Aprovar jornadas. O pedido era criado e
+// nunca mais revisto.
+// ============================================================
+
+const pedidoParado = (quem: any, data: string) => {
+  const pedido = {
+    id: `inc-${quem.id}-${data}`, colaboradorId: quem.id, data, tipo: 'dia_incompleto',
+    minutos: 490, minutosTrabalhados: 0, minutosPrevistos: 490,
+    estado: 'pendente', origem: 'pendencia', criadoEm: new Date().toISOString(),
+  };
+  bancoAjustes.push(pedido);
+  armazenamento.setItem('conecta_v4_ajustes_jornada', JSON.stringify(bancoAjustes));
+};
+
+test('dia que fechou dentro da tolerância: o pedido parado sai da fila', async () => {
+  emOutubro();
+  colaboradorLogado = GESTOR;
+  equipe = [GESTOR, DO_TURNO_A];
+  pedidoParado(DO_TURNO_A, '2026-10-06');
+  baterParcial(DO_TURNO_A, '2026-10-06', {
+    entrada: '07:31', saida_almoco: '12:30', retorno_almoco: '14:00', saida: '17:12',
+  });
+
+  await servicoPonto.levantarDiasIncompletos();
+
+  const depois = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06');
+  expect(depois?.estado).not.toBe('pendente');
+  expect(
+    servicoPonto.obterPendenciasParaDecidir().some(({ ajuste }) => ajuste.colaboradorId === DO_TURNO_A.id && ajuste.data === '2026-10-06')
+  ).toBe(false);
+});
+
+test('dia que fechou com diferença: vira hora extra com o valor de verdade', async () => {
+  emOutubro();
+  colaboradorLogado = GESTOR;
+  equipe = [GESTOR, DO_TURNO_A];
+  pedidoParado(DO_TURNO_A, '2026-10-06');
+  baterParcial(DO_TURNO_A, '2026-10-06', {
+    entrada: '07:30', saida_almoco: '12:30', retorno_almoco: '14:00', saida: '18:10',
+  });
+
+  await servicoPonto.levantarDiasIncompletos();
+
+  const depois = servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-10-06');
+  expect(depois?.tipo).toBe('hora_extra');
+  expect(depois?.minutos).toBe(60);
+  expect(depois?.estado).toBe('pendente');
+});
+
+test('o dia de hoje e o de ontem saem do MESMO relógio', async () => {
+  /*
+    O aparelho marca 30/09 23:30; o relógio sincronizado com o servidor,
+    01/10 00:30. Com "hoje" de um e os dias para trás do outro, o 30/09
+    nunca era conferido — e no outro sentido, o dia corrente entrava.
+  */
+  colaboradorLogado = GESTOR;
+  equipe = [GESTOR, DO_TURNO_A];
+  setSystemTime(new Date(2026, 8, 30, 23, 30, 0));
+  const { sincronizarRelogio, reiniciarRelogio } = await import('./relogio');
+  const fetchOriginal = globalThis.fetch;
+  (globalThis as any).fetch = async () => ({
+    headers: { get: () => new Date(2026, 9, 1, 0, 30, 0).toUTCString() },
+  });
+  await sincronizarRelogio('https://servidor.exemplo');
+  globalThis.fetch = fetchOriginal;
+
+  baterParcial(DO_TURNO_A, '2026-09-30', { entrada: '07:30', saida_almoco: '12:30', retorno_almoco: '14:00' });
+  await servicoPonto.levantarDiasIncompletos();
+  reiniciarRelogio();
+
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-30')?.tipo).toBe('dia_incompleto');
+});
