@@ -72,12 +72,19 @@ const banco = () => {
    * pedido e não avisa que cortou: sem paginar, a apuração veria um mês
    * pela metade e criaria falta onde houve batida.
    */
-  const ler = async <T>(caminho: string): Promise<T[]> => {
+  const ler = async <T>(caminho: string, opcional = false): Promise<T[]> => {
     const todas: T[] = [];
     for (let de = 0; ; de += 1000) {
       const r = await fetch(`${url}/${caminho}`, {
         headers: { ...cabecalhos, Range: `${de}-${de + 999}`, 'Range-Unit': 'items' },
       });
+      /*
+        TABELA QUE NÃO EXISTE, quando ela é opcional, é lista vazia — como
+        no aplicativo. A de feriados cadastrados não existia na produção
+        (01/10/2026): o app segue com os nacionais e municipais, que são
+        calculados, e a primeira simulação parou aqui.
+      */
+      if (opcional && r.status === 404) return [];
       if (!r.ok) throw new Error(`Leitura de ${caminho.split('?')[0]}: ${r.status} ${await r.text()}`);
       const pagina = (await r.json()) as T[];
       todas.push(...pagina);
@@ -121,7 +128,8 @@ Deno.serve(async (req) => {
       ler<LinhaColaborador>('colaboradores?select=*&ativo=eq.true&order=id'),
       ler<LinhaRegistroPonto>(`registros_ponto?select=*&data=gte.${inicio}&data=lt.${hoje}&order=id`),
       ler<Record<string, unknown>>(`justificativas_ausencia?select=*&estado=eq.aprovada&data_fim=gte.${inicio}&order=id`),
-      ler<Record<string, unknown>>('feriados?select=*&order=id'),
+      // Os cadastrados; os nacionais e municipais a regra calcula sozinha
+      ler<Record<string, unknown>>('feriados?select=*&order=id', true),
       ler<LinhaAjuste>(`ajustes_jornada?select=*&data=gte.${inicio}&order=id`),
       ler<{ permissoes_ferramentas: MapaDePermissoes | null }>('configuracoes?select=permissoes_ferramentas'),
     ]);

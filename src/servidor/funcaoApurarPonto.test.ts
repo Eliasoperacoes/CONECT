@@ -57,6 +57,10 @@ beforeAll(async () => {
     pedidos.push({ url, metodo: init.method || 'GET', corpo: init.body as string, range: headers.Range });
     const tabela = new URL(url).pathname.split('/').pop();
     if (init.method === 'POST') return new Response(null, { status: 201 });
+    // Como na produção em 01/10/2026: a tabela de feriados cadastrados não existe
+    if (tabela === 'feriados') {
+      return new Response(JSON.stringify({ code: 'PGRST205', message: "Could not find the table 'public.feriados'" }), { status: 404 });
+    }
     const respostas: Record<string, unknown[]> = {
       colaboradores: [ANA],
       // Ana bateu a semana toda, menos a terça 06/10

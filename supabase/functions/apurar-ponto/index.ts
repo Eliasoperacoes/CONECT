@@ -1061,12 +1061,14 @@ var banco = () => {
   const url = `${Deno.env.get("SUPABASE_URL")}/rest/v1`;
   const chave = chaveDeServico();
   const cabecalhos = { apikey: chave, Authorization: `Bearer ${chave}` };
-  const ler = async (caminho) => {
+  const ler = async (caminho, opcional = false) => {
     const todas = [];
     for (let de = 0;; de += 1000) {
       const r = await fetch(`${url}/${caminho}`, {
         headers: { ...cabecalhos, Range: `${de}-${de + 999}`, "Range-Unit": "items" }
       });
+      if (opcional && r.status === 404)
+        return [];
       if (!r.ok)
         throw new Error(`Leitura de ${caminho.split("?")[0]}: ${r.status} ${await r.text()}`);
       const pagina = await r.json();
@@ -1107,7 +1109,7 @@ Deno.serve(async (req) => {
       ler("colaboradores?select=*&ativo=eq.true&order=id"),
       ler(`registros_ponto?select=*&data=gte.${inicio}&data=lt.${hoje}&order=id`),
       ler(`justificativas_ausencia?select=*&estado=eq.aprovada&data_fim=gte.${inicio}&order=id`),
-      ler("feriados?select=*&order=id"),
+      ler("feriados?select=*&order=id", true),
       ler(`ajustes_jornada?select=*&data=gte.${inicio}&order=id`),
       ler("configuracoes?select=permissoes_ferramentas")
     ]);
