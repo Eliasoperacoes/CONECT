@@ -1734,7 +1734,7 @@ class ServicoPonto {
    * Por isso cada marcação é medida contra o que se espera dela:
    *
    *   entrada         → atraso sobre o horário de entrada da rede
-   *   retorno almoço  → intervalo maior que o contratado
+   *   retorno almoço  → intervalo fora do contratado, maior OU menor
    *   saída           → a diferença do dia, que aí já é conhecida por inteiro
    *   saída p/ almoço → nunca: sair para almoçar cedo ou tarde não é jornada
    *                     a mais nem a menos; quem decide isso é o fechamento
@@ -1802,14 +1802,37 @@ class ServicoPonto {
       if (contratado === 0) return semMotivo;
 
       const excedente = intervalo - contratado;
-      if (excedente <= tolerancia) return semMotivo;
-      return {
-        precisaMotivo: true,
-        minutos: excedente,
-        descricao: `Intervalo de ${formatarMinutos(intervalo)} — ${formatarMinutos(
-          excedente
-        )} além dos ${formatarMinutos(contratado)} do seu turno.`,
-      };
+      if (excedente > tolerancia) {
+        return {
+          precisaMotivo: true,
+          minutos: excedente,
+          descricao: `Intervalo de ${formatarMinutos(intervalo)} — ${formatarMinutos(
+            excedente
+          )} além dos ${formatarMinutos(contratado)} do seu turno.`,
+        };
+      }
+      /**
+       * O INTERVALO CURTO TAMBÉM PERGUNTA (01/10/2026).
+       *
+       * Só o intervalo LONGO pedia motivo. O José Eduardo não conseguiu
+       * bater no almoço (versão antiga do sistema aberta) e, às 15:16,
+       * bateu a saída e o retorno com 11 segundos de diferença: um almoço
+       * de zero minuto entrou sem pergunta nenhuma — e virou 1h30 de hora
+       * a mais no dia. Intervalo abaixo do contratado é ou batida fora de
+       * hora, como essa, ou intervalo não cumprido (a CLT exige 1h acima
+       * de 6h de jornada): nos dois casos quem decide precisa saber.
+       */
+      const faltou = contratado - intervalo;
+      if (faltou > tolerancia) {
+        return {
+          precisaMotivo: true,
+          minutos: faltou,
+          descricao: `Intervalo de ${formatarMinutos(intervalo)} — ${formatarMinutos(
+            faltou
+          )} a menos que os ${formatarMinutos(contratado)} do seu turno.`,
+        };
+      }
+      return semMotivo;
     }
 
     // saída: o dia inteiro já é conhecido, então mede-se a diferença real

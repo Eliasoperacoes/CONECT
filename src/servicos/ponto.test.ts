@@ -1616,6 +1616,28 @@ test('domingo não cobra horário de entrada', () => {
   ).toBe(false);
 });
 
+test('o almoço CURTO também pede motivo — o de 11 segundos do José Eduardo', () => {
+  /*
+    01/10/2026: sem conseguir bater no almoço, ele bateu a saída às 15:16:07
+    e o retorno às 15:16:18. Só o intervalo LONGO pedia motivo, e um almoço
+    de zero minuto entrou calado — virando 1h30 de hora a mais no dia.
+  */
+  equipe = [GESTOR, DO_TURNO_A];
+  baterParcial(DO_TURNO_A, '2026-09-16', { entrada: '07:24', saida_almoco: '15:16' });
+  const curto = servicoPonto.avaliarMarcacao(DO_TURNO_A.id, 'retorno_almoco', new Date('2026-09-16T15:16:18'));
+  expect(curto.precisaMotivo).toBe(true);
+  expect(curto.minutos).toBe(90);
+  expect(curto.descricao).toBe('Intervalo de 0h00 — 1h30 a menos que os 1h30 do seu turno.');
+
+  // O intervalo contratado, e o pouco mais curto dentro da tolerância, não perguntam
+  bancoRegistros = [];
+  baterParcial(DO_TURNO_A, '2026-09-16', { entrada: '07:30', saida_almoco: '12:30' });
+  expect(servicoPonto.avaliarMarcacao(DO_TURNO_A.id, 'retorno_almoco', new Date('2026-09-16T14:00:00')).precisaMotivo).toBe(false);
+  expect(servicoPonto.avaliarMarcacao(DO_TURNO_A.id, 'retorno_almoco', new Date('2026-09-16T13:52:00')).precisaMotivo).toBe(false);
+  // E o longo continua perguntando
+  expect(servicoPonto.avaliarMarcacao(DO_TURNO_A.id, 'retorno_almoco', new Date('2026-09-16T14:20:00')).descricao).toContain('além dos');
+});
+
 test('a tolerância vale também na entrada', () => {
   equipe = [GESTOR, DO_TURNO_A];
   // 5 minutos depois das 07:30: o limite por marcação da CLT. Era 8
