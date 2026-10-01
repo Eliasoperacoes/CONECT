@@ -3069,20 +3069,19 @@ class ServicoPonto {
          * apurado. Só a carga própria da ficha, quando existe, vence o
          * turno, e é a mesma precedência de `cargaPrevistaEmMinutos`.
          */
-        const turnoDaPessoa = turnoDe(c);
         // A jornada da CLT (8h no turno integral), e não o relógio do turno
         const jornadaContratada = minutosDeDiaUtilDe(c);
         const compensacao = compensacaoDoSabadoDe(c);
+        /*
+          Só a carga. O horário do almoço saiu a pedido do Elias (01/10/2026):
+          o turno, na linha ao lado, já diz o horário — repetir o almoço aqui
+          só alongava a linha.
+        */
         const horarioContratado =
           c.cargaHorariaDiariaMinutos != null
             ? `${formatarMinutos(jornadaContratada)} por dia útil (carga própria da ficha)`
-            : /* O turno já tem linha própria na ficha: aqui, a carga e o almoço */
-              `${formatarMinutos(jornadaContratada)} por dia útil${
+            : `${formatarMinutos(jornadaContratada)} por dia útil${
                 compensacao > 0 ? ` + ${formatarMinutos(compensacao)} de compensação do sábado` : ''
-              }${
-                turnoDaPessoa.intervalo?.desconta
-                  ? ` · almoço ${turnoDaPessoa.intervalo.saida} às ${turnoDaPessoa.intervalo.retorno}`
-                  : ''
               }`;
 
         // A identificação vem da ficha, não de uma lista escrita aqui. É o

@@ -3887,6 +3887,8 @@ test('o espelho mostra a conta de cada dia: previsto, relógio, variações, tol
   // decisão do Elias com a Dani (01/10/2026). O horário do turno segue lá.
   expect(html).toContain('Turno A · 07:30 às 17:10');
   expect(html).toContain('8h00 por dia útil + 0h10 de compensação do sábado');
+  // Sem o horário do almoço na linha da jornada: o turno ao lado já o diz
+  expect(html).not.toContain('· almoço 12:30');
 });
 
 test('o CSV traz as mesmas colunas de auditoria', async () => {
