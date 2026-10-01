@@ -55,6 +55,7 @@ import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
 import { AprovacaoJornada } from './AprovacaoJornada';
 import { EscalaDeFolgas } from './EscalaDeFolgas';
+import { SeletorDeMes } from './SeletorDeMes';
 import { AbaFerias } from './AbaFerias';
 import { TabelaEquipe } from './TabelaEquipe';
 import type { SecaoDestino } from '../servicos/centralDeNotificacoes';
@@ -513,6 +514,18 @@ export const PainelGestao: React.FC<Props> = ({
             <>
               {/* Período e busca */}
               <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                {/* O mês num toque — o mesmo seletor do espelho do RH */}
+                <SeletorDeMes
+                  id="gestao-mes"
+                  comRotulo={false}
+                  className="sm:w-56 flex-shrink-0"
+                  dataInicio={dataInicio}
+                  dataFim={dataFim}
+                  aoEscolher={(inicio, fim) => {
+                    setDataInicio(inicio);
+                    setDataFim(fim);
+                  }}
+                />
                 <div className="flex items-center gap-2 text-xs">
                   <label className="text-[var(--c-texto-3)]" htmlFor="gestao-de">
                     De

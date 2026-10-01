@@ -50,6 +50,7 @@ import {
   ehMarcacaoPreenchida,
 } from '../tipos';
 import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
+import { SeletorDeMes } from './SeletorDeMes';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
 import { FotoPresenca } from './FotoPresenca';
 import {
@@ -619,6 +620,18 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                   Buscando as marcações deste período...
                 </p>
               )}
+
+              {/* O mês primeiro: as datas ficam para o período fora do mês cheio */}
+              <SeletorDeMes
+                id="rh-mes-do-espelho"
+                className="mb-2.5"
+                dataInicio={dataInicio}
+                dataFim={dataFim}
+                aoEscolher={(inicio, fim) => {
+                  setDataInicio(inicio);
+                  setDataFim(fim);
+                }}
+              />
 
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
