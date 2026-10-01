@@ -65,6 +65,7 @@ outra** — a do banco é a que vale de verdade.
 | `ferramentas.ts` | Toda tela do sistema | Painel de permissões, barra de navegação |
 | `minutosDeDiaUtilDe` (`tipos.ts`) | Quanto é um dia útil desta pessoa — a ficha vence o turno | Previsto do dia, sobra do sábado, carga semanal, cabeçalho do Banco de Horas, ficha |
 | `obterJornadaDoDia().saldoMinutos` | Quanto sobrou ou faltou NESTE dia | Espelho, CSV, Banco de Horas, aba Ponto, `apurarSemana`, `apurarDia` |
+| `apuracaoDoDia.ts` | As regras do dia — previsto, batidas esperadas, falta, saldo, o que vira pedido. Lê os dados por uma **fonte** trocável | O aplicativo (fonte = cache, ligada em `ponto.ts`) e a função de servidor `apurar-ponto` (fonte = banco, relógio de Brasília). Só importa `tipos` e `toleranciaDoPonto`, para ir inteira ao servidor |
 | `mural.ts` | Quem alcança uma publicação, quem devia ler, quem pode editar | Central, painel da publicação, chat, contador de leitura |
 | `textoRico.ts` | Como o texto de uma publicação é escapado, e a marcação de citar alguém | Leitura, resumo do cartão, recado do chat, campo ao vivo |
 

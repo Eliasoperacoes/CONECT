@@ -268,8 +268,10 @@ test('a folga do sabado JA VEM DESCONTADA do previsto do ciclo', async () => {
    */
   // Sem batida no dia (ver o caso da Fernanda em ponto.test.ts): com
   // batida, o previsto é a jornada normal e o saldo não desce de zero
-  expect(codigo.replace(/\s+/g, ' ')).toContain(
-    "situacaoDoDia(colaborador.id, data) !== 'normal' && this.obterMarcacoesDoDia(colaborador.id, data).length === 0 ) { return 0; }"
+  // A regra do previsto mora em `apuracaoDoDia` (01/10/2026), lida pela fonte
+  const regras = await Bun.file(new URL('./apuracaoDoDia.ts', import.meta.url)).text();
+  expect(regras.replace(/\s+/g, ' ')).toContain(
+    "fonte.situacaoDoDia(colaborador.id, data) !== 'normal' && fonte.marcacoesDoDia(colaborador.id, data).length === 0 ) { return 0; }"
   );
 
   const inicio = codigo.indexOf('relacaoSemanalDaEquipe');
@@ -578,15 +580,19 @@ test('falta de BATIDA e dita como batida, nao como debito de hora', async () => 
  * Era o segundo lugar que faz a mesma pergunta — corrigi o primeiro e deixei
  * este passar.
  */
+/** O serviço e as regras do dia, que saíram dele para `apuracaoDoDia` (01/10/2026). */
+const lerPontoERegras = async (): Promise<string> =>
+  (await lerPonto()) + (await Bun.file(new URL('./apuracaoDoDia.ts', import.meta.url)).text());
+
 test('o dia fecha conforme a jornada da pessoa, e nao do calendario', async () => {
-  const ponto = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+  const ponto = await lerPontoERegras();
 
   expect(ponto).toContain('marcacoesEsperadas(data, colaborador).every(');
   expect(ponto).not.toContain('marcacoesEsperadas(data).every(');
 });
 
 test('todo lugar que pergunta as batidas passa a PESSOA', async () => {
-  const ponto = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+  const ponto = await lerPontoERegras();
 
   /**
    * A chamada sem pessoa continua existindo de propósito — há trechos que

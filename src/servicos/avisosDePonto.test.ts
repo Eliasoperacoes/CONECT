@@ -116,8 +116,13 @@ test('o dia que ENTRA na fila avisa quem acompanha, pela regra do organograma', 
   const ponto = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
   const apurar = trecho(ponto, 'async apurarDia(', 16000);
 
-  // Só quando PASSA a esperar decisão: reapurar o mesmo pendente não avisa de novo
-  expect(apurar).toContain("ajuste.estado === 'pendente' && existente?.estado !== 'pendente'");
+  // Só quando PASSA a esperar decisão: reapurar o mesmo pendente não avisa de
+  // novo. A regra é de `decidirApuracao` (apuracaoDoDia.ts); o aviso a segue
+  const regras = await Bun.file(new URL('./apuracaoDoDia.ts', import.meta.url)).text();
+  expect(trecho(regras, 'export const decidirApuracao', 16000)).toContain(
+    "entrouNaFila: ajuste.estado === 'pendente' && existente?.estado !== 'pendente'"
+  );
+  expect(apurar).toContain('if (decisao.entrouNaFila && dono) {');
   expect(apurar).toContain('quemAcompanha((quem) => deveSerAvisadoSobre(quem, dono, todos))');
 });
 

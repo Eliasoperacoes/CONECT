@@ -255,15 +255,19 @@ test('a tolerância é aplicada NUM lugar só, e todos leem o saldo dele', async
    * líquido contra 10, maior variação contra 5) e o espelho mostrava o
    * saldo sem tolerância nenhuma. Dois números para o mesmo dia.
    */
-  const ponto = await Bun.file(new URL('./ponto.ts', import.meta.url)).text();
+  // O serviço e as regras do dia, que saíram dele para `apuracaoDoDia`
+  const ponto =
+    (await Bun.file(new URL('./ponto.ts', import.meta.url)).text()) +
+    (await Bun.file(new URL('./apuracaoDoDia.ts', import.meta.url)).text());
   const semComentarios = ponto.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
   expect(semComentarios.match(/aplicarTolerancia\(/g)?.length).toBe(1);
 
   // A apuração grava o saldo apurado, sem refazer a conta
+  // A decisão do que gravar saiu de `apurarDia` para `decidirApuracao`
   const apurar = semComentarios.slice(
-    semComentarios.indexOf('async apurarDia('),
-    semComentarios.indexOf('async apurarDia(') + 3000
+    semComentarios.indexOf('export const decidirApuracao'),
+    semComentarios.indexOf('export const decidirApuracao') + 3000
   );
   expect(apurar).toContain('const diferenca = jornada.saldoMinutos;');
   expect(apurar).not.toContain('maiorVariacaoDoDia');
