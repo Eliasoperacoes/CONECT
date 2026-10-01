@@ -52,29 +52,6 @@ export const periodoDosPontosIncompletos = (hoje: string): { inicio: string; fim
 };
 
 /**
- * QUEM ESTÁ COM O ESPELHO INCOMPLETO: uma linha por pessoa, com quantos
- * dias e o mais recente (para abrir o espelho no mês certo). Usado no topo
- * de Espelhos de ponto e no cartão do painel do RH — a mesma lista desta
- * sub-aba, agrupada.
- */
-export const pessoasComEspelhoIncompleto = (
-  pontos: PontoIncompleto[]
-): Array<{ colaborador: Colaborador; dias: number; maisRecente: string }> => {
-  const porPessoa = new Map<string, { colaborador: Colaborador; dias: number; maisRecente: string }>();
-  for (const p of pontos) {
-    const atual = porPessoa.get(p.colaborador.id);
-    if (!atual) porPessoa.set(p.colaborador.id, { colaborador: p.colaborador, dias: 1, maisRecente: p.data });
-    else {
-      atual.dias++;
-      if (p.data > atual.maisRecente) atual.maisRecente = p.data;
-    }
-  }
-  return [...porPessoa.values()].sort(
-    (a, b) => b.dias - a.dias || a.colaborador.nome.localeCompare(b.colaborador.nome)
-  );
-};
-
-/**
  * As batidas do dia, na ordem, cada uma com o horário feito (ou nenhum).
  * Os horários vêm com o próprio ponto (`p.horas`), do banco — e não do
  * cache do aparelho, que pode não ter aquele dia.

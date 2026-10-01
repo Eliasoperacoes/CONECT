@@ -38,6 +38,8 @@ let bancoRecusaAjuste = false;
 let sincronizacoes = 0;
 /** A função do banco `dias_com_batida_incompleta` existe? (pontos-incompletos.sql) */
 let funcaoDosIncompletos = true;
+/** A função do banco `dias_com_batida` existe? (dias-com-batida.sql) */
+let funcaoDosDiasComBatida = true;
 /** A última janela de batidas que o serviço pediu ao banco. */
 let janelaPedida: { inicio: string; fim: string } | null = null;
 
@@ -103,6 +105,16 @@ mock.module('./nuvem', () => ({
         dias.set(chave, d);
       }
       return [...dias.values()].filter((d) => d.tipos.length < 4);
+    },
+    // A função dias_com_batida: os dias em que cada pessoa bateu
+    buscarDiasComBatida: async (inicio: string, fim: string) => {
+      if (!funcaoDosDiasComBatida) return null;
+      const porPessoa = new Map<string, Set<string>>();
+      for (const r of bancoRegistros) {
+        if (r.data < inicio || r.data > fim) continue;
+        porPessoa.set(r.colaboradorId, (porPessoa.get(r.colaboradorId) || new Set()).add(r.data));
+      }
+      return [...porPessoa].map(([colaboradorId, dias]) => ({ colaboradorId, dias: [...dias].sort() }));
     },
     // Espelha o banco simulado no cache, como faz a ponte de verdade
     sincronizarPonto: async (periodo?: { inicio: string; fim: string }) => {
@@ -182,6 +194,7 @@ beforeEach(() => {
   sincronizacoes = 0;
   janelaPedida = null;
   funcaoDosIncompletos = true;
+  funcaoDosDiasComBatida = true;
   modoNuvem = true;
   colaboradorLogado = ELIAS;
   equipe = [ELIAS, ANA];
@@ -4378,6 +4391,62 @@ test('sem a função no banco, os pontos incompletos voltam ao aparelho', async 
   baterParcial(DO_TURNO_A, diasAtras(3), { entrada: '07:30' });
   const pontos = await servicoPonto.buscarPontosIncompletos(diasAtras(10), diasAtras(1));
   expect(pontos).toHaveLength(1);
+});
+
+/*
+  O ESPELHO INCOMPLETO CONTA O DIA VAZIO (01/10/2026).
+  O Elias viu "1 dia" para quem bateu uma vez em setembro: os dias de
+  trabalho sem batida nenhuma não entravam. Semana de 13/09 (domingo) a
+  18/09/2026 (sexta), turno A.
+*/
+const semanaDoEspelho = () => {
+  // A semana inteira já passou (o relógio da suíte para em 16/09)
+  emOutubro();
+  baterParcial(DO_TURNO_A, '2026-09-15', { entrada: '07:30', saida_almoco: '12:30', retorno_almoco: '14:00', saida: '17:10' });
+  baterParcial(DO_TURNO_A, '2026-09-16', { entrada: '07:30' });
+  // O aparelho não tem nada: a conta tem de vir do banco
+  armazenamento.setItem(CHAVE_REGISTROS, JSON.stringify([]));
+};
+
+test('o espelho incompleto soma os dias sem batida aos dias sem fechar', async () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  semanaDoEspelho();
+
+  const lista = await servicoPonto.buscarEspelhosIncompletos('2026-09-13', '2026-09-18');
+  const dele = lista.find((e) => e.colaborador.id === DO_TURNO_A.id)!;
+  // Domingo não conta; o dia 15 fechou; o 16 começou e não fechou
+  expect(dele.semBatida).toEqual(['2026-09-14', '2026-09-17', '2026-09-18']);
+  expect(dele.semFechar.map((p) => p.data)).toEqual(['2026-09-16']);
+  expect(dele.total).toBe(4);
+  expect(dele.maisRecente).toBe('2026-09-18');
+  // O banco foi perguntado numa linha por pessoa — não se baixou a rede
+  expect(janelaPedida).toBeNull();
+});
+
+test('antes da admissão não há dia vazio', async () => {
+  const ADMITIDO = { ...DO_TURNO_A, dataAdmissao: '2026-09-17' };
+  equipe = [GESTOR, ADMITIDO];
+  colaboradorLogado = GESTOR;
+  semanaDoEspelho();
+
+  const dele = (await servicoPonto.buscarEspelhosIncompletos('2026-09-13', '2026-09-18')).find(
+    (e) => e.colaborador.id === ADMITIDO.id
+  )!;
+  expect(dele.semBatida).toEqual(['2026-09-17', '2026-09-18']);
+});
+
+test('sem a função dias_com_batida no banco, a conta alarga o cache e dá o mesmo', async () => {
+  funcaoDosDiasComBatida = false;
+  equipe = [GESTOR, DO_TURNO_A];
+  colaboradorLogado = GESTOR;
+  semanaDoEspelho();
+
+  const dele = (await servicoPonto.buscarEspelhosIncompletos('2026-09-13', '2026-09-18')).find(
+    (e) => e.colaborador.id === DO_TURNO_A.id
+  )!;
+  expect(dele.semBatida).toEqual(['2026-09-14', '2026-09-17', '2026-09-18']);
+  expect(janelaPedida).not.toBeNull();
 });
 
 test('o estágio de 2 batidas, com as 2 feitas, não está incompleto', async () => {

@@ -1035,6 +1035,30 @@ class PonteNuvem {
   }
 
   /**
+   * EM QUE DIAS CADA PESSOA BATEU, uma linha por pessoa.
+   *
+   * Para contar os dias vazios do espelho sem baixar as batidas da rede:
+   * dois meses de 89 pessoas seriam dezenas de milhares de linhas, e aqui
+   * são 89. A segurança de `registros_ponto` vale (security invoker).
+   * Sem a função no banco (dias-com-batida.sql), devolve null.
+   */
+  async buscarDiasComBatida(
+    inicio: string,
+    fim: string
+  ): Promise<Array<{ colaboradorId: string; dias: string[] }> | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc('dias_com_batida', { inicio, fim });
+    if (error) {
+      console.warn('Dias com batida pelo banco indisponíveis; usando o aparelho:', error.message);
+      return null;
+    }
+    return ((data || []) as Array<{ colaborador_id: string; dias: string[] }>).map((l) => ({
+      colaboradorId: l.colaborador_id,
+      dias: l.dias || [],
+    }));
+  }
+
+  /**
    * AS BATIDAS DE UMA PESSOA NUM MÊS FECHADO, somadas ao cache.
    *
    * Para o espelho do mês na aba Eu. Não troca a janela, de propósito:

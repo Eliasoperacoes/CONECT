@@ -846,6 +846,24 @@ $$;
 
 grant execute on function public.dias_com_batida_incompleta(date, date) to authenticated;
 
+-- Em que dias cada pessoa bateu, uma linha por pessoa: o aplicativo conta
+-- os dias de trabalho vazios do espelho (dias-com-batida.sql)
+create or replace function public.dias_com_batida(inicio date, fim date)
+returns table (colaborador_id text, dias date[])
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select r.colaborador_id,
+         array_agg(distinct r.data order by r.data)
+    from public.registros_ponto r
+   where r.data between inicio and fim
+   group by r.colaborador_id;
+$$;
+
+grant execute on function public.dias_com_batida(date, date) to authenticated;
+
 
 drop policy if exists ponto_leitura on public.registros_ponto;
 create policy ponto_leitura on public.registros_ponto

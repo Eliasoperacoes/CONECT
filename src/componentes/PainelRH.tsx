@@ -51,7 +51,7 @@ import { AbaHolerites } from './AbaHolerites';
 import { AbaAdvertencias } from './AbaAdvertencias';
 import { AbaAtestados } from './AbaAtestados';
 import { AbaFerias } from './AbaFerias';
-import { periodoDosPontosIncompletos, pessoasComEspelhoIncompleto } from './PontosIncompletos';
+import { periodoDosPontosIncompletos } from './PontosIncompletos';
 import { SeparacaoPorSetor } from './SeparacaoPorSetor';
 
 /**
@@ -148,14 +148,14 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
    * ninguém. Indicador que depende de alguém lembrar de atualizar está
    * errado no dia seguinte.
    */
-  /** Quantas pessoas estão com o espelho incompleto: perguntado ao banco, como a sub-aba. */
+  /** Quantas pessoas estão com o espelho incompleto: a mesma conta de Espelhos de ponto. */
   const [espelhosIncompletos, setEspelhosIncompletos] = useState(0);
   useEffect(() => {
     let vivo = true;
     const { inicio, fim } = periodoDosPontosIncompletos(dataDeHoje());
     servicoPonto
-      .buscarPontosIncompletos(inicio, fim)
-      .then((lista) => vivo && setEspelhosIncompletos(pessoasComEspelhoIncompleto(lista).length));
+      .buscarEspelhosIncompletos(inicio, fim)
+      .then((lista) => vivo && setEspelhosIncompletos(lista.length));
     return () => {
       vivo = false;
     };
@@ -279,7 +279,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
       titulo: `${espelhosIncompletos} ${
         espelhosIncompletos === 1 ? 'pessoa com espelho incompleto' : 'pessoas com espelho incompleto'
       }`,
-      explicacao: 'Dias que começaram e não fecharam — o espelho não fecha assim',
+      explicacao: 'Dias sem batida ou que não fecharam — o espelho não fecha assim',
       acao: 'Ver quem',
       icone: <AlertTriangle className="w-4 h-4" />,
       aoAbrir: () => setSecao('espelhos'),

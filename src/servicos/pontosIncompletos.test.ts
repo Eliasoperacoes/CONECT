@@ -26,9 +26,8 @@ mock.module('../servicos/ponto', () => ({
   descreverBatidasQueFaltam: () => '',
 }));
 
-const { periodoDosPontosIncompletos, pessoasComEspelhoIncompleto } = await import(
-  '../componentes/PontosIncompletos'
-);
+const { periodoDosPontosIncompletos } = await import('../componentes/PontosIncompletos');
+const { resumirEspelhosIncompletos } = await import('../componentes/EspelhosIncompletos');
 const ler = (arq: string) => readFileSync(join(import.meta.dir, '../componentes', arq), 'utf8');
 
 test('olha do 1º do mês passado até ontem: o mês que vai fechar está incluído', () => {
@@ -66,34 +65,45 @@ test('UMA ação por dia, que abre as batidas do dia — e não um botão por ba
   expect(tela).toContain('hora: p.horas[tipo] || null');
 });
 
-test('quem tem espelho incompleto: uma linha por pessoa, com os dias e o mais recente', () => {
-  const ana = { id: 'ana', nome: 'Ana' } as any;
-  const yan = { id: 'yan', nome: 'Yan' } as any;
-  const ponto = (colaborador: any, data: string) =>
-    ({ colaborador, data, feitas: 2, esperadas: 4, faltam: [], horas: {} }) as any;
-
-  expect(
-    pessoasComEspelhoIncompleto([ponto(ana, '2026-09-29'), ponto(yan, '2026-09-12'), ponto(yan, '2026-09-30')])
-  ).toEqual([
-    { colaborador: yan, dias: 2, maisRecente: '2026-09-30' },
-    { colaborador: ana, dias: 1, maisRecente: '2026-09-29' },
-  ]);
+test('a linha recolhida soma os dias, separados pelo que há para fazer', () => {
+  const e = (semBatida: number, semFechar: number) =>
+    ({ semBatida: Array(semBatida).fill('d'), semFechar: Array(semFechar).fill({}) }) as any;
+  expect(resumirEspelhosIncompletos([e(28, 1), e(0, 4), e(5, 0)])).toEqual({
+    pessoas: 3,
+    semBatida: 33,
+    semFechar: 5,
+  });
 });
 
-test('Espelhos de ponto mostra no alto quem tem espelho incompleto, fora do mês escolhido', () => {
-  // No dia 1º de outubro o espelho abria em outubro, e os dias sem fechar
-  // eram de setembro: o Elias não achou ninguém
+test('Espelhos de ponto: o aviso escala para a rede inteira', () => {
+  /*
+    A primeira versão era uma fileira de botões, um por pessoa: com seis já
+    quebrava em duas linhas, e o Elias lembrou que são 89 colaboradores.
+    Agora é uma linha recolhida e, aberta, uma tabela com busca e rolagem
+    própria.
+  */
+  const aviso = ler('EspelhosIncompletos.tsx');
+  expect(aviso).toContain('aria-expanded={aberto}');
+  expect(aviso).toContain('useState(false)'); // começa recolhido
+  expect(aviso).toContain('max-h-[min(60vh,440px)] overflow-y-auto');
+  expect(aviso).toContain('id="busca-espelhos-incompletos"');
+  expect(aviso).not.toContain('flex-wrap');
+  // Os dois números, e não "1 dia" para quem tem 28 dias em branco
+  expect(aviso).toContain('e.semBatida.length');
+  expect(aviso).toContain('e.semFechar.length');
+
+  // No dia 1º de outubro o espelho abria em outubro, e os dias incompletos
+  // eram de setembro: cada linha abre a pessoa no mês do mais recente
   const espelho = ler('BancoDeHoras.tsx');
-  expect(espelho).toContain('id="espelhos-incompletos"');
-  expect(espelho).toContain('pessoasComEspelhoIncompleto(lista)');
-  // Cada nome abre o espelho da pessoa já no mês do dia que não fechou
+  expect(espelho).toContain('<EspelhosIncompletos');
+  expect(espelho).toContain('.buscarEspelhosIncompletos(inicio, fim)');
   expect(espelho).toContain('periodoDoMesNaLista(e.maisRecente.slice(0, 7), dataDeHoje())');
   expect(espelho).toContain('setDetalheId(e.colaborador.id);');
 });
 
 test('o cartão do painel do RH conta o espelho incompleto pela mesma regra', () => {
   const rh = ler('PainelRH.tsx');
-  expect(rh).toContain('pessoasComEspelhoIncompleto(lista).length');
+  expect(rh).toContain('.buscarEspelhosIncompletos(inicio, fim)');
   expect(rh).toContain("'pessoas com espelho incompleto'");
 });
 
@@ -102,4 +112,6 @@ test('o espelho da pessoa avisa o responsável dos dias sem fechar', () => {
   const individual = espelho.slice(espelho.indexOf('{/* ---------- ESPELHO INDIVIDUAL ---------- */}'));
   expect(individual).toContain('id="aviso-espelho-incompleto"');
   expect(individual).toContain('servicoPonto.batidasQueFaltam(detalhe.colaborador, j.data)');
+  // E o dia de trabalho sem batida nenhuma, pela regra do "Preencher dias vazios"
+  expect(individual).toContain('servicoPonto.ehDiaVazio(');
 });

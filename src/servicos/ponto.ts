@@ -349,6 +349,22 @@ export interface PontoIncompleto {
   horas: Partial<Record<TipoMarcacao, string>>;
 }
 
+/**
+ * O ESPELHO INCOMPLETO DE UMA PESSOA: os dias que começaram e não fecharam
+ * e os dias de trabalho que ficaram sem batida nenhuma. Os dois impedem o
+ * espelho de fechar. O Elias viu "1 dia" para quem bateu uma vez em
+ * setembro: os outros 28 dias vazios não entravam na conta.
+ */
+export interface EspelhoIncompleto {
+  colaborador: Colaborador;
+  semFechar: PontoIncompleto[];
+  /** Dias de trabalho, já passados, sem batida nenhuma. */
+  semBatida: string[];
+  total: number;
+  /** O dia incompleto mais recente: é o mês que o espelho abre. */
+  maisRecente: string;
+}
+
 /** Um dia com as batidas que teve, venha do banco ou do aparelho. */
 interface DiaComBatidas {
   colaboradorId: string;
@@ -1792,6 +1808,56 @@ class ServicoPonto {
       if (dias) return this.montarPontosIncompletos(dias as DiaComBatidas[]);
     }
     return this.obterPontosIncompletos(dataInicio, dataFim);
+  }
+
+  /**
+   * O DIA DE TRABALHO QUE FICOU VAZIO.
+   *
+   * Já passou, esperava batida (domingo, feriado, folga e o sábado de quem
+   * não vem não esperam), não tem ausência que o cubra, é de depois da
+   * admissão e não teve batida nenhuma. É o dia que o "Preencher dias
+   * vazios" preenche e o que conta no espelho incompleto — a mesma regra.
+   */
+  ehDiaVazio(colaborador: Colaborador, data: string, batidasNoDia: number): boolean {
+    if (batidasNoDia > 0 || data >= dataDeHoje()) return false;
+    if (colaborador.dataAdmissao && data < colaborador.dataAdmissao) return false;
+    if (marcacoesEsperadas(data, colaborador).length === 0) return false;
+    return situacaoDoDia(colaborador.id, data) === 'normal';
+  }
+
+  /**
+   * QUEM ESTÁ COM O ESPELHO INCOMPLETO, e quanto falta a cada um.
+   *
+   * Os dias que começaram e não fecharam vêm de `buscarPontosIncompletos`.
+   * Os dias vazios precisam saber em que dias cada pessoa bateu: o banco
+   * responde numa linha por pessoa (`dias_com_batida`) — baixar as batidas
+   * da rede de dois meses seria dezenas de milhares de linhas. Sem a função
+   * no banco, alarga o cache para o período e conta por ele.
+   */
+  async buscarEspelhosIncompletos(dataInicio: string, dataFim: string): Promise<EspelhoIncompleto[]> {
+    const semFechar = await this.buscarPontosIncompletos(dataInicio, dataFim);
+
+    let diasComBatida: Map<string, Set<string>> | null = null;
+    if (usandoNuvem()) {
+      const doBanco = await nuvem.buscarDiasComBatida(dataInicio, dataFim);
+      if (doBanco) diasComBatida = new Map(doBanco.map((l) => [l.colaboradorId, new Set(l.dias)]));
+      else await this.garantirBatidasDoPeriodo(dataInicio, dataFim);
+    }
+    const batidasNoDia = (id: string, data: string) =>
+      diasComBatida ? (diasComBatida.get(id)?.has(data) ? 1 : 0) : this.obterMarcacoesDoDia(id, data).length;
+
+    const datas = listarDatasDoPeriodo(dataInicio, dataFim);
+    const lista: EspelhoIncompleto[] = [];
+    for (const colaborador of this.obterColaboradoresVisiveis()) {
+      if (colaborador.ativo === false || !this.podeDecidirSobre(colaborador)) continue;
+      const seus = semFechar.filter((p) => p.colaborador.id === colaborador.id);
+      const semBatida = datas.filter((data) => this.ehDiaVazio(colaborador, data, batidasNoDia(colaborador.id, data)));
+      const total = seus.length + semBatida.length;
+      if (total === 0) continue;
+      const maisRecente = [...seus.map((p) => p.data), ...semBatida].reduce((a, b) => (b > a ? b : a));
+      lista.push({ colaborador, semFechar: seus, semBatida, total, maisRecente });
+    }
+    return lista.sort((a, b) => b.total - a.total || a.colaborador.nome.localeCompare(b.colaborador.nome));
   }
 
   /**
@@ -3294,20 +3360,15 @@ class ServicoPonto {
     if (usandoNuvem()) await nuvem.sincronizarPonto();
 
     const turno = turnoDe(colaborador);
-    const hoje = dataDeHoje();
     let dias = 0;
 
     for (const data of listarDatasDoPeriodo(dados.dataInicio, dados.dataFim)) {
-      if (data >= hoje) continue;
-
-      // Dia que não é dela: domingo, feriado, folga, sábado de quem não vem
-      const esperadas = marcacoesEsperadas(data, colaborador);
-      if (esperadas.length === 0) continue;
-      if (situacaoDoDia(dados.colaboradorId, data) !== 'normal') continue;
-
-      // TRAVA 1: uma batida que seja, e o dia fica como está
+      // TRAVA 1: uma batida que seja, e o dia fica como está. Dia que não é
+      // dela (domingo, feriado, folga, ausência) também não: `ehDiaVazio`,
+      // a mesma regra que conta o espelho incompleto
       const jaTem = this.obterMarcacoesDoDia(dados.colaboradorId, data);
-      if (jaTem.length > 0) continue;
+      if (!this.ehDiaVazio(colaborador, data, jaTem.length)) continue;
+      const esperadas = marcacoesEsperadas(data, colaborador);
 
       const horarios = this.horariosDoTurnoParaODia(turno, data, esperadas);
       if (!horarios) continue;

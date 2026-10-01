@@ -51,7 +51,8 @@ import {
 } from '../tipos';
 import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
 import { SeletorDeMes, periodoDoMesNaLista } from './SeletorDeMes';
-import { periodoDosPontosIncompletos, pessoasComEspelhoIncompleto } from './PontosIncompletos';
+import { periodoDosPontosIncompletos } from './PontosIncompletos';
+import { EspelhosIncompletos } from './EspelhosIncompletos';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
 import { FotoPresenca } from './FotoPresenca';
 import {
@@ -70,6 +71,7 @@ import {
   formatarSaldo,
   primeiroDiaDoMes,
   descreverBatidasQueFaltam,
+  EspelhoIncompleto,
 } from '../servicos/ponto';
 import { podeUsar } from '../servicos/permissoes';
 import { nuvem } from '../servicos/nuvem';
@@ -116,18 +118,16 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
    * QUEM ESTÁ COM O ESPELHO INCOMPLETO, no mês passado e no atual —
    * qualquer que seja o mês escolhido na tela. O Elias abriu Espelhos no
    * dia 1º de outubro e não achou ninguém: o mês aberto era outubro, e os
-   * dias sem fechar eram de setembro. Perguntado ao banco, como a sub-aba
-   * "Pontos incompletos" (a mesma regra).
+   * dias sem fechar eram de setembro. Conta os dias sem fechar e os dias
+   * de trabalho sem batida nenhuma (`buscarEspelhosIncompletos`).
    */
-  const [espelhosIncompletos, setEspelhosIncompletos] = useState<
-    ReturnType<typeof pessoasComEspelhoIncompleto>
-  >([]);
+  const [espelhosIncompletos, setEspelhosIncompletos] = useState<EspelhoIncompleto[]>([]);
   useEffect(() => {
     let vivo = true;
     const { inicio, fim } = periodoDosPontosIncompletos(dataDeHoje());
     servicoPonto
-      .buscarPontosIncompletos(inicio, fim)
-      .then((lista) => vivo && setEspelhosIncompletos(pessoasComEspelhoIncompleto(lista)));
+      .buscarEspelhosIncompletos(inicio, fim)
+      .then((lista) => vivo && setEspelhosIncompletos(lista));
     return () => {
       vivo = false;
     };
@@ -627,51 +627,15 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
               escolhido: cada nome abre o espelho da pessoa já no mês do dia
               que não fechou.
             */}
-            {espelhosIncompletos.length > 0 && (
-              <div
-                id="espelhos-incompletos"
-                role="region"
-                aria-label="Espelhos incompletos"
-                className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3.5 flex flex-col gap-2.5"
-              >
-                <div className="flex items-start gap-2.5">
-                  <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <span className="block text-sm font-bold text-[var(--c-texto)]">
-                      {espelhosIncompletos.length}{' '}
-                      {espelhosIncompletos.length === 1
-                        ? 'colaborador com espelho incompleto'
-                        : 'colaboradores com espelho incompleto'}
-                    </span>
-                    <span className="block text-xs text-[var(--c-texto-2)]">
-                      Dias deste mês e do anterior que começaram e não fecharam. Abra o espelho e
-                      lance as batidas que faltam.
-                    </span>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {espelhosIncompletos.map((e) => (
-                    <button
-                      key={e.colaborador.id}
-                      type="button"
-                      id={`espelho-incompleto-${e.colaborador.id}`}
-                      onClick={() => {
-                        const { inicio, fim } = periodoDoMesNaLista(e.maisRecente.slice(0, 7), dataDeHoje());
-                        setDataInicio(inicio);
-                        setDataFim(fim);
-                        setDetalheId(e.colaborador.id);
-                      }}
-                      className="h-9 px-3 rounded-xl bg-[var(--c-superficie)] border border-amber-500/40 text-xs font-semibold text-[var(--c-texto)] hover:border-amber-500 transition-colors flex items-center gap-1.5"
-                    >
-                      {e.colaborador.nome}
-                      <span className="text-amber-700 dark:text-amber-400 font-bold">
-                        · {e.dias} {e.dias === 1 ? 'dia' : 'dias'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            <EspelhosIncompletos
+              espelhos={espelhosIncompletos}
+              aoAbrir={(e) => {
+                const { inicio, fim } = periodoDoMesNaLista(e.maisRecente.slice(0, 7), dataDeHoje());
+                setDataInicio(inicio);
+                setDataFim(fim);
+                setDetalheId(e.colaborador.id);
+              }}
+            />
 
             {/* Período e filtros */}
             <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-3.5 flex flex-col gap-3">
@@ -1220,13 +1184,22 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
               O ESPELHO NÃO FECHA INCOMPLETO — pedido do Elias: o
               responsável é avisado para conferir e editar. A regra é a de
               "Pontos incompletos" (`batidasQueFaltam`), e cada dia diz o
-              que falta.
+              que falta. O dia de trabalho sem batida nenhuma também conta
+              (`ehDiaVazio`), mas em número: 28 datas em lista não se leem.
             */}
             {(() => {
               const incompletos = detalhe.jornadas
                 .map((j) => ({ data: j.data, faltam: servicoPonto.batidasQueFaltam(detalhe.colaborador, j.data) }))
                 .filter((d) => d.faltam.length > 0);
-              if (incompletos.length === 0) return null;
+              const semBatida = detalhe.jornadas.filter((j) =>
+                servicoPonto.ehDiaVazio(
+                  detalhe.colaborador,
+                  j.data,
+                  servicoPonto.obterMarcacoesDoDia(detalhe.colaborador.id, j.data).length
+                )
+              ).length;
+              const total = incompletos.length + semBatida;
+              if (total === 0) return null;
               return (
                 <div
                   id="aviso-espelho-incompleto"
@@ -1236,13 +1209,20 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                   <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div className="min-w-0 flex flex-col gap-1">
                     <span className="text-sm font-bold text-[var(--c-texto)]">
-                      Este espelho tem {incompletos.length} dia{incompletos.length === 1 ? '' : 's'} sem fechar
+                      Este espelho tem {total} dia{total === 1 ? '' : 's'} incompleto{total === 1 ? '' : 's'}
                     </span>
                     <span className="text-xs text-[var(--c-texto-2)]">
-                      Confira e lance as batidas que faltam antes de fechar o mês — clique no horário
-                      vazio da linha.
+                      Confira e acerte antes de fechar o mês — clique no horário vazio da linha.
                     </span>
                     <ul className="mt-1 flex flex-col gap-0.5">
+                      {semBatida > 0 && (
+                        <li className="text-xs text-[var(--c-texto)]">
+                          <strong>
+                            {semBatida} dia{semBatida === 1 ? '' : 's'} sem batida
+                          </strong>
+                          {podeReapurar ? ' — "Preencher dias vazios" escreve neles o horário do turno' : ''}
+                        </li>
+                      )}
                       {incompletos.map((d) => (
                         <li key={d.data} className="text-xs text-[var(--c-texto)]">
                           <strong>{formatarDataBR(d.data)}</strong> — {descreverBatidasQueFaltam(d.faltam)}
