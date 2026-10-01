@@ -29,6 +29,15 @@ test('as datas de um mês cheio marcam o mês; as outras, "personalizado"', () =
   expect(mesDoPeriodo('2026-08-01', '2026-09-30', HOJE)).toBe('');
 });
 
+test('o espelho de UMA pessoa também escolhe o mês', () => {
+  // O seletor só existia no quadro da lista, que some ao abrir alguém: o
+  // Elias abriu a Fernanda no dia 1º e não achou como ver setembro
+  const fonte = readFileSync(join(import.meta.dir, '../componentes/BancoDeHoras.tsx'), 'utf8');
+  const individual = fonte.slice(fonte.indexOf('{/* ---------- ESPELHO INDIVIDUAL ---------- */}'));
+  expect(individual).toContain('<SeletorDeMes');
+  expect(individual).toContain('id="rh-mes-do-espelho-individual"');
+});
+
 test('o espelho do RH e a Equipe e ponto usam o mesmo seletor', () => {
   const ler = (arq: string) => readFileSync(join(import.meta.dir, '../componentes', arq), 'utf8');
   for (const tela of ['BancoDeHoras.tsx', 'PainelGestao.tsx']) {

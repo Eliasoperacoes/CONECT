@@ -1123,6 +1123,25 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
               </div>
             </div>
 
+            {/*
+              O MÊS TAMBÉM AQUI, no espelho da pessoa.
+
+              O seletor só existia no quadro da lista, que some ao abrir
+              alguém — e no dia 1º o espelho individual ficava preso a um
+              período de um dia. O Elias abriu a Fernanda e não achou como
+              ver setembro. É o mesmo período da lista: mudar aqui muda lá.
+            */}
+            <SeletorDeMes
+              id="rh-mes-do-espelho-individual"
+              className="sm:max-w-xs"
+              dataInicio={dataInicio}
+              dataFim={dataFim}
+              aoEscolher={(inicio, fim) => {
+                setDataInicio(inicio);
+                setDataFim(fim);
+              }}
+            />
+
             {podeReapurar && (
               <div className="flex flex-wrap gap-2">
                 <button
