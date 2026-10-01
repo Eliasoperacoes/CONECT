@@ -77,15 +77,25 @@ test('5. entrou 5 min antes e saiu 1 depois: não gera saldo — o limite é inc
   expect(dia('07:25', '17:11').saldoApurado).toBe(0);
 });
 
-test('6. entrou MAIS de 5 min antes: a variação conta inteira', () => {
-  // O exemplo 5 do pedido: 07:24 e 17:10
+/*
+  O LIMITE DO DIA É DE 10 (01/10/2026). Regra do Elias: "o limite é 5− e
+  5+ nas batidas, e para contabilizá-las elas têm que somar mais de 10 min
+  no fim do dia (desconsiderando os 10 do sábado)". Até então o dia tinha
+  limite de 5, e a Beatriz — almoço 6 min mais curto, o resto no horário —
+  foi parar na fila com +0h06 de hora extra.
+*/
+test('6. entrou MAIS de 5 min antes: passa da batida, mas só conta se o dia passar de 10', () => {
+  // O exemplo 5 do pedido: 07:24 e 17:10 — rompe os 5 da batida, e o dia fica em +6
   const r = dia('07:24', '17:10');
   expect(r.entradaESaida?.tolerado).toBe(false);
-  expect(r.saldoApurado).toBe(6);
+  expect(r.saldoApurado).toBe(0);
+  // Seis antes e seis depois: o dia soma +12, e conta inteiro
+  expect(dia('07:24', '17:16').saldoApurado).toBe(12);
 });
 
-test('7. saiu MAIS de 5 min depois: a variação conta inteira', () => {
-  expect(dia('07:30', '17:16').saldoApurado).toBe(6);
+test('7. saiu MAIS de 5 min depois: conta quando o dia passa de 10', () => {
+  expect(dia('07:30', '17:16').saldoApurado).toBe(0);
+  expect(dia('07:30', '17:21').saldoApurado).toBe(11);
 });
 
 test('8. somadas, passaram de 10: as DUAS contam inteiras, e não só o excedente', () => {
@@ -130,8 +140,10 @@ test('10. sábado de 4 horas cumprido: saldo zero', () => {
 
 test('11. sábado com poucos minutos de diferença: a mesma tolerância', () => {
   expect(sabado('07:58', '12:03').saldoApurado).toBe(0);
-  // 7 depois numa marcação só: conta
-  expect(sabado('08:00', '12:07').saldoApurado).toBe(7);
+  // 7 depois numa marcação só: rompe a batida, mas o dia não passa de 10
+  expect(sabado('08:00', '12:07').saldoApurado).toBe(0);
+  // 11 depois: passa dos 10 do dia, conta
+  expect(sabado('08:00', '12:11').saldoApurado).toBe(11);
 });
 
 // ---------------------------------------------------------------
@@ -155,11 +167,14 @@ test('12. o almoço tem regra própria: até 5 min SOMADOS no início e no fim',
   expect(almoco('12:32', '13:29').saldoApurado).toBe(0); // 57 min, redução de 3
   expect(almoco('12:32', '13:27').saldoApurado).toBe(0); // 55 min, redução de 5
 
-  // 54 min: redução de 6 — passa da tolerância, conta, e fica apontada
+  // 54 min: redução de 6 — passa da tolerância do almoço e fica apontada,
+  // mas o dia fecha +6, dentro dos 10: não vai ao banco (o caso da Beatriz)
   const reduzido = almoco('12:32', '13:26');
   expect(reduzido.intervalo?.tolerado).toBe(false);
   expect(reduzido.intervalo?.reducaoMinutos).toBe(6);
-  expect(reduzido.saldoApurado).toBe(6);
+  expect(reduzido.saldoApurado).toBe(0);
+  // 49 min: redução de 11 — o dia passa de 10, conta
+  expect(almoco('12:32', '13:21').saldoApurado).toBe(11);
 });
 
 test('12b. o almoço NÃO usa os 5 por marcação da entrada/saída', () => {
@@ -168,11 +183,14 @@ test('12b. o almoço NÃO usa os 5 por marcação da entrada/saída', () => {
   const r = almoco('12:27', '13:33'); // saiu 3 antes, voltou 3 depois: 66 min
   expect(r.intervalo?.variacao).toBe(6);
   expect(r.intervalo?.tolerado).toBe(false);
-  expect(r.saldoApurado).toBe(-6);
+  // Rompe a do almoço, mas o dia fecha −6, dentro dos 10
+  expect(r.saldoApurado).toBe(0);
 });
 
-test('12c. o almoço não tem 10 minutos de tolerância', () => {
-  expect(almoco('12:30', '13:38').saldoApurado).toBe(-8);
+test('12c. o almoço também só conta quando o dia passa de 10', () => {
+  // Até 01/10/2026 o almoço 8 min mais longo contava −8; agora o dia manda
+  expect(almoco('12:30', '13:38').saldoApurado).toBe(0);
+  expect(almoco('12:30', '13:41').saldoApurado).toBe(-11);
 });
 
 test('12d. almoço e entrada/saída não dividem o mesmo limite', () => {
@@ -294,8 +312,10 @@ test('ALINE, 21/09: relógio +0h01 não vira saldo — nem +0h06, nem +0h01', ()
 test('o espelho do débito: a tolerância também não aumenta o que se deve', () => {
   // Entrou 6 atrasado (−6, conta) e almoçou 5 a menos (+5, tolerado): relógio −1
   expect(dia('07:36', '17:10', ['12:30', '13:55']).saldoApurado).toBe(0);
-  // Entrou 12 atrasado, almoçou 3 a menos: relógio −9, e aí conta — o que o relógio diz
-  expect(dia('07:42', '17:10', ['12:30', '13:57']).saldoApurado).toBe(-9);
+  // Entrou 12 atrasado, almoçou 3 a menos: relógio −9, dentro dos 10 do dia
+  expect(dia('07:42', '17:10', ['12:30', '13:57']).saldoApurado).toBe(0);
+  // Entrou 15 atrasado, almoçou 3 a menos: relógio −12, e aí conta — o que o relógio diz
+  expect(dia('07:45', '17:10', ['12:30', '13:57']).saldoApurado).toBe(-12);
 });
 
 test('EM NENHUMA COMBINAÇÃO o saldo passa do relógio ou troca de sinal', () => {

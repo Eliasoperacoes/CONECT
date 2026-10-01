@@ -17,7 +17,7 @@
  * tudo —, então a porta não pode ficar aberta. Chamar de novo não estraga
  * nada: o plano é idempotente.
  */
-import { planejarApuracao, DIAS_REVISADOS } from './apurarPonto';
+import { planejarApuracao, decidirDiaNoServidor, DIAS_REVISADOS } from './apurarPonto';
 import { hojeEmBrasilia, deDataLocal, paraDataLocal } from '../servicos/apuracaoDoDia';
 import { mesAnterior, diasDoMes } from '../servicos/compensacaoDoSabado';
 import {
@@ -60,6 +60,27 @@ const chaveDeServico = (): string => {
     }
   }
   throw new Error('Sem chave de serviço no ambiente da função.');
+};
+
+/**
+ * A CHAVE PÚBLICA, nos dois formatos — a mesma da `enviar-aviso`. Com ela
+ * e a sessão de quem chama, o banco responde COMO aquela pessoa: é assim
+ * que a alçada é conferida pela regra do banco, sem cópia aqui.
+ */
+const chavePublica = (): string => {
+  const antiga = Deno.env.get('SUPABASE_ANON_KEY');
+  if (antiga) return antiga;
+  const novas = Deno.env.get('SUPABASE_PUBLISHABLE_KEYS');
+  if (novas) {
+    try {
+      const lista = JSON.parse(novas) as Record<string, string>;
+      const primeira = lista.default ?? Object.values(lista)[0];
+      if (primeira) return primeira;
+    } catch {
+      return novas;
+    }
+  }
+  throw new Error('Sem chave pública no ambiente da função.');
 };
 
 const responder = (corpo: unknown, status = 200) =>
@@ -148,7 +169,109 @@ const banco = () => {
   return { ler, gravarAjustes, gravarCompensacoes, ausentes };
 };
 
+/**
+ * UM DIA SÓ, pedido pelo APLICATIVO — a saída de quem bateu, ou a correção
+ * do RH e do líder. Entra pela sessão de quem chama, e não pelo segredo:
+ *
+ *   - o próprio dia, sem correção: qualquer um apura o seu;
+ *   - o dia de outra pessoa, ou uma correção: o banco confere a alçada
+ *     (`posso_decidir_jornada`) com a sessão de quem pediu.
+ *
+ * Decide com as linhas do banco e grava com a chave de serviço; devolve a
+ * apuração para o aparelho atualizar a tela e avisar quem acompanha.
+ */
+const apurarUmDia = async (req: Request, corpo: Record<string, unknown>): Promise<Response> => {
+  const url = Deno.env.get('SUPABASE_URL');
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  if (!jwt) return responder({ erro: 'Sem sessão.' }, 401);
+
+  const data = String(corpo.data ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return responder({ erro: 'Dia inválido.' }, 400);
+
+  const quem = await fetch(`${url}/auth/v1/user`, {
+    headers: { apikey: chaveDeServico(), Authorization: `Bearer ${jwt}` },
+  });
+  if (!quem.ok) return responder({ erro: 'Sessão inválida.' }, 401);
+  const usuario = (await quem.json()) as { id?: string };
+
+  const { ler, gravarAjustes } = banco();
+  const [eu] = await ler<LinhaColaborador>(`colaboradores?select=*&auth_user_id=eq.${usuario.id}`);
+  if (!eu) return responder({ erro: 'Sessão sem colaborador.' }, 403);
+
+  const alvoId = String(corpo.colaboradorId || eu.id);
+  const corrigido = corpo.corrigido === true;
+  if (alvoId !== eu.id || corrigido) {
+    const r = await fetch(`${url}/rest/v1/rpc/posso_decidir_jornada`, {
+      method: 'POST',
+      headers: { apikey: chavePublica(), Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ alvo: alvoId }),
+    });
+    if (!r.ok || (await r.json()) !== true) {
+      return responder({ erro: 'Você não responde pela jornada desta pessoa.' }, 403);
+    }
+  }
+
+  const [alvo, batidas, ausencias, feriados, ajustes, configuracoes] = await Promise.all([
+    ler<LinhaColaborador>(`colaboradores?select=*&id=eq.${encodeURIComponent(alvoId)}`),
+    ler<LinhaRegistroPonto>(`registros_ponto?select=*&colaborador_id=eq.${encodeURIComponent(alvoId)}&data=eq.${data}`),
+    ler<Record<string, unknown>>(
+      `justificativas_ausencia?select=*&colaborador_id=eq.${encodeURIComponent(alvoId)}&estado=eq.aprovada&data_inicio=lte.${data}&data_fim=gte.${data}`
+    ),
+    ler<Record<string, unknown>>(`feriados?select=*&data=eq.${data}`, true),
+    ler<LinhaAjuste>(`ajustes_jornada?select=*&colaborador_id=eq.${encodeURIComponent(alvoId)}&data=eq.${data}`),
+    ler<{ permissoes_ferramentas: MapaDePermissoes | null }>('configuracoes?select=permissoes_ferramentas'),
+  ]);
+  if (!alvo[0]) return responder({ erro: 'Colaborador não encontrado.' }, 404);
+
+  const decisao = decidirDiaNoServidor(
+    {
+      colaboradores: alvo.map((l) => paraColaboradorDaLinha(l, '')),
+      batidas: batidas.map(paraRegistroPonto),
+      ausencias: ausencias.map(paraJustificativa),
+      feriados: feriados.map(paraFeriado),
+      ajustes: ajustes.map(paraAjuste),
+      permissoes: configuracoes[0]?.permissoes_ferramentas ?? null,
+    },
+    {
+      colaboradorId: alvoId,
+      data,
+      hoje: hojeEmBrasilia(),
+      agora: new Date().toISOString(),
+      novoId: () => `ajuste-${crypto.randomUUID()}`,
+      motivo: typeof corpo.motivo === 'string' ? corpo.motivo.trim() || undefined : undefined,
+      anexoCaminho: typeof corpo.anexoCaminho === 'string' ? corpo.anexoCaminho || undefined : undefined,
+      corrigidoPor: corrigido ? { id: eu.id, nome: eu.nome } : undefined,
+    }
+  );
+
+  if (decisao.acao === 'nada') return responder({ ok: true, acao: 'nada' });
+  await gravarAjustes([paraLinhaAjuste(decisao.ajuste)]);
+  return responder({
+    ok: true,
+    acao: 'gravar',
+    ajuste: decisao.ajuste,
+    reescrita: decisao.reescrita,
+    entrouNaFila: decisao.entrouNaFila,
+  });
+};
+
 Deno.serve(async (req) => {
+  // O aplicativo pede um dia só; a madrugada (com o segredo) pede a rede
+  let corpo: Record<string, unknown> = {};
+  try {
+    corpo = (await req.clone().json()) as Record<string, unknown>;
+  } catch {
+    /* corpo vazio ou não-JSON: é a madrugada */
+  }
+  if (corpo?.modo === 'dia') {
+    try {
+      return await apurarUmDia(req, corpo);
+    } catch (e) {
+      console.error('Apuração do dia falhou:', e);
+      return responder({ erro: String(e instanceof Error ? e.message : e) }, 500);
+    }
+  }
+
   const segredo = Deno.env.get('APURAR_SEGREDO');
   if (!segredo || req.headers.get('x-apurar-segredo') !== segredo) {
     return responder({ erro: 'Não autorizado.' }, 401);

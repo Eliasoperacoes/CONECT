@@ -985,6 +985,56 @@ class PonteNuvem {
     return { sucesso: true, registro: paraRegistroPonto(data as LinhaRegistroPonto) };
   }
 
+  /**
+   * O DIA APURADO PELO SERVIDOR (\`apurar-ponto\`, modo "dia").
+   *
+   * Na saída, e quando o RH ou o líder corrige uma batida, o aparelho não
+   * decide nem grava a apuração: pede ao servidor, que decide com as linhas
+   * do banco e as mesmas regras (\`decidirApuracao\`), confere a alçada pela
+   * regra do banco e grava. Volta a apuração para a tela e para o aviso.
+   *
+   * \`indisponivel\`: a função não respondeu (não publicada, sem rede). Quem
+   * chama segue pelo caminho antigo enquanto o banco ainda o aceitar.
+   */
+  async apurarDiaNoServidor(pedido: {
+    data: string;
+    colaboradorId: string;
+    motivo?: string;
+    anexoCaminho?: string;
+    corrigido?: boolean;
+  }): Promise<
+    | { acao: 'nada' }
+    | { acao: 'gravar'; ajuste: AjusteJornada; entrouNaFila: boolean }
+    | { erro: string }
+    | { indisponivel: true }
+  > {
+    if (!supabase) return { indisponivel: true };
+    try {
+      const { data, error } = await supabase.functions.invoke('apurar-ponto', {
+        body: { modo: 'dia', ...pedido },
+      });
+      if (error) {
+        /*
+          Recusa de regra (403: sem alçada; 400) sobe como erro. O resto —
+          função ausente, 500, rede — cai no caminho antigo.
+        */
+        const status = (error as { context?: { status?: number } }).context?.status;
+        if (status === 403 || status === 400) {
+          const corpo = await (error as { context?: Response }).context?.json?.().catch(() => null);
+          return { erro: (corpo as { erro?: string } | null)?.erro || 'O servidor recusou a apuração.' };
+        }
+        console.warn('Apuração no servidor indisponível; seguindo pelo aparelho:', error.message);
+        return { indisponivel: true };
+      }
+      const r = data as { acao: 'nada' | 'gravar'; ajuste?: AjusteJornada; entrouNaFila?: boolean };
+      if (r?.acao === 'gravar' && r.ajuste) return { acao: 'gravar', ajuste: r.ajuste, entrouNaFila: !!r.entrouNaFila };
+      if (r?.acao === 'nada') return { acao: 'nada' };
+      return { indisponivel: true };
+    } catch {
+      return { indisponivel: true };
+    }
+  }
+
   /** Lança ou corrige a marcação do RH — aqui sobrescrever é o objetivo. */
   async salvarAjustePonto(
     registro: RegistroPonto

@@ -46,7 +46,12 @@ beforeAll(async () => {
   (globalThis as any).Deno = {
     env: {
       get: (n: string) =>
-        ({ SUPABASE_URL: 'https://banco', SUPABASE_SERVICE_ROLE_KEY: 'chave', APURAR_SEGREDO: 'segredo' })[n],
+        ({
+          SUPABASE_URL: 'https://banco',
+          SUPABASE_SERVICE_ROLE_KEY: 'chave',
+          SUPABASE_ANON_KEY: 'publica',
+          APURAR_SEGREDO: 'segredo',
+        })[n],
     },
     serve: (h: typeof tratar) => {
       tratar = h;
@@ -57,6 +62,16 @@ beforeAll(async () => {
     const headers = (init.headers || {}) as Record<string, string>;
     pedidos.push({ url, metodo: init.method || 'GET', corpo: init.body as string, range: headers.Range });
     const tabela = new URL(url).pathname.split('/').pop();
+    // A sessão de quem chama (modo "dia"): só o token "valido" é de alguém
+    if (url.includes('/auth/v1/user')) {
+      return headers.Authorization === 'Bearer valido'
+        ? new Response(JSON.stringify({ id: 'u-ana' }), { status: 200 })
+        : new Response('{}', { status: 401 });
+    }
+    // A alçada, respondida pelo banco: a Ana só decide sobre si mesma
+    if (tabela === 'posso_decidir_jornada') {
+      return new Response(JSON.stringify(JSON.parse(String(init.body)).alvo === 'ana'), { status: 200 });
+    }
     if (init.method === 'POST') return new Response(null, { status: 201 });
     // O "JWT issued at future" da primeira simulação em produção: passa na segunda
     if (tabela === 'colaboradores' && falharUmaVez) {
@@ -136,4 +151,45 @@ test('com o segredo, lê o banco paginando e grava a falta da terça', async () 
   const linhas = JSON.parse(gravacoes[0].corpo!);
   expect(linhas.map((l: any) => l.id)).toEqual(['inc-ana-2026-10-06']);
   expect(linhas[0]).toMatchObject({ tipo: 'dia_incompleto', minutos: 480, estado: 'pendente' });
+});
+
+/*
+  O MODO "UM DIA" — o que o aplicativo pede na saída e na correção. Entra
+  pela sessão de quem chama, sem o segredo da madrugada.
+*/
+const pedirDia = (corpo: Record<string, unknown>, token?: string) =>
+  tratar(
+    new Request('https://f/apurar-ponto', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ modo: 'dia', ...corpo }),
+    })
+  );
+
+test('o dia avulso exige sessão — o segredo da madrugada não serve', async () => {
+  expect((await pedirDia({ data: '2026-10-05' })).status).toBe(401);
+  expect((await pedirDia({ data: '2026-10-05' }, 'falso')).status).toBe(401);
+  // Dia malformado não chega a ler nada
+  expect((await pedirDia({ data: 'ontem' }, 'valido')).status).toBe(400);
+});
+
+test('o próprio dia é apurado com a regra do servidor; o de outra pessoa exige alçada', async () => {
+  pedidos.length = 0;
+  // A segunda 05/10 dela fechou no horário: não há o que lançar
+  const proprio = await pedirDia({ data: '2026-10-05' }, 'valido');
+  expect(proprio.status).toBe(200);
+  expect(await proprio.json()).toEqual({ ok: true, acao: 'nada' });
+  // Sem pedido de alçada para o próprio dia, e nada gravado
+  expect(pedidos.some((p) => p.url.includes('posso_decidir_jornada'))).toBe(false);
+  expect(pedidos.filter((p) => p.metodo === 'POST' && p.url.includes('ajustes_jornada'))).toHaveLength(0);
+
+  // O dia de outra pessoa: o banco diz que ela não responde por ele
+  const deOutro = await pedirDia({ data: '2026-10-05', colaboradorId: 'bia' }, 'valido');
+  expect(deOutro.status).toBe(403);
+
+  // Corrigir o próprio dia também passa pela alçada (aqui o banco deixa)
+  pedidos.length = 0;
+  const corrigido = await pedirDia({ data: '2026-10-05', corrigido: true }, 'valido');
+  expect(corrigido.status).toBe(200);
+  expect(pedidos.some((p) => p.url.includes('posso_decidir_jornada'))).toBe(true);
 });

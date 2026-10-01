@@ -222,7 +222,7 @@ function aplicarTolerancia(dados) {
     };
   }
   const relogio = abaterPausa(diferenca, pausa);
-  if (Math.abs(relogio) <= limites.porMarcacao) {
+  if (Math.abs(relogio) <= limites.diaria) {
     resultado.saldoApurado = 0;
     return resultado;
   }
@@ -916,7 +916,7 @@ var diasDoMes = (mes) => {
 var DIAS_REVISADOS = 35;
 var chave = (colaboradorId, data) => `${colaboradorId}|${data}`;
 var mudou = (antes, depois) => !antes || antes.tipo !== depois.tipo || antes.minutos !== depois.minutos || antes.minutosTrabalhados !== depois.minutosTrabalhados || antes.minutosPrevistos !== depois.minutosPrevistos || antes.estado !== depois.estado;
-var planejarApuracao = (dados, opcoes) => {
+var ligarFonte = (dados, hoje) => {
   const porId = new Map(dados.colaboradores.map((c) => [c.id, c]));
   const batidasDoDia = new Map;
   for (const b of dados.batidas) {
@@ -936,13 +936,27 @@ var planejarApuracao = (dados, opcoes) => {
     feriadoEm: (data, loja) => feriadoNaLista(dados.feriados, data, loja),
     ajusteDoDia: (id, data) => ajusteDoDia.get(chave(id, data)) ?? null,
     batePonto,
-    hoje: () => opcoes.hoje,
+    hoje: () => hoje,
     minutosDoHorario: minutosEmBrasilia,
     tolerancias: () => ({
       porMarcacao: TOLERANCIA_POR_MARCACAO_PADRAO_MINUTOS,
       diaria: TOLERANCIA_PONTO_PADRAO_MINUTOS
     })
   });
+  return { ajusteDoDia, batePonto };
+};
+var decidirDiaNoServidor = (dados, opcoes) => {
+  ligarFonte(dados, opcoes.hoje);
+  return decidirApuracao(opcoes.colaboradorId, opcoes.data, {
+    motivo: opcoes.motivo,
+    anexoCaminho: opcoes.anexoCaminho,
+    corrigidoPor: opcoes.corrigidoPor,
+    agora: opcoes.agora,
+    novoId: opcoes.novoId
+  });
+};
+var planejarApuracao = (dados, opcoes) => {
+  const { ajusteDoDia, batePonto } = ligarFonte(dados, opcoes.hoje);
   const gravar = [];
   const novosNaFila = [];
   const registrar = (ajuste, entrouNaFila) => {
@@ -1148,6 +1162,23 @@ var chaveDeServico = () => {
   }
   throw new Error("Sem chave de serviço no ambiente da função.");
 };
+var chavePublica = () => {
+  const antiga = Deno.env.get("SUPABASE_ANON_KEY");
+  if (antiga)
+    return antiga;
+  const novas = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  if (novas) {
+    try {
+      const lista = JSON.parse(novas);
+      const primeira = lista.default ?? Object.values(lista)[0];
+      if (primeira)
+        return primeira;
+    } catch {
+      return novas;
+    }
+  }
+  throw new Error("Sem chave pública no ambiente da função.");
+};
 var responder = (corpo, status = 200) => new Response(JSON.stringify(corpo), { status, headers: { "content-type": "application/json" } });
 var banco = () => {
   const url = `${Deno.env.get("SUPABASE_URL")}/rest/v1`;
@@ -1209,7 +1240,87 @@ var banco = () => {
   };
   return { ler, gravarAjustes, gravarCompensacoes, ausentes };
 };
+var apurarUmDia = async (req, corpo) => {
+  const url = Deno.env.get("SUPABASE_URL");
+  const jwt = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!jwt)
+    return responder({ erro: "Sem sessão." }, 401);
+  const data = String(corpo.data ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data))
+    return responder({ erro: "Dia inválido." }, 400);
+  const quem = await fetch(`${url}/auth/v1/user`, {
+    headers: { apikey: chaveDeServico(), Authorization: `Bearer ${jwt}` }
+  });
+  if (!quem.ok)
+    return responder({ erro: "Sessão inválida." }, 401);
+  const usuario = await quem.json();
+  const { ler, gravarAjustes } = banco();
+  const [eu] = await ler(`colaboradores?select=*&auth_user_id=eq.${usuario.id}`);
+  if (!eu)
+    return responder({ erro: "Sessão sem colaborador." }, 403);
+  const alvoId = String(corpo.colaboradorId || eu.id);
+  const corrigido = corpo.corrigido === true;
+  if (alvoId !== eu.id || corrigido) {
+    const r = await fetch(`${url}/rest/v1/rpc/posso_decidir_jornada`, {
+      method: "POST",
+      headers: { apikey: chavePublica(), Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ alvo: alvoId })
+    });
+    if (!r.ok || await r.json() !== true) {
+      return responder({ erro: "Você não responde pela jornada desta pessoa." }, 403);
+    }
+  }
+  const [alvo, batidas, ausencias, feriados, ajustes, configuracoes] = await Promise.all([
+    ler(`colaboradores?select=*&id=eq.${encodeURIComponent(alvoId)}`),
+    ler(`registros_ponto?select=*&colaborador_id=eq.${encodeURIComponent(alvoId)}&data=eq.${data}`),
+    ler(`justificativas_ausencia?select=*&colaborador_id=eq.${encodeURIComponent(alvoId)}&estado=eq.aprovada&data_inicio=lte.${data}&data_fim=gte.${data}`),
+    ler(`feriados?select=*&data=eq.${data}`, true),
+    ler(`ajustes_jornada?select=*&colaborador_id=eq.${encodeURIComponent(alvoId)}&data=eq.${data}`),
+    ler("configuracoes?select=permissoes_ferramentas")
+  ]);
+  if (!alvo[0])
+    return responder({ erro: "Colaborador não encontrado." }, 404);
+  const decisao = decidirDiaNoServidor({
+    colaboradores: alvo.map((l) => paraColaboradorDaLinha(l, "")),
+    batidas: batidas.map(paraRegistroPonto),
+    ausencias: ausencias.map(paraJustificativa),
+    feriados: feriados.map(paraFeriado),
+    ajustes: ajustes.map(paraAjuste),
+    permissoes: configuracoes[0]?.permissoes_ferramentas ?? null
+  }, {
+    colaboradorId: alvoId,
+    data,
+    hoje: hojeEmBrasilia(),
+    agora: new Date().toISOString(),
+    novoId: () => `ajuste-${crypto.randomUUID()}`,
+    motivo: typeof corpo.motivo === "string" ? corpo.motivo.trim() || undefined : undefined,
+    anexoCaminho: typeof corpo.anexoCaminho === "string" ? corpo.anexoCaminho || undefined : undefined,
+    corrigidoPor: corrigido ? { id: eu.id, nome: eu.nome } : undefined
+  });
+  if (decisao.acao === "nada")
+    return responder({ ok: true, acao: "nada" });
+  await gravarAjustes([paraLinhaAjuste(decisao.ajuste)]);
+  return responder({
+    ok: true,
+    acao: "gravar",
+    ajuste: decisao.ajuste,
+    reescrita: decisao.reescrita,
+    entrouNaFila: decisao.entrouNaFila
+  });
+};
 Deno.serve(async (req) => {
+  let corpo = {};
+  try {
+    corpo = await req.clone().json();
+  } catch {}
+  if (corpo?.modo === "dia") {
+    try {
+      return await apurarUmDia(req, corpo);
+    } catch (e) {
+      console.error("Apuração do dia falhou:", e);
+      return responder({ erro: String(e instanceof Error ? e.message : e) }, 500);
+    }
+  }
   const segredo = Deno.env.get("APURAR_SEGREDO");
   if (!segredo || req.headers.get("x-apurar-segredo") !== segredo) {
     return responder({ erro: "Não autorizado." }, 401);

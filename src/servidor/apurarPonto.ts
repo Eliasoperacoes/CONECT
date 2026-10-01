@@ -31,6 +31,7 @@ import {
   jornadaDoDia,
   decidirApuracao,
   decidirLevantamento,
+  DecisaoDaApuracao,
   deDataLocal,
   paraDataLocal,
   listarDatasDoPeriodo,
@@ -80,16 +81,12 @@ const mudou = (antes: AjusteJornada | undefined, depois: AjusteJornada): boolean
   antes.minutosPrevistos !== depois.minutosPrevistos ||
   antes.estado !== depois.estado;
 
-export const planejarApuracao = (
-  dados: DadosDaApuracao,
-  opcoes: {
-    /** AAAA-MM-DD de hoje em Brasília. Hoje não é apurado: ainda não acabou. */
-    hoje: string;
-    agora: string;
-    novoId: () => string;
-    diasParaTras?: number;
-  }
-): PlanoDaApuracao => {
+/**
+ * LIGA AS REGRAS DO DIA ÀS LINHAS DO BANCO — a fonte do servidor, uma só
+ * para a madrugada e para o dia avulso. Devolve o mapa das apurações (que
+ * quem decide atualiza à medida que grava) e a pergunta "bate ponto?".
+ */
+const ligarFonte = (dados: DadosDaApuracao, hoje: string) => {
   const porId = new Map(dados.colaboradores.map((c) => [c.id, c]));
 
   const batidasDoDia = new Map<string, RegistroPonto[]>();
@@ -101,7 +98,6 @@ export const planejarApuracao = (
     lista.sort((a, b) => ORDEM_MARCACOES.indexOf(a.tipo) - ORDEM_MARCACOES.indexOf(b.tipo));
   }
 
-  // As decisões desta mesma noite valem para as seguintes
   const ajusteDoDia = new Map(dados.ajustes.map((a) => [chave(a.colaboradorId, a.data), a]));
   const permissoes = completarPermissoes(dados.permissoes);
   const batePonto = (c: Colaborador) => podeUsarComMapa('ponto', c, permissoes);
@@ -113,7 +109,7 @@ export const planejarApuracao = (
     feriadoEm: (data, loja) => feriadoNaLista(dados.feriados, data, loja),
     ajusteDoDia: (id, data) => ajusteDoDia.get(chave(id, data)) ?? null,
     batePonto,
-    hoje: () => opcoes.hoje,
+    hoje: () => hoje,
     // O servidor roda em UTC: a hora da batida é lida no relógio da loja
     minutosDoHorario: minutosEmBrasilia,
     /**
@@ -126,6 +122,54 @@ export const planejarApuracao = (
       diaria: TOLERANCIA_PONTO_PADRAO_MINUTOS,
     }),
   });
+
+  return { ajusteDoDia, batePonto };
+};
+
+/**
+ * UM DIA SÓ, apurado no servidor — o que o aplicativo pede na saída, e o
+ * RH ou o líder ao corrigir uma batida. A mesma decisão que o aparelho
+ * tomava (`decidirApuracao`), agora com as linhas do banco: quem grava é
+ * o servidor.
+ *
+ * @param opcoes.corrigidoPor Quem corrigiu a batida — a autoridade já foi
+ * conferida por quem chama (`posso_decidir_jornada`, no banco).
+ */
+export const decidirDiaNoServidor = (
+  dados: DadosDaApuracao,
+  opcoes: {
+    colaboradorId: string;
+    data: string;
+    hoje: string;
+    agora: string;
+    novoId: () => string;
+    motivo?: string;
+    anexoCaminho?: string;
+    corrigidoPor?: { id: string; nome: string };
+  }
+): DecisaoDaApuracao => {
+  ligarFonte(dados, opcoes.hoje);
+  return decidirApuracao(opcoes.colaboradorId, opcoes.data, {
+    motivo: opcoes.motivo,
+    anexoCaminho: opcoes.anexoCaminho,
+    corrigidoPor: opcoes.corrigidoPor,
+    agora: opcoes.agora,
+    novoId: opcoes.novoId,
+  });
+};
+
+export const planejarApuracao = (
+  dados: DadosDaApuracao,
+  opcoes: {
+    /** AAAA-MM-DD de hoje em Brasília. Hoje não é apurado: ainda não acabou. */
+    hoje: string;
+    agora: string;
+    novoId: () => string;
+    diasParaTras?: number;
+  }
+): PlanoDaApuracao => {
+  // As decisões desta mesma noite valem para as seguintes
+  const { ajusteDoDia, batePonto } = ligarFonte(dados, opcoes.hoje);
 
   const gravar: AjusteJornada[] = [];
   const novosNaFila: AjusteJornada[] = [];

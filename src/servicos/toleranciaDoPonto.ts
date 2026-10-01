@@ -194,7 +194,7 @@ export function aplicarTolerancia(dados: {
   const relogio = abaterPausa(diferenca, pausa);
 
   /**
-   * O DIA QUE FECHA DENTRO DE 5 MINUTOS NÃO GERA SALDO — para mais ou
+   * O DIA QUE FECHA DENTRO DE 10 MINUTOS NÃO GERA SALDO — para mais ou
    * para menos.
    *
    * O Elias: "tem o limite dos 5 min tanto pra ficar devendo horário
@@ -203,8 +203,15 @@ export function aplicarTolerancia(dados: {
    * saída de +6 passava da tolerância da marcação, o dia inteiro
    * contava, e o +0h01 ia para o banco. Olhar só marcação por marcação
    * deixava escapar o resultado do dia.
+   *
+   * O LIMITE DO DIA É O DE 10, e não o de 5 (01/10/2026). A Beatriz saiu
+   * para o almoço às 11:06 e o resto fechou no horário: +6 no dia, e o
+   * sistema mandou +0h06 de hora extra para a fila. A regra do Elias é a
+   * da CLT inteira: conta quando passa de 5 numa batida E passa de 10 no
+   * dia — medido contra o horário do turno, sem os 10 minutos da
+   * compensação do sábado, que não entram aqui (\`apuracaoDoDia\`).
    */
-  if (Math.abs(relogio) <= limites.porMarcacao) {
+  if (Math.abs(relogio) <= limites.diaria) {
     resultado.saldoApurado = 0;
     return resultado;
   }

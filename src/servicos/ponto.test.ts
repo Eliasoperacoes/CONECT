@@ -2527,7 +2527,7 @@ const baterTurnoA = async (data: string, saida: string, entrada = '07:30') => {
   await servicoPonto.apurarDia(DO_TURNO.id, data);
 };
 
-test('UMA VARIAÇÃO DE 8 MINUTOS NÃO É MAIS TOLERADA', async () => {
+test('UMA VARIAÇÃO DE 8 MINUTOS rompe a batida, mas só vai à fila se o dia passar de 10', async () => {
   /**
    * O art. 58 §1º traz DOIS limites: cinco minutos em CADA marcação,
    * observado o máximo de dez no dia. O sistema conhecia só o segundo — e
@@ -2538,12 +2538,17 @@ test('UMA VARIAÇÃO DE 8 MINUTOS NÃO É MAIS TOLERADA', async () => {
   equipe = [CHEFE, DO_TURNO];
   colaboradorLogado = DO_TURNO;
 
-  // Saída 17:02 em vez de 17:10: 8 minutos numa marcação só
+  // Saída 17:02 em vez de 17:10: 8 minutos numa marcação só — rompe os 5
+  // da batida, mas o dia fecha −8, dentro dos 10 (regra do Elias, 01/10/2026)
   await baterTurnoA('2026-09-16', '17:02');
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO.id, '2026-09-16').tolerancia.entradaESaida?.tolerado).toBe(false);
+  expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16')).toBeNull();
 
-  const ajuste = servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16')!;
+  // Saída 16:59: −11, passa dos 10 do dia — vai à fila inteiro
+  await baterTurnoA('2026-09-17', '16:59');
+  const ajuste = servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-17')!;
   expect(ajuste.estado).toBe('pendente');
-  expect(ajuste.minutos).toBe(8);
+  expect(ajuste.minutos).toBe(11);
 });
 
 test('DUAS VARIAÇÕES DE 4 MINUTOS CONTINUAM TOLERADAS', async () => {
@@ -2598,15 +2603,15 @@ test('o limite por marcação é CONFIGURÁVEL, como o do dia', async () => {
   equipe = [CHEFE, DO_TURNO];
   colaboradorLogado = DO_TURNO;
 
-  // Com o limite frouxo em 9, a variação de 8 volta a caber
+  // Com o limite frouxo em 9, a variação de 8 cabe na batida
   toleranciaPorMarcacaoDoTeste = 9;
   await baterTurnoA('2026-09-16', '17:02');
-  expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-16')).toBeNull();
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO.id, '2026-09-16').tolerancia.entradaESaida?.tolerado).toBe(true);
 
-  // E com o limite no numero da lei, a mesma variacao vira pendencia
+  // E com o limite no número da lei, a mesma variação rompe a batida
   toleranciaPorMarcacaoDoTeste = 5;
   await baterTurnoA('2026-09-17', '17:02');
-  expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-17')?.estado).toBe('pendente');
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO.id, '2026-09-17').tolerancia.entradaESaida?.tolerado).toBe(false);
 });
 
 test('O PADRÃO É O NÚMERO DA LEI: 5 minutos por marcação, 10 no dia', async () => {
@@ -3644,19 +3649,19 @@ test('13. O BANCO DE HORAS RECEBE O SALDO APURADO, e não o do relógio', async 
 
   // Segunda: 07:28 e 17:15 — +7 no relógio, dentro da tolerância
   await baterDia(DO_TURNO, '2026-09-14', ['07:28', '12:30', '14:00', '17:15']);
-  // Terça: almoço de 12:32 a 13:56 — 6 min somados, passa da regra do almoço
-  await baterDia(DO_TURNO, '2026-09-15', ['07:30', '12:32', '13:56', '17:10']);
+  // Terça: almoço de 12:32 a 13:49 — 13 min a menos, passa do almoço e dos 10 do dia
+  await baterDia(DO_TURNO, '2026-09-15', ['07:30', '12:32', '13:49', '17:10']);
 
   expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-14')).toBeNull();
   const terca = servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-15')!;
   expect(terca.estado).toBe('pendente');
   expect(terca.tipo).toBe('hora_extra');
-  expect(terca.minutos).toBe(6);
+  expect(terca.minutos).toBe(13);
 
   // Só o que foi decidido entra no saldo — e entra o apurado
   colaboradorLogado = ELIAS;
   await servicoPonto.decidirAjuste(terca.id, true);
-  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO.id)).toBe(6);
+  expect(servicoPonto.obterSaldoAcumulado(DO_TURNO.id)).toBe(13);
 });
 
 test('14. O FECHAMENTO DO PERÍODO e a semana somam os saldos apurados', async () => {
@@ -3689,8 +3694,8 @@ test('16. A MARCAÇÃO CORRIGIDA PELO RH passa pela mesma tolerância', async ()
   equipe = [ELIAS, DO_TURNO];
   colaboradorLogado = DO_TURNO;
 
-  // Saiu 17:20: 10 depois numa marcação só — pendência
-  await baterDia(DO_TURNO, '2026-09-15', ['07:30', '12:30', '14:00', '17:20']);
+  // Saiu 17:25: 15 depois — passa da batida e dos 10 do dia, pendência
+  await baterDia(DO_TURNO, '2026-09-15', ['07:30', '12:30', '14:00', '17:25']);
   expect(servicoPonto.obterAjusteDoDia(DO_TURNO.id, '2026-09-15')!.estado).toBe('pendente');
 
   // O RH corrige a saída para 17:12: 2 depois, dentro da tolerância
@@ -3794,15 +3799,19 @@ test('HORÁRIO A: 07:29 e 17:12 fecham com saldo 0h00, não +0h03', async () => 
   expect(servicoPonto.obterAjusteDoDia(DO_TURNO_A.id, '2026-09-15')).toBeNull();
 });
 
-test('HORÁRIO A: o almoço reduzido além de 5 min conta, e a entrada/saída não o mascara', async () => {
+test('HORÁRIO A: o almoço reduzido conta quando o dia passa de 10, e a entrada/saída não o mascara', async () => {
   equipe = [ELIAS, DO_TURNO_A];
   colaboradorLogado = DO_TURNO_A;
-  // Entrada e saída exatas; almoço de 12:32 a 13:56 (84 min, 6 a menos)
+  // Entrada e saída exatas; almoço de 12:32 a 13:56 (84 min, 6 a menos): rompe a
+  // regra do almoço, mas o dia fecha +6 — dentro dos 10 (a Beatriz, 01/10/2026)
   await baterDia(DO_TURNO_A, '2026-09-15', ['07:30', '12:32', '13:56', '17:10']);
-
   const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-15');
   expect(dia.tolerancia.intervalo?.reducaoMinutos).toBe(6);
-  expect(dia.saldoMinutos).toBe(6);
+  expect(dia.saldoMinutos).toBe(0);
+
+  // Almoço de 12:32 a 13:49 (77 min, 13 a menos): o dia passa de 10, conta
+  await baterDia(DO_TURNO_A, '2026-09-16', ['07:30', '12:32', '13:49', '17:10']);
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-16').saldoMinutos).toBe(13);
 });
 
 test('HORÁRIO B: entrada 08:22 não gera −0h02', async () => {
@@ -3872,13 +3881,13 @@ test('o espelho mostra a conta de cada dia: previsto, relógio, variações, tol
   for (const simbolo of ['✓', '✗', '(E =', '(S)', '(R)']) expect(legenda).not.toContain(simbolo);
 
   // O relógio conta contra as 8h da CLT: segunda +0h13 (10 de compensação +
-  // 3 tolerados, saldo 0h00); terça +0h16 (10 + 6 que contam, saldo +0h06)
+  // 3 tolerados); terça +0h16 (10 + 6 — rompem a batida, mas o dia fica
+  // dentro dos 10). Saldo 0h00 nos dois
   expect(html).toContain('+0h13');
   expect(html).toContain('+0h16');
-  expect(html).toContain('+0h06');
 
   // O rodapé fecha a conta: relógio +29 (dos quais +20 de compensação),
-  // tolerância +3, saldo +26
+  // tolerância +9, saldo 0
   expect(html).toContain('Relógio do período');
   expect(html).toContain('dos quais, compensação do sábado (10 min × 2 dias)');
   expect(html).toContain('Tolerância aplicada');
@@ -3924,9 +3933,12 @@ test('ESTAGIÁRIO: a mesma regra, medida contra o turno de estágio dele', async
   expect(tolerado.saldoMinutos).toBe(0);
   expect(tolerado.tolerancia.modo).toBe('marcacoes');
 
-  // Entrou 07:37: 7 de atraso numa marcação só — conta inteiro
+  // Entrou 07:37: 7 de atraso — rompe a batida, mas o dia fica dentro dos 10
   await baterSabado(ESTAGIARIO, '2026-09-14', '07:37', '12:30');
-  expect(servicoPonto.obterJornadaDoDia(ESTAGIARIO.id, '2026-09-14').saldoMinutos).toBe(-7);
+  expect(servicoPonto.obterJornadaDoDia(ESTAGIARIO.id, '2026-09-14').saldoMinutos).toBe(0);
+  // Entrou 07:41: 11 de atraso, passa dos 10 — conta inteiro
+  await baterSabado(ESTAGIARIO, '2026-09-11', '07:41', '12:30');
+  expect(servicoPonto.obterJornadaDoDia(ESTAGIARIO.id, '2026-09-11').saldoMinutos).toBe(-11);
 });
 
 test('A LYVIA NO SÁBADO: 08:00 às 12:00 fecha com saldo 0h00, e não −0h45', async () => {
@@ -4025,11 +4037,12 @@ test('o rodapé fecha a conta: trabalhado − previsto = relógio; relógio − 
   // +29: os 20 da compensação do sábado (10 × 2 dias) e as variações +3 e +6
   expect(t.relogio).toBe(29);
   expect(t.compensacao).toBe(20);
-  expect(t.tolerancia).toBe(3);
-  // O saldo do período é o do banco de horas: só a variação (+6). A
+  // As duas variações ficam dentro dos 10 do dia (regra do Elias, 01/10/2026)
+  expect(t.tolerancia).toBe(9);
+  // O saldo do período é o do banco de horas: só as variações que contam. A
   // compensação vai para o saldo dela, que segue inteiro sem folga no período
   expect(t.saldoPeriodo).toBe(t.relogio - t.compensacao - t.tolerancia);
-  expect(t.saldoPeriodo).toBe(6);
+  expect(t.saldoPeriodo).toBe(0);
   expect(t.folgaConsumida).toBe(0);
   expect(t.compensacaoSegue).toBe(20);
 });
