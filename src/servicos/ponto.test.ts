@@ -4449,6 +4449,51 @@ test('sem a função dias_com_batida no banco, a conta alarga o cache e dá o me
   expect(janelaPedida).not.toBeNull();
 });
 
+/*
+  GERENTE NÃO BATE PONTO — e então não tem nada de ponto pessoal (Elias,
+  01/10/2026). Só a aba sumia: o espelho, o espelho incompleto, a falta e
+  o "sem bater hoje" continuavam cobrando dele. Gerenciar o ponto dos
+  outros segue igual.
+*/
+const GERENTE_DA_LOJA = { ...GESTOR, id: 'ger', nome: 'Gerente da loja', login: 'ger', turno: 'A' };
+
+test('quem não bate ponto não tem espelho, nem incompleto, nem no resumo', async () => {
+  equipe = [ELIAS, GERENTE_DA_LOJA, DO_TURNO_A];
+  colaboradorLogado = ELIAS;
+  semanaDoEspelho();
+
+  const incompletos = await servicoPonto.buscarEspelhosIncompletos('2026-09-13', '2026-09-18');
+  expect(incompletos.map((e) => e.colaborador.id)).not.toContain(GERENTE_DA_LOJA.id);
+  // O de quem bate continua lá: a regra não apagou todo mundo
+  expect(incompletos.map((e) => e.colaborador.id)).toContain(DO_TURNO_A.id);
+
+  const resumo = servicoPonto.obterResumoDoPeriodo('2026-09-13', '2026-09-18').map((r) => r.colaborador.id);
+  expect(resumo).not.toContain(GERENTE_DA_LOJA.id);
+  expect(resumo).toContain(DO_TURNO_A.id);
+});
+
+test('quem não bate ponto não falta nem fica "sem bater hoje"', () => {
+  emOutubro();
+  equipe = [ELIAS, GERENTE_DA_LOJA, DO_TURNO_A];
+  // 06/10/2026, terça, já passou: dia útil sem batida
+  expect(servicoPonto.obterJornadaDoDia(GERENTE_DA_LOJA.id, '2026-10-06').falta).toBe(false);
+  expect(servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-10-06').falta).toBe(true);
+
+  const dezDaManha = new Date(2026, 9, 8, 10, 0, 0);
+  expect(servicoPonto.estaSemBaterHoje(GERENTE_DA_LOJA as any, dezDaManha)).toBe(false);
+  expect(servicoPonto.estaSemBaterHoje(DO_TURNO_A as any, dezDaManha)).toBe(true);
+});
+
+test('o levantamento não cria falta na fila para quem não bate ponto', async () => {
+  emOutubro();
+  equipe = [ELIAS, GERENTE_DA_LOJA, DO_TURNO_A];
+  colaboradorLogado = ELIAS;
+  await servicoPonto.levantarDiasIncompletos(5);
+  const pedidos = servicoPonto.obterPendenciasParaDecidir().map((p) => p.colaborador.id);
+  expect(pedidos).not.toContain(GERENTE_DA_LOJA.id);
+  expect(pedidos).toContain(DO_TURNO_A.id);
+});
+
 test('o estágio de 2 batidas, com as 2 feitas, não está incompleto', async () => {
   const ESTAGIARIA = { ...DO_TURNO_A, id: 'est', login: 'est', setor: 'Estágio', cargo: 'Estagiária', turno: 'E3' };
   equipe = [GESTOR, ESTAGIARIA];

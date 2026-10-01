@@ -38,9 +38,9 @@ import {
   servicoPonto,
   formatarSaldo,
   dataDeHoje,
+  batePonto,
 } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
-import { podeUsar } from '../servicos/permissoes';
 import {
   lerJustificativas,
   assinarJustificativas,
@@ -217,7 +217,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
       (c) =>
         !c.responsavelId &&
         c.id !== colaboradorAtual.id &&
-        podeUsar('ponto', c) &&
+        batePonto(c) &&
         !pessoas.some((outro) => outro.responsavelId === c.id)
     );
 

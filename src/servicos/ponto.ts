@@ -350,6 +350,19 @@ export interface PontoIncompleto {
 }
 
 /**
+ * A PESSOA BATE PONTO?
+ *
+ * Da gerência para cima não se bate (decisão do Elias). A resposta é a da
+ * ferramenta "Meu ponto" no painel de Permissões — a mesma que mostra ou
+ * esconde a aba Ponto —, e não um nível escrito aqui: ligar a ferramenta
+ * para alguém devolve a ele o ponto inteiro, e não só a aba.
+ *
+ * Quem não bate não tem espelho, banco de horas, falta, dia incompleto
+ * nem "sem bater hoje". Gerenciar o ponto DOS OUTROS não passa por aqui.
+ */
+export const batePonto = (c: Colaborador): boolean => podeUsar('ponto', c);
+
+/**
  * O ESPELHO INCOMPLETO DE UMA PESSOA: os dias que começaram e não fecharam
  * e os dias de trabalho que ficaram sem batida nenhuma. Os dois impedem o
  * espelho de fechar. O Elias viu "1 dia" para quem bateu uma vez em
@@ -1383,7 +1396,7 @@ class ServicoPonto {
        * para cobrar. Duas respostas para isso seria a quinta vez que este
        * sistema se contradiz sozinho.
        */
-      .filter((c) => podeUsar('ponto', c));
+      .filter(batePonto);
 
     const linhas = equipe
       .map((colaborador) => {
@@ -1646,6 +1659,8 @@ class ServicoPonto {
     minutosPrevistos: number
   ): boolean {
     if (batidas > 0 || minutosPrevistos <= 0) return false;
+    // Quem não bate ponto não falta: não tinha por onde bater
+    if (colaborador && !batePonto(colaborador)) return false;
     if (data >= dataDeHoje() || data < INICIO_DA_COBRANCA_DE_FALTAS) return false;
     if (colaborador?.dataAdmissao && data < colaborador.dataAdmissao) return false;
     return true;
@@ -1849,7 +1864,7 @@ class ServicoPonto {
     const datas = listarDatasDoPeriodo(dataInicio, dataFim);
     const lista: EspelhoIncompleto[] = [];
     for (const colaborador of this.obterColaboradoresVisiveis()) {
-      if (colaborador.ativo === false || !this.podeDecidirSobre(colaborador)) continue;
+      if (colaborador.ativo === false || !batePonto(colaborador) || !this.podeDecidirSobre(colaborador)) continue;
       const seus = semFechar.filter((p) => p.colaborador.id === colaborador.id);
       const semBatida = datas.filter((data) => this.ehDiaVazio(colaborador, data, batidasNoDia(colaborador.id, data)));
       const total = seus.length + semBatida.length;
@@ -1872,7 +1887,8 @@ class ServicoPonto {
     for (const d of dias) {
       if (d.data >= hoje || d.tipos.length === 0) continue;
       const colaborador = bancoDados.obterColaboradorPorId(d.colaboradorId);
-      if (!colaborador || colaborador.ativo === false || !this.podeDecidirSobre(colaborador)) continue;
+      if (!colaborador || colaborador.ativo === false || !batePonto(colaborador)) continue;
+      if (!this.podeDecidirSobre(colaborador)) continue;
       const esperadas = marcacoesEsperadas(d.data, colaborador);
       const faltam = esperadas.filter((tipo) => !d.tipos.includes(tipo));
       if (faltam.length === 0) continue;
@@ -2139,6 +2155,7 @@ class ServicoPonto {
     // O padrão vem do relógio sincronizado; os testes passam a data deles
     agora: Date = agoraSincronizado()
   ): boolean {
+    if (!batePonto(colaborador)) return false;
     const data = paraDataLocal(agora);
     if (this.obterMarcacoesDoDia(colaborador.id, data).length > 0) return false;
     if (this.cargaPrevistaEmMinutos(colaborador, data) === 0) return false;
@@ -2338,8 +2355,9 @@ class ServicoPonto {
      * isso é ela que responde: se a lista aqui divergisse, apareceria
      * pendência sem quem a decida, ou o contrário.
      */
-    const equipe = this.obterColaboradoresVisiveis().filter((c) =>
-      this.podeDecidirSobre(c)
+    const equipe = this.obterColaboradoresVisiveis().filter(
+      // Quem não bate ponto não tem dia a apurar nem falta a cobrar
+      (c) => batePonto(c) && this.podeDecidirSobre(c)
     );
 
     for (const pessoa of equipe) {
@@ -3028,6 +3046,9 @@ class ServicoPonto {
     const hoje = dataDeHoje();
 
     return this.obterColaboradoresVisiveis()
+      // Espelho é de quem bate ponto: a gerência não aparece aqui, nem no
+      // CSV, nem na impressão da rede (que saem deste resumo)
+      .filter(batePonto)
       .map((colaborador) => {
         const jornadas = this.obterJornadasDoPeriodo(colaborador.id, dataInicio, dataFim);
 

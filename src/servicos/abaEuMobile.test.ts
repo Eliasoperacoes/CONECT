@@ -159,3 +159,19 @@ test('o alvo de toque tem 52px', async () => {
   expect(secao).toContain('min-h-[52px]');
   expect(secao).toContain('aria-expanded={aberta}');
 });
+
+test('quem não bate ponto não tem espelho nem folga de sábado no Meu RH', async () => {
+  /**
+   * Gerente não bate ponto (Elias, 01/10/2026): o cartão do espelho ficava
+   * lá, prometendo "o primeiro sai no fim do mês" para sempre. A pergunta é
+   * a mesma da aba Ponto — `batePonto`, a ferramenta "Meu ponto".
+   */
+  const tela = semComentarios(await lerDocumentos());
+  const espelho = tela.indexOf('id="meu-rh-espelho"');
+  const folgas = tela.indexOf('id="meu-rh-folgas"');
+  expect(tela.lastIndexOf('{batePonto(eu) && (', espelho)).toBeGreaterThan(tela.lastIndexOf('/>', espelho));
+  expect(tela.lastIndexOf('{batePonto(eu) && (', folgas)).toBeGreaterThan(tela.lastIndexOf('/>', folgas));
+  // Holerite e férias continuam de todo mundo
+  const holerites = tela.indexOf('id="meu-rh-holerites"');
+  expect(tela.lastIndexOf('batePonto', holerites)).toBeLessThan(tela.lastIndexOf('/>', holerites));
+});

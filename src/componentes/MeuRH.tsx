@@ -34,7 +34,7 @@ import {
 import { Colaborador, Holerite, Advertencia, ROTULO_ADVERTENCIA } from '../tipos';
 import { listarHolerites, listarAdvertencias, abrirDocumento, darCienciaNaAdvertencia } from '../servicos/rh';
 import { lerJustificativas, assinarJustificativas } from '../servicos/justificativasCache';
-import { formatarDataBR, dataDeHoje } from '../servicos/ponto';
+import { formatarDataBR, dataDeHoje, batePonto } from '../servicos/ponto';
 import {
   mesesFechados,
   rotuloDoMes,
@@ -287,14 +287,17 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <Cartao
-          id="meu-rh-espelho"
-          titulo="Espelho de ponto"
-          resumo={meses.length ? `Último fechado: ${rotuloDoMes(meses[0])}` : 'O primeiro sai no fim do mês'}
-          icone={<FileClock className="w-5 h-5" />}
-          cor="text-blue-600 bg-blue-500/10"
-          aoAbrir={() => abrirFolha('espelho')}
-        />
+        {/* Espelho e folga de sábado são do ponto: quem não bate não tem */}
+        {batePonto(eu) && (
+          <Cartao
+            id="meu-rh-espelho"
+            titulo="Espelho de ponto"
+            resumo={meses.length ? `Último fechado: ${rotuloDoMes(meses[0])}` : 'O primeiro sai no fim do mês'}
+            icone={<FileClock className="w-5 h-5" />}
+            cor="text-blue-600 bg-blue-500/10"
+            aoAbrir={() => abrirFolha('espelho')}
+          />
+        )}
         <Cartao
           id="meu-rh-holerites"
           titulo="Holerites"
@@ -311,22 +314,24 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
           cor="text-teal-600 bg-teal-500/10"
           aoAbrir={() => abrirFolha('ferias')}
         />
-        <Cartao
-          id="meu-rh-folgas"
-          titulo="Folgas"
-          resumo={
-            folgaEmDestaque
-              ? `${
-                  folgaEmDestaque.dataInicio.slice(0, 7) === hoje.slice(0, 7) ? 'Este mês' : 'Próxima'
-                }: ${formatarDataBR(folgaEmDestaque.dataInicio)}${
-                  folgaEmDestaque.estado === 'pendente' ? ' · em análise' : ''
-                }`
-              : 'Nenhuma marcada'
-          }
-          icone={<CalendarCheck className="w-5 h-5" />}
-          cor="text-sky-600 bg-sky-500/10"
-          aoAbrir={() => abrirFolha('folgas')}
-        />
+        {batePonto(eu) && (
+          <Cartao
+            id="meu-rh-folgas"
+            titulo="Folgas"
+            resumo={
+              folgaEmDestaque
+                ? `${
+                    folgaEmDestaque.dataInicio.slice(0, 7) === hoje.slice(0, 7) ? 'Este mês' : 'Próxima'
+                  }: ${formatarDataBR(folgaEmDestaque.dataInicio)}${
+                    folgaEmDestaque.estado === 'pendente' ? ' · em análise' : ''
+                  }`
+                : 'Nenhuma marcada'
+            }
+            icone={<CalendarCheck className="w-5 h-5" />}
+            cor="text-sky-600 bg-sky-500/10"
+            aoAbrir={() => abrirFolha('folgas')}
+          />
+        )}
         <Cartao
           id="meu-rh-documentos"
           titulo="Documentos"
