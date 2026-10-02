@@ -28,7 +28,6 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle2,
-  MessageSquare,
   FileText,
   TrendingUp,
   TrendingDown,
@@ -50,13 +49,12 @@ import { podeUsar } from '../servicos/permissoes';
 import { cuidaDePessoas } from '../tipos';
 import { BancoDeHoras } from './BancoDeHoras';
 import { CicloSemanal } from './CicloSemanal';
-import { resumoDaFicha } from '../servicos/fichaColaborador';
 import { FotoPresenca } from './FotoPresenca';
 import { FichaColaborador } from './FichaColaborador';
-import { AprovacaoJornada } from './AprovacaoJornada';
 import { EscalaDeFolgas } from './EscalaDeFolgas';
 import { SeletorDeMes } from './SeletorDeMes';
-import { PontosIncompletos, periodoDosPontosIncompletos } from './PontosIncompletos';
+import { periodoDosPontosIncompletos } from './PontosIncompletos';
+import { PendenciasDoPonto, VistaDePendencia, vistaInicialDasPendencias } from './PendenciasDoPonto';
 import { AbaFerias } from './AbaFerias';
 import { TabelaEquipe } from './TabelaEquipe';
 import type { SecaoDestino } from '../servicos/centralDeNotificacoes';
@@ -102,7 +100,7 @@ interface Props {
  * que existe HOJE: aba removida ou escrita à mão no console cai no
  * padrão, em vez de deixar a tela em branco.
  */
-const ABAS = ['equipe', 'sem_bater', 'incompletos', 'aprovacoes', 'folgas', 'ferias', 'rede', 'qr'] as const;
+const ABAS = ['equipe', 'pendencias', 'folgas', 'ferias', 'rede', 'qr'] as const;
 
 type Aba = (typeof ABAS)[number];
 
@@ -208,10 +206,7 @@ export const PainelGestao: React.FC<Props> = ({
     if (abaEscolhida === 'rede' && !veRede) return abaInicial;
     if (abaEscolhida === 'qr' && !veQr) return abaInicial;
     if (
-      (abaEscolhida === 'equipe' ||
-        abaEscolhida === 'sem_bater' ||
-        abaEscolhida === 'incompletos' ||
-        abaEscolhida === 'aprovacoes') &&
+      (abaEscolhida === 'equipe' || abaEscolhida === 'pendencias') &&
       !temEquipe
     ) {
       return abaInicial;
@@ -238,7 +233,7 @@ export const PainelGestao: React.FC<Props> = ({
   useEffect(() => {
     if (!secaoAlvo) return;
 
-    if (secaoAlvo === 'aprovar_jornadas') setAba('aprovacoes');
+    if (secaoAlvo === 'aprovar_jornadas') abrirPendencias('aprovar');
     else if (secaoAlvo === 'escala_folgas' && veEscala) setAba('folgas');
 
     aoConsumirSecao?.();
@@ -318,6 +313,28 @@ export const PainelGestao: React.FC<Props> = ({
     const comPendencia = equipe.reduce((t, r) => t + r.diasComPendencia, 0);
     return { saldoBanco, semBaterHoje, comPendencia };
   }, [equipe]);
+
+  /** O número de cada parte da aba Pendências — os mesmos que as três abas mostravam. */
+  const totaisDasPendencias: Record<VistaDePendencia, number> = {
+    sem_bater: totais.semBaterHoje,
+    incompletos,
+    aprovar: pendencias.length,
+  };
+
+  /**
+   * A PARTE ABERTA DENTRO DE PENDÊNCIAS: a primeira com alguma coisa, na
+   * ordem do dia — e NÃO a última escolhida. Lembrar "Aprovar" esconderia
+   * de manhã as três pessoas que ainda não bateram. O cartão do resumo e o
+   * sino pedem uma parte certa (`abrirPendencias`).
+   */
+  const [vistaEscolhida, setVistaEscolhida] = useState<VistaDePendencia | null>(null);
+  const vistaDasPendencias = vistaEscolhida ?? vistaInicialDasPendencias(totaisDasPendencias);
+
+  /** Abre a aba Pendências já na parte pedida — pelo cartão do resumo ou pelo sino. */
+  const abrirPendencias = (vista: VistaDePendencia) => {
+    setVistaEscolhida(vista);
+    setAba('pendencias');
+  };
 
   const abrirEspelho = (id: string) => {
     // No celular, o visor (com Voltar); no computador, uma janela nova
@@ -401,16 +418,17 @@ export const PainelGestao: React.FC<Props> = ({
             aoEscolher={setAba}
             abas={[
               { id: 'equipe' as Aba, rotulo: 'Banco de horas' },
-              ...(totais.semBaterHoje > 0
-                ? [{ id: 'sem_bater' as Aba, rotulo: 'Sem bater hoje', contador: totais.semBaterHoje }]
-                : []),
               /*
-                O DIA PELA METADE TEM A SUB-ABA DELE (pedido do Elias): ali o
-                líder lança a batida esquecida. "Aprovar jornadas" fica com
-                o que é decisão — hora extra, débito e falta.
+                SEM BATER HOJE, PONTOS INCOMPLETOS E APROVAR JORNADAS NUMA ABA
+                SÓ (Elias, 03/10/2026) — as três respondem "o que do ponto da
+                equipe precisa de mim", em três momentos do dia. O número é a
+                soma; cada parte mostra o seu lá dentro (PendenciasDoPonto).
               */
-              { id: 'incompletos' as Aba, rotulo: 'Pontos incompletos', contador: incompletos },
-              { id: 'aprovacoes' as Aba, rotulo: 'Aprovar jornadas', contador: pendencias.length },
+              {
+                id: 'pendencias' as Aba,
+                rotulo: 'Pendências',
+                contador: totaisDasPendencias.sem_bater + totaisDasPendencias.incompletos + totaisDasPendencias.aprovar,
+              },
               ...(veEscala ? [{ id: 'folgas' as Aba, rotulo: 'Escala de folgas' }] : []),
               /*
                 FÉRIAS DA EQUIPE, PELA MESMA PERMISSÃO DA ESCALA.
@@ -450,6 +468,7 @@ export const PainelGestao: React.FC<Props> = ({
               }
               icone={<CheckCircle2 className="w-3.5 h-3.5" />}
               alerta={pendencias.length > 0}
+              aoAbrir={pendencias.length > 0 ? () => abrirPendencias('aprovar') : undefined}
             />
             <Cartao
               titulo="Sem bater hoje"
@@ -460,7 +479,7 @@ export const PainelGestao: React.FC<Props> = ({
               icone={<AlertTriangle className="w-3.5 h-3.5" />}
               alerta={totais.semBaterHoje > 0}
               aoAbrir={
-                totais.semBaterHoje > 0 ? () => setAba('sem_bater') : undefined
+                totais.semBaterHoje > 0 ? () => abrirPendencias('sem_bater') : undefined
               }
             />
           </div>
@@ -476,48 +495,16 @@ export const PainelGestao: React.FC<Props> = ({
             <BancoDeHoras colaboradorAtual={colaboradorAtual} abaFixa="banco_horas" />
           ) : aba === 'qr' ? (
             <BancoDeHoras colaboradorAtual={colaboradorAtual} abaFixa="qrcodes" />
-          ) : aba === 'sem_bater' ? (
-            <div className="flex flex-col gap-2">
-              <div>
-                <h3 className="text-sm font-bold text-[var(--c-texto)]">
-                  Quem ainda não bateu o ponto hoje
-                </h3>
-                <p className="text-xs text-[var(--c-texto-3)]">
-                  Pode ser folga, atestado ou esquecimento. Chame a pessoa antes de
-                  o dia fechar — depois vira dia sem fechar, e aí é decisão sua.
-                </p>
-              </div>
-
-              {semBaterHoje.map((r) => (
-                <div
-                  key={r.colaborador.id}
-                  className="p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex items-center gap-3"
-                >
-                  <FotoPresenca
-                    foto={r.colaborador.foto}
-                    nome={r.colaborador.nome}
-                    presenca={r.colaborador.presenca}
-                    tamanho="w-9 h-9"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm font-bold text-[var(--c-texto)] block truncate">
-                      {r.colaborador.nome}
-                    </span>
-                    <span className="text-[11px] text-[var(--c-texto-3)] block truncate">
-                      {resumoDaFicha(r.colaborador)}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => aoAbrirConversa(r.colaborador.id)}
-                    title="Chamar no chat"
-                    className="p-2 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] hover:brightness-110 transition-all flex-shrink-0"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
+          ) : aba === 'pendencias' ? (
+            <PendenciasDoPonto
+              colaboradorAtual={colaboradorAtual}
+              vista={vistaDasPendencias}
+              aoEscolherVista={setVistaEscolhida}
+              totais={totaisDasPendencias}
+              semBaterHoje={semBaterHoje.map((r) => r.colaborador)}
+              aoMudarIncompletos={setIncompletos}
+              aoAbrirConversa={aoAbrirConversa}
+            />
           ) : aba === 'folgas' ? (
             <div className="-m-4 sm:-m-6">
               <EscalaDeFolgas colaboradorAtual={colaboradorAtual} />
@@ -525,12 +512,6 @@ export const PainelGestao: React.FC<Props> = ({
           ) : aba === 'ferias' ? (
             <div className="-m-4 sm:-m-6">
               <AbaFerias colaboradorAtual={colaboradorAtual} />
-            </div>
-          ) : aba === 'incompletos' ? (
-            <PontosIncompletos colaboradorAtual={colaboradorAtual} aoMudarTotal={setIncompletos} />
-          ) : aba === 'aprovacoes' ? (
-            <div className="-m-4 sm:-m-6">
-              <AprovacaoJornada colaboradorAtual={colaboradorAtual} />
             </div>
           ) : (
             <>

@@ -447,14 +447,20 @@ test('a fila de aprovação existe num lugar só', async () => {
     new URL('../componentes/PainelRede.tsx', import.meta.url)
   ).text();
 
-  // O painel não renderiza mais a fila direto: ela vive dentro de PainelGestao
+  // O painel não renderiza mais a fila direto: ela vive na aba Pendências
+  // de PainelGestao (PendenciasDoPonto), e só lá
   expect(painel).not.toContain('<AprovacaoJornada');
   expect(painel).not.toContain("subaba-aprovacoes");
 
   const gestao = await Bun.file(
     new URL('../componentes/PainelGestao.tsx', import.meta.url)
   ).text();
-  expect(gestao).toContain('<AprovacaoJornada');
+  const pendencias = await Bun.file(
+    new URL('../componentes/PendenciasDoPonto.tsx', import.meta.url)
+  ).text();
+  expect(gestao).not.toContain('<AprovacaoJornada');
+  expect(gestao).toContain('<PendenciasDoPonto');
+  expect(pendencias).toContain('<AprovacaoJornada');
 });
 
 test('FOLGA NÃO É AUSÊNCIA: as filas são separadas', async () => {
@@ -486,9 +492,15 @@ test('o contador "sem bater hoje" leva a uma lista', async () => {
     new URL('../componentes/PainelGestao.tsx', import.meta.url)
   ).text();
 
-  expect(gestao).toContain("setAba('sem_bater')");
-  expect(gestao).toContain('semBaterHoje');
-  expect(gestao).toContain('Quem ainda não bateu o ponto hoje');
+  // O cartão leva à aba Pendências já na parte "Sem bater hoje"
+  expect(gestao).toContain("abrirPendencias('sem_bater')");
+  expect(gestao).toContain('semBaterHoje={semBaterHoje.map((r) => r.colaborador)}');
+
+  // E a lista chama a pessoa no chat, uma por uma
+  const lista = await Bun.file(
+    new URL('../componentes/SemBaterHoje.tsx', import.meta.url)
+  ).text();
+  expect(lista).toContain('onClick={() => aoAbrirConversa(p.id)}');
 });
 
 /**

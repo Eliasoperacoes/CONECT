@@ -37,13 +37,18 @@ test('olha do 1º do mês passado até ontem: o mês que vai fechar está inclu�
   expect(periodoDosPontosIncompletos('2027-01-05')).toEqual({ inicio: '2026-12-01', fim: '2027-01-04' });
 });
 
-test('a sub-aba existe em Equipe e ponto, com o número de dias, ao lado de Aprovar jornadas', () => {
+test('a parte existe na aba Pendências, com o número de dias, ao lado de Aprovar jornadas', () => {
   const gestao = ler('PainelGestao.tsx');
-  expect(gestao).toContain("{ id: 'incompletos' as Aba, rotulo: 'Pontos incompletos', contador: incompletos }");
-  // O número vem do banco, e a própria aba o atualiza quando a batida é lançada
+  const pendencias = ler('PendenciasDoPonto.tsx');
+  // O número de dias é a parte "incompletos" da aba, e entra na soma dela
+  expect(gestao).toMatch(/totaisDasPendencias: Record<VistaDePendencia, number> = \{[^}]*\bincompletos,/);
+  expect(gestao).toContain('totaisDasPendencias.incompletos');
+  expect(pendencias).toContain("incompletos: { rotulo: 'Pontos incompletos'");
+  // O número vem do banco, e a própria parte o atualiza quando a batida é lançada
   expect(gestao).toContain('servicoPonto.buscarPontosIncompletos(inicio, fim)');
-  expect(gestao).toContain(
-    '<PontosIncompletos colaboradorAtual={colaboradorAtual} aoMudarTotal={setIncompletos} />'
+  expect(gestao).toContain('aoMudarIncompletos={setIncompletos}');
+  expect(pendencias).toContain(
+    '<PontosIncompletos colaboradorAtual={colaboradorAtual} aoMudarTotal={aoMudarIncompletos} />'
   );
 });
 
