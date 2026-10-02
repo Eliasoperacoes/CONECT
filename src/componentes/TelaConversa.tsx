@@ -124,6 +124,16 @@ const ItemDoMenu: React.FC<{
   </button>
 );
 
+/**
+ * A camada por baixo do menu da mensagem e do painel de reação: tocar fora
+ * fecha, e ARRASTAR também — é o gesto de quem quer voltar a rolar a
+ * conversa. A rolagem da lista em si não fecha nada: quem rola a lista com
+ * o menu aberto é a tela (teclado, mensagem nova), nunca a pessoa.
+ */
+const CamadaDoMenu: React.FC<{ aoFechar: () => void }> = ({ aoFechar }) => (
+  <div className="fixed inset-0 z-[60]" onClick={aoFechar} onTouchMove={aoFechar} onWheel={aoFechar} />
+);
+
 /** Segundos em M:SS — 3 vira "0:03" e 75 vira "1:15". */
 const formatarSegundos = (total: number): string => {
   const seguros = Math.max(0, Math.round(total));
@@ -256,23 +266,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
    */
   const grudadoNoFim = useRef(true);
 
-  /**
-   * QUEM ROLOU A LISTA: a pessoa, ou o próprio sistema?
-   *
-   * O menu da mensagem (e o painel de reação) fecham quando a lista rola —
-   * é a pessoa indo para outro ponto da conversa. Mas o SISTEMA também rola:
-   * a cada atualização que chega do banco (a leitura marcada ao abrir, a
-   * mensagem do colega), ele leva a lista até a última mensagem. Isso
-   * fechava o menu um instante depois de aberto, e "Fixar" ou "Apagar"
-   * pediam dois toques (Elias, 03/10/2026). A rolagem do sistema passa por
-   * aqui e não fecha nada.
-   */
-  const rolagemDoSistema = useRef(false);
   const rolarAteOFim = (lista: HTMLElement) => {
-    rolagemDoSistema.current = true;
     lista.scrollTop = lista.scrollHeight;
-    // O evento de rolagem chega no quadro seguinte: a marca dura dois
-    requestAnimationFrame(() => requestAnimationFrame(() => (rolagemDoSistema.current = false)));
   };
   const refTemporizadorPressione = useRef<NodeJS.Timeout | null>(null);
   const refAudioElemento = useRef<HTMLAudioElement | null>(null);
@@ -1029,10 +1024,18 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
           grudadoNoFim.current =
             el.scrollHeight - el.scrollTop - el.clientHeight <= 80;
 
-          // Só a rolagem da PESSOA fecha o menu — a do sistema, não
-          if (rolagemDoSistema.current) return;
-          if (menuMensagem) fecharMenuMensagem();
-          if (painelReacao) fecharPainelReacao();
+          /*
+            A ROLAGEM NÃO FECHA O MENU DA MENSAGEM (Elias, 03/10/2026: "o
+            duplo clique para fixar ou excluir continua").
+
+            Com o menu aberto, a camada por baixo dele cobre a tela: o dedo
+            nunca rola esta lista. Toda rolagem que chegava aqui era da
+            TELA — a mensagem nova levando ao fim, e sobretudo o teclado
+            fechando ao tocar nos três pontinhos: a lista cresce, o
+            navegador acerta a posição e dispara a rolagem. O menu abria e
+            fechava no mesmo toque. Quem fecha agora é a camada, ao toque ou
+            ao arrastar (CamadaDoMenu).
+          */
         }}
       >
         {mensagensExibidas.length === 0 ? (
@@ -1787,7 +1790,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
         return (
           <>
-            <div className="fixed inset-0 z-[60]" onClick={fecharMenuMensagem} />
+            <CamadaDoMenu aoFechar={fecharMenuMensagem} />
             <div
               id="menu-acoes-mensagem"
               style={{ top: topo, left: esquerda, width: MENU_LARGURA }}
@@ -1821,7 +1824,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
         return (
           <>
-            <div className="fixed inset-0 z-[60]" onClick={fecharPainelReacao} />
+            <CamadaDoMenu aoFechar={fecharPainelReacao} />
             <div
               id="painel-emoji-reacao"
               style={{ top: topo, left: esquerda, width: PAINEL_EMOJI_LARGURA }}

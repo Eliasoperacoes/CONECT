@@ -1146,7 +1146,8 @@ test('no celular as ações são um PAINEL, não botões na linha da mensagem', 
   }
 
   // Fundo que fecha ao tocar fora, senão o menu fica preso aberto
-  expect(menu).toContain('fixed inset-0');
+  expect(menu).toContain('<CamadaDoMenu aoFechar={fecharMenuMensagem} />');
+  expect(tela).toContain('<div className="fixed inset-0 z-[60]" onClick={aoFechar}');
 
   // Se não couber embaixo, abre para cima — antes isso era decidido pelo
   // ÍNDICE da mensagem na lista, que chutava; agora é medido na janela

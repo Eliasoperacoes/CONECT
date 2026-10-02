@@ -433,9 +433,9 @@ test('o menu de acoes fica fora da lista e ancorado na janela', async () => {
   expect(tela).toContain('e.currentTarget.getBoundingClientRect()');
   expect(tela).toContain('setMenuMensagem({ msg, x: r.left, y: r.bottom })');
 
-  // Rolar move o botão para longe da âncora, então rolar fecha — o menu e o
-  // painel de emoji, que usam a mesma âncora
-  expect(tela).toContain('if (menuMensagem) fecharMenuMensagem();');
+  // Arrastar move o botão para longe da âncora, então arrastar fecha — pela
+  // camada, não pela rolagem da lista (ver "o arraste fecha", abaixo)
+  expect(tela).toContain('<CamadaDoMenu aoFechar={fecharMenuMensagem} />');
 
   // Cabe embaixo? Senão abre para cima. E nunca passa da lateral.
   expect(tela).toContain('const cabeAbaixo =');
@@ -521,10 +521,9 @@ test('o painel de emoji fica fora da lista e ancorado na janela', async () => {
   expect(tela).toContain('PAINEL_EMOJI_ALTURA + 12 <= window.innerHeight');
   expect(tela).toContain('window.innerWidth - PAINEL_EMOJI_LARGURA - 8');
 
-  // Rolar fecha os dois: a âncora é um ponto da tela
-  const rolagem = s_rolagem(tela);
-  expect(rolagem).toContain('if (menuMensagem) fecharMenuMensagem();');
-  expect(rolagem).toContain('if (painelReacao) fecharPainelReacao();');
+  // Tocar fora ou arrastar fecha os dois: a âncora é um ponto da tela
+  expect(tela).toContain('<CamadaDoMenu aoFechar={fecharMenuMensagem} />');
+  expect(tela).toContain('<CamadaDoMenu aoFechar={fecharPainelReacao} />');
 });
 
 test('reagir virou acao do menu, com mais opcoes de emoji', async () => {
@@ -638,27 +637,29 @@ test('quem subiu para ler o passado nao e arrancado de la', async () => {
   expect(tela).toContain('if (grudadoNoFim.current)');
 });
 
-test('a rolagem do sistema nao fecha o menu da mensagem', async () => {
+test('a rolagem da lista nao fecha o menu da mensagem; o arraste fecha', async () => {
   const tela = semComentarios(await lerTela());
 
   /**
    * "O duplo clique para fixar ou excluir continua" (Elias, 03/10/2026).
-   * O menu abria e, quando chegava mensagem nova, a tela rolava sozinha
-   * até o fim — e o onScroll, sem saber quem rolou, fechava o menu. A
-   * pessoa tocava de novo. Toda rolagem programada passa por
-   * rolarAteOFim, que levanta a trava; o onScroll respeita a trava ANTES
-   * de fechar qualquer coisa.
+   * Com o menu aberto, a camada por baixo cobre a tela: o dedo nunca rola
+   * a lista. Toda rolagem que fechava o menu era da TELA — o teclado
+   * fechando ao tocar nos três pontinhos (a lista cresce e o navegador
+   * acerta a posição), a mensagem nova levando ao fim. O menu abria e
+   * fechava no mesmo toque. Medido no celular simulado: crescer a janela
+   * com o menu aberto o fechava.
    */
   const rolagem = s_rolagem(tela);
-  const trava = rolagem.indexOf('if (rolagemDoSistema.current) return;');
-  expect(trava).toBeGreaterThan(-1);
-  expect(trava).toBeLessThan(rolagem.indexOf('fecharMenuMensagem()'));
-  expect(trava).toBeLessThan(rolagem.indexOf('fecharPainelReacao()'));
+  const corpo = rolagem.slice(0, rolagem.indexOf('}}'));
+  expect(corpo).toContain('grudadoNoFim.current =');
+  expect(corpo).not.toContain('fecharMenuMensagem');
+  expect(corpo).not.toContain('fecharPainelReacao');
 
-  // Nenhuma rolagem programada fora do caminho que levanta a trava
-  const atribuicoes = tela.match(/\.scrollTop = /g) ?? [];
-  expect(atribuicoes.length).toBe(1);
-  expect(tela).toContain('rolagemDoSistema.current = true;\n    lista.scrollTop = lista.scrollHeight;');
+  // Quem fecha é a camada: ao toque e ao arrastar (dedo ou roda do mouse)
+  const camada = tela.slice(tela.indexOf('const CamadaDoMenu'), tela.indexOf('const CamadaDoMenu') + 300);
+  expect(camada).toContain('onClick={aoFechar}');
+  expect(camada).toContain('onTouchMove={aoFechar}');
+  expect(camada).toContain('onWheel={aoFechar}');
 });
 
 test('abrir uma conversa desfaz a exclusao dela', async () => {
