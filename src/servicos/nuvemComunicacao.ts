@@ -666,6 +666,18 @@ class PonteComunicacao {
       }
     }
 
+    /*
+      NO GRUPO DE PESSOAS, QUEM INSCREVE É O BANCO (adicionar_ao_grupo, em
+      grupos-de-todos.sql). A regra de participantes recusa a inscrição
+      direta de outra pessoa ali — e tentar faria o envio da mensagem
+      falhar por isso. Fica só para quem criou o grupo pelo Painel ADM, o
+      caminho antigo do TI.
+    */
+    if (conversa.tipo === 'grupo' && !conversa.ehSistemaPadrao && conversa.criadoPorId !== meuId) {
+      marcarConversaNoBanco(conversa.id);
+      return { sucesso: true };
+    }
+
     const restantes = conversa.participantesIds.filter((id) => id !== meuId);
     if (restantes.length === 0) return { sucesso: true };
 
