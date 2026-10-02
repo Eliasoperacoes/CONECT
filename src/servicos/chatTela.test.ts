@@ -959,3 +959,31 @@ test('a acao do item da conversa vale no soltar do dedo, uma vez so', async () =
   expect(fimDoToque).toContain('e.preventDefault();\n                acionar();');
   expect(botao).toContain('onClick={acionar}');
 });
+
+test('com a busca aberta, o voltar fecha a busca e nao a conversa', async () => {
+  const tela = semComentarios(await lerTela());
+  // Medido no S10 (02/10/2026): o voltar saía da conversa com a busca aberta
+  expect(tela).toContain('useVoltar(buscaAberta, () => {\n    setBuscaAberta(false);');
+});
+
+test('o menu da mensagem acompanha o botao quando a tela muda de tamanho', async () => {
+  const tela = semComentarios(await lerTela());
+  /*
+    Teclado aberto, toque nos três pontinhos: o teclado desce, a mensagem
+    anda, e o menu ficava no ponto antigo por cima do cabeçalho. A âncora é
+    o botão, medido de novo a cada resize.
+  */
+  expect(tela).toContain('refAncoraMenu.current = e.currentTarget;');
+  expect(tela).toContain("window.visualViewport?.addEventListener('resize', reancorar)");
+  expect(tela).toContain('const r = botao.getBoundingClientRect();');
+});
+
+test('textos de busca vazia dizem a verdade', async () => {
+  const tela = await lerTela();
+  expect(tela).not.toContain('resultado(s)');
+  expect(tela).toContain("mensagensExibidas.length === 1 ? 'resultado' : 'resultados'");
+
+  // "com estes filtros" só quando há filtro ou busca (S10, 02/10/2026)
+  const central = await Bun.file(new URL('../componentes/CentralAvisos.tsx', import.meta.url)).text();
+  expect(central).toContain('{filtrosLigados > 0 || busca.trim()');
+});

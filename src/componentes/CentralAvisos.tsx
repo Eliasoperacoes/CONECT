@@ -700,9 +700,12 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
           {lista.length === 0 ? (
             <div className="p-10 text-center text-xs text-[var(--c-texto-3)] bg-[var(--c-superficie)] border border-[var(--c-borda)] rounded-2xl flex flex-col items-center gap-2">
               {ICONE_TIPO[tipoAtivo]}
+              {/* "com estes filtros" só quando há filtro ou busca: sem nenhum,
+                  a frase mandava procurar um filtro que não existe (S10, 02/10/2026) */}
               <span>
-                Nada em {ROTULO_TIPO_PUBLICACAO[tipoAtivo].toLowerCase()} com estes
-                filtros.
+                {filtrosLigados > 0 || busca.trim()
+                  ? `Nada em ${ROTULO_TIPO_PUBLICACAO[tipoAtivo].toLowerCase()} com estes filtros.`
+                  : `Nenhuma publicação em ${ROTULO_TIPO_PUBLICACAO[tipoAtivo].toLowerCase()} para você por enquanto.`}
               </span>
             </div>
           ) : (

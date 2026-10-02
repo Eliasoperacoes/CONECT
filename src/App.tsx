@@ -1583,8 +1583,10 @@ export default function App() {
             />
           )}
 
-          {/* Conteúdo da Aba Ativa */}
-          <div className="flex-1 overflow-y-auto">
+          {/* Conteúdo da Aba Ativa. Com o "+" flutuando no canto, o fim da
+              lista ganha o respiro dele — senão o botão cobre a hora e o
+              contador da última conversa (medido no S10, 02/10/2026) */}
+          <div className={`flex-1 overflow-y-auto ${deveExibirBotaoMais ? 'pb-24' : ''}`}>
             {/*
               CONVERSAS E GRUPOS NA MESMA ABA.
 

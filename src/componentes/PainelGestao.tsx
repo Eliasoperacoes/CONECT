@@ -54,7 +54,7 @@ import { FichaColaborador } from './FichaColaborador';
 import { EscalaDeFolgas } from './EscalaDeFolgas';
 import { SeletorDeMes } from './SeletorDeMes';
 import { periodoDosPontosIncompletos } from './PontosIncompletos';
-import { PendenciasDoPonto, VistaDePendencia, vistaInicialDasPendencias } from './PendenciasDoPonto';
+import { PendenciasDoPonto, VistaDePendencia, vistaInicialDasPendencias, contadorDasPendencias } from './PendenciasDoPonto';
 import { AbaFerias } from './AbaFerias';
 import { TabelaEquipe } from './TabelaEquipe';
 import type { SecaoDestino } from '../servicos/centralDeNotificacoes';
@@ -428,13 +428,19 @@ export const PainelGestao: React.FC<Props> = ({
               /*
                 SEM BATER HOJE, PONTOS INCOMPLETOS E APROVAR JORNADAS NUMA ABA
                 SÓ (Elias, 03/10/2026) — as três respondem "o que do ponto da
-                equipe precisa de mim", em três momentos do dia. O número é a
-                soma; cada parte mostra o seu lá dentro (PendenciasDoPonto).
+                equipe precisa de mim", em três momentos do dia. Cada parte
+                mostra o seu lá dentro (PendenciasDoPonto).
+
+                O NÚMERO DA ABA É SÓ O QUE PEDE DECISÃO. Somava também "sem
+                bater", e no S10 do Fabio (02/10/2026) a mesma fila aparecia
+                como 19 em "Equipe e ponto", 9+ na barra e 38 aqui. Quem
+                ainda não bateu é informação que muda a manhã inteira — às 7h
+                seria a equipe toda —, não decisão esperando o gestor.
               */
               {
                 id: 'pendencias' as Aba,
                 rotulo: 'Pendências',
-                contador: totaisDasPendencias.sem_bater + totaisDasPendencias.incompletos + totaisDasPendencias.aprovar,
+                contador: contadorDasPendencias(totaisDasPendencias),
               },
               ...(veEscala ? [{ id: 'folgas' as Aba, rotulo: 'Escala de folgas' }] : []),
               /*

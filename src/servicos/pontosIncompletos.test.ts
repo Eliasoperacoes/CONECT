@@ -42,7 +42,8 @@ test('a parte existe na aba Pendências, com o número de dias, ao lado de Aprov
   const pendencias = ler('PendenciasDoPonto.tsx');
   // O número de dias é a parte "incompletos" da aba, e entra na soma dela
   expect(gestao).toMatch(/totaisDasPendencias: Record<VistaDePendencia, number> = \{[^}]*\bincompletos,/);
-  expect(gestao).toContain('totaisDasPendencias.incompletos');
+  expect(gestao).toContain('contadorDasPendencias(totaisDasPendencias)');
+  expect(pendencias).toContain('totais.incompletos + totais.aprovar');
   expect(pendencias).toContain("incompletos: { rotulo: 'Pontos incompletos'");
   // O número vem do banco, e a própria parte o atualiza quando a batida é lançada
   expect(gestao).toContain('servicoPonto.buscarPontosIncompletos(inicio, fim)');

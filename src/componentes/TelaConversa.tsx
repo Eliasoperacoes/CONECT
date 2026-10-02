@@ -202,6 +202,39 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     y: number;
   } | null>(null);
   const fecharMenuMensagem = () => setMenuMensagem(null);
+
+  /**
+   * O MENU ACOMPANHA O BOTÃO QUANDO A TELA MUDA DE TAMANHO.
+   *
+   * Tocar nos três pontinhos com o teclado aberto: o teclado desce, a lista
+   * cresce e a mensagem anda — e o menu ficava no ponto antigo, por cima do
+   * cabeçalho (medido no S10, 02/10/2026). A âncora é o próprio botão:
+   * a cada mudança de tamanho, a posição é medida de novo nele.
+   */
+  const refAncoraMenu = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!menuMensagem) return;
+    let quadro = 0;
+    const reancorar = () => {
+      cancelAnimationFrame(quadro);
+      // No quadro seguinte: a lista só acerta a rolagem depois do resize
+      quadro = requestAnimationFrame(() => {
+        const botao = refAncoraMenu.current;
+        if (!botao?.isConnected) return;
+        const r = botao.getBoundingClientRect();
+        // Objeto novo mesmo com o botão parado: o lado (cabe embaixo?)
+        // é decidido no desenho, e a altura da tela é que mudou
+        setMenuMensagem((m) => m && { ...m, x: r.left, y: r.bottom });
+      });
+    };
+    window.addEventListener('resize', reancorar);
+    window.visualViewport?.addEventListener('resize', reancorar);
+    return () => {
+      cancelAnimationFrame(quadro);
+      window.removeEventListener('resize', reancorar);
+      window.visualViewport?.removeEventListener('resize', reancorar);
+    };
+  }, [!!menuMensagem]);
   /** A mensagem que está sendo respondida, enquanto a resposta é escrita. */
   const [respondendoId, setRespondendoId] = useState<string | null>(null);
 
@@ -226,6 +259,12 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   useVoltar(!!painelReacao, fecharPainelReacao);
   useVoltar(!!menuMensagem, fecharMenuMensagem);
   useVoltar(!!mensagemParaExcluir, () => setMensagemParaExcluir(null));
+  // Com a busca aberta, o voltar fecha a busca — e não a conversa inteira
+  // (medido no S10, 02/10/2026; é o que o WhatsApp faz)
+  useVoltar(buscaAberta, () => {
+    setBuscaAberta(false);
+    setTermoBusca('');
+  });
   // Mensagem sendo editada no próprio balão, e o texto em andamento
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [textoEditado, setTextoEditado] = useState('');
@@ -935,8 +974,10 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
             autoFocus
           />
           {termoBusca && (
-            <span className="text-[11px] text-[var(--c-texto-3)] font-mono">
-              {mensagensExibidas.length} resultado(s)
+            <span className="text-[11px] text-[var(--c-texto-3)] tabular-nums">
+              {mensagensExibidas.length === 0
+                ? 'Nenhuma'
+                : `${mensagensExibidas.length} ${mensagensExibidas.length === 1 ? 'resultado' : 'resultados'}`}
             </span>
           )}
           <button
@@ -1613,6 +1654,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                         // O canto do botão é a âncora; quem decide de que
                         // lado o menu cabe é o cálculo na hora de desenhar
                         const r = e.currentTarget.getBoundingClientRect();
+                        refAncoraMenu.current = e.currentTarget;
                         setMenuMensagem({ msg, x: r.left, y: r.bottom });
                       }}
                       className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] flex items-center justify-center flex-shrink-0 active:scale-95 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 transition-all"

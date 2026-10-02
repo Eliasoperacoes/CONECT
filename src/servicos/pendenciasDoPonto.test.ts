@@ -98,3 +98,17 @@ test('o resumo da linha diz o que espera decisão, sem abrir a folha', () => {
     '2 dias sem fechar'
   );
 });
+
+test('o numero da aba Pendencias e so o que pede decisao, sem o "sem bater"', async () => {
+  /*
+    No S10 do Fabio (02/10/2026) a mesma fila aparecia como 19 em "Equipe e
+    ponto", 9+ na barra e 38 em Pendências — que somava os 19 que ainda não
+    tinham batido. Quem não bateu é informação, não decisão do gestor.
+  */
+  const { contadorDasPendencias } = await import('../componentes/PendenciasDoPonto');
+  expect(contadorDasPendencias({ sem_bater: 19, incompletos: 0, aprovar: 19 })).toBe(19);
+  expect(contadorDasPendencias({ sem_bater: 5, incompletos: 2, aprovar: 3 })).toBe(5);
+
+  const painel = await Bun.file(new URL('../componentes/PainelGestao.tsx', import.meta.url)).text();
+  expect(painel).toContain('contador: contadorDasPendencias(totaisDasPendencias)');
+});

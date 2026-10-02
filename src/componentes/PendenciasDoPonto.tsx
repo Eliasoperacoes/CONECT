@@ -32,6 +32,14 @@ export type VistaDePendencia = (typeof VISTAS_DE_PENDENCIA)[number];
 export const vistaInicialDasPendencias = (totais: Record<VistaDePendencia, number>): VistaDePendencia =>
   VISTAS_DE_PENDENCIA.find((v) => totais[v] > 0) ?? 'aprovar';
 
+/**
+ * O número da aba Pendências: só o que pede DECISÃO do gestor. "Sem bater"
+ * fica de fora — é informação que muda a manhã inteira, e somada fazia a
+ * mesma fila aparecer como 19, 9+ e 38 em três lugares da mesma tela.
+ */
+export const contadorDasPendencias = (totais: Record<VistaDePendencia, number>): number =>
+  totais.incompletos + totais.aprovar;
+
 const PARTES: Record<VistaDePendencia, { rotulo: string; curto: string; icone: React.ReactNode }> = {
   sem_bater: { rotulo: 'Sem bater hoje', curto: 'Sem bater', icone: <UserX className="w-4 h-4" /> },
   incompletos: { rotulo: 'Pontos incompletos', curto: 'Incompletos', icone: <CalendarClock className="w-4 h-4" /> },
