@@ -47,7 +47,7 @@ import {
 } from '../servicos/imagens';
 import { bancoDados } from '../servicos/bancoDados';
 import { ModalCamera } from './ModalCamera';
-import { DetalhesDoGrupo } from './DetalhesDoGrupo';
+import { DadosDoGrupo } from './DadosDoGrupo';
 import { ModalVisualizadorImagem } from './ModalVisualizadorImagem';
 import { ModalEncaminharMensagem } from './ModalEncaminharMensagem';
 import { montarPreviaDaMensagem } from '../servicos/nuvemComunicacao';
@@ -68,6 +68,8 @@ interface PropsTelaConversa {
   aoAbrirPublicacao?: (publicacaoId: string) => void;
   /** Chegando pela busca da lista: a mensagem encontrada, para abrir nela. */
   mensagemAlvoId?: string;
+  /** "Conversar com Fulano", dos dados do grupo: abre a conversa individual. */
+  aoConversarCom?: (colegaId: string) => void;
 }
 
 /**
@@ -146,6 +148,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   aoVoltar,
   aoAbrirPublicacao,
   mensagemAlvoId,
+  aoConversarCom,
 }) => {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [textoMensagem, setTextoMensagem] = useState('');
@@ -669,8 +672,21 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
   // Regra no banco: apenas pessoas com permissão veem os botões de envio
   const podePublicar = bancoDados.podePublicarNaConversa(conversa.id);
-  // Quem saiu do grupo segue na lista dele mesmo (para ler o histórico), mas não conta
-  const participantesAtivos = conversa.participantesIds.length - (conversa.euSaiEm ? 1 : 0);
+  /**
+   * A SEGUNDA LINHA DO TOPO DO GRUPO, como no WhatsApp: QUEM está ("Ana,
+   * Bia, Caio, Você") — e não só quantos. É também a pista de que o topo é
+   * tocável: dali se abre "Dados do grupo".
+   */
+  const resumoDoGrupo = (() => {
+    if (conversa.tipo !== 'grupo') return '';
+    if (conversa.euSaiEm) return 'Você saiu do grupo · toque para ver os dados';
+    const outros = bancoDados
+      .obterColaboradores()
+      .filter((c) => c.id !== colaboradorAtual.id && conversa.participantesIds.includes(c.id))
+      .map((c) => c.nome.split(' ')[0])
+      .sort((a, b) => a.localeCompare(b));
+    return outros.length ? `${outros.join(', ')}, Você` : 'Só você · toque para adicionar pessoas';
+  })();
 
   /**
    * CTRL+V MANDA O PRINT.
@@ -773,7 +789,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   return (
     <div
       id="tela-conversa-ativa"
-      className="flex flex-col w-full h-[100dvh] bg-[var(--c-canvas)] overflow-hidden"
+      className="relative flex flex-col w-full h-[100dvh] bg-[var(--c-canvas)] overflow-hidden"
     >
       {/* 1. Cabeçalho: alterna entre a barra normal e a barra de seleção */}
       {mensagensSelecionadasIds.length > 0 ? (
@@ -854,7 +870,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                 {conversa.tipo === 'individual' && colegaDestinatario ? (
                   `${colegaDestinatario.cargo} · ${colegaDestinatario.loja}`
                 ) : conversa.tipo === 'grupo' ? (
-                  conversa.ehSistemaPadrao ? 'Grupo da rede' : `${participantesAtivos} participantes`
+                  conversa.ehSistemaPadrao ? 'Grupo da rede · toque para ver quem está' : resumoDoGrupo
                 ) : (
                   'Malachias Autopeças'
                 )}
@@ -2029,7 +2045,21 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       )}
 
       {/* Modal de Detalhes da Conversa / Grupo / Contato */}
-      {modalDetalhesAberto && (
+      {/* DADOS DO GRUPO: tela cheia sobre a conversa, no padrão do WhatsApp */}
+      {modalDetalhesAberto && conversa.tipo === 'grupo' && (
+        <DadosDoGrupo
+          conversa={conversa}
+          colaboradorAtual={colaboradorAtual}
+          aoFechar={() => setModalDetalhesAberto(false)}
+          aoApagar={() => {
+            setModalDetalhesAberto(false);
+            aoVoltar();
+          }}
+          aoConversarCom={aoConversarCom}
+        />
+      )}
+
+      {modalDetalhesAberto && conversa.tipo !== 'grupo' && (
         <div
           className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-xs animate-in fade-in"
           onClick={() => setModalDetalhesAberto(false)}
@@ -2065,11 +2095,9 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
               <h3 className="text-lg font-bold">{conversa.nome}</h3>
               <p className="text-xs text-blue-200">
-                {conversa.tipo === 'individual' && colegaDestinatario
+                {colegaDestinatario
                   ? `${colegaDestinatario.cargo} · Loja ${colegaDestinatario.loja}`
-                  : conversa.tipo === 'grupo'
-                  ? `Grupo Interno Malachias · ${participantesAtivos} colaboradores`
-                  : 'Canal Oficial'}
+                  : 'Malachias Autopeças'}
               </p>
             </div>
 
@@ -2112,19 +2140,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                     Visto por último: {colegaDestinatario.vistoPorUltimo}
                   </div>
                 </div>
-              ) : (
-                /* O GRUPO: quem está, quem administra, e as ações de cada um
-                   (DetalhesDoGrupo). Ele traz o próprio "Fechar". */
-                <DetalhesDoGrupo
-                  conversa={conversa}
-                  colaboradorAtual={colaboradorAtual}
-                  aoFechar={() => setModalDetalhesAberto(false)}
-                  aoApagar={() => {
-                    setModalDetalhesAberto(false);
-                    aoVoltar();
-                  }}
-                />
-              )}
+              ) : null}
 
               {conversa.tipo === 'individual' && (
                 <button

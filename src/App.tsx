@@ -1875,6 +1875,7 @@ export default function App() {
                 }
                 aoVoltar={() => setConversaAtivaId(null)}
                 aoAbrirPublicacao={abrirPublicacao}
+                aoConversarCom={lidarSelecionarColega}
               />
             </div>
           ) : abaDesktop === 'painel' ? (
@@ -2024,6 +2025,7 @@ export default function App() {
             visivelNoCelular={indice === posicoesDasJanelas.length - 1}
             aoEncolher={() => alternarEncolhida(janela.id)}
             aoFechar={() => fecharJanela(janela.id)}
+            aoConversarCom={lidarSelecionarColega}
             /* Fecha a janela ao ir para a publicação: deixá-la aberta
                por cima da Central esconderia o que se foi ler */
             aoAbrirPublicacao={(id) => {

@@ -21,6 +21,8 @@ interface PropsJanelaChat {
   conversa: Conversa;
   colaboradorAtual: Colaborador;
   aoFechar: () => void;
+  /** "Conversar com Fulano", dos dados do grupo. */
+  aoConversarCom?: (colegaId: string) => void;
   /**
    * Distância da borda direita, em pixels, no computador.
    *
@@ -58,6 +60,7 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
   aoEncolher,
   visivelNoCelular = true,
   aoAbrirPublicacao,
+  aoConversarCom,
 }) => {
   const estilo = { '--direita': `${direita}px` } as React.CSSProperties;
 
@@ -104,6 +107,7 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
           colaboradorAtual={colaboradorAtual}
           aoVoltar={aoFechar}
           aoAbrirPublicacao={aoAbrirPublicacao}
+          aoConversarCom={aoConversarCom}
         />
       </div>
     </div>
