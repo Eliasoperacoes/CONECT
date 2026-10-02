@@ -135,9 +135,16 @@ confere('ninguém entra sozinho em grupo alheio', !!daviEntra.erro, 'passou');
 const daviLe = await como<any>('davi', `select * from mensagens where conversa_id = $1`, [g]);
 confere('quem não está no grupo não lê', (daviLe.linhas || []).length === 0, JSON.stringify(daviLe));
 
-// 4. Ana adiciona o Davi
+// 4. Ana escreve, e só DEPOIS adiciona o Davi
+await como('ana', `insert into mensagens (id, conversa_id, remetente_id, tipo, texto) values ('m0', $1, 'ana', 'texto', 'antes do Davi')`, [g]);
+await new Promise((r) => setTimeout(r, 20));
 const anaAdiciona = await como<any>('ana', `select public.adicionar_ao_grupo($1, array['davi'])`, [g]);
 confere('admin adiciona', !anaAdiciona.erro, anaAdiciona.erro);
+const daviVe = await como<any>('davi', `select id, tipo, texto from mensagens where conversa_id = $1 order by criado_em`, [g]);
+confere('quem entra não lê o que se disse antes dele',
+  !(daviVe.linhas || []).some((m) => m.id === 'm0'), JSON.stringify(daviVe.linhas));
+confere('quem entra vê que foi adicionado',
+  (daviVe.linhas || []).some((m) => m.texto === 'Ana adicionou Davi'), JSON.stringify(daviVe.linhas));
 
 // 5. Bia tenta virar admin mudando a própria linha
 await como('bia', `update participantes set papel='admin' where conversa_id=$1 and colaborador_id='bia'`, [g]);
@@ -161,7 +168,8 @@ confere('qualquer um sai', !biaSai.erro, biaSai.erro);
 await new Promise((r) => setTimeout(r, 20));
 await como('caio', `insert into mensagens (id, conversa_id, remetente_id, tipo, texto) values ('m2', $1, 'caio', 'texto', 'depois')`, [g]);
 const biaLe = await como<any>('bia', `select id from mensagens where conversa_id = $1 and tipo = 'texto' order by criado_em`, [g]);
-confere('quem saiu lê o que veio antes, e não o depois', JSON.stringify((biaLe.linhas || []).map((m) => m.id)) === '["m1"]', JSON.stringify(biaLe));
+// A Bia está no grupo desde a criação: lê o m0 e o m1 (antes de sair), e não o m2 (depois)
+confere('quem saiu lê o que veio antes, e não o depois', JSON.stringify((biaLe.linhas || []).map((m) => m.id)) === '["m0","m1"]', JSON.stringify(biaLe));
 const biaEscreve = await como('bia', `insert into mensagens (id, conversa_id, remetente_id, tipo, texto) values ('m3', $1, 'bia', 'texto', 'oi')`, [g]);
 confere('quem saiu não escreve', !!biaEscreve.erro, 'passou');
 await como('bia', `update participantes set saiu_em=null where conversa_id=$1 and colaborador_id='bia'`, [g]);
@@ -207,6 +215,35 @@ confere('canal oficial: a pessoa se inscreve, como hoje', !canal.erro, canal.err
 const saiCanal = await como('davi', `select public.sair_do_grupo('canal-loja')`);
 confere('canal oficial: ninguém sai pela função', !!saiCanal.erro, 'passou');
 
+// 9b. Quem foi removido vê a própria remoção
+const caioVe = await como<any>('caio', `select texto from mensagens where conversa_id = $1 and tipo = 'sistema'`, [g]);
+confere('quem é removido vê "removeu"', (caioVe.linhas || []).some((m) => m.texto === 'Davi removeu Caio'), JSON.stringify(caioVe.linhas));
+
+// 9c. Sair e VOLTAR: guarda a passagem anterior, e não lê o intervalo de fora
+const pausa = () => new Promise((r) => setTimeout(r, 20));
+const g2 = (await como<{ criar_grupo: string }>('ana', `select public.criar_grupo('Volta', '', array['bia'])`)).linhas![0].criar_grupo;
+await como('ana', `insert into mensagens (id, conversa_id, remetente_id, tipo, texto) values ('x1', $1, 'ana', 'texto', 'antes')`, [g2]);
+await pausa();
+await como('bia', `select public.sair_do_grupo($1)`, [g2]);
+await pausa();
+await como('ana', `insert into mensagens (id, conversa_id, remetente_id, tipo, texto) values ('x2', $1, 'ana', 'texto', 'enquanto fora')`, [g2]);
+await pausa();
+await como('ana', `select public.adicionar_ao_grupo($1, array['bia'])`, [g2]);
+await como('ana', `insert into mensagens (id, conversa_id, remetente_id, tipo, texto) values ('x3', $1, 'ana', 'texto', 'depois da volta')`, [g2]);
+const biaVolta = await como<any>('bia', `select id from mensagens where conversa_id = $1 and tipo = 'texto' order by criado_em`, [g2]);
+confere('quem volta lê a passagem anterior e o depois, sem o intervalo',
+  JSON.stringify((biaVolta.linhas || []).map((m) => m.id)) === '["x1","x3"]', JSON.stringify(biaVolta.linhas));
+
+// 9d. Admin desligado da empresa não conta: na próxima mudança, um ativo assume
+const g3 = (await como<{ criar_grupo: string }>('ana', `select public.criar_grupo('Desligado', '', array['bia','caio'])`)).linhas![0].criar_grupo;
+await comoSuper(`update colaboradores set ativo = false where id = 'ana'`);
+await como('caio', `select public.sair_do_grupo($1)`, [g3]);
+const adminsG3 = await comoSuper(
+  `select colaborador_id from participantes where conversa_id=$1 and papel='admin' and saiu_em is null order by 1`, [g3]);
+confere('admin desligado não segura o grupo: um ativo assume',
+  adminsG3.map((a: any) => a.colaborador_id).includes('bia'), JSON.stringify(adminsG3));
+await comoSuper(`update colaboradores set ativo = true where id = 'ana'`);
+
 // 12. As mensagens de sistema que ficaram no grupo, na ordem
 const sis = await comoSuper(`select texto from mensagens where conversa_id=$1 and tipo='sistema' order by criado_em`, [g]);
 confere('nomes em lista', (await comoSuper(`select public.nomes_em_lista(array['davi','bia','caio']) as n`))[0].n === 'Bia, Caio e Davi');
@@ -237,7 +274,8 @@ test('o SQL roda de novo sem quebrar nada', async () => {
 test('o esquema diz o mesmo que o grupos-de-todos.sql: cada função e cada regra, igual', () => {
   // Uma regra em dois arquivos divergindo foi como o login criou cadastro duplicado
   const esquema = readFileSync('supabase/esquema.sql', 'utf8').replace(/\r\n/g, '\n');
-  const delta = SQL_NOVO.replace(/\r\n/g, '\n');
+  // O passo 2 é recorte do arquivo dos grupos: as funções dele também têm de estar no esquema
+  const delta = [SQL_NOVO, readFileSync('supabase/grupos-de-todos-2.sql', 'utf8')].join('\n').replace(/\r\n/g, '\n');
   const blocos = [
     ...delta.matchAll(/create or replace function public\.[a-z_]+\([^)]*\)[\s\S]*?\$\$;/g),
     ...delta.matchAll(/create policy [a-z_]+ on public\.[a-z_]+[\s\S]*?\);\n/g),

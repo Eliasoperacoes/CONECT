@@ -14,6 +14,7 @@
  * `aoVoltar`), pela mesma pilha de todo modal (`useVoltar`).
  */
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, X } from 'lucide-react';
 import { useVoltar } from '../servicos/voltar';
 
@@ -41,7 +42,13 @@ export const FolhaInferior: React.FC<Props> = ({
   useVoltar(aberto, aoVoltar ?? aoFechar);
   if (!aberto) return null;
 
-  return (
+  /*
+    NO CORPO DA PÁGINA (portal), e não onde foi chamada. Aberta de dentro da
+    lista de conversas, a folha ficava presa na camada da lista — e a janela
+    da conversa, ao lado, cobria a confirmação de "Sair e apagar" (Elias,
+    03/10/2026). Uma folha é sempre a camada de cima.
+  */
+  return createPortal(
     <div
       className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-black/55 folha-fundo"
       onClick={aoFechar}
@@ -95,6 +102,7 @@ export const FolhaInferior: React.FC<Props> = ({
           </footer>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

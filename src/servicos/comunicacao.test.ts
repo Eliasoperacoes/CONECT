@@ -63,6 +63,8 @@ mock.module('./envioDeAviso', () => ({
   FUNCAO_DE_AVISO: 'enviar-aviso',
   pedirAvisoDaMensagem: () => {},
   pedirAvisoDaPublicacao: (...args: any[]) => avisosDePublicacao.push(args),
+  // Faltando aqui, o arquivo de teste inteiro deixa de carregar
+  pedirAvisoDeEntradaNoGrupo: () => {},
 }));
 
 let anexosEnviados: { conteudo: string; caminho: string }[] = [];

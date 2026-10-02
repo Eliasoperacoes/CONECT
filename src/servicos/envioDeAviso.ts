@@ -119,3 +119,23 @@ export const pedirAvisoDeDocumentoRh = (tipo: 'holerite' | 'advertencia', ids: s
     /* sem cliente de funções (teste, modo local): sem aviso, sem erro */
   }
 };
+
+/**
+ * "FULANO ADICIONOU VOCÊ AO GRUPO" — o aviso de quem entrou num grupo, ao
+ * criar ou ao adicionar. Vão o grupo e os ids; o servidor confere no banco
+ * que quem pede administra o grupo e que cada um está nele agora.
+ */
+export const pedirAvisoDeEntradaNoGrupo = (conversaId: string, ids: string[]): void => {
+  if (!supabase || !usandoNuvem() || ids.length === 0) return;
+
+  try {
+    supabase.functions
+      .invoke(FUNCAO_DE_AVISO, { body: { entradaNoGrupo: { conversaId, ids } } })
+      .then(({ error }) => {
+        if (error) console.warn('Aviso de entrada no grupo não saiu:', error.message);
+      })
+      .catch(() => {});
+  } catch {
+    /* sem cliente de funções (teste, modo local): sem aviso, sem erro */
+  }
+};

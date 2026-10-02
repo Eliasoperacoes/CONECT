@@ -79,7 +79,7 @@ export const EscolherPessoas: React.FC<{
         </div>
 
         {escolhidos.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          <div className="flex gap-3 overflow-x-auto pt-1.5 pb-1 -mx-1 px-1.5">
             {escolhidos.map((c) => (
               <button
                 key={c.id}

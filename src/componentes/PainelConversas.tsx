@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { Conversa } from '../tipos';
 import { ItemConversa } from './ItemConversa';
+import { FolhaInferior } from './FolhaInferior';
+import { bancoDados } from '../servicos/bancoDados';
 import {
   aplicarPreferencias,
   contarArquivadas,
@@ -109,6 +111,46 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
     acao: (colaboradorId: string, conversaId: string) => void
   ) => {
     for (const id of marcadas) acao(colaboradorId, id);
+    sairDaSelecao();
+    recarregar();
+  };
+
+  /*
+    EXCLUIR EM LOTE, COM GRUPOS NO MEIO: o grupo de pessoas não é só tirado
+    da lista — a pessoa SAI dele e ele é apagado (a mesma regra do item:
+    excluir sem sair deixava a pessoa recebendo aviso de um grupo que ela
+    não via mais). Por isso, havendo grupo, pergunta antes.
+  */
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
+  const [erroExclusao, setErroExclusao] = useState<string | null>(null);
+  const todasAsConversas = [...conversas, ...grupos];
+  const gruposMarcados = marcadas.filter((id) => {
+    const c = todasAsConversas.find((x) => x.id === id);
+    return !!c && c.tipo === 'grupo' && !c.ehSistemaPadrao;
+  });
+  const excluirMarcadas = () => {
+    if (gruposMarcados.length === 0) return aplicarNasMarcadas(removerConversaDaLista);
+    setErroExclusao(null);
+    setConfirmandoExclusao(true);
+  };
+  const confirmarExclusao = async () => {
+    setExcluindo(true);
+    for (const id of marcadas) {
+      if (gruposMarcados.includes(id)) {
+        const res = await bancoDados.sairEApagarGrupo(id);
+        if (!res.sucesso) {
+          setExcluindo(false);
+          setErroExclusao(res.erro || 'Não foi possível sair de um dos grupos.');
+          recarregar();
+          return;
+        }
+      } else {
+        removerConversaDaLista(colaboradorId, id);
+      }
+    }
+    setExcluindo(false);
+    setConfirmandoExclusao(false);
     sairDaSelecao();
     recarregar();
   };
@@ -234,7 +276,7 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
             <button
               type="button"
               disabled={marcadas.length === 0}
-              onClick={() => aplicarNasMarcadas(removerConversaDaLista)}
+              onClick={excluirMarcadas}
               className="flex-1 px-2 py-2.5 flex items-center justify-center gap-1.5 text-xs font-semibold text-red-600 dark:text-red-400 border-l border-[var(--c-borda)] hover:bg-red-500/10 disabled:opacity-40 disabled:hover:bg-transparent transition-colors cursor-pointer disabled:cursor-default"
               title="Saem da aba e só voltam quando você chamar o colega"
             >
@@ -288,6 +330,42 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
           </button>
         </div>
       )}
+      <FolhaInferior
+        aberto={confirmandoExclusao}
+        titulo={`Excluir ${marcadas.length} ${marcadas.length === 1 ? 'conversa' : 'conversas'}?`}
+        aoFechar={() => setConfirmandoExclusao(false)}
+        rodape={
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmandoExclusao(false)}
+              disabled={excluindo}
+              className="flex-1 h-12 rounded-2xl border border-[var(--c-borda)] text-sm font-semibold text-[var(--c-texto-2)]"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              id="confirmar-excluir-marcadas"
+              onClick={confirmarExclusao}
+              disabled={excluindo}
+              className="flex-1 h-12 rounded-2xl bg-red-600 text-white text-sm font-bold disabled:opacity-50"
+            >
+              {excluindo ? 'Aguarde…' : 'Sair e excluir'}
+            </button>
+          </div>
+        }
+      >
+        <div className="p-4 flex flex-col gap-2">
+          <p className="text-sm text-[var(--c-texto-2)] leading-relaxed">
+            {gruposMarcados.length === 1
+              ? 'Entre elas há 1 grupo: você sai dele — deixa de receber as mensagens e os avisos — e ele some da sua lista.'
+              : `Entre elas há ${gruposMarcados.length} grupos: você sai deles — deixa de receber as mensagens e os avisos — e eles somem da sua lista.`}{' '}
+            Para os outros participantes, os grupos continuam.
+          </p>
+          {erroExclusao && <p role="alert" className="text-xs font-semibold text-red-600">{erroExclusao}</p>}
+        </div>
+      </FolhaInferior>
     </div>
   );
 };

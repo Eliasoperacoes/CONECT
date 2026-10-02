@@ -341,7 +341,7 @@ export const DadosDoGrupo: React.FC<{
 
           {sai && (
             <div className="mx-4 sm:mx-0 p-3 rounded-xl bg-[var(--c-superficie-2)] text-sm text-[var(--c-texto-2)]">
-              Você saiu deste grupo. O histórico até a sua saída continua aqui.
+              Você não participa mais deste grupo. O histórico até a sua saída continua aqui.
             </div>
           )}
 

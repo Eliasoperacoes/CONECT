@@ -20,7 +20,7 @@ import {
 import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
 import { alcanca, podeEditarPublicacao, destinosDe, publicoAlvo } from './mural';
-import { pedirAvisoDaPublicacao } from './envioDeAviso';
+import { pedirAvisoDaPublicacao, pedirAvisoDeEntradaNoGrupo } from './envioDeAviso';
 import { lerLista } from './cacheDeLeitura';
 import { semFormatacao, pessoasCitadas, citadosNovos } from './textoRico';
 import {
@@ -2371,6 +2371,8 @@ class BancoDadosConecta {
     if (usandoNuvem()) {
       const res = await nuvemComunicacao.criarGrupo(nome.trim(), descricao.trim(), participantesIds);
       if (!res.sucesso || !res.dados) return { sucesso: false, erro: res.erro };
+      // Quem entrou fica sabendo no celular: "Fulano adicionou você ao grupo"
+      pedirAvisoDeEntradaNoGrupo(res.dados, participantesIds);
       await nuvemComunicacao.sincronizarConversas().catch(() => false);
       this.notificar();
       return { sucesso: true, grupoId: res.dados };
@@ -2396,7 +2398,12 @@ class BancoDadosConecta {
 
   adicionarAoGrupo(conversaId: string, ids: string[]) {
     return this.acaoDoGrupo(
-      () => nuvemComunicacao.adicionarAoGrupo(conversaId, ids),
+      async () => {
+        const res = await nuvemComunicacao.adicionarAoGrupo(conversaId, ids);
+        // Quem entrou fica sabendo no celular: "Fulano adicionou você ao grupo"
+        if (res.sucesso) pedirAvisoDeEntradaNoGrupo(conversaId, ids);
+        return res;
+      },
       (lista) => {
         const c = lista.find((x) => x.id === conversaId);
         if (c) c.participantesIds = Array.from(new Set([...c.participantesIds, ...ids]));
@@ -2453,6 +2460,21 @@ class BancoDadosConecta {
         c.apenasGestoresPublicam = campos.apenasGestoresPublicam;
       }
     );
+  }
+
+  /**
+   * "EXCLUIR" UM GRUPO É SAIR E APAGAR (Elias, 03/10/2026). Excluir sem
+   * sair deixava o grupo fora da lista e a pessoa nele — recebendo aviso
+   * de um grupo que ela nem via mais. Agora quem exclui sai (se ainda está)
+   * e o grupo some da lista dela: desvinculada por completo.
+   */
+  async sairEApagarGrupo(conversaId: string): Promise<{ sucesso: boolean; erro?: string }> {
+    const conversa = this.obterTodasConversas().find((c) => c.id === conversaId);
+    if (conversa && !conversa.euSaiEm) {
+      const saida = await this.sairDoGrupo(conversaId);
+      if (!saida.sucesso) return saida;
+    }
+    return this.apagarGrupoDaMinhaLista(conversaId);
   }
 
   /** Depois de sair: o grupo some da MINHA lista, e segue existindo para os outros. */

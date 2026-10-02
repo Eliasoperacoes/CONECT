@@ -812,6 +812,54 @@ Deno.serve(async (req) => {
   }
 
   // =============================================================
+  // CAMINHO 6 — "FULANO ADICIONOU VOCÊ AO GRUPO"
+  //
+  // Quem foi adicionado (ou entrou num grupo novo) não tinha aviso nenhum:
+  // o grupo só aparecia quando a pessoa abria o aplicativo.
+  //
+  //  · QUEM PEDE ADMINISTRA O GRUPO — perguntado ao banco com a sessão
+  //    dele (`sou_admin_do_grupo`), a mesma regra que deixa adicionar.
+  //  · SÓ RECEBE QUEM ESTÁ NO GRUPO AGORA — a linha de participante sem
+  //    saída, tirada do banco; um id qualquer no corpo não vira aviso.
+  // =============================================================
+  if (pedido.entradaNoGrupo && typeof pedido.entradaNoGrupo === 'object') {
+    const p = pedido.entradaNoGrupo as Record<string, unknown>;
+    const conversaId = String(p.conversaId || '');
+    const ids = Array.isArray(p.ids) ? [...new Set(p.ids.map(String))].slice(0, MAXIMO_DA_PUBLICACAO) : [];
+    if (!conversaId || ids.length === 0) return responder({ erro: 'Pedido de aviso de entrada incompleto.' }, 400);
+
+    const comoQuemChama = createClient(url, chavePublica(), {
+      global: { headers: { Authorization: `Bearer ${jwt}` } },
+      auth: { persistSession: false },
+    });
+    const { data: administra } = await comoQuemChama.rpc('sou_admin_do_grupo', { alvo: conversaId });
+    if (administra !== true) return responder({ erro: 'Só o administrador do grupo avisa quem entrou.' }, 403);
+
+    const { data: conversa } = await banco.from('conversas').select('id, nome').eq('id', conversaId).maybeSingle();
+    if (!conversa) return responder({ erro: 'Grupo não encontrado.' }, 404);
+
+    const { data: dentro } = await banco
+      .from('participantes')
+      .select('*')
+      .eq('conversa_id', conversaId)
+      .in('colaborador_id', ids);
+    const pessoas = (dentro ?? [])
+      .filter((l) => !l.saiu_em && l.colaborador_id !== eu.id)
+      .map((l) => l.colaborador_id as string);
+
+    const aviso = await entregarAosAparelhos(banco, pessoas, {
+      tipo: 'conversa',
+      conversaId,
+      mensagemId: `entrada-${conversaId}`,
+      remetente: eu.nome,
+      texto: 'Adicionou você ao grupo',
+      conversa: conversa.nome as string,
+      ehGrupo: 'true',
+    });
+    return responder(aviso, aviso.erro ? 503 : 200);
+  }
+
+  // =============================================================
   // CAMINHO 4 — UMA PUBLICAÇÃO DIRIGIDA
   //
   // Publicação para a rede toda avisa pelo grupo de avisos (caminho 2).

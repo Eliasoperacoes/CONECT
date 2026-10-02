@@ -679,7 +679,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
    */
   const resumoDoGrupo = (() => {
     if (conversa.tipo !== 'grupo') return '';
-    if (conversa.euSaiEm) return 'Você saiu do grupo · toque para ver os dados';
+    if (conversa.euSaiEm) return 'Você não participa mais · toque para ver os dados';
     const outros = bancoDados
       .obterColaboradores()
       .filter((c) => c.id !== colaboradorAtual.id && conversa.participantesIds.includes(c.id))
@@ -2025,7 +2025,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       ) : conversa.euSaiEm ? (
         /* QUEM SAIU DO GRUPO: lê o que veio antes, e pode apagar o grupo da lista */
         <footer className="w-full bg-[var(--c-superficie)] border-t border-[var(--c-borda)] p-3 flex items-center justify-center gap-3 text-xs text-[var(--c-texto-3)] pb-[max(12px,env(safe-area-inset-bottom))]">
-          <span>Você saiu deste grupo.</span>
+          <span>Você não participa mais deste grupo.</span>
           <button
             type="button"
             id="abrir-detalhes-para-apagar"

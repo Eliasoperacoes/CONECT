@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Pin, PinOff, Trash2, Archive, Check } from 'lucide-react';
+import { Pin, PinOff, Trash2, Archive, Check, LogOut } from 'lucide-react';
 import { Conversa } from '../tipos';
 import {
   estaFixada,
@@ -13,6 +13,8 @@ import {
   ehArrastoLateral,
   limitarDeslocamento,
 } from '../servicos/deslizarItem';
+import { bancoDados } from '../servicos/bancoDados';
+import { FolhaInferior } from './FolhaInferior';
 
 /**
  * O aviso de que um item abriu as ações. Os outros fecham as deles:
@@ -86,6 +88,26 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
    */
   const arrastou = useRef(false);
 
+  /*
+    GRUPO DE PESSOAS: "EXCLUIR" É SAIR E APAGAR (Elias, 03/10/2026). Excluir
+    sem sair deixava a pessoa no grupo, recebendo aviso de um grupo que ela
+    nem via mais. Agora pergunta antes, e desvincula por completo.
+  */
+  const grupoDePessoas = conversa.tipo === 'grupo' && !conversa.ehSistemaPadrao;
+  const jaSai = !!conversa.euSaiEm;
+  const [confirmandoSaida, setConfirmandoSaida] = useState(false);
+  const [saindo, setSaindo] = useState(false);
+  const [erroSaida, setErroSaida] = useState<string | null>(null);
+  const sairEApagar = async () => {
+    setSaindo(true);
+    setErroSaida(null);
+    const res = await bancoDados.sairEApagarGrupo(conversa.id);
+    setSaindo(false);
+    if (!res.sucesso) return setErroSaida(res.erro || 'Não foi possível sair do grupo.');
+    setConfirmandoSaida(false);
+    aoMudarPreferencia?.();
+  };
+
   const acoes = colaboradorId
     ? [
         {
@@ -123,14 +145,23 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
           Nenhuma mensagem é apagada. Chamar o colega de novo traz a
           conversa inteira de volta.
         */
-        {
-          chave: 'excluir',
-          rotulo: 'Excluir',
-          Icone: Trash2,
-          cor: 'bg-red-600 text-white',
-          dica: 'Sai da aba e só volta quando você chamar o colega de novo',
-          executar: () => removerConversaDaLista(colaboradorId, conversa.id),
-        },
+        grupoDePessoas
+          ? {
+              chave: 'excluir',
+              rotulo: jaSai ? 'Apagar' : 'Sair e apagar',
+              Icone: jaSai ? Trash2 : LogOut,
+              cor: 'bg-red-600 text-white',
+              dica: jaSai ? 'Apagar o grupo da sua lista' : 'Sair do grupo e apagá-lo da sua lista',
+              executar: () => setConfirmandoSaida(true),
+            }
+          : {
+              chave: 'excluir',
+              rotulo: 'Excluir',
+              Icone: Trash2,
+              cor: 'bg-red-600 text-white',
+              dica: 'Sai da aba e só volta quando você chamar o colega de novo',
+              executar: () => removerConversaDaLista(colaboradorId, conversa.id),
+            },
       ]
     : [];
   const largura = acoes.length * LARGURA_ACAO;
@@ -327,6 +358,42 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
         </div>
       </div>
     </button>
+
+      <FolhaInferior
+        aberto={confirmandoSaida}
+        titulo={jaSai ? `Apagar “${conversa.nome}”?` : `Sair de “${conversa.nome}” e apagar?`}
+        aoFechar={() => setConfirmandoSaida(false)}
+        rodape={
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmandoSaida(false)}
+              disabled={saindo}
+              className="flex-1 h-12 rounded-2xl border border-[var(--c-borda)] text-sm font-semibold text-[var(--c-texto-2)]"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              id={`confirmar-sair-e-apagar-${conversa.id}`}
+              onClick={sairEApagar}
+              disabled={saindo}
+              className="flex-1 h-12 rounded-2xl bg-red-600 text-white text-sm font-bold disabled:opacity-50"
+            >
+              {saindo ? 'Aguarde…' : jaSai ? 'Apagar' : 'Sair e apagar'}
+            </button>
+          </div>
+        }
+      >
+        <div className="p-4 flex flex-col gap-2">
+          <p className="text-sm text-[var(--c-texto-2)] leading-relaxed">
+            {jaSai
+              ? 'O grupo sai da sua lista, com o histórico. Para os outros participantes, ele continua.'
+              : 'Você sai do grupo — deixa de receber as mensagens e os avisos — e ele some da sua lista, com o histórico. Para os outros participantes, o grupo continua.'}
+          </p>
+          {erroSaida && <p role="alert" className="text-xs font-semibold text-red-600">{erroSaida}</p>}
+        </div>
+      </FolhaInferior>
     </div>
   );
 };

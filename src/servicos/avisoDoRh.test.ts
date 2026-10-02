@@ -14,6 +14,8 @@ type Linha = Record<string, any>;
 let tabelas: Record<string, Linha[]>;
 /** Quem cuida de pessoas, pela sessão (é o que o banco responderia). */
 let cuidaDePessoas: Record<string, boolean>;
+/** De quais grupos cada sessão é admin (o que `sou_admin_do_grupo` responderia). */
+let adminDeGrupo: Record<string, string[]>;
 
 const consulta = (tabela: string) => {
   const filtros: Array<(l: Linha) => boolean> = [];
@@ -45,7 +47,15 @@ mock.module('jsr:@supabase/supabase-js@2', () => ({
     const jwt = String(opcoes?.global?.headers?.Authorization || '').replace('Bearer ', '');
     return {
       from: (t: string) => consulta(t),
-      rpc: async (nome: string) => ({ data: nome === 'cuido_de_pessoas' ? !!cuidaDePessoas[jwt] : null, error: null }),
+      rpc: async (nome: string, args?: any) => ({
+        data:
+          nome === 'cuido_de_pessoas'
+            ? !!cuidaDePessoas[jwt]
+            : nome === 'sou_admin_do_grupo'
+              ? (adminDeGrupo[jwt] || []).includes(args?.alvo)
+              : null,
+        error: null,
+      }),
     };
   },
 }));
@@ -108,6 +118,7 @@ const quemRecebeu = () => entregas.map((e) => e.token.replace('token-', '')).sor
 beforeEach(() => {
   entregas = [];
   cuidaDePessoas = { 'jwt-da-dani': true };
+  adminDeGrupo = { 'jwt-da-ana': ['grupo-balcao'] };
   tabelas = {
     colaboradores: [
       { id: 'dani', nome: 'Dani', loja: 'Pirassununga', auth_user_id: 'auth-dani', ativo: true },
@@ -122,6 +133,13 @@ beforeEach(() => {
       { id: 'hol-zeca-2026-09', colaborador_id: 'zeca', competencia: '2026-09' },
     ],
     advertencias: [{ id: 'adv-1', colaborador_id: 'bia' }],
+    conversas: [{ id: 'grupo-balcao', nome: 'Balcão sábado' }],
+    participantes: [
+      { conversa_id: 'grupo-balcao', colaborador_id: 'ana', saiu_em: null },
+      { conversa_id: 'grupo-balcao', colaborador_id: 'bia', saiu_em: null },
+      // A Dani saiu do grupo: não é avisada de nada dele
+      { conversa_id: 'grupo-balcao', colaborador_id: 'dani', saiu_em: '2026-10-03T12:00:00Z' },
+    ],
   };
 });
 
@@ -190,5 +208,27 @@ test('a entrega agendada não abre conversa: tipo fora da lista é recusado', as
     { 'x-apurar-segredo': 'segredo-dos-agendamentos' }
   );
   expect(await r.json()).toEqual({ pedidos: 2, entregues: 0, recusados: 2 });
+  expect(entregas).toEqual([]);
+});
+
+test('"Ana adicionou você ao grupo": avisa quem está no grupo, e o toque abre o grupo', async () => {
+  const comoAna = { Authorization: 'Bearer jwt-da-ana' };
+  const r = await chamar({ entradaNoGrupo: { conversaId: 'grupo-balcao', ids: ['bia', 'dani', 'caio'] } }, comoAna);
+  expect(r.status).toBe(200);
+  // A Dani saiu, e o Caio nem está no grupo: só a Bia
+  expect(quemRecebeu()).toEqual(['bia']);
+  expect(entregas[0].data).toMatchObject({
+    tipo: 'conversa',
+    conversaId: 'grupo-balcao',
+    remetente: 'Ana',
+    conversa: 'Balcão sábado',
+    texto: 'Adicionou você ao grupo',
+  });
+});
+
+test('só o admin do grupo avisa quem entrou — o banco é quem diz', async () => {
+  // A Dani tem sessão (e cuida de pessoas), mas não administra este grupo
+  const r = await chamar({ entradaNoGrupo: { conversaId: 'grupo-balcao', ids: ['bia'] } }, comoDani);
+  expect(r.status).toBe(403);
   expect(entregas).toEqual([]);
 });
