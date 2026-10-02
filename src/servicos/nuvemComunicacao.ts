@@ -120,6 +120,57 @@ const lerPendentesDoAparelho = (): Mensagem[] => {
   }
 };
 
+/**
+ * A CONVERSA A DOIS QUE AINDA ESTÁ SUBINDO NÃO PODE TROCAR DE CARA.
+ *
+ * "Ao abrir o chat, o nome do colaborador fica oscilando por alguns
+ * segundos" (Elias, 03/10/2026). Criar a conversa no banco são três
+ * gravações: a conversa, a MINHA inscrição, a do colega. Qualquer
+ * sincronização no meio — basta alguém da rede mandar qualquer coisa —
+ * reescrevia o cache com o banco pela metade:
+ *
+ *   - antes da conversa existir lá, ela sumia da tela;
+ *   - só comigo inscrito, o "outro participante" era eu mesmo, e o
+ *     cabeçalho mostrava o MEU nome.
+ *
+ * Até o colega entrar, vale a versão do aparelho. Só para a conversa a
+ * dois que é minha — grupo tem dono no banco (adicionar_ao_grupo), e uma
+ * conversa que o banco já conheceu e não devolve mais foi apagada.
+ */
+export const juntarConversasEmTransito = (
+  doBanco: Conversa[],
+  doAparelho: Conversa[],
+  meuId: string | null
+): Conversa[] => {
+  if (!meuId) return doBanco;
+
+  const aDoisMinha = (c: Conversa | undefined): c is Conversa =>
+    !!c && c.tipo === 'individual' && c.participantesIds.length === 2 && c.participantesIds.includes(meuId);
+
+  const locais = new Map(doAparelho.map((c) => [c.id, c]));
+  const corrigidas = doBanco.map((c) => {
+    const local = locais.get(c.id);
+    return c.tipo === 'individual' && c.participantesIds.length < 2 && aDoisMinha(local)
+      ? { ...c, participantesIds: local.participantesIds }
+      : c;
+  });
+
+  const noBanco = new Set(doBanco.map((c) => c.id));
+  const subindo = doAparelho.filter(
+    (c) => aDoisMinha(c) && !noBanco.has(c.id) && !conversaJaEstaNoBanco(c.id)
+  );
+  return subindo.length > 0 ? [...corrigidas, ...subindo] : corrigidas;
+};
+
+const lerConversasDoAparelho = (): Conversa[] => {
+  try {
+    const bruto = localStorage.getItem(CHAVE_CONVERSAS);
+    const lista = bruto ? JSON.parse(bruto) : [];
+    return Array.isArray(lista) ? lista : [];
+  } catch {
+    return [];
+  }
+};
 
 /**
  * Carimbo da auditoria como ele aparece na tela. Leva o dia junto da hora
@@ -595,9 +646,13 @@ class PonteComunicacao {
       };
     });
 
-    localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(listaConversas));
+    localStorage.setItem(
+      CHAVE_CONVERSAS,
+      JSON.stringify(juntarConversasEmTransito(listaConversas, lerConversasDoAparelho(), meuId))
+    );
     // Tudo que voltou da consulta existe no banco: anotar aqui evita
-    // regravar essas conversas a cada mensagem
+    // regravar essas conversas a cada mensagem. Só o que VOLTOU — a que
+    // ainda está subindo não pode ser dada como gravada
     listaConversas.forEach((c) => marcarConversaNoBanco(c.id));
     /**
      * A MENSAGEM QUE AINDA ESTÁ SUBINDO NÃO PODE SER APAGADA AQUI.

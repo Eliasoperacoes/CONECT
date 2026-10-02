@@ -405,3 +405,51 @@ test('TODA MENSAGEM leva `publicacao_id`, mesmo sem publicação nenhuma', async
   expect(res.sucesso).toBe(false);
   expect(res.erro).toContain('publicacao_id');
 });
+
+/**
+ * A CONVERSA A DOIS QUE AINDA ESTÁ SUBINDO NÃO TROCA DE CARA.
+ *
+ * "O nome do colaborador fica oscilando por alguns segundos" (Elias,
+ * 03/10/2026). Criar a conversa no banco são três gravações, e a
+ * sincronização que caísse no meio reescrevia o cache com o banco pela
+ * metade: a conversa sumia, ou ficava só comigo dentro — e o cabeçalho
+ * mostrava o MEU nome no lugar do colega.
+ */
+test('a sincronizacao nao troca a conversa nova pela metade que o banco ja tem', async () => {
+  const { juntarConversasEmTransito } = await import('./nuvemComunicacao');
+  const nova = {
+    id: 'conv-ind-colab-ana-colab-elias',
+    tipo: 'individual' as const,
+    nome: 'Elias',
+    participantesIds: ['colab-ana', 'colab-elias'],
+    naoLidas: 0,
+    atualizadoEm: '2026-10-03T10:00:00.000Z',
+  };
+
+  // 1. O banco ainda não tem a conversa: ela continua na tela
+  expect(juntarConversasEmTransito([], [nova], 'colab-ana').map((c) => c.id)).toEqual([nova.id]);
+
+  // 2. O banco tem a conversa só comigo dentro: o colega continua nela
+  const pelaMetade = { ...nova, participantesIds: ['colab-ana'] };
+  const [junta] = juntarConversasEmTransito([pelaMetade], [nova], 'colab-ana');
+  expect(junta.participantesIds).toEqual(['colab-ana', 'colab-elias']);
+
+  // 3. Conversa que o banco JÁ conheceu e não devolve mais foi apagada: não volta
+  const original = (globalThis as any).localStorage.getItem;
+  (globalThis as any).localStorage.getItem = (k: string) =>
+    k === 'conecta_v4_conversas_no_banco' ? JSON.stringify([nova.id]) : null;
+  try {
+    expect(juntarConversasEmTransito([], [nova], 'colab-ana')).toEqual([]);
+  } finally {
+    (globalThis as any).localStorage.getItem = original;
+  }
+
+  // Grupo não entra nessa: quem inscreve ali é o banco
+  const grupo = { ...CANAL_LOJA, ehSistemaPadrao: false };
+  expect(juntarConversasEmTransito([], [grupo], 'colab-ana')).toEqual([]);
+
+  // E é por ela que a sincronização grava o cache — senão nada disso vale
+  const ponte = await Bun.file(new URL('./nuvemComunicacao.ts', import.meta.url)).text();
+  expect(ponte).toContain('juntarConversasEmTransito(listaConversas, lerConversasDoAparelho(), meuId)');
+  expect(ponte).not.toContain('localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(listaConversas));');
+});
