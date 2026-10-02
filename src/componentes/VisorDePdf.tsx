@@ -8,12 +8,12 @@
  *
  * Abre ajustado à largura da tela; o botão de tamanho amplia, rolando para
  * os lados, para ler número por número no celular. Fora do aplicativo há
- * também "Baixar", para quem quer guardar ou imprimir.
+ * também "Baixar", e onde o aparelho deixa, "Compartilhar".
  *
  * Quem decide que um PDF vem para cá é `mostrarPdf` (visorDeDocumento.ts).
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Download, Maximize2, Minimize2 } from 'lucide-react';
+import { ArrowLeft, Download, Maximize2, Minimize2, Share2 } from 'lucide-react';
 import { fecharVisor } from '../servicos/visorDeDocumento';
 import { rodandoNoAplicativo } from '../servicos/aplicativo';
 import { carregarLeitorDePdf } from '../servicos/leitorDePdf';
@@ -131,6 +131,33 @@ export const VisorDePdf: React.FC<{ url: string; titulo: string; arquivoNome: st
 
   const aoFalhar = useMemo(() => () => setFalhou(true), []);
 
+  /*
+    COMPARTILHAR O PDF — WhatsApp, e-mail, o que o aparelho oferecer. É a
+    folha de compartilhar do próprio sistema (Android, iPhone, Windows).
+    Onde ela não aceita arquivo — a WebView do aplicativo Android não tem
+    nenhuma —, o botão nem aparece.
+  */
+  const arquivo = useMemo(
+    () => (dados ? new File([dados], arquivoNome, { type: 'application/pdf' }) : null),
+    [dados, arquivoNome]
+  );
+  const podeCompartilhar = useMemo(() => {
+    try {
+      return !!arquivo && typeof navigator.canShare === 'function' && navigator.canShare({ files: [arquivo] });
+    } catch {
+      return false;
+    }
+  }, [arquivo]);
+  const compartilhar = async () => {
+    if (!arquivo) return;
+    try {
+      await navigator.share({ files: [arquivo], title: titulo });
+    } catch (erro) {
+      // Fechar a folha sem escolher nada não é erro
+      if ((erro as Error)?.name !== 'AbortError') console.error('Falha ao compartilhar o PDF:', erro);
+    }
+  };
+
   return (
     <div
       role="dialog"
@@ -162,16 +189,29 @@ export const VisorDePdf: React.FC<{ url: string; titulo: string; arquivoNome: st
             {ampliado ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
           </button>
         )}
+        {podeCompartilhar && (
+          <button
+            type="button"
+            id="visor-compartilhar"
+            onClick={compartilhar}
+            aria-label="Compartilhar"
+            title="Compartilhar"
+            className="w-11 h-11 rounded-full flex items-center justify-center text-[var(--c-texto-2)] active:bg-[var(--c-superficie-2)]"
+          >
+            <Share2 className="w-5 h-5" />
+          </button>
+        )}
         {/* No aplicativo Android o download não funciona dentro da WebView */}
         {!rodandoNoAplicativo() && enderecoParaBaixar && (
           <a
             id="visor-baixar"
             href={enderecoParaBaixar}
             download={arquivoNome}
+            aria-label="Baixar"
             className="h-9 px-3 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center gap-1.5"
           >
             <Download className="w-4 h-4" />
-            Baixar
+            <span className="hidden sm:inline">Baixar</span>
           </a>
         )}
       </header>
