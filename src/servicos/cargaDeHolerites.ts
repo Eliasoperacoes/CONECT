@@ -61,6 +61,26 @@ const palavrasDoNome = (nome: string): string[] =>
  * RH lia "MALACHIAS AUTOPECAS LTDA CNPJ..." três vezes e não sabia qual
  * era qual. O trecho começa um pouco antes do nome encontrado.
  */
+/**
+ * O NOME DO CAMPO "Nome do Funcionário" — onde o holerite diz de quem é.
+ *
+ * No holerite do Domínio (o sistema do escritório) o texto sai como
+ * "Código  ABNER SOUSA BORGES  Nome do Funcionário": o nome entre os dois
+ * rótulos, em maiúsculas. Cada página traz as DUAS VIAS (a que o RH
+ * guardava assinada e a do colaborador), então o nome vem duas vezes.
+ *
+ * Comparar só aqui, e não na página inteira, evita casar com um nome que
+ * aparece em outro canto — a beneficiária de uma pensão, por exemplo.
+ * Página onde o campo não é achado volta a procurar no texto todo.
+ */
+export const nomesNoCampo = (texto: string): string[] => [
+  ...new Set(
+    [...texto.matchAll(/Código\s+(\p{Lu}[\p{Lu}\s'.-]{1,80}?)\s+Nome do Funcionário/gu)].map((m) =>
+      m[1].replace(/\s+/g, ' ').trim()
+    )
+  ),
+];
+
 const trechoEmVoltaDoNome = (texto: string, palavra?: string): string => {
   const limpo = texto.normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim();
   const posicao = palavra ? limpo.toUpperCase().indexOf(palavra) : -1;
@@ -77,9 +97,11 @@ export const analisarPaginas = (
     .filter((p) => p.nome.trim().length > 0);
 
   return textos.map((texto, indice) => {
-    const pagina = normalizarParaComparar(texto);
+    const campo = nomesNoCampo(texto);
+    // Onde procurar: cada nome do campo, separado; sem campo, a página toda
+    const alvos = (campo.length > 0 ? campo : [texto]).map(normalizarParaComparar);
 
-    let achados = pessoas.filter((p) => pagina.includes(p.nome));
+    let achados = pessoas.filter((p) => alvos.some((a) => a.includes(p.nome)));
 
     /**
      * O NOME DENTRO DE OUTRO NOME NÃO É OUTRA PESSOA.
@@ -106,7 +128,7 @@ export const analisarPaginas = (
       const notas = pessoas
         .map((p) => ({
           id: p.id,
-          acertos: p.palavras.filter((w) => pagina.includes(` ${w} `)).length,
+          acertos: Math.max(...alvos.map((a) => p.palavras.filter((w) => a.includes(` ${w} `)).length)),
           total: p.palavras.length,
         }))
         .filter((n) => n.acertos >= 2 && n.acertos / Math.max(1, n.total) >= 0.6)
@@ -120,7 +142,11 @@ export const analisarPaginas = (
       numero: indice + 1,
       donos,
       sugestao,
-      trecho: trechoEmVoltaDoNome(texto, pessoas.find((p) => p.id === (donos[0] || sugestao))?.palavras[0]),
+      // Com o campo achado, o RH lê o nome como o escritório escreveu
+      trecho:
+        campo.length > 0
+          ? `Nome no holerite: ${campo.join(' / ')}`
+          : trechoEmVoltaDoNome(texto, pessoas.find((p) => p.id === (donos[0] || sugestao))?.palavras[0]),
     };
   });
 };

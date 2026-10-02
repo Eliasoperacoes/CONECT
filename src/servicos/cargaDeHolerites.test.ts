@@ -11,6 +11,7 @@ import {
   paginasPorPessoa,
   sugerirCompetencia,
   normalizarParaComparar,
+  nomesNoCampo,
 } from './cargaDeHolerites';
 
 const EQUIPE = [
@@ -105,6 +106,49 @@ test('nome cortado pelo sistema da contabilidade vira SUGESTÃO, não publicaç�
 test('o RH decide: a escolha dele é o que vale, e páginas seguidas se juntam', () => {
   const grupos = paginasPorPessoa({ 1: 'maria', 2: 'joao', 3: 'maria', 4: null });
   expect(grupos).toEqual({ maria: [1, 3], joao: [2] });
+});
+
+/*
+  O HOLERITE DO DOMÍNIO, como o texto sai do PDF real do escritório
+  (Setembro/2026): o nome ENTRE "Código" e "Nome do Funcionário", e as duas
+  vias na mesma página.
+*/
+const viaDominio = (nome: string, resto = '') =>
+  `8781 149 SALARIO PERICULOSIDADE ${resto} R   T MALACHIAS   AUTO   PECAS   LTDA 28.251.342/0001-01 CNPJ:   CC: 41  Código  ${nome}  Nome do Funcionário   CBO  519110  Departamento  1  Filial  Folha Mensal Setembro de 2026 GERAL Mensalista Admissão:   05/09/2022 MOTOBOY`;
+const paginaDominio = (nome: string, resto = '') => `${viaDominio(nome, resto)} ${viaDominio(nome, resto)}`;
+
+test('Domínio: o nome sai do campo, uma vez só mesmo com as duas vias', () => {
+  const [p] = analisarPaginas([paginaDominio('JOÃO   FELIPE   DA   SILVA   BALDI')], EQUIPE);
+  expect(nomesNoCampo(paginaDominio('JOÃO   FELIPE   DA   SILVA   BALDI'))).toEqual(['JOÃO FELIPE DA SILVA BALDI']);
+  expect(p.donos).toEqual(['joao']);
+  expect(p.trecho).toBe('Nome no holerite: JOÃO FELIPE DA SILVA BALDI');
+});
+
+test('Domínio: outro nome do cadastro no corpo da página não divide a página', () => {
+  // A pensão descontada do João leva o nome da beneficiária no texto
+  const [p] = analisarPaginas(
+    [paginaDominio('JOAO FELIPE DA SILVA BALDI', 'PENSAO ALIMENTICIA MARIA CLARA MAFRA DE OLIVEIRA')],
+    EQUIPE
+  );
+  expect(p.donos).toEqual(['joao']);
+});
+
+test('Domínio: nome com palavra a mais que o cadastro é sugestão, não publicação', () => {
+  // "FERNANDA NATHALIE METZNER CECCARELLI" no holerite; sem o "Nathalie" no cadastro
+  const [p] = analisarPaginas(
+    [paginaDominio('FERNANDA NATHALIE METZNER CECCARELLI')],
+    [...EQUIPE, { id: 'fer', nome: 'Fernanda Metzner Ceccarelli' }]
+  );
+  expect(p.donos).toEqual([]);
+  expect(p.sugestao).toBe('fer');
+});
+
+test('Domínio: a página "A TRANSPORTAR" e a seguinte vão para a mesma pessoa', () => {
+  const paginas = analisarPaginas(
+    [`${paginaDominio('MARIA CLARA MAFRA DE OLIVEIRA')} A TRANSPORTAR`, paginaDominio('MARIA CLARA MAFRA DE OLIVEIRA')],
+    EQUIPE
+  );
+  expect(paginasPorPessoa(decisaoInicial(paginas))).toEqual({ maria: [1, 2] });
 });
 
 test('o mês sai do PDF como sugestão, sem confundir com data de admissão', () => {
