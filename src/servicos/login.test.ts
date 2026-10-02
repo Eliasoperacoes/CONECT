@@ -490,3 +490,30 @@ test('dois cadastros nao podem dividir o mesmo login', async () => {
   ).text();
   expect(esquema).toContain('login                           text not null unique');
 });
+
+test('no esquema, cada função é definida UMA vez', async () => {
+  /**
+   * `sou_admin()` e `cuido_de_pessoas()` moravam duas vezes no esquema
+   * (até 02/10/2026): no começo ainda com a regra do modelo antigo
+   * ("nível = 4" era o administrador), e na seção dos cinco níveis com a
+   * regra certa. Valia a de baixo só por ser executada por último — o
+   * mesmo acaso que já criou cadastro duplicado no login.
+   */
+  const sql = semComentarios(await lerSql('esquema.sql'));
+  const contagem = new Map<string, number>();
+  for (const [, nome] of sql.matchAll(/create or replace function public\.([a-z_]+)\s*\(/g)) {
+    contagem.set(nome, (contagem.get(nome) || 0) + 1);
+  }
+  expect([...contagem].filter(([, n]) => n > 1).map(([nome]) => nome)).toEqual([]);
+
+  // E as que sobraram têm a regra dos cinco níveis (tipos.ts: Diretoria 4, TI 5)
+  expect(sql).toMatch(/function public\.sou_admin\(\)[\s\S]{0,160}meu_nivel\(\) >= 5/);
+  expect(sql).toMatch(/function public\.cuido_de_pessoas\(\)[\s\S]{0,160}meu_nivel\(\) >= 4 or public\.meu_setor\(\) = 'RH'/);
+});
+
+test('rodar o esquema de novo não promove a Diretoria a TI', () => {
+  // A migração de uma vez (o 4 antigo virou 5) rodava a cada execução do arquivo
+  return lerSql('esquema.sql').then((sql) =>
+    expect(semComentarios(sql)).not.toMatch(/update public\.colaboradores set nivel = 5 where nivel = 4/)
+  );
+});

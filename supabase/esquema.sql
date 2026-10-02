@@ -272,14 +272,22 @@ returns text language sql stable security definer set search_path = public as $$
   select coalesce((select setor from public.colaboradores where auth_user_id = auth.uid() limit 1), '');
 $$;
 
+-- Administrar o sistema é do TI, e só dele (nível 5)
 create or replace function public.sou_admin()
 returns boolean language sql stable security definer set search_path = public as $$
-  select public.meu_nivel() = 4;
+  select public.meu_nivel() >= 5;
 $$;
 
+-- Cuidar de pessoas — cadastrar, ajustar ponto dos outros, holerite — é do
+-- RH, da Diretoria (4) e do TI (5). Gerente responde pela loja, mas não
+-- mexe em ficha. A mesma regra da tela é `cuidaDePessoas` em `tipos.ts`.
+--
+-- Estas duas moravam aqui E na seção dos níveis, mais abaixo, com regras
+-- diferentes (aqui ainda "= 4", do modelo antigo em que o 4 era o
+-- administrador). Valia a de baixo só por ser rodada por último.
 create or replace function public.cuido_de_pessoas()
 returns boolean language sql stable security definer set search_path = public as $$
-  select public.meu_nivel() = 4 or public.meu_setor() = 'RH';
+  select public.meu_nivel() >= 4 or public.meu_setor() = 'RH';
 $$;
 
 create or replace function public.participo_da_conversa(alvo text)
@@ -1311,29 +1319,18 @@ on conflict (loja) do nothing;
 -- acumula. Mas o nível vale em qualquer loja, porque há exceção real: a
 -- liderança de Compras atua nas cinco.
 --
--- MIGRAÇÃO: quem estava no 4 sobe para 5. No modelo antigo o 4 era o
--- administrador único, com o painel inteiro na mão — deixá-lo no 4 novo
--- (Diretoria) tiraria em silêncio um acesso que a pessoa já usa. Quem for
--- Diretoria e não TI, o administrador rebaixa pelo painel, de propósito.
+-- A MIGRAÇÃO do modelo antigo (o 4 era o administrador e subiu para 5) já
+-- foi aplicada e SAIU daqui (02/10/2026): o `update ... set nivel = 5
+-- where nivel = 4` rodava de novo a cada execução deste arquivo, e
+-- promoveria a TI toda a Diretoria cadastrada desde então.
+--
+-- `sou_admin()` e `cuido_de_pessoas()` estão definidas uma vez só, junto
+-- das outras funções de quem-sou-eu, no começo do arquivo.
 -- ============================================================
 
 alter table public.colaboradores drop constraint if exists colaboradores_nivel_check;
-update public.colaboradores set nivel = 5 where nivel = 4;
 alter table public.colaboradores
   add constraint colaboradores_nivel_check check (nivel between 1 and 5);
-
--- Administrar o sistema é do TI, e só dele
-create or replace function public.sou_admin()
-returns boolean language sql stable security definer set search_path = public as $$
-  select public.meu_nivel() >= 5;
-$$;
-
--- Cuidar de pessoas — cadastrar, ajustar ponto dos outros — é do RH, da
--- Diretoria e do TI. Gerente responde pela loja, mas não mexe em ficha.
-create or replace function public.cuido_de_pessoas()
-returns boolean language sql stable security definer set search_path = public as $$
-  select public.meu_nivel() >= 4 or public.meu_setor() = 'RH';
-$$;
 
 -- Publicar na Central: do líder de setor para cima. É `publicaComunicado`
 -- (tipos.ts) — e esta é a trava que vale. Estava em 4 (Diretoria e TI)
