@@ -24,7 +24,7 @@
  *    de 89 nomes em ordem alfabética.
  */
 import React, { useState, useMemo } from 'react';
-import { ArrowLeft, Search, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowLeft, Search, SlidersHorizontal, Users, X } from 'lucide-react';
 import { Colaborador } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
 import { useVoltar } from '../servicos/voltar';
@@ -34,6 +34,8 @@ interface PropsModalNovaConversa {
   colegas: Colaborador[];
   aoSelecionar: (colegaId: string) => void;
   aoFechar: () => void;
+  /** "Novo grupo" no alto, como no WhatsApp — qualquer pessoa cria grupo. */
+  aoNovoGrupo?: () => void;
 }
 
 export const ModalNovaConversa: React.FC<PropsModalNovaConversa> = ({
@@ -41,6 +43,7 @@ export const ModalNovaConversa: React.FC<PropsModalNovaConversa> = ({
   colegas,
   aoSelecionar,
   aoFechar,
+  aoNovoGrupo,
 }) => {
   useVoltar(aberto, aoFechar);
   const [busca, setBusca] = useState('');
@@ -240,6 +243,20 @@ export const ModalNovaConversa: React.FC<PropsModalNovaConversa> = ({
 
       {/* Lista de colegas */}
       <div className="flex-1 overflow-y-auto">
+        {/* NOVO GRUPO, antes da lista — o lugar em que todo mundo procura */}
+        {aoNovoGrupo && !busca.trim() && (
+          <button
+            type="button"
+            id="botao-novo-grupo"
+            onClick={aoNovoGrupo}
+            className="w-full flex items-center gap-3 px-4 py-3 text-left bg-[var(--c-superficie)] border-b border-[var(--c-borda)] hover:bg-[var(--c-superficie-2)] transition-colors min-h-[60px]"
+          >
+            <span className="w-10 h-10 rounded-full bg-[var(--c-acento)] text-[var(--c-sobre-acento)] flex items-center justify-center flex-shrink-0">
+              <Users className="w-5 h-5" />
+            </span>
+            <span className="font-semibold text-sm text-[var(--c-texto)]">Novo grupo</span>
+          </button>
+        )}
         {colegasFiltrados.length === 0 ? (
           <div className="py-12 px-6 text-center text-[var(--c-texto-3)] text-sm flex flex-col items-center gap-3">
             <span>Nenhum colega encontrado.</span>

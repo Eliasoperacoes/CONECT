@@ -166,6 +166,10 @@ interface LinhaParticipante {
   fixada?: boolean;
   oculta_desde?: string | null;
   removida?: boolean | null;
+  /** 'admin' ou 'membro' — antes de grupos-de-todos.sql, a coluna nem existe */
+  papel?: string | null;
+  /** Quando a pessoa saiu do grupo; a linha fica, com o histórico até ali */
+  saiu_em?: string | null;
 }
 
 interface LinhaMensagem {
@@ -432,7 +436,10 @@ class PonteComunicacao {
         () =>
           supabase!
             .from('participantes')
-            .select('conversa_id, colaborador_id, fixada, oculta_desde, removida'),
+            // Tudo, e não colunas nomeadas: `papel` e `saiu_em` só existem
+            // depois de grupos-de-todos.sql, e pedi-las antes derrubaria a
+            // lista de conversas inteira
+            .select('*'),
         'os participantes'
       ),
       buscarTodasAsLinhas<LinhaMensagem>(
@@ -525,10 +532,25 @@ class PonteComunicacao {
      */
     const preferencias: MapaDePreferencias = {};
 
+    /**
+     * QUEM SAIU NÃO É MAIS PARTICIPANTE — menos eu mesmo: o grupo de que
+     * saí fica na MINHA lista, só leitura, até eu apagá-lo (como no
+     * WhatsApp). É `euSaiEm` que diz à tela que eu saí.
+     */
+    const adminsPorConversa = new Map<string, string[]>();
+    const euSaiEm = new Map<string, string>();
     participantes.forEach((p) => {
+      const saiu = !!p.saiu_em;
+      if (meuId && p.colaborador_id === meuId && p.saiu_em) euSaiEm.set(p.conversa_id, p.saiu_em);
+      if (saiu && p.colaborador_id !== meuId) return;
+
       const atual = idsPorConversa.get(p.conversa_id) || [];
       atual.push(p.colaborador_id);
       idsPorConversa.set(p.conversa_id, atual);
+
+      if (p.papel === 'admin' && !saiu) {
+        adminsPorConversa.set(p.conversa_id, [...(adminsPorConversa.get(p.conversa_id) || []), p.colaborador_id]);
+      }
 
       if (meuId && p.colaborador_id === meuId) {
         preferencias[p.conversa_id] = {
@@ -555,6 +577,8 @@ class PonteComunicacao {
         participantesIds: idsPorConversa.get(linha.id) || [],
         descricao: linha.descricao || undefined,
         criadoPorId: linha.criado_por_id || undefined,
+        administradoresIds: adminsPorConversa.get(linha.id),
+        euSaiEm: euSaiEm.get(linha.id),
         apenasGestoresPublicam: linha.apenas_gestores_publicam || undefined,
         ehSistemaPadrao: linha.eh_sistema_padrao || undefined,
         // Recalculada por quem estiver olhando; nunca vem do banco
@@ -681,6 +705,97 @@ class PonteComunicacao {
     // Participantes e mensagens caem junto, pelo `on delete cascade`
     const { error } = await supabase.from('conversas').delete().eq('id', id);
     if (error) return { sucesso: false, erro: error.message };
+    return { sucesso: true };
+  }
+
+  // --- GRUPOS DE TODOS (grupos-de-todos.sql) ---
+  //
+  // Cada ação é uma função do banco, que confere quem pode e deixa no grupo
+  // a mensagem de sistema. Aqui só se leva o pedido e se traduz a recusa.
+
+  private async chamarFuncaoDoGrupo<T = unknown>(
+    nome: string,
+    argumentos: Record<string, unknown>
+  ): Promise<{ sucesso: boolean; dados?: T; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
+    const { data, error } = await supabase.rpc(nome, argumentos);
+    if (error) {
+      console.error(`Falha em ${nome}:`, error.message);
+      return {
+        sucesso: false,
+        // A função ainda não existe no banco: o SQL dos grupos não foi rodado
+        erro: error.code === 'PGRST202' ? 'Os grupos novos ainda não foram ligados no banco. Avise o TI.' : error.message,
+      };
+    }
+    return { sucesso: true, dados: data as T };
+  }
+
+  criarGrupo(nome: string, descricao: string, participantesIds: string[]) {
+    return this.chamarFuncaoDoGrupo<string>('criar_grupo', {
+      p_nome: nome,
+      p_descricao: descricao,
+      p_ids: participantesIds,
+    });
+  }
+
+  adicionarAoGrupo(conversaId: string, participantesIds: string[]) {
+    return this.chamarFuncaoDoGrupo<number>('adicionar_ao_grupo', { p_conversa: conversaId, p_ids: participantesIds });
+  }
+
+  removerDoGrupo(conversaId: string, colaboradorId: string) {
+    return this.chamarFuncaoDoGrupo('remover_do_grupo', { p_conversa: conversaId, p_colaborador: colaboradorId });
+  }
+
+  sairDoGrupo(conversaId: string) {
+    return this.chamarFuncaoDoGrupo('sair_do_grupo', { p_conversa: conversaId });
+  }
+
+  definirAdminDoGrupo(conversaId: string, colaboradorId: string, admin: boolean) {
+    return this.chamarFuncaoDoGrupo('definir_admin_do_grupo', {
+      p_conversa: conversaId,
+      p_colaborador: colaboradorId,
+      p_admin: admin,
+    });
+  }
+
+  /**
+   * Nome, descrição e quem publica. Só os administradores do grupo — quem
+   * recusa é o gatilho do banco, com a mensagem dele. O `.select()` diz se
+   * a linha mudou de fato: sem permissão, o update responderia sucesso.
+   */
+  async editarGrupo(
+    conversaId: string,
+    campos: { nome: string; descricao: string; apenasGestoresPublicam: boolean }
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
+    const { data, error } = await supabase
+      .from('conversas')
+      .update({
+        nome: campos.nome.trim(),
+        descricao: campos.descricao.trim() || null,
+        apenas_gestores_publicam: campos.apenasGestoresPublicam,
+      })
+      .eq('id', conversaId)
+      .select('id');
+    if (error) return { sucesso: false, erro: error.message };
+    if (!data || data.length === 0) return { sucesso: false, erro: 'Só os administradores do grupo editam.' };
+    return { sucesso: true };
+  }
+
+  /**
+   * APAGAR O GRUPO DA MINHA LISTA — depois de sair (como no WhatsApp). Tira
+   * a minha linha de participante: o grupo segue existindo para os outros.
+   */
+  async apagarGrupoDaMinhaLista(conversaId: string, meuId: string): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
+    const { data, error } = await supabase
+      .from('participantes')
+      .delete()
+      .eq('conversa_id', conversaId)
+      .eq('colaborador_id', meuId)
+      .select('conversa_id');
+    if (error) return { sucesso: false, erro: error.message };
+    if (!data || data.length === 0) return { sucesso: false, erro: 'Não foi possível apagar o grupo da sua lista.' };
     return { sucesso: true };
   }
 

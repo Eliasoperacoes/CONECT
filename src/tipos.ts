@@ -830,7 +830,11 @@ export const HORARIO_ENTRADA_PADRAO = '08:00';
 /** Intervalo de almoco contratado, quando nao configurado. */
 export const INTERVALO_ALMOCO_PADRAO_MINUTOS = 60;
 
-export type TipoMensagem = 'texto' | 'recado_voz' | 'arquivo' | 'imagem';
+/**
+ * `sistema` é o registro do grupo — "Ana adicionou Bia", "Caio saiu" —,
+ * escrito só pelas funções do banco (grupos-de-todos.sql).
+ */
+export type TipoMensagem = 'texto' | 'recado_voz' | 'arquivo' | 'imagem' | 'sistema';
 
 export interface Mensagem {
   id: string;
@@ -917,6 +921,13 @@ export interface Conversa {
   // Campos específicos de grupo
   descricao?: string;
   criadoPorId?: string;
+  /** Quem administra o grupo: adiciona, remove, edita (grupos-de-todos.sql). */
+  administradoresIds?: string[];
+  /**
+   * Quando EU saí deste grupo. Saindo, a conversa fica na minha lista só
+   * com o que veio antes — sem escrever, sem receber —, até eu apagá-la.
+   */
+  euSaiEm?: string;
   apenasGestoresPublicam?: boolean; // ex: "Avisos da Rede" onde só nível 3+ publica
   ehSistemaPadrao?: boolean;
 }

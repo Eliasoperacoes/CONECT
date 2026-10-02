@@ -275,7 +275,7 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
         </button>
       )}
 
-      {/* Criar grupo é do Administrador; chamar um colega é de todos */}
+      {/* Criar grupo e chamar um colega: os dois são de todos (grupos-de-todos.sql) */}
       {(secao === 'individuais' || podeCriarGrupo) && (
         <div className="p-2.5 border-t border-[var(--c-borda)] flex-shrink-0">
           <button
@@ -284,7 +284,7 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
             className="w-full py-2 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center justify-center gap-1.5 hover:brightness-110 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            {secao === 'individuais' ? 'Nova conversa' : 'Criar canal'}
+            {secao === 'individuais' ? 'Nova conversa' : 'Novo grupo'}
           </button>
         </div>
       )}

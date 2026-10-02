@@ -230,8 +230,12 @@ test('a preferência vai para o BANCO, não fica presa no aparelho', async () =>
   ).text();
 
   expect(ponte).toContain('salvarPreferenciaDeConversa');
-  // E a sincronização traz de volta
-  expect(ponte).toContain('fixada, oculta_desde');
+  // E a sincronização traz de volta: a linha inteira do participante
+  // (`*` desde os grupos de todos, que somaram papel e saiu_em), com as
+  // preferências lidas dela
+  expect(ponte).toMatch(/\.from\('participantes'\)[\s\S]{0,300}\.select\('\*'\)/);
+  expect(ponte).toContain('fixada: !!p.fixada');
+  expect(ponte).toContain('ocultaDesde: p.oculta_desde || undefined');
   expect(ponte).toContain('aplicarPreferenciasDaNuvem');
 });
 
@@ -428,7 +432,8 @@ test('a marca de excluida sobe e desce do banco', async () => {
 
   // Um lado sem o outro faz a exclusão valer só neste navegador
   expect(ponte).toContain('campos.removida = preferencia.removida');
-  expect(ponte).toContain("'conversa_id, colaborador_id, fixada, oculta_desde, removida'");
+  expect(ponte).toMatch(/\.from\('participantes'\)[\s\S]{0,300}\.select\('\*'\)/);
+  expect(ponte).toContain('removida?: boolean | null;');
   expect(ponte).toContain('removida: p.removida || undefined');
 
   const sql = await Bun.file(

@@ -47,6 +47,7 @@ import {
 } from '../servicos/imagens';
 import { bancoDados } from '../servicos/bancoDados';
 import { ModalCamera } from './ModalCamera';
+import { DetalhesDoGrupo } from './DetalhesDoGrupo';
 import { ModalVisualizadorImagem } from './ModalVisualizadorImagem';
 import { ModalEncaminharMensagem } from './ModalEncaminharMensagem';
 import { montarPreviaDaMensagem } from '../servicos/nuvemComunicacao';
@@ -668,6 +669,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
   // Regra no banco: apenas pessoas com permissão veem os botões de envio
   const podePublicar = bancoDados.podePublicarNaConversa(conversa.id);
+  // Quem saiu do grupo segue na lista dele mesmo (para ler o histórico), mas não conta
+  const participantesAtivos = conversa.participantesIds.length - (conversa.euSaiEm ? 1 : 0);
 
   /**
    * CTRL+V MANDA O PRINT.
@@ -716,10 +719,6 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     window.addEventListener('paste', aoColar);
     return () => window.removeEventListener('paste', aoColar);
   }, [podePublicar, conversa.id]);
-
-  const participantesGrupo = conversa.tipo === 'grupo'
-    ? bancoDados.obterColaboradores().filter((c) => conversa.participantesIds.includes(c.id))
-    : [];
 
   // Funções de Seleção e Encaminhamento de Mensagens
   const alternarSelecaoMensagem = (msgId: string) => {
@@ -855,7 +854,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                 {conversa.tipo === 'individual' && colegaDestinatario ? (
                   `${colegaDestinatario.cargo} · ${colegaDestinatario.loja}`
                 ) : conversa.tipo === 'grupo' ? (
-                  conversa.ehSistemaPadrao ? 'Grupo da rede' : `${conversa.participantesIds.length} participantes`
+                  conversa.ehSistemaPadrao ? 'Grupo da rede' : `${participantesAtivos} participantes`
                 ) : (
                   'Malachias Autopeças'
                 )}
@@ -1007,6 +1006,20 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
           </div>
         ) : (
           mensagensExibidas.map((msg, indiceDaMensagem) => {
+            /*
+              O REGISTRO DO GRUPO ("Ana adicionou Bia", "Caio saiu") não é
+              balão de ninguém: uma linha centralizada, como no WhatsApp,
+              sem menu, sem reação, sem resposta.
+            */
+            if (msg.tipo === 'sistema') {
+              return (
+                <div key={msg.id} className="flex justify-center">
+                  <span className="max-w-[85%] px-3 py-1 rounded-lg bg-[var(--c-superficie-2)] text-[11px] text-[var(--c-texto-2)] text-center">
+                    {msg.texto}
+                  </span>
+                </div>
+              );
+            }
             const ehMinha = msg.remetenteId === colaboradorAtual.id;
             const remetenteInfo = !ehMinha ? bancoDados.obterColaboradorPorId(msg.remetenteId) : null;
             // reacoes é gravado como { emoji: [idsDeQuemReagiu] }; aqui vira lista para exibir
@@ -1993,10 +2006,25 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
           </div>
           )}
         </footer>
+      ) : conversa.euSaiEm ? (
+        /* QUEM SAIU DO GRUPO: lê o que veio antes, e pode apagar o grupo da lista */
+        <footer className="w-full bg-[var(--c-superficie)] border-t border-[var(--c-borda)] p-3 flex items-center justify-center gap-3 text-xs text-[var(--c-texto-3)] pb-[max(12px,env(safe-area-inset-bottom))]">
+          <span>Você saiu deste grupo.</span>
+          <button
+            type="button"
+            id="abrir-detalhes-para-apagar"
+            onClick={() => setModalDetalhesAberto(true)}
+            className="font-semibold text-red-600 hover:underline"
+          >
+            Apagar grupo
+          </button>
+        </footer>
       ) : (
         /* Se não pode publicar (ex: Avisos da Rede para operador), respeita: sem cadeado, sem aviso */
         <footer className="w-full bg-[var(--c-superficie)] border-t border-[var(--c-borda)] p-3 text-center text-xs text-[var(--c-texto-3)] pb-[max(12px,env(safe-area-inset-bottom))]">
-          Somente a gestão pode publicar avisos.
+          {bancoDados.ehGrupoDePessoas(conversa)
+            ? 'Só os administradores do grupo enviam mensagens.'
+            : 'Somente a gestão pode publicar avisos.'}
         </footer>
       )}
 
@@ -2040,7 +2068,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                 {conversa.tipo === 'individual' && colegaDestinatario
                   ? `${colegaDestinatario.cargo} · Loja ${colegaDestinatario.loja}`
                   : conversa.tipo === 'grupo'
-                  ? `Grupo Interno Malachias · ${conversa.participantesIds.length} colaboradores`
+                  ? `Grupo Interno Malachias · ${participantesAtivos} colaboradores`
                   : 'Canal Oficial'}
               </p>
             </div>
@@ -2085,56 +2113,28 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col gap-3">
-                  <span className="font-bold text-xs text-[var(--c-texto-2)] uppercase tracking-wider">
-                    Participantes do Grupo ({participantesGrupo.length})
-                  </span>
-
-                  <div className="divide-y divide-[var(--c-borda)] border border-[var(--c-borda)] rounded-xl overflow-hidden">
-                    {participantesGrupo.map((p) => (
-                      <div
-                        key={p.id}
-                        className="p-2.5 flex items-center justify-between hover:bg-[var(--c-superficie-2)]"
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <img
-                            src={p.foto}
-                            alt={p.nome}
-                            className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="min-w-0">
-                            <strong className="text-xs text-[var(--c-texto)] block truncate">
-                              {p.nome}
-                            </strong>
-                            <span className="text-[11px] text-[var(--c-texto-3)] block truncate">
-                              {p.cargo} · {p.loja}
-                            </span>
-                          </div>
-                        </div>
-
-                        <span
-                          className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                            p.presenca === 'disponivel'
-                              ? 'bg-emerald-500'
-                              : p.presenca === 'ocupado'
-                              ? 'bg-amber-500'
-                              : 'bg-slate-400'
-                          }`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                /* O GRUPO: quem está, quem administra, e as ações de cada um
+                   (DetalhesDoGrupo). Ele traz o próprio "Fechar". */
+                <DetalhesDoGrupo
+                  conversa={conversa}
+                  colaboradorAtual={colaboradorAtual}
+                  aoFechar={() => setModalDetalhesAberto(false)}
+                  aoApagar={() => {
+                    setModalDetalhesAberto(false);
+                    aoVoltar();
+                  }}
+                />
               )}
 
-              <button
-                type="button"
-                onClick={() => setModalDetalhesAberto(false)}
-                className="w-full py-2.5 rounded-xl bg-[var(--c-superficie-2)] hover:bg-[var(--c-borda)] font-semibold text-xs text-[var(--c-texto)] transition-colors mt-2"
-              >
-                Fechar
-              </button>
+              {conversa.tipo === 'individual' && (
+                <button
+                  type="button"
+                  onClick={() => setModalDetalhesAberto(false)}
+                  className="w-full py-2.5 rounded-xl bg-[var(--c-superficie-2)] hover:bg-[var(--c-borda)] font-semibold text-xs text-[var(--c-texto)] transition-colors mt-2"
+                >
+                  Fechar
+                </button>
+              )}
             </div>
           </div>
         </div>

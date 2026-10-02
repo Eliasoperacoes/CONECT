@@ -276,6 +276,22 @@ test('quem SAIU da conversa depois do aviso não responde mais', async () => {
   expect(r.status).toBe(403);
 });
 
+test('GRUPO: quem saiu (saiu_em) não recebe o aviso nem responde pelo antigo', async () => {
+  // A Bia saiu do grupo de avisos: a linha dela fica, com a data da saída
+  const linha = tabelas.participantes.find(
+    (p) => p.conversa_id === 'grupo-avisos-da-rede' && p.colaborador_id === 'bia'
+  )!;
+  linha.saiu_em = '2026-10-03T12:00:00Z';
+  await chamar({ mensagemId: 'm2', previa: 'comunicado' }, 'jwt-da-ana');
+  expect(entregas).toEqual([]);
+
+  // E na conversa individual, sair depois do aviso tira o "Responder"
+  const vale = await valeDaBia();
+  tabelas.participantes.find((p) => p.conversa_id === 'conv-ana-bia' && p.colaborador_id === 'bia')!.saiu_em =
+    '2026-10-03T12:00:00Z';
+  expect((await chamar({ vale, texto: 'oi' })).status).toBe(403);
+});
+
 test('quem foi DESLIGADO depois do aviso não responde mais', async () => {
   const vale = await valeDaBia();
   tabelas.colaboradores.find((c) => c.id === 'bia')!.ativo = false;

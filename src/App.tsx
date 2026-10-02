@@ -1077,12 +1077,15 @@ export default function App() {
     abrirJanela(conversa.id);
   };
 
-  // Ação de criação de grupo (apenas nível 2+)
-  const lidarCriarGrupo = (nome: string, participantesIds: string[]) => {
-    const resultado = bancoDados.criarGrupo(nome, participantesIds);
-    if (resultado.sucesso && resultado.grupo) {
-      abrirJanela(resultado.grupo.id);
-    }
+  /*
+    QUALQUER PESSOA CRIA GRUPO (Elias, 03/10/2026, no modelo do WhatsApp):
+    quem cria é o administrador dele. O banco confere e responde; a tela
+    só fecha quando o grupo existe, e já o abre.
+  */
+  const lidarCriarGrupo = async (nome: string, participantesIds: string[]) => {
+    const resultado = await bancoDados.criarGrupoDePessoas(nome, '', participantesIds);
+    if (resultado.sucesso && resultado.grupoId) abrirJanela(resultado.grupoId);
+    return resultado;
   };
 
   // Alterna o colaborador logado na aba "Eu" para testes de permissão
@@ -1965,6 +1968,10 @@ export default function App() {
         colegas={outrosColegas}
         aoSelecionar={lidarSelecionarColega}
         aoFechar={() => setModalNovaConversaAberto(false)}
+        aoNovoGrupo={() => {
+          setModalNovaConversaAberto(false);
+          setModalCriarGrupoAberto(true);
+        }}
       />
 
       <ModalCriarGrupo
@@ -1982,7 +1989,7 @@ export default function App() {
           grupos={grupos}
           conversaAbertaId={conversaFlutuanteId}
           colaboradorId={colaboradorAtual.id}
-          podeCriarGrupo={ehAdmin}
+          podeCriarGrupo
           aoAbrir={(id) => abrirJanela(id)}
           aoNovaConversa={() => setModalNovaConversaAberto(true)}
           aoNovoGrupo={() => setModalCriarGrupoAberto(true)}

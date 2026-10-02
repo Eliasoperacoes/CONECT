@@ -408,12 +408,14 @@ const avisarConversa = async (
 
   const { data: participantes } = await banco
     .from('participantes')
-    .select('colaborador_id, removida')
+    // A linha inteira: `saiu_em` só existe depois de grupos-de-todos.sql
+    .select('*')
     .eq('conversa_id', conversa.id)
     .neq('colaborador_id', eu.id);
 
+  // Quem tirou a conversa da lista, ou SAIU do grupo, não é avisado
   const candidatos = (participantes ?? [])
-    .filter((p) => p.removida !== true)
+    .filter((p) => p.removida !== true && !p.saiu_em)
     .map((p) => p.colaborador_id as string);
 
   /**
@@ -620,11 +622,12 @@ Deno.serve(async (req) => {
     }
     const { data: participa } = await banco
       .from('participantes')
-      .select('colaborador_id')
+      .select('*')
       .eq('conversa_id', conversa.id)
       .eq('colaborador_id', eu.id)
       .maybeSingle();
-    if (!participa) return responder({ erro: 'Não participa mais da conversa.' }, 403);
+    // Quem saiu do grupo não responde mais pela notificação antiga
+    if (!participa || participa.saiu_em) return responder({ erro: 'Não participa mais da conversa.' }, 403);
 
     const id = novoIdDeMensagem();
     const { error } = await banco.from('mensagens').insert({

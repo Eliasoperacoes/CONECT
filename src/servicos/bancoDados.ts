@@ -2305,12 +2305,166 @@ class BancoDadosConecta {
       return publicaComunicado(atual);
     }
 
-    // Grupos restritos a gestores/admin
-    if (conversa.apenasGestoresPublicam && atual.nivel < NIVEL_TI) {
-      return false;
+    // Quem saiu do grupo lê o que veio antes, e não escreve mais
+    if (conversa.euSaiEm) return false;
+
+    /*
+      "SÓ ADMINISTRADORES ENVIAM". No grupo criado por alguém, são os
+      administradores DO GRUPO (grupos-de-todos.sql); no canal oficial,
+      o TI, como sempre foi.
+    */
+    if (conversa.apenasGestoresPublicam) {
+      const grupoDePessoas = conversa.tipo === 'grupo' && !conversa.ehSistemaPadrao;
+      const pode = grupoDePessoas
+        ? (conversa.administradoresIds || []).includes(atual.id) || atual.nivel >= NIVEL_TI
+        : atual.nivel >= NIVEL_TI;
+      if (!pode) return false;
     }
 
     return conversa.participantesIds.includes(atual.id);
+  }
+
+  // --- GRUPOS DE TODOS: qualquer pessoa cria; o administrador do grupo cuida dele ---
+
+  /** É grupo criado por pessoas (e não canal oficial)? Só nele valem as ações abaixo. */
+  ehGrupoDePessoas(conversa: Conversa): boolean {
+    return conversa.tipo === 'grupo' && !conversa.ehSistemaPadrao;
+  }
+
+  /** Administro este grupo? (O TI administra todos.) */
+  administroOGrupo(conversa: Conversa): boolean {
+    const atual = this.obterColaboradorAtual();
+    if (!this.ehGrupoDePessoas(conversa) || conversa.euSaiEm) return false;
+    return (conversa.administradoresIds || []).includes(atual.id) || atual.nivel >= NIVEL_TI;
+  }
+
+  /**
+   * Faz a ação do grupo no banco e traz as conversas de volta já mudadas.
+   * Sem o banco (modo local), aplica a mudança no cache — para o sistema
+   * de demonstração continuar funcionando.
+   */
+  private async acaoDoGrupo(
+    naNuvem: () => Promise<{ sucesso: boolean; erro?: string }>,
+    noAparelho: (conversas: Conversa[]) => void
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    if (usandoNuvem()) {
+      const res = await naNuvem();
+      if (res.sucesso) await nuvemComunicacao.sincronizarConversas().catch(() => false);
+      this.notificar();
+      return res;
+    }
+    const conversas = this.obterTodasConversas();
+    noAparelho(conversas);
+    localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
+    this.notificar();
+    return { sucesso: true };
+  }
+
+  async criarGrupoDePessoas(
+    nome: string,
+    descricao: string,
+    participantesIds: string[]
+  ): Promise<{ sucesso: boolean; grupoId?: string; erro?: string }> {
+    const atual = this.obterColaboradorAtual();
+    if (!nome.trim()) return { sucesso: false, erro: 'Informe o nome do grupo.' };
+
+    if (usandoNuvem()) {
+      const res = await nuvemComunicacao.criarGrupo(nome.trim(), descricao.trim(), participantesIds);
+      if (!res.sucesso || !res.dados) return { sucesso: false, erro: res.erro };
+      await nuvemComunicacao.sincronizarConversas().catch(() => false);
+      this.notificar();
+      return { sucesso: true, grupoId: res.dados };
+    }
+
+    const grupo: Conversa = {
+      id: `grupo-${Date.now()}`,
+      tipo: 'grupo',
+      nome: nome.trim(),
+      descricao: descricao.trim() || undefined,
+      participantesIds: Array.from(new Set([atual.id, ...participantesIds])),
+      administradoresIds: [atual.id],
+      naoLidas: 0,
+      atualizadoEm: new Date().toISOString(),
+      criadoPorId: atual.id,
+    };
+    const conversas = this.obterTodasConversas();
+    conversas.push(grupo);
+    localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
+    this.notificar();
+    return { sucesso: true, grupoId: grupo.id };
+  }
+
+  adicionarAoGrupo(conversaId: string, ids: string[]) {
+    return this.acaoDoGrupo(
+      () => nuvemComunicacao.adicionarAoGrupo(conversaId, ids),
+      (lista) => {
+        const c = lista.find((x) => x.id === conversaId);
+        if (c) c.participantesIds = Array.from(new Set([...c.participantesIds, ...ids]));
+      }
+    );
+  }
+
+  removerDoGrupo(conversaId: string, colaboradorId: string) {
+    return this.acaoDoGrupo(
+      () => nuvemComunicacao.removerDoGrupo(conversaId, colaboradorId),
+      (lista) => {
+        const c = lista.find((x) => x.id === conversaId);
+        if (!c) return;
+        c.participantesIds = c.participantesIds.filter((id) => id !== colaboradorId);
+        c.administradoresIds = (c.administradoresIds || []).filter((id) => id !== colaboradorId);
+      }
+    );
+  }
+
+  sairDoGrupo(conversaId: string) {
+    const eu = this.obterColaboradorAtual().id;
+    return this.acaoDoGrupo(
+      () => nuvemComunicacao.sairDoGrupo(conversaId),
+      (lista) => {
+        const c = lista.find((x) => x.id === conversaId);
+        if (!c) return;
+        c.euSaiEm = new Date().toISOString();
+        c.administradoresIds = (c.administradoresIds || []).filter((id) => id !== eu);
+      }
+    );
+  }
+
+  definirAdminDoGrupo(conversaId: string, colaboradorId: string, admin: boolean) {
+    return this.acaoDoGrupo(
+      () => nuvemComunicacao.definirAdminDoGrupo(conversaId, colaboradorId, admin),
+      (lista) => {
+        const c = lista.find((x) => x.id === conversaId);
+        if (!c) return;
+        const atuais = (c.administradoresIds || []).filter((id) => id !== colaboradorId);
+        c.administradoresIds = admin ? [...atuais, colaboradorId] : atuais;
+      }
+    );
+  }
+
+  editarGrupo(conversaId: string, campos: { nome: string; descricao: string; apenasGestoresPublicam: boolean }) {
+    if (!campos.nome.trim()) return Promise.resolve({ sucesso: false, erro: 'Informe o nome do grupo.' });
+    return this.acaoDoGrupo(
+      () => nuvemComunicacao.editarGrupo(conversaId, campos),
+      (lista) => {
+        const c = lista.find((x) => x.id === conversaId);
+        if (!c) return;
+        c.nome = campos.nome.trim();
+        c.descricao = campos.descricao.trim() || undefined;
+        c.apenasGestoresPublicam = campos.apenasGestoresPublicam;
+      }
+    );
+  }
+
+  /** Depois de sair: o grupo some da MINHA lista, e segue existindo para os outros. */
+  apagarGrupoDaMinhaLista(conversaId: string) {
+    const eu = this.obterColaboradorAtual().id;
+    return this.acaoDoGrupo(
+      () => nuvemComunicacao.apagarGrupoDaMinhaLista(conversaId, eu),
+      (lista) => {
+        const i = lista.findIndex((x) => x.id === conversaId);
+        if (i >= 0) lista.splice(i, 1);
+      }
+    );
   }
 
   async enviarMensagem(
