@@ -233,7 +233,23 @@ export default function App() {
    * da primeira tela — que é o oposto do que se quis ao juntar as
    * duas listas.
    */
-  const [gruposAbertos, setGruposAbertos] = useState(false);
+  const [gruposAbertos, setGruposAbertos] = useState(() => {
+    try {
+      return localStorage.getItem('conecta_grupos_abertos') === 'sim';
+    } catch {
+      return false;
+    }
+  });
+  /** Aberto ou fechado fica lembrado NESTE aparelho: quem vive nos grupos não reabre toda vez. */
+  const alternarGrupos = () =>
+    setGruposAbertos((aberto) => {
+      try {
+        localStorage.setItem('conecta_grupos_abertos', aberto ? 'nao' : 'sim');
+      } catch {
+        /* sem armazenamento (aba anônima): só não lembra */
+      }
+      return !aberto;
+    });
 
   /** O que o cabeçalho diz RECOLHIDO: é o número que faz abrir. */
   const naoLidasDosGrupos = grupos.reduce((soma, g) => soma + (g.naoLidas || 0), 0);
@@ -1607,26 +1623,19 @@ export default function App() {
                   </div>
                 ) : (
                   <>
-                    <div className="divide-y divide-[var(--c-borda)]">
-                      {conversasVisiveis.map((c) => (
-                        <ItemConversa
-                          key={c.id}
-                          conversa={c}
-                          selecionada={conversaAtivaId === c.id}
-                          aoClicar={() => abrirConversaEmTelaCheia(c.id)}
-                          colaboradorId={colaboradorAtual.id}
-                          aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
-                        />
-                      ))}
-                    </div>
-
+                    {/*
+                      OS GRUPOS VÊM PRIMEIRO, logo abaixo da busca (Elias,
+                      03/10/2026): no fim da lista, com muitas conversas,
+                      eles ficavam lá embaixo, longe do polegar. Recolhidos,
+                      ocupam uma linha só e dizem quantas não lidas há.
+                    */}
                     {gruposVisiveis.length > 0 && (
                       <>
                         <button
                           type="button"
-                          onClick={() => setGruposAbertos((v) => !v)
-                          }
-                          className="w-full px-4 py-2.5 border-y border-[var(--c-borda)] bg-[var(--c-superficie)] flex items-center gap-2 text-left active:bg-[var(--c-superficie-2)] transition-colors"
+                          onClick={alternarGrupos}
+                          aria-expanded={gruposAbertos}
+                          className="w-full px-4 py-2.5 border-b border-[var(--c-borda)] bg-[var(--c-superficie)] flex items-center gap-2 text-left active:bg-[var(--c-superficie-2)] transition-colors"
                         >
                           {gruposAbertos ? (
                             <ChevronUp className="w-4 h-4 text-[var(--c-texto-3)] shrink-0" />
@@ -1667,6 +1676,28 @@ export default function App() {
                         )}
                       </>
                     )}
+                    {/* Com os grupos abertos, as conversas ganham o título delas:
+                        sem ele, a primeira conversa parecia mais um grupo */}
+                    {gruposAbertos && gruposVisiveis.length > 0 && conversasVisiveis.length > 0 && (
+                      <div className="px-4 py-2.5 border-b border-[var(--c-borda)] bg-[var(--c-superficie)] flex items-center gap-2">
+                        <MessageSquare className="w-3.5 h-3.5 text-[var(--c-texto-3)] shrink-0" />
+                        <span className="text-xs font-bold uppercase tracking-wider text-[var(--c-texto-2)]">Conversas</span>
+                        <span className="text-[11px] text-[var(--c-texto-3)]">{conversasVisiveis.length}</span>
+                      </div>
+                    )}
+                    <div className="divide-y divide-[var(--c-borda)]">
+                      {conversasVisiveis.map((c) => (
+                        <ItemConversa
+                          key={c.id}
+                          conversa={c}
+                          selecionada={conversaAtivaId === c.id}
+                          aoClicar={() => abrirConversaEmTelaCheia(c.id)}
+                          colaboradorId={colaboradorAtual.id}
+                          aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
+                        />
+                      ))}
+                    </div>
+
                   </>
                 )}
               </>

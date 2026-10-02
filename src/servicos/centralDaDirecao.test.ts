@@ -448,7 +448,10 @@ test('GRUPOS SAIU DA BARRA e virou seção dentro de Conversas', async () => {
 
   const app = await Bun.file('src/App.tsx').text();
 
-  expect(app).toContain('const [gruposAbertos, setGruposAbertos] = useState(false)');
+  // Nasce recolhido: só abre de saída se a pessoa deixou aberto NESTE aparelho
+  expect(app).toContain("return localStorage.getItem('conecta_grupos_abertos') === 'sim';");
+  // E os grupos vêm ANTES das conversas, logo abaixo da busca (Elias, 03/10/2026)
+  expect(app.indexOf('{gruposVisiveis.length > 0 && (')).toBeLessThan(app.indexOf('{conversasVisiveis.map((c) => ('));
   expect(app).toContain('const naoLidasDosGrupos = grupos.reduce');
   expect(app).toContain('{naoLidasDosGrupos > 0 && (');
   expect(app).toContain('{gruposAbertos && (');
