@@ -39,4 +39,18 @@ select 'colaboradores.senha_ativacao',
        'fichas com senha de 1º acesso guardada',
        (select count(*)::text from public.colaboradores where coalesce(senha_ativacao, '') <> '')
 
+-- Conta ainda não ativada: quem entrar primeiro com o login dela vira ela
+union all
+select 'contas sem ativar',
+       'ativas e ainda sem acesso próprio',
+       (select count(*)::text from public.colaboradores where auth_user_id is null and ativo)
+
+-- A senha padrão: sem senha individual, o 1º acesso aceita esta
+union all
+select 'login aceita 123456',
+       'senha padrão do 1º acesso',
+       coalesce((select case when bool_or(pg_get_functiondef(p.oid) like '%''123456''%') then 'SIM' else 'não' end
+                   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                  where n.nspname = 'public' and p.proname = 'criar_colaborador_do_usuario'), 'função não encontrada')
+
 order by 2, 1;
