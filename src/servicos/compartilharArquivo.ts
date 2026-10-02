@@ -80,11 +80,16 @@ export const compartilharArquivo = async (
   }
 
   // Sem compartilhar de arquivo neste navegador: baixa, para mandar de onde a pessoa quiser
-  const endereco = URL.createObjectURL(arquivo);
+  baixarArquivo(dados, nome, tipo);
+  return 'baixado';
+};
+
+/** Baixa um arquivo montado aqui (no navegador; a WebView do app não baixa). */
+export const baixarArquivo = (dados: ArrayBuffer | Uint8Array, nome: string, tipo: string): void => {
+  const endereco = URL.createObjectURL(new Blob([dados as BlobPart], { type: tipo }));
   const link = document.createElement('a');
   link.href = endereco;
   link.download = nome;
   link.click();
   setTimeout(() => URL.revokeObjectURL(endereco), 10_000);
-  return 'baixado';
 };

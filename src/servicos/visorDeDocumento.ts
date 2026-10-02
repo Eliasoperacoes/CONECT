@@ -15,12 +15,19 @@
  *     com Voltar, que o botão voltar do Android também fecha
  *     (`VisorDeDocumento.tsx`, montado uma vez em App).
  */
+import type { ReactNode } from 'react';
 import { rodandoNoAplicativo } from './aplicativo';
 
 /** Um documento gerado aqui (`html`) ou um PDF guardado no banco (`pdf`, o endereço dele). */
 export type DocumentoNoVisor =
   | { html: string; titulo: string }
-  | { pdf: string; titulo: string; arquivoNome: string };
+  | { pdf: string; titulo: string; arquivoNome: string; rodape?: RodapeDoPdf };
+
+/**
+ * O que vai no pé do visor de PDF, montado com o arquivo que está na tela
+ * — a barra de assinar o holerite assina ESTE arquivo, e não outro.
+ */
+export type RodapeDoPdf = (dados: ArrayBuffer) => ReactNode;
 
 let aberto: DocumentoNoVisor | null = null;
 const ouvintes: Array<() => void> = [];
@@ -92,8 +99,8 @@ export const mostrarDocumento = (html: string, opcoes: { imprimir?: boolean } = 
  * Agora ele é desenhado dentro do sistema, como o espelho no celular — e é
  * aqui, com o documento à frente, que a assinatura digital vai entrar.
  */
-export const mostrarPdf = (url: string, titulo: string, arquivoNome: string): void => {
-  aberto = { pdf: url, titulo, arquivoNome };
+export const mostrarPdf = (url: string, titulo: string, arquivoNome: string, rodape?: RodapeDoPdf): void => {
+  aberto = { pdf: url, titulo, arquivoNome, rodape };
   avisar();
 };
 

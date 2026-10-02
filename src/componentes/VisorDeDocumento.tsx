@@ -45,7 +45,14 @@ export const VisorDeDocumento: React.FC = () => {
 
   if (!documento) return null;
   if ('pdf' in documento) {
-    return <VisorDePdf url={documento.pdf} titulo={documento.titulo} arquivoNome={documento.arquivoNome} />;
+    return (
+      <VisorDePdf
+        url={documento.pdf}
+        titulo={documento.titulo}
+        arquivoNome={documento.arquivoNome}
+        rodape={documento.rodape}
+      />
+    );
   }
 
   /** O tamanho da folha só se sabe depois de ela desenhar o conteúdo. */

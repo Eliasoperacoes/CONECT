@@ -30,7 +30,10 @@ import {
   Clock,
   Loader2,
 } from 'lucide-react';
-import { Colaborador, Holerite, Advertencia, ROTULO_ADVERTENCIA } from '../tipos';
+import { Colaborador, Holerite, Advertencia, ROTULO_ADVERTENCIA, RecebimentoHolerite } from '../tipos';
+import { listarRecebimentos } from '../servicos/assinatura';
+import { dataHoraDeBrasilia } from '../servicos/comprovanteDeHolerite';
+import { AssinarHolerite } from './AssinarHolerite';
 import { listarHolerites, listarAdvertencias, abrirDocumento, darCienciaNaAdvertencia } from '../servicos/rh';
 import { lerJustificativas, assinarJustificativas } from '../servicos/justificativasCache';
 import { formatarDataBR, dataDeHoje, batePonto } from '../servicos/ponto';
@@ -150,6 +153,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
 
   const [holerites, setHolerites] = useState<Holerite[]>([]);
   const [advertencias, setAdvertencias] = useState<Advertencia[]>([]);
+  const [recebimentos, setRecebimentos] = useState<Map<string, RecebimentoHolerite>>(new Map());
   const [versao, setVersao] = useState(0);
   const [versaoAusencias, setVersaoAusencias] = useState(0);
   const [folha, setFolha] = useState<Folha | null>(null);
@@ -159,10 +163,15 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
   // Holerite e advertência: pede SÓ os da pessoa — a lista da rede nem chega ao aparelho
   useEffect(() => {
     let cancelado = false;
-    Promise.all([listarHolerites(eu.id), listarAdvertencias(eu.id)]).then(([h, a]) => {
+    Promise.all([
+      listarHolerites(eu.id),
+      listarAdvertencias(eu.id),
+      listarRecebimentos({ colaboradorId: eu.id }),
+    ]).then(([h, a, r]) => {
       if (cancelado) return;
       setHolerites(h);
       setAdvertencias(a);
+      setRecebimentos(r);
     });
     return () => {
       cancelado = true;
@@ -180,6 +189,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
   const ferias = situacaoDasFerias(ausencias.ferias, hoje);
   const meses = mesesFechados(hoje, eu.dataAdmissao);
   const semCiencia = advertencias.filter((a) => !a.cienciaEm);
+  const holeritesParaAssinar = holerites.filter((h) => !recebimentos.has(h.id));
   const documentosEmAnalise = ausencias.documentos.filter((j) => j.estado === 'pendente');
   /**
    * A folga que interessa: a deste mês, ou a próxima que vem. "Nenhuma
@@ -238,7 +248,9 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
     const url = await abrirDocumento(h.arquivoCaminho);
     setAbrindo(null);
     if (!url) return mostrarAviso('Não foi possível abrir o holerite. Tente de novo em instantes.');
-    mostrarPdf(url, `Holerite · ${rotuloDoMes(h.competencia)}`, h.arquivoNome);
+    mostrarPdf(url, `Holerite · ${rotuloDoMes(h.competencia)}`, h.arquivoNome, (dados) => (
+      <AssinarHolerite holerite={h} dados={dados} aoAssinar={() => setVersao((v) => v + 1)} />
+    ));
   };
 
   const abrirEspelho = async (mes: string) => {
@@ -330,7 +342,14 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
         <Cartao
           id="meu-rh-holerites"
           titulo="Holerites"
-          resumo={holerites.length ? `Último: ${rotuloDoMes(holerites[0].competencia)}` : 'Nenhum publicado ainda'}
+          resumo={
+            holeritesParaAssinar.length
+              ? `${holeritesParaAssinar.length} para assinar`
+              : holerites.length
+                ? `Último: ${rotuloDoMes(holerites[0].competencia)}`
+                : 'Nenhum publicado ainda'
+          }
+          alerta={holeritesParaAssinar.length > 0}
           icone={<Receipt className="w-5 h-5" />}
           cor="text-emerald-600 bg-emerald-500/10"
           aoAbrir={() => abrirFolha('holerites')}
@@ -432,7 +451,11 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
                 <Linha
                   key={h.id}
                   titulo={rotuloDoMes(h.competencia)}
-                  detalhe={h.arquivoNome}
+                  detalhe={
+                    recebimentos.has(h.id)
+                      ? `Assinado em ${dataHoraDeBrasilia(recebimentos.get(h.id)!.assinadoEm)}`
+                      : 'Falta assinar o recebimento'
+                  }
                   icone={<Receipt className="w-5 h-5" />}
                   acao={<ChevronRight className="w-4 h-4" />}
                   ocupado={abrindo === h.id}

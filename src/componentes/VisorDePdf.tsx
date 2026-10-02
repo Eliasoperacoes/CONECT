@@ -14,7 +14,7 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Download, Maximize2, Minimize2, Share2 } from 'lucide-react';
-import { fecharVisor } from '../servicos/visorDeDocumento';
+import { fecharVisor, RodapeDoPdf } from '../servicos/visorDeDocumento';
 import { rodandoNoAplicativo } from '../servicos/aplicativo';
 import { carregarLeitorDePdf } from '../servicos/leitorDePdf';
 import { compartilharArquivo } from '../servicos/compartilharArquivo';
@@ -77,11 +77,13 @@ const PaginasDoPdf: React.FC<{ dados: ArrayBuffer; largura: number; aoFalhar: ()
   return <div ref={caixa} className="flex flex-col gap-3" />;
 };
 
-export const VisorDePdf: React.FC<{ url: string; titulo: string; arquivoNome: string }> = ({
-  url,
-  titulo,
-  arquivoNome,
-}) => {
+export const VisorDePdf: React.FC<{
+  url: string;
+  titulo: string;
+  arquivoNome: string;
+  /** O pé do visor (a barra de assinar), montado com o arquivo carregado. */
+  rodape?: RodapeDoPdf;
+}> = ({ url, titulo, arquivoNome, rodape }) => {
   const area = useRef<HTMLDivElement>(null);
   const [dados, setDados] = useState<ArrayBuffer | null>(null);
   const [falhou, setFalhou] = useState(false);
@@ -230,6 +232,9 @@ export const VisorDePdf: React.FC<{ url: string; titulo: string; arquivoNome: st
           </div>
         )}
       </div>
+
+      {/* Só com o documento à frente: assinar sem ver não é assinar */}
+      {dados && !falhou && rodape && <div className="flex-shrink-0">{rodape(dados)}</div>}
     </div>
   );
 };

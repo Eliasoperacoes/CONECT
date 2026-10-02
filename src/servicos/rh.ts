@@ -20,7 +20,9 @@
 import { supabase, usandoNuvem } from './supabase';
 import { enviarDocumento, resolverCaminho, apagarAnexos } from './anexos';
 import { bancoDados } from './bancoDados';
-import { cuidaDePessoas, Holerite, Advertencia, TipoAdvertencia } from '../tipos';
+import { listarRecebimentos, obterAssinatura } from './assinatura';
+import { montarComprovante, juntarPdfs } from './comprovanteDeHolerite';
+import { cuidaDePessoas, Holerite, Advertencia, TipoAdvertencia, RecebimentoHolerite } from '../tipos';
 
 /** Quem cuida de pessoas mexe nestes documentos. Os outros só leem os seus. */
 export const podeCuidarDeDocumentos = (): boolean =>
@@ -104,6 +106,15 @@ export const salvarHolerite = async (dados: {
   const eu = bancoDados.obterColaboradorAtual();
   const id = `hol-${dados.colaboradorId}-${dados.competencia}`;
 
+  /*
+    ASSINADO NÃO SE SUBSTITUI. O banco recusaria a linha, mas só DEPOIS de
+    o arquivo novo já ter sobrescrito o assinado no armazenamento — e o
+    comprovante passaria a acusar "este arquivo não é o que foi assinado".
+  */
+  if ((await listarRecebimentos({ holeriteIds: [id] })).size > 0) {
+    return { sucesso: false, erro: 'Este holerite já foi assinado pelo colaborador e não pode ser substituído.' };
+  }
+
   /**
    * O caminho carrega a pessoa e o mês.
    *
@@ -175,21 +186,29 @@ export const removerHolerite = async (
  */
 export const removerHoleritesDoMes = async (
   competencia: string
-): Promise<{ sucesso: boolean; removidos: number; erro?: string }> => {
-  if (!podeCuidarDeDocumentos()) {
-    return { sucesso: false, removidos: 0, erro: 'Apenas o RH remove holerite.' };
-  }
-  if (!supabase) return { sucesso: false, removidos: 0, erro: 'Banco não configurado.' };
-  if (!/^\d{4}-\d{2}$/.test(competencia)) {
-    return { sucesso: false, removidos: 0, erro: 'Escolha o mês (competência).' };
-  }
+): Promise<{ sucesso: boolean; removidos: number; assinadosMantidos: number; erro?: string }> => {
+  const recusa = (erro: string) => ({ sucesso: false, removidos: 0, assinadosMantidos: 0, erro });
+  if (!podeCuidarDeDocumentos()) return recusa('Apenas o RH remove holerite.');
+  if (!supabase) return recusa('Banco não configurado.');
+  if (!/^\d{4}-\d{2}$/.test(competencia)) return recusa('Escolha o mês (competência).');
 
-  const { data, error } = await supabase
-    .from('holerites')
-    .delete()
-    .eq('competencia', competencia)
-    .select('arquivo_caminho');
-  if (error) return { sucesso: false, removidos: 0, erro: error.message };
+  /*
+    O ASSINADO FICA. É a via que o colaborador assinou: o banco recusa
+    apagá-lo, e a recusa de UM desfaria a limpeza do mês inteiro. Por isso
+    os assinados saem do pedido antes.
+  */
+  const doMes = await supabase.from('holerites').select('id').eq('competencia', competencia);
+  if (doMes.error) return recusa(doMes.error.message);
+  const assinados = [
+    ...(await listarRecebimentos({ holeriteIds: ((doMes.data || []) as Array<{ id: string }>).map((h) => h.id) })).keys(),
+  ];
+
+  let pedido = supabase.from('holerites').delete().eq('competencia', competencia);
+  if (assinados.length > 0) {
+    pedido = pedido.not('id', 'in', `(${assinados.map((id) => `"${id}"`).join(',')})`);
+  }
+  const { data, error } = await pedido.select('arquivo_caminho');
+  if (error) return recusa(error.message);
 
   const linhas = (data || []) as Array<{ arquivo_caminho: string | null }>;
   // Os arquivos saem junto, pelo mesmo motivo do `removerHolerite`
@@ -201,7 +220,41 @@ export const removerHoleritesDoMes = async (
     'usuario',
     `${eu.nome} removeu os ${linhas.length} holerites de ${competencia}.`
   );
-  return { sucesso: true, removidos: linhas.length };
+  return { sucesso: true, removidos: linhas.length, assinadosMantidos: assinados.length };
+};
+
+/**
+ * OS HOLERITES ASSINADOS, CARIMBADOS — o que o RH arquiva no lugar das
+ * vias em papel. Um ou o mês inteiro, num PDF só, na ordem pedida.
+ *
+ * Cada um é montado do arquivo publicado e da assinatura USADA no
+ * recebimento — não da vigente: quem trocou a assinatura depois continua
+ * com a antiga nos documentos que já tinha assinado.
+ */
+export const gerarComprovantes = async (
+  itens: Array<{ holerite: Holerite; recebimento: RecebimentoHolerite; nome: string }>
+): Promise<{ pdf?: Uint8Array; erro?: string }> => {
+  if (!podeCuidarDeDocumentos()) return { erro: 'Apenas o RH gera o comprovante.' };
+  const desenhos = new Map<string, string>();
+  const arquivos: Uint8Array[] = [];
+
+  for (const { holerite, recebimento, nome } of itens) {
+    const url = await resolverCaminho(holerite.arquivoCaminho);
+    const resposta = url ? await fetch(url).catch(() => null) : null;
+    if (!resposta?.ok) return { erro: `Não foi possível abrir o holerite de ${nome}.` };
+
+    let desenho = desenhos.get(recebimento.assinaturaId);
+    if (!desenho) {
+      desenho = (await obterAssinatura(recebimento.assinaturaId))?.imagem;
+      if (!desenho) return { erro: `Não foi possível ler a assinatura de ${nome}.` };
+      desenhos.set(recebimento.assinaturaId, desenho);
+    }
+
+    arquivos.push(await montarComprovante({ pdf: await resposta.arrayBuffer(), nome, recebimento, imagem: desenho }));
+  }
+
+  if (arquivos.length === 0) return { erro: 'Nenhum holerite assinado.' };
+  return { pdf: arquivos.length === 1 ? arquivos[0] : await juntarPdfs(arquivos) };
 };
 
 /** O endereço para abrir o documento, válido por pouco tempo. */

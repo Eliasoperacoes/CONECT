@@ -1503,6 +1503,27 @@ export interface Holerite {
   criadoEm: string;
 }
 
+/** A assinatura desenhada de uma pessoa, com o termo que ela aceitou ao desenhar. */
+export interface Assinatura {
+  id: string;
+  colaboradorId: string;
+  /** PNG em data URL, fundo transparente. */
+  imagem: string;
+  termoVersao: string;
+  criadaEm: string;
+}
+
+/** O holerite assinado: quem, quando (hora do banco), com qual assinatura e qual arquivo. */
+export interface RecebimentoHolerite {
+  holeriteId: string;
+  colaboradorId: string;
+  assinaturaId: string;
+  /** SHA-256 do PDF que a pessoa tinha na tela ao assinar. */
+  arquivoHash: string;
+  aparelho?: string;
+  assinadoEm: string;
+}
+
 /** Os três degraus da advertência, na ordem em que a CLT os usa. */
 export type TipoAdvertencia = 'verbal' | 'escrita' | 'suspensao';
 

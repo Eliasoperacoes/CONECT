@@ -605,6 +605,12 @@ create trigger colaboradores_turno_escolhido_uma_vez
 --
 -- A tabela nasce em `rh-holerite-advertencia.sql`; por isso o gatilho só
 -- é ligado quando ela existe.
+--
+-- A ASSINATURA DO HOLERITE (tabelas `assinaturas`, `recebimentos_holerite`,
+-- `tentativas_de_assinatura`, as funções `cadastrar_assinatura` e
+-- `assinar_holerite`, e a trava de holerite assinado) mora inteira em
+-- `assinatura-holerite.sql`, pelo mesmo motivo: depende de `holerites`.
+-- Não copie para cá — duas definições divergem.
 create or replace function public.advertido_so_da_ciencia()
 returns trigger
 language plpgsql

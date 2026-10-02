@@ -25,10 +25,20 @@ import {
   ChevronDown,
   ChevronRight,
   FileUp,
+  Download,
 } from 'lucide-react';
-import { Colaborador, Holerite } from '../tipos';
+import { Colaborador, Holerite, RecebimentoHolerite } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
-import { listarHolerites, salvarHolerite, removerHolerite, removerHoleritesDoMes } from '../servicos/rh';
+import {
+  listarHolerites,
+  salvarHolerite,
+  removerHolerite,
+  removerHoleritesDoMes,
+  gerarComprovantes,
+} from '../servicos/rh';
+import { listarRecebimentos } from '../servicos/assinatura';
+import { dataHoraDeBrasilia } from '../servicos/comprovanteDeHolerite';
+import { baixarArquivo } from '../servicos/compartilharArquivo';
 import { FotoPresenca } from './FotoPresenca';
 import { CargaDeHolerites } from './CargaDeHolerites';
 
@@ -73,6 +83,37 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
       cancelado = true;
     };
   }, [versao]);
+
+  /*
+    QUEM JÁ ASSINOU, no mês na tela. Só os ids do mês vão no pedido: a
+    lista de todos os meses cresce oitenta por mês, e o filtro vai no
+    endereço da consulta.
+  */
+  const [recebimentos, setRecebimentos] = useState<Map<string, RecebimentoHolerite>>(new Map());
+  useEffect(() => {
+    let cancelado = false;
+    const doMes = holerites.filter((h) => h.competencia === competencia).map((h) => h.id);
+    listarRecebimentos({ holeriteIds: doMes }).then((mapa) => {
+      if (!cancelado) setRecebimentos(mapa);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [holerites, competencia]);
+
+  const [gerando, setGerando] = useState<string | null>(null);
+  const baixarComprovantes = async (
+    itens: Array<{ holerite: Holerite; recebimento: RecebimentoHolerite; nome: string }>,
+    chave: string,
+    nomeDoArquivo: string
+  ) => {
+    setGerando(chave);
+    setAviso(null);
+    const res = await gerarComprovantes(itens);
+    setGerando(null);
+    if (!res.pdf) return setAviso(res.erro || 'Não foi possível gerar o comprovante.');
+    baixarArquivo(res.pdf, nomeDoArquivo, 'application/pdf');
+  };
 
   /**
    * Todos os ativos, sem o filtro da busca: a carga procura o nome de
@@ -206,6 +247,8 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
   };
 
   const publicados = jaTem.size;
+  const assinadosNoMes = [...jaTem.values()].filter((h) => recebimentos.has(h.id));
+  const nomeDoColaborador = (id: string) => bancoDados.obterColaboradorPorId(id)?.nome || id;
 
   /*
     LIMPAR O MÊS INTEIRO — para a carga de teste não ficar no meio do
@@ -222,8 +265,16 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
     setLimpando(false);
     setConfirmandoLimpeza(false);
     if (!res.sucesso) setAviso(res.erro || 'Falha ao remover.');
-    else if (res.removidos === 0) setAviso('Nenhum holerite foi removido. Confira se o seu acesso permite apagar.');
-    else setAviso(`${res.removidos} holerite${res.removidos === 1 ? '' : 's'} de ${porExtenso(competencia)} removido${res.removidos === 1 ? '' : 's'}.`);
+    else if (res.removidos === 0 && res.assinadosMantidos === 0) {
+      setAviso('Nenhum holerite foi removido. Confira se o seu acesso permite apagar.');
+    } else {
+      const mantidos = res.assinadosMantidos
+        ? ` ${res.assinadosMantidos} assinado${res.assinadosMantidos === 1 ? '' : 's'} ficou${res.assinadosMantidos === 1 ? '' : 'aram'}.`
+        : '';
+      setAviso(
+        `${res.removidos} holerite${res.removidos === 1 ? '' : 's'} de ${porExtenso(competencia)} removido${res.removidos === 1 ? '' : 's'}.${mantidos}`
+      );
+    }
     setVersao((v) => v + 1);
   };
 
@@ -296,14 +347,39 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
           </span>
           <span className="text-[11px] text-[var(--c-texto-3)]">
             publicados em {porExtenso(competencia)}
+            {publicados > 0 && ` · ${assinadosNoMes.length} assinado${assinadosNoMes.length === 1 ? '' : 's'}`}
           </span>
         </div>
 
-        {publicados > 0 &&
+        {/* O arquivo do mês: os assinados, carimbados, num PDF só */}
+        {assinadosNoMes.length > 0 && (
+          <button
+            type="button"
+            id="botao-baixar-assinados-do-mes"
+            disabled={gerando !== null}
+            onClick={() =>
+              baixarComprovantes(
+                assinadosNoMes
+                  .map((h) => ({ holerite: h, recebimento: recebimentos.get(h.id)!, nome: nomeDoColaborador(h.colaboradorId) }))
+                  .sort((a, b) => a.nome.localeCompare(b.nome)),
+                'mes',
+                `Holerites assinados ${competencia}.pdf`
+              )
+            }
+            className="pb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--c-acento)] hover:underline disabled:opacity-50"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {gerando === 'mes' ? 'Gerando…' : `Baixar os ${assinadosNoMes.length} assinados`}
+          </button>
+        )}
+
+        {publicados > assinadosNoMes.length &&
           (confirmandoLimpeza ? (
             <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-red-500/8 border border-red-500/30">
               <span className="text-[11px] font-semibold text-red-700 dark:text-red-400">
-                Remover os {publicados} holerites de {porExtenso(competencia)}? Quem já recebeu deixa de ver.
+                Remover os {publicados - assinadosNoMes.length} holerites de {porExtenso(competencia)}? Quem já recebeu
+                deixa de ver.
+                {assinadosNoMes.length > 0 && ` Os ${assinadosNoMes.length} assinados ficam.`}
               </span>
               <button
                 type="button"
@@ -422,6 +498,41 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
                   {daLoja.map((c) => {
                     const holerite = jaTem.get(c.id);
                     const subindo = enviando === c.id;
+                    const recebido = holerite ? recebimentos.get(holerite.id) : undefined;
+
+                    // ASSINADO: mostra quando, e o comprovante. Substituir e
+                    // remover somem — o banco recusaria os dois
+                    if (holerite && recebido) {
+                      return (
+                        <div
+                          key={c.id}
+                          className="px-3 py-2.5 rounded-xl border flex items-center gap-3 bg-emerald-500/5 border-emerald-500/20"
+                        >
+                          <FotoPresenca foto={c.foto} nome={c.nome} presenca={c.presenca} tamanho="w-8 h-8" />
+                          <div className="flex-1 min-w-0">
+                            <span className="block text-xs font-bold text-[var(--c-texto)] truncate">{c.nome}</span>
+                            <span className="block text-[11px] text-emerald-700 dark:text-emerald-400 truncate">
+                              Assinado em {dataHoraDeBrasilia(recebido.assinadoEm)}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={gerando !== null}
+                            onClick={() =>
+                              baixarComprovantes(
+                                [{ holerite, recebimento: recebido, nome: c.nome }],
+                                holerite.id,
+                                `Holerite assinado ${competencia} - ${c.nome}.pdf`
+                              )
+                            }
+                            className="flex-shrink-0 px-2 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-semibold text-[var(--c-texto-2)] hover:text-[var(--c-texto)] flex items-center gap-1 disabled:opacity-50"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            {gerando === holerite.id ? 'Gerando…' : 'Comprovante'}
+                          </button>
+                        </div>
+                      );
+                    }
 
                     return (
             <div
