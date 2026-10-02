@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#2563EB</color>
+    <!-- Cinza claro: no grafite ou no azul, metade da logo some (scripts/gerar-icones.ts) -->
+    <color name="ic_launcher_background">#EDEEF0</color>
 </resources>

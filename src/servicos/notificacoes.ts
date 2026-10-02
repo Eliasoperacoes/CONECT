@@ -287,7 +287,8 @@ export const mostrarAvisoDeMensagem = async (dados: {
     body: dados.corpo,
     tag: `conecta-${dados.conversaId}`,
     icon: '/logo-malachias.svg',
-    badge: '/logo-malachias.svg',
+    // O "badge" é só a silhueta: o Android pinta de uma cor só, e a logo colorida virava um borrão
+    badge: '/icone-aviso-96.png',
 
     /**
      * SEM ISTO O CELULAR FICAVA MUDO DA SEGUNDA MENSAGEM EM DIANTE.

@@ -1,214 +1,199 @@
 /**
- * Gera os ícones PNG do aplicativo — CONECTA / Malachias Autopeças
+ * Gera TODOS os ícones e imagens de marca do CONECTA a partir da logo
+ * oficial — CONECTA / Malachias Autopeças
  *
  *   bun scripts/gerar-icones.ts
  *
  * ===================================================================
- * POR QUE PNG, SE JÁ EXISTE UM SVG
+ * DE ONDE VEM
  * ===================================================================
  *
- * O Android só monta o aplicativo de verdade (o "WebAPK", com ícone
- * próprio na gaveta e janela sem barra do navegador) quando o manifesto
- * oferece ícone em PNG, nos tamanhos 192 e 512. Com SVG apenas, o Chrome
- * desiste e instala um ATALHO: o sistema continua sendo o navegador
- * fingindo ser aplicativo — e é isso que faz aparecer aquela notificação
- * fixa "CONECTA — Toque para copiar a URL desse app".
+ * `marca/pacote-original/` é o pacote de identidade enviado pelo Elias
+ * (03/10/2026). A fonte de tudo é o `logo-master-1024.png`: transparente,
+ * com 10% de respiro de cada lado, nas cores da marca (azul #2B54A3,
+ * grafite #373435, branco). Nada aqui redesenha a logo — só põe fundo,
+ * respiro e tamanho.
  *
  * ===================================================================
- * POR QUE O DESENHO MUDOU
+ * O QUE FOI CORRIGIDO DO PACOTE (conferido antes de aplicar)
  * ===================================================================
  *
- * O ícone antigo era um walkie-talkie com ondas de rádio. O Rádio saiu do
- * sistema, então o aplicativo estava se anunciando por uma função que não
- * existe mais. O desenho novo é um balão de conversa, que é o que o
- * CONECTA faz.
+ *  1. O ícone do app vinha sobre GRAFITE — a mesma cor das listras e do
+ *     triângulo da logo, que sumiam (quebra a regra "não distorcer a
+ *     marca"). O fundo passa a ser CINZA CLARO #EDEEF0, escolha do Elias:
+ *     a logo aparece inteira, com as três cores.
+ *  2. O ícone adaptativo do Android ocupava 64% do quadro; o Android só
+ *     garante 61% visível (66 de 108 dp), e o ícone redondo cortava as
+ *     pontas. Passa a 56%.
+ *  3. Os ícones do PWA eram transparentes: no iPhone a transparência vira
+ *     preto, e o grafite some de novo. Os de tela de início ganham fundo.
+ *  4. Faltavam tamanhos: o do iPhone (180), o "maskable" do PWA, as cinco
+ *     densidades do Android (ícone, adaptativo, monocromático e aviso) e a
+ *     abertura do aplicativo.
  *
- * É um marcador geométrico, não a marca da Malachias. Para trocar pela
- * logomarca de verdade, basta substituir os arquivos gerados.
+ * A silhueta do aviso vem do pacote como está: conferida, está no padrão.
+ * Os favicons ganham o quadro claro (ver abaixo).
  */
+import { createCanvas, loadImage, type Image } from '@napi-rs/canvas';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
-import { deflateSync } from 'node:zlib';
+const PACOTE = 'marca/pacote-original';
+const RES = 'android/app/src/main/res';
 
-const AZUL = [0x25, 0x63, 0xeb];
-const BRANCO = [0xff, 0xff, 0xff];
+/** O fundo do ícone do app: cinza claro (escolha do Elias, 03/10/2026). */
+export const FUNDO_DO_ICONE = '#EDEEF0';
+/** A abertura emenda na tela de espera do sistema, que é branca. */
+const FUNDO_DA_ABERTURA = '#FFFFFF';
 
-// --- Codificação de PNG ---
+/**
+ * Quanto da largura do quadro a logo ocupa em cada uso. A logo é um
+ * losango: cabendo nesta fração, cabe também no círculo de mesmo diâmetro.
+ */
+export const OCUPACAO = {
+  /** Ícone legado do Android e o "any" do PWA: quadro arredondado, sem máscara do sistema. */
+  icone: 0.68,
+  /**
+   * Adaptativo do Android: bem dentro dos 61% que o sistema garante (66/108
+   * dp). Com 56% ficava dentro da regra mas encostado na borda do círculo —
+   * mais apertado que o ícone legado. 46% dá o mesmo respiro dos outros.
+   */
+  adaptativo: 0.46,
+  /** Favicon: o quadro claro inteiro, para a logo ler também na aba escura. */
+  favicon: 0.74,
+  /** Maskable do PWA: dentro do círculo seguro de 80%. */
+  maskable: 0.62,
+  /** iPhone: o sistema só arredonda os cantos. */
+  iphone: 0.72,
+  /** Abertura do Android 12+: o ícone vai num círculo de 160 de 240 dp. */
+  abertura: 0.6,
+  /** Abertura até o Android 11: a imagem inteira, logo no meio. */
+  aberturaAntiga: 0.32,
+} as const;
 
-const tabelaCrc = (() => {
-  const tabela = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    tabela[n] = c >>> 0;
-  }
-  return tabela;
-})();
-
-const crc32 = (dados: Uint8Array): number => {
-  let c = 0xffffffff;
-  for (let i = 0; i < dados.length; i++) c = tabelaCrc[(c ^ dados[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
+const salvar = (caminho: string, png: Buffer) => {
+  mkdirSync(dirname(caminho), { recursive: true });
+  writeFileSync(caminho, png);
 };
 
-const pedaco = (tipo: string, dados: Uint8Array): Uint8Array => {
-  const nome = new TextEncoder().encode(tipo);
-  const corpo = new Uint8Array(nome.length + dados.length);
-  corpo.set(nome, 0);
-  corpo.set(dados, nome.length);
-
-  const saida = new Uint8Array(corpo.length + 8);
-  const visao = new DataView(saida.buffer);
-  visao.setUint32(0, dados.length);
-  saida.set(corpo, 4);
-  visao.setUint32(saida.length - 4, crc32(corpo));
-  return saida;
+/**
+ * A logo no meio de um quadro de `largura x altura`, ocupando `ocupacao`
+ * do lado menor. O master já tem 10% de respiro de cada lado: a conta é
+ * sobre o DESENHO (80% do master), para a ocupação dizer o que se vê.
+ */
+const desenhar = (
+  master: Image,
+  largura: number,
+  altura: number,
+  ocupacao: number,
+  fundo: { cor: string; forma: 'cheio' | 'circulo' | 'arredondado' } | null
+): Buffer => {
+  const cv = createCanvas(largura, altura);
+  const c = cv.getContext('2d');
+  if (fundo) {
+    c.fillStyle = fundo.cor;
+    c.beginPath();
+    if (fundo.forma === 'circulo') c.arc(largura / 2, altura / 2, Math.min(largura, altura) / 2, 0, Math.PI * 2);
+    else if (fundo.forma === 'arredondado') {
+      const r = Math.min(largura, altura) * 0.22;
+      c.roundRect(0, 0, largura, altura, r);
+    } else c.rect(0, 0, largura, altura);
+    c.fill();
+  }
+  const lado = (Math.min(largura, altura) * ocupacao) / 0.8;
+  c.imageSmoothingEnabled = true;
+  c.imageSmoothingQuality = 'high';
+  c.drawImage(master, (largura - lado) / 2, (altura - lado) / 2, lado, lado);
+  return cv.toBuffer('image/png');
 };
 
-/** `pixels` em RGBA, linha a linha. */
-const montarPng = (largura: number, altura: number, pixels: Uint8Array): Uint8Array => {
-  const ihdr = new Uint8Array(13);
-  const v = new DataView(ihdr.buffer);
-  v.setUint32(0, largura);
-  v.setUint32(4, altura);
-  ihdr[8] = 8; // bits por canal
-  ihdr[9] = 6; // RGBA
-  ihdr[10] = 0;
-  ihdr[11] = 0;
-  ihdr[12] = 0;
+/** A silhueta branca (aviso, ícone monocromático) redimensionada. */
+const redimensionar = (img: Image, largura: number, altura: number, ocupacao = 1): Buffer => {
+  const cv = createCanvas(largura, altura);
+  const c = cv.getContext('2d');
+  c.imageSmoothingQuality = 'high';
+  const lado = Math.min(largura, altura) * ocupacao;
+  c.drawImage(img, (largura - lado) / 2, (altura - lado) / 2, lado, lado);
+  return cv.toBuffer('image/png');
+};
 
-  // Cada linha é precedida pelo byte de filtro (0 = nenhum)
-  const bruto = new Uint8Array(altura * (largura * 4 + 1));
-  for (let y = 0; y < altura; y++) {
-    const destino = y * (largura * 4 + 1);
-    bruto[destino] = 0;
-    bruto.set(pixels.subarray(y * largura * 4, (y + 1) * largura * 4), destino + 1);
+export const gerarIcones = async () => {
+  const master = await loadImage(`${PACOTE}/logo-master-1024.png`);
+  const silhueta = await loadImage(`${PACOTE}/android-notification-icon-96.png`);
+  const gerados: string[] = [];
+  const gravar = (caminho: string, png: Buffer) => {
+    salvar(caminho, png);
+    gerados.push(caminho);
+  };
+
+  // --- WEB E PWA ---
+  /*
+    OS FAVICONS GANHAM O QUADRO CLARO. Os do pacote são transparentes, e na
+    aba ESCURA do navegador só o "M" branco aparecia — o grafite e o azul
+    somem no fundo escuro (a regra do README: transparente só "quando houver
+    contraste suficiente"). Com o quadro, leem nos dois temas.
+  */
+  for (const lado of [16, 32, 48]) {
+    gravar(`public/favicon-${lado}.png`, desenhar(master, lado, lado, OCUPACAO.favicon, { cor: FUNDO_DO_ICONE, forma: 'arredondado' }));
+  }
+  for (const lado of [192, 512]) {
+    gravar(`public/icone-${lado}.png`, desenhar(master, lado, lado, OCUPACAO.icone, { cor: FUNDO_DO_ICONE, forma: 'arredondado' }));
+  }
+  gravar('public/icone-maskable-512.png', desenhar(master, 512, 512, OCUPACAO.maskable, { cor: FUNDO_DO_ICONE, forma: 'cheio' }));
+  gravar('public/apple-touch-icon.png', desenhar(master, 180, 180, OCUPACAO.iphone, { cor: FUNDO_DO_ICONE, forma: 'cheio' }));
+  // O "badge" do aviso no navegador: só a silhueta, como o Android pede
+  gravar('public/icone-aviso-96.png', redimensionar(silhueta, 96, 96));
+
+  /*
+    A LOGO TRANSPARENTE, no caminho de sempre. `/logo-malachias.svg` está
+    gravado no banco como foto de quem escolheu "usar a logo": o arquivo
+    fica, e passa a carregar a logo oficial (o PNG de 512, dentro do SVG).
+  */
+  const web512 = readFileSync(`${PACOTE}/logo-web-512.png`).toString('base64');
+  writeFileSync(
+    'public/logo-malachias.svg',
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 512 512" width="512" height="512">
+  <!-- GERADO por scripts/gerar-icones.ts a partir de marca/pacote-original/logo-web-512.png — a logo oficial, sem redesenho -->
+  <image width="512" height="512" href="data:image/png;base64,${web512}" xlink:href="data:image/png;base64,${web512}"/>
+</svg>
+`
+  );
+  gerados.push('public/logo-malachias.svg');
+
+  // --- ANDROID: ícone do aplicativo ---
+  const densidades = { ldpi: 0.75, mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 } as const;
+  for (const [nome, fator] of Object.entries(densidades)) {
+    const legado = Math.round(48 * fator);
+    gravar(`${RES}/mipmap-${nome}/ic_launcher.png`, desenhar(master, legado, legado, OCUPACAO.icone, { cor: FUNDO_DO_ICONE, forma: 'arredondado' }));
+    gravar(`${RES}/mipmap-${nome}/ic_launcher_round.png`, desenhar(master, legado, legado, OCUPACAO.icone, { cor: FUNDO_DO_ICONE, forma: 'circulo' }));
+    if (nome === 'ldpi') continue;
+    const camada = Math.round(108 * fator);
+    gravar(`${RES}/mipmap-${nome}/ic_launcher_foreground.png`, desenhar(master, camada, camada, OCUPACAO.adaptativo, null));
+    // O monocromático (ícones temáticos do Android 13): a silhueta no mesmo lugar
+    gravar(`${RES}/mipmap-${nome}/ic_launcher_monochrome.png`, redimensionar(silhueta, camada, camada, OCUPACAO.adaptativo));
+    // O aviso na barra: 24 dp, a silhueta do pacote
+    gravar(`${RES}/drawable-${nome}/ic_stat_conecta.png`, redimensionar(silhueta, Math.round(24 * fator), Math.round(24 * fator)));
+    // A abertura do Android 12+: 240 dp
+    const abertura = Math.round(240 * fator);
+    gravar(`${RES}/drawable-${nome}/abertura_logo.png`, desenhar(master, abertura, abertura, OCUPACAO.abertura, null));
   }
 
-  const partes = [
-    new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    pedaco('IHDR', ihdr),
-    pedaco('IDAT', new Uint8Array(deflateSync(bruto, { level: 9 }))),
-    pedaco('IEND', new Uint8Array(0)),
+  // --- ANDROID: abertura até o Android 11 (os tamanhos que o Capacitor criou) ---
+  const aberturasAntigas: Array<[string, number, number]> = [
+    ['drawable', 480, 320],
+    ['drawable-land-mdpi', 480, 320], ['drawable-land-hdpi', 800, 480], ['drawable-land-xhdpi', 1280, 720],
+    ['drawable-land-xxhdpi', 1600, 960], ['drawable-land-xxxhdpi', 1920, 1280],
+    ['drawable-port-mdpi', 320, 480], ['drawable-port-hdpi', 480, 800], ['drawable-port-xhdpi', 720, 1280],
+    ['drawable-port-xxhdpi', 960, 1600], ['drawable-port-xxxhdpi', 1280, 1920],
   ];
-
-  const total = partes.reduce((s, p) => s + p.length, 0);
-  const png = new Uint8Array(total);
-  let em = 0;
-  for (const p of partes) {
-    png.set(p, em);
-    em += p.length;
-  }
-  return png;
-};
-
-// --- Formas, em coordenadas de 0 a 1 ---
-
-const dentroDeRetanguloRedondo = (
-  x: number,
-  y: number,
-  x0: number,
-  y0: number,
-  larg: number,
-  alt: number,
-  raio: number
-): boolean => {
-  const x1 = x0 + larg;
-  const y1 = y0 + alt;
-  if (x < x0 || x > x1 || y < y0 || y > y1) return false;
-
-  const cx = Math.min(Math.max(x, x0 + raio), x1 - raio);
-  const cy = Math.min(Math.max(y, y0 + raio), y1 - raio);
-  const dx = x - cx;
-  const dy = y - cy;
-  return dx * dx + dy * dy <= raio * raio;
-};
-
-const dentroDoTriangulo = (
-  x: number,
-  y: number,
-  pontos: [number, number][]
-): boolean => {
-  const [[ax, ay], [bx, by], [cx, cy]] = pontos;
-  const d1 = (x - bx) * (ay - by) - (ax - bx) * (y - by);
-  const d2 = (x - cx) * (by - cy) - (bx - cx) * (y - cy);
-  const d3 = (x - ax) * (cy - ay) - (cx - ax) * (y - ay);
-  const temNegativo = d1 < 0 || d2 < 0 || d3 < 0;
-  const temPositivo = d1 > 0 || d2 > 0 || d3 > 0;
-  return !(temNegativo && temPositivo);
-};
-
-/**
- * O balão de conversa, centralizado, com a escala pedida.
- *
- * `escala` existe por causa do ícone "maskable": o Android recorta o ícone
- * em formatos diferentes conforme o aparelho, e só garante os 80% do meio.
- * O desenho encolhe para caber nessa área segura.
- */
-const dentroDoBalao = (x: number, y: number, escala: number): boolean => {
-  const ex = 0.5 + (x - 0.5) / escala;
-  const ey = 0.5 + (y - 0.5) / escala;
-
-  const corpo = dentroDeRetanguloRedondo(ex, ey, 0.22, 0.25, 0.56, 0.42, 0.13);
-  const rabo = dentroDoTriangulo(ex, ey, [
-    [0.34, 0.63],
-    [0.32, 0.81],
-    [0.52, 0.63],
-  ]);
-  return corpo || rabo;
-};
-
-/**
- * Desenha um ícone.
- *
- * Renderiza em 4x e reduz depois: sem isso a borda arredondada sai
- * serrilhada, e ícone serrilhado numa tela de celular salta à vista.
- */
-const desenhar = (tamanho: number, opcoes: { raioFundo: number; escalaMarca: number }) => {
-  const amostras = 4;
-  const pixels = new Uint8Array(tamanho * tamanho * 4);
-
-  for (let y = 0; y < tamanho; y++) {
-    for (let x = 0; x < tamanho; x++) {
-      let fundo = 0;
-      let marca = 0;
-
-      for (let sy = 0; sy < amostras; sy++) {
-        for (let sx = 0; sx < amostras; sx++) {
-          const nx = (x + (sx + 0.5) / amostras) / tamanho;
-          const ny = (y + (sy + 0.5) / amostras) / tamanho;
-
-          if (dentroDeRetanguloRedondo(nx, ny, 0, 0, 1, 1, opcoes.raioFundo)) fundo++;
-          if (dentroDoBalao(nx, ny, opcoes.escalaMarca)) marca++;
-        }
-      }
-
-      const total = amostras * amostras;
-      const coberturaFundo = fundo / total;
-      const coberturaMarca = (marca / total) * coberturaFundo;
-
-      const em = (y * tamanho + x) * 4;
-      for (let c = 0; c < 3; c++) {
-        pixels[em + c] = Math.round(
-          AZUL[c] * (1 - coberturaMarca) + BRANCO[c] * coberturaMarca
-        );
-      }
-      pixels[em + 3] = Math.round(coberturaFundo * 255);
-    }
+  for (const [pasta, l, a] of aberturasAntigas) {
+    gravar(`${RES}/${pasta}/splash.png`, desenhar(master, l, a, OCUPACAO.aberturaAntiga, { cor: FUNDO_DA_ABERTURA, forma: 'cheio' }));
   }
 
-  return montarPng(tamanho, tamanho, pixels);
+  return gerados;
 };
 
-const arquivos: { nome: string; tamanho: number; raioFundo: number; escalaMarca: number }[] = [
-  { nome: 'icone-192.png', tamanho: 192, raioFundo: 0.22, escalaMarca: 1 },
-  { nome: 'icone-512.png', tamanho: 512, raioFundo: 0.22, escalaMarca: 1 },
-  // Sem cantos arredondados e com a marca menor: o Android recorta este no
-  // formato do aparelho, e o que ele garante é só o miolo
-  { nome: 'icone-maskable-512.png', tamanho: 512, raioFundo: 0, escalaMarca: 0.72 },
-];
-
-for (const a of arquivos) {
-  const png = desenhar(a.tamanho, { raioFundo: a.raioFundo, escalaMarca: a.escalaMarca });
-  await Bun.write(`public/${a.nome}`, png);
-  console.log(`${a.nome} — ${a.tamanho}x${a.tamanho}, ${(png.length / 1024).toFixed(1)} kB`);
+if (import.meta.main) {
+  const gerados = await gerarIcones();
+  console.log(`${gerados.length} arquivos gerados a partir de ${PACOTE}/logo-master-1024.png`);
 }
