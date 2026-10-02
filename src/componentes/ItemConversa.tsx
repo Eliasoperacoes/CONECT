@@ -15,6 +15,7 @@ import {
 } from '../servicos/deslizarItem';
 import { bancoDados } from '../servicos/bancoDados';
 import { FolhaInferior } from './FolhaInferior';
+import { Avatar } from './Avatar';
 
 /**
  * O aviso de que um item abriu as ações. Os outros fecham as deles:
@@ -213,11 +214,6 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
     else fechar();
   };
 
-  // Inicial do nome para avatar caso não haja foto
-  const obterInicial = (nome: string) => {
-    return (nome || '?').charAt(0).toUpperCase();
-  };
-
   return (
     <div className="relative overflow-hidden border-b border-[var(--c-borda)]">
       {/* As ações, atrás do item. Só aparecem quando ele desliza. */}
@@ -346,19 +342,9 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
 
       {/* 1. Foto ou Avatar */}
       <div className="relative flex-shrink-0 w-12 h-12 rounded-full overflow-hidden bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex items-center justify-center">
-        {conversa.foto ? (
-          <img
-            src={conversa.foto}
-            alt={conversa.nome}
-            className="w-full h-full object-cover pointer-events-none"
-            referrerPolicy="no-referrer"
-            draggable={false}
-          />
-        ) : (
-          <span className="font-semibold text-base text-[var(--c-texto-2)]">
-            {obterInicial(conversa.nome)}
-          </span>
-        )}
+        {/* Sem foto de verdade, iniciais sobre a cor da pessoa (Avatar) —
+            a coluna de logos iguais obrigava a ler cada nome (S10, 02/10/2026) */}
+        <Avatar foto={conversa.foto} nome={conversa.nome} id={conversa.id} letra="text-base" />
       </div>
 
       {/* 2. Nome e 3. Prévia da última mensagem */}

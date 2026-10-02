@@ -164,3 +164,23 @@ test('férias: a próxima, a em curso e os dias lançados no ano', () => {
   const emCurso = situacaoDasFerias(ferias, '2026-12-05');
   expect(emCurso.emCurso?.id).toBe('proxima');
 });
+
+test('o selo da aba Eu e o cartao contam a mesma coisa: holerite sem assinar e advertencia sem ciencia', async () => {
+  // O "1 para assinar" do Fabio só aparecia para quem já estava na aba (S10, 02/10/2026)
+  const { pendenciasDoMeuRH } = await import('./meuRH');
+  const recebidos = new Set(['h-ago']);
+  const r = pendenciasDoMeuRH(
+    [{ id: 'h-set' }, { id: 'h-ago' }],
+    recebidos,
+    [{ cienciaEm: null }, { cienciaEm: '2026-09-01T10:00:00Z' }]
+  );
+  expect(r.holeritesParaAssinar.map((h) => h.id)).toEqual(['h-set']);
+  expect(r.semCiencia.length).toBe(1);
+  expect(r.total).toBe(2);
+
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+  expect(app).toContain('setPendenciasDoMeuRHAgora(pendenciasDoMeuRH(h, r, a).total)');
+  expect(app).toMatch(/alvo: 'eu',\s*contador: pendenciasDoMeuRHAgora,/);
+  const tela = await Bun.file(new URL('../componentes/MeuRH.tsx', import.meta.url)).text();
+  expect(tela).toContain('pendenciasDoMeuRH(holerites, recebimentos, advertencias)');
+});

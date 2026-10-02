@@ -9,6 +9,7 @@
 
 import React from 'react';
 import { EstadoPresenca } from '../tipos';
+import { Avatar } from './Avatar';
 
 interface PropsFotoPresenca {
   foto?: string;
@@ -21,6 +22,8 @@ interface PropsFotoPresenca {
   aoClicar?: () => void;
   titulo?: string;
   className?: string;
+  /** No cabeçalho de conversa: o canal oficial mantém a logo. */
+  conversaId?: string;
 }
 
 const ROTULO_PRESENCA: Record<EstadoPresenca, string> = {
@@ -30,11 +33,17 @@ const ROTULO_PRESENCA: Record<EstadoPresenca, string> = {
   desconectado: 'Desconectado',
 };
 
-/** Anel colorido por estado. Desconectado fica neutro para não poluir. */
-const anelDaPresenca = (presenca?: EstadoPresenca): string => {
+/**
+ * Anel colorido só para o que alguém ESCOLHEU dizer: ocupado ou ausente.
+ *
+ * "Disponível" é o padrão de todo cadastro, e o verde fazia os 91 da rede
+ * parecerem online ao mesmo tempo (S10, 02/10/2026) — o anel não informava
+ * nada. Presença de verdade (quem está com o app aberto) custaria, no canal
+ * de tempo real, mais que os 2 milhões de mensagens do plano: ver
+ * docs/LIMITES-SUPABASE.md antes de reabrir isso.
+ */
+export const anelDaPresenca = (presenca?: EstadoPresenca): string => {
   switch (presenca) {
-    case 'disponivel':
-      return 'ring-emerald-500';
     case 'ocupado':
       return 'ring-amber-500';
     case 'ausente':
@@ -53,6 +62,7 @@ export const FotoPresenca: React.FC<PropsFotoPresenca> = ({
   aoClicar,
   titulo,
   className = '',
+  conversaId,
 }) => {
   const interativo = !!aoClicar;
 
@@ -64,16 +74,7 @@ export const FotoPresenca: React.FC<PropsFotoPresenca> = ({
         ring-2 ring-offset-2 ${anelDaPresenca(presenca)} ${corDeFundo}
         ${interativo ? 'cursor-pointer hover:opacity-90 transition-opacity' : ''} ${className}`}
     >
-      {foto ? (
-        <img
-          src={foto}
-          alt={nome}
-          className="w-full h-full object-cover"
-          referrerPolicy="no-referrer"
-        />
-      ) : (
-        <span className="font-semibold text-sm text-[var(--c-texto-2)]">{nome.charAt(0)}</span>
-      )}
+      <Avatar foto={foto} nome={nome} id={conversaId} />
     </div>
   );
 };

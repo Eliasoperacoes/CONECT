@@ -45,6 +45,7 @@ import {
   separarMinhasAusencias,
   situacaoDasFerias,
   prepararMeuEspelho,
+  pendenciasDoMeuRH,
 } from '../servicos/meuRH';
 import { FolhaInferior } from './FolhaInferior';
 import { CartaoSolicitacao } from './AbaJustificar';
@@ -189,8 +190,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
 
   const ferias = situacaoDasFerias(ausencias.ferias, hoje);
   const meses = mesesFechados(hoje, eu.dataAdmissao);
-  const semCiencia = advertencias.filter((a) => !a.cienciaEm);
-  const holeritesParaAssinar = holerites.filter((h) => !recebimentos.has(h.id));
+  const { semCiencia, holeritesParaAssinar } = pendenciasDoMeuRH(holerites, recebimentos, advertencias);
   const documentosEmAnalise = ausencias.documentos.filter((j) => j.estado === 'pendente');
   /**
    * A folga que interessa: a deste mês, ou a próxima que vem. "Nenhuma

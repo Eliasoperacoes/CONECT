@@ -39,6 +39,7 @@ import {
   Mensagem,
 } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
+import { Avatar } from './Avatar';
 import {
   ehArquivoDeImagem,
   ehDataUrlDeImagem,
@@ -52,6 +53,7 @@ import { ModalVisualizadorImagem } from './ModalVisualizadorImagem';
 import { ModalEncaminharMensagem } from './ModalEncaminharMensagem';
 import { montarPreviaDaMensagem } from '../servicos/nuvemComunicacao';
 import { mensagemCasaComBusca } from '../servicos/buscaNasConversas';
+import { diaLocal, separadoresDeDia } from '../servicos/diaNaConversa';
 import { gravadorVoz, gravacaoDisponivel } from '../servicos/gravadorVoz';
 
 interface PropsTelaConversa {
@@ -133,6 +135,32 @@ const ItemDoMenu: React.FC<{
 const CamadaDoMenu: React.FC<{ aoFechar: () => void }> = ({ aoFechar }) => (
   <div className="fixed inset-0 z-[60]" onClick={aoFechar} onTouchMove={aoFechar} onWheel={aoFechar} />
 );
+
+/**
+ * As mensagens com o separador de dia ("Hoje", "Ontem"...) antes da
+ * primeira de cada dia. Mesma forma de um `.map`: quem desenha a
+ * mensagem não muda.
+ */
+const comSeparadoresDeDia = (
+  mensagens: Mensagem[],
+  desenhar: (msg: Mensagem, indice: number) => React.ReactNode
+): React.ReactNode[] => {
+  const rotulos = separadoresDeDia(mensagens, diaLocal(new Date().toISOString()));
+  return mensagens.flatMap((msg, i) => {
+    const rotulo = rotulos[i];
+    const balao = desenhar(msg, i);
+    return rotulo
+      ? [
+          <div key={`dia-${msg.id}`} className="flex justify-center pt-1" role="separator">
+            <span className="px-3 py-1 rounded-lg bg-[var(--c-superficie-2)] text-[11px] font-semibold text-[var(--c-texto-2)] shadow-[var(--s-1)]">
+              {rotulo}
+            </span>
+          </div>,
+          balao,
+        ]
+      : [balao];
+  });
+};
 
 /** Segundos em M:SS — 3 vira "0:03" e 75 vira "1:15". */
 const formatarSegundos = (total: number): string => {
@@ -235,6 +263,17 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
       window.visualViewport?.removeEventListener('resize', reancorar);
     };
   }, [!!menuMensagem]);
+
+  /**
+   * Abre o menu da mensagem ancorado num elemento — os três pontinhos ou o
+   * próprio balão, quando a pessoa SEGURA a mensagem (como no WhatsApp).
+   * Um caminho só: as duas portas abrem o mesmo menu, no mesmo lugar.
+   */
+  const abrirMenuDaMensagem = (msg: Mensagem, ancora: HTMLElement) => {
+    const r = ancora.getBoundingClientRect();
+    refAncoraMenu.current = ancora;
+    setMenuMensagem({ msg, x: r.left, y: r.bottom });
+  };
   /** A mensagem que está sendo respondida, enquanto a resposta é escrita. */
   const [respondendoId, setRespondendoId] = useState<string | null>(null);
 
@@ -904,6 +943,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               foto={conversa.foto || colegaDestinatario?.foto}
               nome={conversa.nome}
               presenca={colegaDestinatario?.presenca}
+              conversaId={conversa.id}
               tamanho="w-10 h-10"
               aoClicar={() => setModalDetalhesAberto(true)}
               titulo="Ver detalhes"
@@ -1054,7 +1094,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
          * esquecer: em vez de a conversa inteira ganhar barra de rolagem
          * horizontal, só aquele conteúdo fica cortado.
          */
-        className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3"
+        className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden p-4 space-y-3"
         onScroll={(e) => {
           /**
            * Quem subiu para ler o passado não pode ser arrancado de lá pela
@@ -1079,12 +1119,20 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
           */
         }}
       >
+        {/*
+          CONVERSA CURTA FICA EMBAIXO, junto do campo de escrever — como no
+          WhatsApp. Ela começava no alto, com a tela vazia entre a última
+          mensagem e o teclado (S10, 02/10/2026). O calço com `mt-auto`
+          absorve a sobra; `justify-end` no contêiner rolável impediria de
+          rolar até o começo de uma conversa longa.
+        */}
+        <div className="mt-auto" aria-hidden />
         {mensagensExibidas.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-[var(--c-texto-3)] text-sm">
+          <div className="flex-1 flex items-center justify-center text-[var(--c-texto-3)] text-sm">
             {termoBusca ? 'Nenhuma mensagem encontrada.' : 'Nenhuma mensagem ainda.'}
           </div>
         ) : (
-          mensagensExibidas.map((msg, indiceDaMensagem) => {
+          comSeparadoresDeDia(mensagensExibidas, (msg, indiceDaMensagem) => {
             /*
               O REGISTRO DO GRUPO ("Ana adicionou Bia", "Caio saiu") não é
               balão de ninguém: uma linha centralizada, como no WhatsApp,
@@ -1197,9 +1245,22 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                     </button>
                   )}
 
-                  {/* Balão de Mensagem */}
+                  {/*
+                    Balão de Mensagem. SEGURAR abre as ações, como no WhatsApp
+                    — no celular, segurar selecionava o texto e abria a barra
+                    do Android ("Traduzir/Copiar"), que ninguém procura ali
+                    (S10, 02/10/2026). Copiar virou ação do menu; no
+                    computador o texto continua selecionável com o mouse.
+                  */}
                   <div
+                    onContextMenu={(e) => {
+                      if (modoSelecao || editandoId === msg.id) return;
+                      e.preventDefault();
+                      abrirMenuDaMensagem(msg, e.currentTarget);
+                    }}
                     className={`relative max-w-[85%] sm:max-w-[70%] min-w-0 rounded-2xl text-sm shadow-[var(--s-1)] ${
+                      editandoId === msg.id ? '' : 'select-none md:select-text [-webkit-touch-callout:none]'
+                    } ${
                       balaoDeFoto ? 'p-[3px]' : 'px-3.5 py-2.5'
                     } ${
                       ehMinha
@@ -1653,9 +1714,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                         }
                         // O canto do botão é a âncora; quem decide de que
                         // lado o menu cabe é o cálculo na hora de desenhar
-                        const r = e.currentTarget.getBoundingClientRect();
-                        refAncoraMenu.current = e.currentTarget;
-                        setMenuMensagem({ msg, x: r.left, y: r.bottom });
+                        abrirMenuDaMensagem(msg, e.currentTarget);
                       }}
                       className="w-7 h-7 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-[var(--c-texto-2)] flex items-center justify-center flex-shrink-0 active:scale-95 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100 transition-all"
                       title="Opções da mensagem"
@@ -1781,7 +1840,31 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               fecharMenuMensagem();
               abrirModalEncaminhar([msg.id]);
             }}
-          />,
+          />
+        );
+        /*
+          COPIAR. Segurar a mensagem abre este menu (como no WhatsApp), e o
+          balão não seleciona mais texto no celular — então copiar mora aqui.
+          Antes, a única cópia era a seleção do Android ("Traduzir/Copiar").
+        */
+        const textoParaCopiar = msg.tipo === 'texto' ? msg.texto : msg.tipo === 'imagem' ? msg.legenda : '';
+        if (textoParaCopiar) {
+          itens.push(
+            <ItemDoMenu
+              key="copiar"
+              icone={<Copy className="w-3.5 h-3.5" />}
+              rotulo="Copiar"
+              aoClicar={() => {
+                fecharMenuMensagem();
+                navigator.clipboard
+                  .writeText(textoParaCopiar)
+                  .then(() => exibirToast('Mensagem copiada.'))
+                  .catch(() => exibirToast('Não foi possível copiar.'));
+              }}
+            />
+          );
+        }
+        itens.push(
           <ItemDoMenu
             key="selecionar"
             icone={<CheckSquare className="w-3.5 h-3.5" />}
@@ -2143,18 +2226,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               </button>
 
               <div className="w-20 h-20 rounded-full border-4 border-white overflow-hidden shadow-lg mb-3 bg-white/10 flex items-center justify-center">
-                {conversa.foto || colegaDestinatario?.foto ? (
-                  <img
-                    src={conversa.foto || colegaDestinatario?.foto}
-                    alt={conversa.nome}
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <span className="text-2xl font-bold text-white">
-                    {conversa.nome.charAt(0)}
-                  </span>
-                )}
+                <Avatar foto={conversa.foto || colegaDestinatario?.foto} nome={conversa.nome} id={conversa.id} letra="text-2xl" />
               </div>
 
               <h3 className="text-lg font-bold">{conversa.nome}</h3>

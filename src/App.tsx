@@ -102,6 +102,9 @@ import {
   ouvirEnderecosDoAplicativo,
 } from './servicos/aplicativo';
 import { montarPreviaDaMensagem } from './servicos/nuvemComunicacao';
+import { listarHolerites, listarAdvertencias } from './servicos/rh';
+import { listarRecebimentos } from './servicos/assinatura';
+import { pendenciasDoMeuRH } from './servicos/meuRH';
 import {
   atualizarTituloDaAba,
   janelaEstaVisivel,
@@ -521,6 +524,34 @@ export default function App() {
       .filter((p) => !(p.lidoPorIds || []).includes(colaboradorAtual.id))
       .length;
   }, [autenticado, colaboradorAtual.id, conversasIndividuais, versaoPreferencias]);
+
+  /**
+   * O SELO DA ABA EU: holerite para assinar e advertência sem ciência.
+   *
+   * O cartão do Meu RH dizia "1 para assinar", mas só para quem já estava
+   * na aba (S10 do Fabio, 02/10/2026). A conta é a do cartão
+   * (`pendenciasDoMeuRH`). Holerite não fica no aparelho: confere ao
+   * entrar e ao SAIR da aba Eu — é lá que se assina.
+   */
+  const [pendenciasDoMeuRHAgora, setPendenciasDoMeuRHAgora] = useState(0);
+  const estouNaAbaEu = abaAtivaEscolhida === 'eu';
+  useEffect(() => {
+    if (!autenticado) {
+      setPendenciasDoMeuRHAgora(0);
+      return;
+    }
+    let cancelado = false;
+    Promise.all([
+      listarHolerites(colaboradorAtual.id),
+      listarRecebimentos({ colaboradorId: colaboradorAtual.id }),
+      listarAdvertencias(colaboradorAtual.id),
+    ]).then(([h, r, a]) => {
+      if (!cancelado) setPendenciasDoMeuRHAgora(pendenciasDoMeuRH(h, r, a).total);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [autenticado, colaboradorAtual.id, estouNaAbaEu]);
   const [avisoNaoLido, setAvisoNaoLido] = useState<Mensagem | null>(null);
 
   // Modais acionados pelo botão '+'
@@ -1259,6 +1290,7 @@ export default function App() {
       // "Eu" é a saída de emergência da navegação: se tudo o mais for
       // desligado, ainda há uma tela com o próprio perfil e o botão de sair.
       visivel: true, alvo: 'eu',
+      contador: pendenciasDoMeuRHAgora,
     },
   ];
 

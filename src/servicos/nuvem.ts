@@ -62,6 +62,7 @@ import {
 } from './linhasDoBanco';
 import { CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { acompanharCanal, definirRecarga, recarregarAoVoltar } from './reconexao';
+import { FOTO_DA_LOGO } from './avatar';
 
 /**
  * Enche o cache de conversa, aviso, configuração e auditoria. Fica aqui e não
@@ -173,8 +174,8 @@ const paraColaborador = (
     /* Caminho que não foi assinado cai no logo, e não num quadrado
        quebrado: a assinatura é uma ida à rede, e ela pode falhar */
     ehCaminhoDeFotoPerfil(linha.foto)
-      ? fotosAssinadas?.get(linha.foto!) || '/logo-malachias.svg'
-      : linha.foto || '/logo-malachias.svg'
+      ? fotosAssinadas?.get(linha.foto!) || FOTO_DA_LOGO
+      : linha.foto || FOTO_DA_LOGO
   );
 
 /**

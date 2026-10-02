@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { MessageSquare, SearchX } from 'lucide-react';
 import type { Conversa } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
+import { Avatar } from './Avatar';
 import {
   buscarNasConversas,
   normalizarBusca,
@@ -78,11 +79,7 @@ export const ResultadosDaBusca: React.FC<Props> = ({ termo, conversas, aoAbrir }
               className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-[var(--c-superficie-2)] border-b border-[var(--c-borda)]"
             >
               <span className="w-10 h-10 rounded-full bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex items-center justify-center flex-shrink-0 overflow-hidden">
-                {c.foto ? (
-                  <img src={c.foto} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                ) : (
-                  <MessageSquare className="w-4 h-4 text-[var(--c-texto-3)]" />
-                )}
+                <Avatar foto={c.foto} nome={c.nome} id={c.id} />
               </span>
               <span className="text-[15px] font-medium text-[var(--c-texto)] truncate">
                 <Destacado texto={c.nome} termo={termo} />

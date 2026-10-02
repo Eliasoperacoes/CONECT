@@ -21,6 +21,22 @@ import { servicoPonto } from './ponto';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
 
+/**
+ * O QUE ESPERA UMA AÇÃO DA PESSOA no Meu RH: holerite sem assinatura e
+ * advertência sem ciência. É o número do cartão E o selo da aba Eu — a
+ * mesma regra, para os dois nunca discordarem. Sem o selo, o "1 para
+ * assinar" do Fabio só aparecia para quem já estava na aba (S10, 02/10/2026).
+ */
+export const pendenciasDoMeuRH = (
+  holerites: { id: string }[],
+  recebimentos: { has: (holeriteId: string) => boolean },
+  advertencias: { cienciaEm?: string | null }[]
+) => {
+  const holeritesParaAssinar = holerites.filter((h) => !recebimentos.has(h.id));
+  const semCiencia = advertencias.filter((a) => !a.cienciaEm);
+  return { holeritesParaAssinar, semCiencia, total: holeritesParaAssinar.length + semCiencia.length };
+};
+
 /** Quantos meses fechados a pessoa alcança na própria tela. */
 export const MESES_DO_ESPELHO = 12;
 

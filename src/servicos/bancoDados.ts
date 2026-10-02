@@ -31,6 +31,7 @@ import {
   carimboDeAuditoria,
 } from './nuvemComunicacao';
 import { enviarAnexo, apagarAnexos, enviarFotoDePerfil } from './anexos';
+import { FOTO_DA_LOGO } from './avatar';
 import {
   Colaborador,
   Conversa,
@@ -69,7 +70,8 @@ const CHAVE_AUDITORIA = 'conecta_v4_auditoria';
 const CHAVE_ULTIMO_ACESSO_DISPOSITIVO = 'conecta_v4_ultimo_acesso_dispositivo';
 
 // Logo oficial da Malachias Autopeças como padrão de foto de usuário da rede
-export const FOTO_PADRAO_LOGO_EMPRESA = '/logo-malachias.svg';
+// (mora em avatar.ts, que decide quando ela vale como "sem foto")
+export const FOTO_PADRAO_LOGO_EMPRESA = FOTO_DA_LOGO;
 
 /**
  * Resposta das ferramentas de demonstração quando o sistema está ligado ao

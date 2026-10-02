@@ -430,7 +430,8 @@ test('o menu de acoes fica fora da lista e ancorado na janela', async () => {
   expect(tela).toContain('className="fixed z-[61]');
 
   // A âncora vem do botão, medida na hora do clique
-  expect(tela).toContain('e.currentTarget.getBoundingClientRect()');
+  expect(tela).toContain('const r = ancora.getBoundingClientRect();');
+  expect(tela).toContain('abrirMenuDaMensagem(msg, e.currentTarget);');
   expect(tela).toContain('setMenuMensagem({ msg, x: r.left, y: r.bottom })');
 
   // Arrastar move o botão para longe da âncora, então arrastar fecha — pela
@@ -800,7 +801,7 @@ test('a conversa nao rola de lado', async () => {
    * em vez de a conversa inteira ganhar barra horizontal, só aquele
    * conteúdo fica cortado.
    */
-  expect(tela).toContain('flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3');
+  expect(tela).toContain('flex-1 flex flex-col overflow-y-auto overflow-x-hidden p-4 space-y-3');
 });
 
 /**
@@ -973,7 +974,7 @@ test('o menu da mensagem acompanha o botao quando a tela muda de tamanho', async
     anda, e o menu ficava no ponto antigo por cima do cabeçalho. A âncora é
     o botão, medido de novo a cada resize.
   */
-  expect(tela).toContain('refAncoraMenu.current = e.currentTarget;');
+  expect(tela).toContain('refAncoraMenu.current = ancora;');
   expect(tela).toContain("window.visualViewport?.addEventListener('resize', reancorar)");
   expect(tela).toContain('const r = botao.getBoundingClientRect();');
 });
@@ -986,4 +987,29 @@ test('textos de busca vazia dizem a verdade', async () => {
   // "com estes filtros" só quando há filtro ou busca (S10, 02/10/2026)
   const central = await Bun.file(new URL('../componentes/CentralAvisos.tsx', import.meta.url)).text();
   expect(central).toContain('{filtrosLigados > 0 || busca.trim()');
+});
+
+test('segurar a mensagem abre as acoes, e copiar e uma delas', async () => {
+  const tela = semComentarios(await lerTela());
+  /*
+    No S10 (02/10/2026), segurar a mensagem selecionava o texto e abria a
+    barra do Android. Como no WhatsApp: segurar abre o menu, pelo MESMO
+    caminho dos três pontinhos, e o balão não seleciona texto no celular.
+  */
+  expect(tela).toContain('abrirMenuDaMensagem(msg, e.currentTarget);\n                    }}');
+  expect(tela).toMatch(/onContextMenu=\{\(e\) => \{\s*if \(modoSelecao \|\| editandoId === msg\.id\) return;\s*e\.preventDefault\(\);\s*abrirMenuDaMensagem\(msg, e\.currentTarget\);/);
+  expect(tela).toContain("'select-none md:select-text [-webkit-touch-callout:none]'");
+  // Sem a seleção do Android, copiar precisa estar no menu
+  expect(tela).toContain('key="copiar"');
+  expect(tela).toContain('navigator.clipboard\n                  .writeText(textoParaCopiar)');
+});
+
+test('disponivel, o padrao de todo cadastro, nao pinta anel; ocupado e ausente sim', async () => {
+  // No S10 (02/10/2026) os 91 da rede tinham anel verde, como se todos
+  // estivessem online — "disponível" é só o padrão de quem nunca mexeu
+  const { anelDaPresenca } = await import('../componentes/FotoPresenca');
+  expect(anelDaPresenca('disponivel')).toBe(anelDaPresenca(undefined));
+  expect(anelDaPresenca('disponivel')).not.toContain('emerald');
+  expect(anelDaPresenca('ocupado')).toBe('ring-amber-500');
+  expect(anelDaPresenca('ausente')).toBe('ring-slate-400');
 });

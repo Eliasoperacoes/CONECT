@@ -36,6 +36,7 @@ import { Colaborador, Conversa } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import { useVoltar } from '../servicos/voltar';
 import { FotoPresenca } from './FotoPresenca';
+import { Avatar } from './Avatar';
 import { FolhaInferior } from './FolhaInferior';
 import { EscolherPessoas } from './EscolherPessoas';
 
@@ -213,12 +214,8 @@ export const DadosDoGrupo: React.FC<{
           {/* A FOTO, O NOME, E QUANTOS */}
           <Secao>
             <div className="px-4 pt-6 pb-5 flex flex-col items-center text-center gap-2">
-              <span className="w-24 h-24 rounded-full bg-[var(--c-acento)]/15 text-[var(--c-acento)] flex items-center justify-center text-4xl font-bold">
-                {conversa.foto ? (
-                  <img src={conversa.foto} alt="" className="w-full h-full rounded-full object-cover" />
-                ) : (
-                  conversa.nome.charAt(0).toUpperCase()
-                )}
+              <span className="w-24 h-24 rounded-full overflow-hidden flex items-center justify-center">
+                <Avatar foto={conversa.foto} nome={conversa.nome} id={conversa.id} letra="text-4xl" />
               </span>
 
               {/* Só enquanto administra: saiu ou perdeu o papel, a edição fecha */}
