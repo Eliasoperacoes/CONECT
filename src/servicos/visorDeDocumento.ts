@@ -17,10 +17,10 @@
  */
 import { rodandoNoAplicativo } from './aplicativo';
 
-export interface DocumentoNoVisor {
-  html: string;
-  titulo: string;
-}
+/** Um documento gerado aqui (`html`) ou um PDF guardado no banco (`pdf`, o endereço dele). */
+export type DocumentoNoVisor =
+  | { html: string; titulo: string }
+  | { pdf: string; titulo: string; arquivoNome: string };
 
 let aberto: DocumentoNoVisor | null = null;
 const ouvintes: Array<() => void> = [];
@@ -82,6 +82,19 @@ export const mostrarDocumento = (html: string, opcoes: { imprimir?: boolean } = 
   // Espera o layout fechar antes de chamar a impressão
   if (opcoes.imprimir) setTimeout(() => janela.print(), 250);
   return true;
+};
+
+/**
+ * UM PDF NO VISOR — o holerite, em qualquer aparelho.
+ *
+ * Antes o holerite abria o arquivo: no computador, uma aba com o leitor do
+ * navegador; no aplicativo, o navegador do celular por fora, baixando.
+ * Agora ele é desenhado dentro do sistema, como o espelho no celular — e é
+ * aqui, com o documento à frente, que a assinatura digital vai entrar.
+ */
+export const mostrarPdf = (url: string, titulo: string, arquivoNome: string): void => {
+  aberto = { pdf: url, titulo, arquivoNome };
+  avisar();
 };
 
 /**

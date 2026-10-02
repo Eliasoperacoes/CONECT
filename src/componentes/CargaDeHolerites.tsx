@@ -27,7 +27,7 @@ import {
   sugerirCompetencia,
   PaginaAnalisada,
 } from '../servicos/cargaDeHolerites';
-import { lerTextosDoPdf, publicarCargaDeHolerites, ResultadoDaCarga } from '../servicos/pdfHolerite';
+import { lerPaginasDoPdf, publicarCargaDeHolerites, ResultadoDaCarga, CortesDasVias } from '../servicos/pdfHolerite';
 import { rotuloDoMes } from '../servicos/meuRH';
 
 interface Props {
@@ -54,7 +54,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
   aoPublicar,
 }) => {
   const [etapa, setEtapa] = useState<Etapa>('escolher');
-  const [arquivo, setArquivo] = useState<{ nome: string; dados: ArrayBuffer } | null>(null);
+  const [arquivo, setArquivo] = useState<{ nome: string; dados: ArrayBuffer; cortes: CortesDasVias } | null>(null);
   const [paginas, setPaginas] = useState<PaginaAnalisada[]>([]);
   const [decisoes, setDecisoes] = useState<Record<number, string | null>>({});
   const [competencia, setCompetencia] = useState(competenciaInicial);
@@ -89,7 +89,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
     setEtapa('lendo');
     try {
       const dados = await escolhido.arrayBuffer();
-      const textos = await lerTextosDoPdf(dados);
+      const { textos, cortes } = await lerPaginasDoPdf(dados);
 
       /**
        * PDF ESCANEADO NÃO TEM NOME PARA LER.
@@ -107,7 +107,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
       }
 
       const analise = analisarPaginas(textos, pessoas);
-      setArquivo({ nome: escolhido.name, dados });
+      setArquivo({ nome: escolhido.name, dados, cortes });
       setPaginas(analise);
       setDecisoes(decisaoInicial(analise));
       setCompetencia(sugerirCompetencia(textos) || competenciaInicial);
@@ -127,6 +127,8 @@ export const CargaDeHolerites: React.FC<Props> = ({
     holerites.some((h) => h.colaboradorId === id && h.competencia === competencia)
   );
   const naoPublicadas = paginas.filter((p) => !decisoes[p.numero]).length;
+  // As páginas impressas em duas vias, que cada um recebe com uma só
+  const umaVia = arquivo ? Object.values(arquivo.cortes).filter((c) => c != null).length : 0;
 
   const publicar = async () => {
     if (!arquivo || recebem.length === 0) return;
@@ -140,6 +142,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
 
     const res = await publicarCargaDeHolerites({
       arquivo: arquivo.dados,
+      cortes: arquivo.cortes,
       competencia,
       grupos,
       nomeDe,
@@ -369,6 +372,11 @@ export const CargaDeHolerites: React.FC<Props> = ({
             </details>
           )}
 
+          {umaVia > 0 && (
+            <p className="text-[11px] text-[var(--c-texto-3)]">
+              {umaVia === paginas.length ? 'Todas as páginas' : `${umaVia} de ${paginas.length} páginas`} vieram em duas vias: cada pessoa recebe uma só.
+            </p>
+          )}
           {naoPublicadas > 0 && (
             <p className="text-[11px] text-[var(--c-texto-3)]">
               {naoPublicadas} página{naoPublicadas === 1 ? '' : 's'} do arquivo não {naoPublicadas === 1 ? 'será publicada' : 'serão publicadas'}.

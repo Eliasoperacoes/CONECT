@@ -52,6 +52,36 @@ test('separa só as páginas pedidas, num PDF próprio', async () => {
   expect(await paginasDe(separado)).toBe(2);
 });
 
+test('a página com corte sai com a via de cima só; a sem corte, inteira', async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage([595, 842]);
+  doc.addPage([595, 842]);
+  const bytes = await doc.save();
+  const arquivo = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+
+  const separado = await separarPaginas(arquivo, [1, 2], { 1: 457, 2: null });
+  const [comCorte, semCorte] = (await PDFDocument.load(Buffer.from(separado.split(',')[1], 'base64'))).getPages();
+  // Da altura 457 até o topo (842): a via de baixo ficou fora da folha
+  expect(comCorte.getMediaBox()).toEqual({ x: 0, y: 457, width: 595, height: 385 });
+  expect(comCorte.getCropBox()).toEqual({ x: 0, y: 457, width: 595, height: 385 });
+  expect(semCorte.getMediaBox()).toEqual({ x: 0, y: 0, width: 595, height: 842 });
+});
+
+test('a publicação passa os cortes adiante', async () => {
+  const doc = await PDFDocument.create();
+  doc.addPage([595, 842]);
+  const bytes = await doc.save();
+  await publicarCargaDeHolerites({
+    arquivo: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
+    competencia: '2026-09',
+    grupos: { maria: [1] },
+    cortes: { 1: 457 },
+    nomeDe: (id) => id,
+  });
+  const pagina = (await PDFDocument.load(Buffer.from(publicados[0].conteudo.split(',')[1], 'base64'))).getPage(0);
+  expect(pagina.getHeight()).toBe(385);
+});
+
 test('cada pessoa recebe o dela, no mês escolhido', async () => {
   const arquivo = await pdfCom(['MARIA', 'JOAO', 'RESUMO DA FOLHA']);
   const avancos: string[] = [];

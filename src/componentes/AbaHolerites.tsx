@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { Colaborador, Holerite } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
-import { listarHolerites, salvarHolerite, removerHolerite } from '../servicos/rh';
+import { listarHolerites, salvarHolerite, removerHolerite, removerHoleritesDoMes } from '../servicos/rh';
 import { FotoPresenca } from './FotoPresenca';
 import { CargaDeHolerites } from './CargaDeHolerites';
 
@@ -207,6 +207,26 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
 
   const publicados = jaTem.size;
 
+  /*
+    LIMPAR O MÊS INTEIRO — para a carga de teste não ficar no meio do
+    trabalho, ou para refazer uma que subiu errada. Dois toques: o primeiro
+    só pergunta, dizendo quantos e de que mês.
+  */
+  const [confirmandoLimpeza, setConfirmandoLimpeza] = useState(false);
+  const [limpando, setLimpando] = useState(false);
+  useEffect(() => setConfirmandoLimpeza(false), [competencia]);
+
+  const limparMes = async () => {
+    setLimpando(true);
+    const res = await removerHoleritesDoMes(competencia);
+    setLimpando(false);
+    setConfirmandoLimpeza(false);
+    if (!res.sucesso) setAviso(res.erro || 'Falha ao remover.');
+    else if (res.removidos === 0) setAviso('Nenhum holerite foi removido. Confira se o seu acesso permite apagar.');
+    else setAviso(`${res.removidos} holerite${res.removidos === 1 ? '' : 's'} de ${porExtenso(competencia)} removido${res.removidos === 1 ? '' : 's'}.`);
+    setVersao((v) => v + 1);
+  };
+
   return (
     <div className="p-4 sm:p-6 flex flex-col gap-4">
       <div>
@@ -278,6 +298,42 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
             publicados em {porExtenso(competencia)}
           </span>
         </div>
+
+        {publicados > 0 &&
+          (confirmandoLimpeza ? (
+            <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-red-500/8 border border-red-500/30">
+              <span className="text-[11px] font-semibold text-red-700 dark:text-red-400">
+                Remover os {publicados} holerites de {porExtenso(competencia)}? Quem já recebeu deixa de ver.
+              </span>
+              <button
+                type="button"
+                id="botao-confirmar-limpeza-holerites"
+                onClick={limparMes}
+                disabled={limpando}
+                className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-bold disabled:opacity-50"
+              >
+                {limpando ? 'Removendo…' : 'Remover todos'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmandoLimpeza(false)}
+                disabled={limpando}
+                className="px-2.5 py-1.5 rounded-lg border border-[var(--c-borda)] text-[11px] font-semibold text-[var(--c-texto-2)]"
+              >
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              id="botao-limpar-holerites-do-mes"
+              onClick={() => setConfirmandoLimpeza(true)}
+              className="pb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--c-texto-3)] hover:text-red-600 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Limpar este mês
+            </button>
+          ))}
 
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--c-texto-3)]" />

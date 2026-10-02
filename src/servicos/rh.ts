@@ -165,6 +165,45 @@ export const removerHolerite = async (
   return { sucesso: true };
 };
 
+/**
+ * APAGA TODOS OS HOLERITES DE UM MÊS — a carga de teste, ou a que subiu
+ * errada e vai ser refeita.
+ *
+ * O `.select()` depois do delete não é enfeite: ele devolve as linhas que
+ * o banco DE FATO apagou. Sem permissão, o delete do Supabase afeta zero
+ * linhas e responde sucesso — e a tela diria "limpo" com tudo lá.
+ */
+export const removerHoleritesDoMes = async (
+  competencia: string
+): Promise<{ sucesso: boolean; removidos: number; erro?: string }> => {
+  if (!podeCuidarDeDocumentos()) {
+    return { sucesso: false, removidos: 0, erro: 'Apenas o RH remove holerite.' };
+  }
+  if (!supabase) return { sucesso: false, removidos: 0, erro: 'Banco não configurado.' };
+  if (!/^\d{4}-\d{2}$/.test(competencia)) {
+    return { sucesso: false, removidos: 0, erro: 'Escolha o mês (competência).' };
+  }
+
+  const { data, error } = await supabase
+    .from('holerites')
+    .delete()
+    .eq('competencia', competencia)
+    .select('arquivo_caminho');
+  if (error) return { sucesso: false, removidos: 0, erro: error.message };
+
+  const linhas = (data || []) as Array<{ arquivo_caminho: string | null }>;
+  // Os arquivos saem junto, pelo mesmo motivo do `removerHolerite`
+  await apagarAnexos(linhas.map((l) => l.arquivo_caminho).filter((c): c is string => !!c));
+
+  const eu = bancoDados.obterColaboradorAtual();
+  bancoDados.registrarAuditoria(
+    'Holerites removidos',
+    'usuario',
+    `${eu.nome} removeu os ${linhas.length} holerites de ${competencia}.`
+  );
+  return { sucesso: true, removidos: linhas.length };
+};
+
 /** O endereço para abrir o documento, válido por pouco tempo. */
 export const abrirDocumento = async (caminho: string): Promise<string | null> =>
   resolverCaminho(caminho);

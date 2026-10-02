@@ -16,6 +16,7 @@ import { ArrowLeft, Maximize2, Minimize2, Printer } from 'lucide-react';
 import { useVoltar } from '../servicos/voltar';
 import { assinarVisor, documentoNoVisor, fecharVisor } from '../servicos/visorDeDocumento';
 import { rodandoNoAplicativo } from '../servicos/aplicativo';
+import { VisorDePdf } from './VisorDePdf';
 
 /** A folha A4 em pé, em pixels de tela: abaixo disto o documento não encolhe. */
 const LARGURA_MINIMA_DA_FOLHA = 794;
@@ -43,6 +44,9 @@ export const VisorDeDocumento: React.FC = () => {
   }, [documento]);
 
   if (!documento) return null;
+  if ('pdf' in documento) {
+    return <VisorDePdf url={documento.pdf} titulo={documento.titulo} arquivoNome={documento.arquivoNome} />;
+  }
 
   /** O tamanho da folha só se sabe depois de ela desenhar o conteúdo. */
   const aoCarregar = () => {

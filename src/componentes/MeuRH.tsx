@@ -26,7 +26,6 @@ import {
   FileText,
   AlertTriangle,
   ChevronRight,
-  Download,
   Check,
   Clock,
   Loader2,
@@ -45,7 +44,7 @@ import {
 } from '../servicos/meuRH';
 import { FolhaInferior } from './FolhaInferior';
 import { CartaoSolicitacao } from './AbaJustificar';
-import { mostrarDocumento, usaVisor } from '../servicos/visorDeDocumento';
+import { mostrarDocumento, mostrarPdf, usaVisor } from '../servicos/visorDeDocumento';
 import { rodandoNoAplicativo } from '../servicos/aplicativo';
 
 interface Props {
@@ -227,6 +226,19 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
     }
     if (janela) janela.location.href = url;
     else window.location.href = url;
+  };
+
+  /*
+    O HOLERITE ABRE NO VISOR, dentro do sistema, em qualquer aparelho:
+    nada de baixar para ver, nem de sair do aplicativo. É ali que a
+    assinatura digital vai entrar.
+  */
+  const abrirHolerite = async (h: Holerite) => {
+    setAbrindo(h.id);
+    const url = await abrirDocumento(h.arquivoCaminho);
+    setAbrindo(null);
+    if (!url) return mostrarAviso('Não foi possível abrir o holerite. Tente de novo em instantes.');
+    mostrarPdf(url, `Holerite · ${rotuloDoMes(h.competencia)}`, h.arquivoNome);
   };
 
   const abrirEspelho = async (mes: string) => {
@@ -422,9 +434,9 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
                   titulo={rotuloDoMes(h.competencia)}
                   detalhe={h.arquivoNome}
                   icone={<Receipt className="w-5 h-5" />}
-                  acao={<Download className="w-4 h-4" />}
+                  acao={<ChevronRight className="w-4 h-4" />}
                   ocupado={abrindo === h.id}
-                  aoTocar={() => abrirArquivo(h.arquivoCaminho, h.id)}
+                  aoTocar={() => abrirHolerite(h)}
                 />
               ))}
             </ul>

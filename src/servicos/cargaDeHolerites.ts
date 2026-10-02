@@ -81,6 +81,62 @@ export const nomesNoCampo = (texto: string): string[] => [
   ),
 ];
 
+/** Um pedaço de texto da página e onde ele está, em pontos do PDF (y cresce para cima). */
+export interface TextoNaPagina {
+  texto: string;
+  x: number;
+  y: number;
+}
+
+/**
+ * UMA VIA SÓ — onde cortar a página para o colaborador não receber duas.
+ *
+ * O escritório imprime cada holerite em DUAS VIAS na mesma folha, uma em
+ * cima da outra: a assinada ficava com o RH, a outra com o colaborador. No
+ * sistema isso é só repetição, e a assinatura vai ser digital.
+ *
+ * A via de baixo é a de cima deslocada `passo` pontos (a distância entre
+ * os dois "Nome do Funcionário"). Por isso o meio entre o texto mais alto
+ * e o mais baixo da página cai no vão entre as vias — no PDF de
+ * Setembro/2026, y≈457, com a moldura de cima terminando em ≈483 e a de
+ * baixo começando em ≈432.
+ *
+ * NA DÚVIDA, NÃO CORTA: só devolve o corte se as duas metades forem cópia
+ * uma da outra — os mesmos textos, nas mesmas posições. Um layout novo do
+ * escritório, ou uma página com duas pessoas, sai inteira, como veio.
+ */
+export const corteEntreVias = (itens: TextoNaPagina[]): number | null => {
+  const comTexto = itens.filter((i) => i.texto.trim().length > 0);
+  const rotulos = comTexto.filter((i) => /Nome do Funcion/.test(i.texto));
+  if (rotulos.length !== 2 || Math.abs(rotulos[0].x - rotulos[1].x) > 1) return null;
+
+  const passo = Math.abs(rotulos[0].y - rotulos[1].y);
+  const ys = comTexto.map((i) => i.y);
+  const corte = (Math.min(...ys) + Math.max(...ys)) / 2;
+  // As vias se sobreporiam: não há vão para cortar
+  if (2 * passo <= Math.max(...ys) - Math.min(...ys)) return null;
+
+  /*
+    Cada texto de cima precisa de um gêmeo embaixo — o mesmo texto, um
+    passo abaixo — e vice-versa. "No mesmo lugar" com folga de dois
+    pontos: as linhas da tabela distam 10,8 uma da outra. O PDF real (pág. 12 de Setembro/2026) desloca 1,3
+    ponto as últimas linhas de uma via em relação à outra.
+  */
+  const deCima = comTexto.filter((i) => i.y > corte);
+  const deBaixo = comTexto.filter((i) => i.y < corte);
+  if (deCima.length !== deBaixo.length) return null;
+  const sobrando = [...deBaixo];
+  for (const i of deCima) {
+    const gemeo = sobrando.findIndex(
+      (j) =>
+        j.texto.trim() === i.texto.trim() && Math.abs(j.x - i.x) <= 2 && Math.abs(j.y + passo - i.y) <= 2
+    );
+    if (gemeo === -1) return null;
+    sobrando.splice(gemeo, 1);
+  }
+  return corte;
+};
+
 const trechoEmVoltaDoNome = (texto: string, palavra?: string): string => {
   const limpo = texto.normalize('NFD').replace(/\p{M}/gu, '').replace(/\s+/g, ' ').trim();
   const posicao = palavra ? limpo.toUpperCase().indexOf(palavra) : -1;

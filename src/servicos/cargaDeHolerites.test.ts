@@ -12,6 +12,7 @@ import {
   sugerirCompetencia,
   normalizarParaComparar,
   nomesNoCampo,
+  corteEntreVias,
 } from './cargaDeHolerites';
 
 const EQUIPE = [
@@ -149,6 +150,48 @@ test('Domínio: a página "A TRANSPORTAR" e a seguinte vão para a mesma pessoa'
     EQUIPE
   );
   expect(paginasPorPessoa(decisaoInicial(paginas))).toEqual({ maria: [1, 2] });
+});
+
+/*
+  UMA VIA SÓ. A página do Domínio, como o leitor de PDF a entrega: a via de
+  cima e, 412 pontos abaixo, a mesma via outra vez (medido no PDF de
+  Setembro/2026, A4 em pé).
+*/
+const via = (nome: string, desce: number, tremor = 0) => [
+  { texto: 'R T MALACHIAS AUTO PECAS LTDA', x: 18, y: 831 - desce },
+  { texto: nome, x: 40, y: 810 - desce },
+  { texto: 'Nome do Funcionário', x: 51, y: 799 - desce },
+  { texto: 'SALARIO', x: 38, y: 760 - desce },
+  { texto: '2.163,17', x: 380, y: 760 - desce + tremor },
+  { texto: 'Valor Líquido', x: 354, y: 522 - desce },
+  { texto: '776,95', x: 520, y: 496 - desce },
+];
+
+test('duas vias iguais: corta no vão entre elas', () => {
+  const corte = corteEntreVias([...via('ABNER SOUSA BORGES', 0), ...via('ABNER SOUSA BORGES', 412)]);
+  // Abaixo da via de cima (que desce até 496) e acima da de baixo (que sobe até 419)
+  expect(corte).toBeGreaterThan(430);
+  expect(corte).toBeLessThan(490);
+});
+
+test('a mesma linha um ponto e pouco fora do lugar ainda é a mesma via', () => {
+  // A pág. 12 do PDF real: linhas da via de baixo 1,3 ponto deslocadas
+  expect(corteEntreVias([...via('EGNALDO', 0), ...via('EGNALDO', 412, 1.3)])).not.toBeNull();
+});
+
+test('duas metades diferentes: a página sai inteira', () => {
+  // Duas pessoas na mesma folha — cortar daria a uma o que é da outra, e apagaria a de baixo
+  expect(corteEntreVias([...via('ABNER SOUSA BORGES', 0), ...via('JULIANA ZANON', 412)])).toBeNull();
+  // Um valor diferente numa das vias também não é cópia
+  const outra = via('ABNER SOUSA BORGES', 412).map((i) => (i.texto === '776,95' ? { ...i, texto: '999,99' } : i));
+  expect(corteEntreVias([...via('ABNER SOUSA BORGES', 0), ...outra])).toBeNull();
+  // Linha de outra via, a mais de dois pontos, não é gêmea
+  expect(corteEntreVias([...via('ABNER', 0), ...via('ABNER', 412, 5)])).toBeNull();
+});
+
+test('página de uma via só, ou de outro layout, não é cortada', () => {
+  expect(corteEntreVias(via('ABNER SOUSA BORGES', 0))).toBeNull();
+  expect(corteEntreVias([{ texto: 'RESUMO GERAL DA FOLHA', x: 10, y: 800 }])).toBeNull();
 });
 
 test('o mês sai do PDF como sugestão, sem confundir com data de admissão', () => {
