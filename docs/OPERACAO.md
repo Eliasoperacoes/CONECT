@@ -108,6 +108,7 @@ esquema.
 | `conferir-funcoes-de-nivel.sql` | **Só leitura (02/10/2026).** Mostra a definição no ar de `sou_admin()` e `cuido_de_pessoas()`, que estavam duplicadas no esquema com regras diferentes. O certo: `>= 5` e `>= 4 or ... 'RH'` |
 | `assinatura-holerite.sql` | **Rode uma vez (02/10/2026), depois de `rh-holerite-advertencia.sql`.** A assinatura do holerite: cada pessoa desenha a assinatura uma vez (com o termo de adesão), e assina cada holerite com a senha, conferida no banco. O RH vê quem assinou e baixa os comprovantes carimbados. Holerite assinado não é mais substituído nem removido pelo sistema — só pelo SQL Editor. Sem ele, o botão Assinar responde "avise o TI". A conferência precisa sair `3 · 2 · 1 · true`: o `true` é a conferência de senha (pgcrypto) funcionando |
 | `compensacao-sabado.sql` | **Rode uma vez (01/10/2026).** O saldo de compensação do sábado (os 10 min diários do turno integral, que pagam a folga) passa de um mês ao outro: a apuração da madrugada fecha o mês anterior de cada pessoa nesta tabela, e o espelho mostra o que veio, o que juntou, a folga consumida e o que segue. Sem ele a madrugada segue sem gravar a compensação |
+| `lembretes-1-simular.sql`, `lembretes-2-ver-simulacao.sql`, `lembretes-3-agendar.sql` | **Em ordem, uma vez (02/10/2026)**, depois de publicar `lembrar-pendencias` e de publicar de novo `enviar-aviso` — ver "Os lembretes das 9h" abaixo. O endereço em maiúsculas é trocado na entrega |
 | `apuracao-1-preparar.sql`, `apuracao-2-ver-simulacao.sql`, `apuracao-3-agendar.sql` | **Em ordem, uma vez (01/10/2026)**, depois de publicar a função `apurar-ponto` — ver "A apuração da madrugada" abaixo. Os valores em maiúsculas são trocados na entrega |
 | `dias-com-batida.sql` | **Rode uma vez (01/10/2026).** O espelho incompleto passa a contar também os dias de trabalho sem batida nenhuma, perguntando ao banco em que dias cada pessoa bateu (uma linha por pessoa). Sem ele, a conta alarga o cache do aparelho para o período |
 | `ponto-pelo-servidor.sql` | **Rode uma vez (01/10/2026), DEPOIS de a versão nova estar no ar e fora do horário de entrada e saída.** A batida passa a ser carimbada pelo servidor (dia e hora do banco, em Brasília) e o código do cartaz é conferido lá; o aparelho não grava mais batida própria direto na tabela, e só quem cuida do cartaz lê os códigos. Quem estiver com o sistema antigo aberto precisa recarregar. **Não rode de novo `corrigir-ponto-pelo-lider.sql` nem `ponto-do-lider-completo.sql`**: eles recriam a política antiga e reabrem a batida direta |
@@ -322,6 +323,34 @@ Nos SQLs do repositório o segredo e o endereço são marcadores
 (`COLE_O_SEGREDO`, `URL_DO_PROJETO`); os valores entram só na cópia
 entregue. Mudou alguma regra do ponto? Gere de novo e cole: o
 repositório não chega à função sozinho.
+
+### Os lembretes das 9h (`lembrar-pendencias`)
+
+Todo dia às 09:00 de Brasília o servidor lembra, até resolver (pedido do
+Elias, 02/10/2026): o **holerite não assinado**, o **documento do RH sem
+ciência** e a **publicação que pede confirmação** (das últimas duas
+semanas). Um aviso por assunto por pessoa; o primeiro só 20 horas depois
+do documento. Quem a publicação alcança é `publicoAlvo` (`mural.ts`),
+embutido na função.
+
+| Peça | Onde |
+|---|---|
+| A regra | `src/servidor/lembretes.ts` (testado) |
+| A fonte da função | `src/servidor/funcaoLembrarPendencias.ts` |
+| O arquivo colado no Supabase | `supabase/functions/lembrar-pendencias/index.ts` — **gerado**, não edite |
+| Gerar de novo | `bun scripts/gerar-funcao-apurar.ts` (gera as duas funções) |
+
+A função não fala com o Firebase: ela decide e entrega pela
+`enviar-aviso` (caminho "entrega agendada"), com o mesmo segredo da
+madrugada (`APURAR_SEGREDO`), que já está nos Secrets e no cofre.
+
+1. **Publicar de novo a `enviar-aviso`** (ela ganhou a entrega agendada
+   e o aviso de documento do RH).
+2. **Publicar `lembrar-pendencias`**: Deploy via Editor, colar o
+   `index.ts` gerado, **"Verify JWT" desligado**.
+3. **`lembretes-1-simular.sql`** e, ~10 s depois,
+   **`lembretes-2-ver-simulacao.sql`**: quem seria lembrado de quê.
+4. **`lembretes-3-agendar.sql`** — conferida a simulação, liga as 9h.
 
 ### A resposta rápida
 

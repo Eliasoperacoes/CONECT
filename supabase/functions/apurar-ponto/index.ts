@@ -1144,43 +1144,28 @@ var paraLinhaCompensacao = (c) => ({
   saldo_final: c.saldoFinal
 });
 
-// src/servidor/funcaoApurarPonto.ts
-var chaveDeServico = () => {
-  const antiga = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (antiga)
-    return antiga;
-  const novas = Deno.env.get("SUPABASE_SECRET_KEYS");
-  if (novas) {
+// src/servidor/bancoNoServidor.ts
+var chaveDoAmbiente = (antiga, novas, faltando) => {
+  const valor = Deno.env.get(antiga);
+  if (valor)
+    return valor;
+  const lista = Deno.env.get(novas);
+  if (lista) {
     try {
-      const lista = JSON.parse(novas);
-      const primeira = lista.default ?? Object.values(lista)[0];
+      const chaves = JSON.parse(lista);
+      const primeira = chaves.default ?? Object.values(chaves)[0];
       if (primeira)
         return primeira;
     } catch {
-      return novas;
+      return lista;
     }
   }
-  throw new Error("Sem chave de serviço no ambiente da função.");
+  throw new Error(faltando);
 };
-var chavePublica = () => {
-  const antiga = Deno.env.get("SUPABASE_ANON_KEY");
-  if (antiga)
-    return antiga;
-  const novas = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
-  if (novas) {
-    try {
-      const lista = JSON.parse(novas);
-      const primeira = lista.default ?? Object.values(lista)[0];
-      if (primeira)
-        return primeira;
-    } catch {
-      return novas;
-    }
-  }
-  throw new Error("Sem chave pública no ambiente da função.");
-};
+var chaveDeServico = () => chaveDoAmbiente("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEYS", "Sem chave de serviço no ambiente da função.");
+var chavePublica = () => chaveDoAmbiente("SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEYS", "Sem chave pública no ambiente da função.");
 var responder = (corpo, status = 200) => new Response(JSON.stringify(corpo), { status, headers: { "content-type": "application/json" } });
-var banco = () => {
+var criarLeitor = () => {
   const url = `${Deno.env.get("SUPABASE_URL")}/rest/v1`;
   const chave = chaveDeServico();
   const cabecalhos = { apikey: chave, Authorization: `Bearer ${chave}` };
@@ -1208,6 +1193,12 @@ var banco = () => {
         return todas;
     }
   };
+  return { url, cabecalhos, ler, ausentes };
+};
+
+// src/servidor/funcaoApurarPonto.ts
+var banco = () => {
+  const { url, cabecalhos, ler, ausentes } = criarLeitor();
   const gravarAjustes = async (linhas) => {
     for (let i = 0;i < linhas.length; i += 500) {
       const r = await fetch(`${url}/ajustes_jornada?on_conflict=id`, {
