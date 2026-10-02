@@ -2,17 +2,12 @@
 -- CONFERIR as duas funções de nível que estavam duplicadas no esquema
 -- (02/10/2026). Só leitura: não muda nada.
 --
--- O esperado:
---   sou_admin         ...meu_nivel() >= 5
---   cuido_de_pessoas  ...meu_nivel() >= 4 or public.meu_setor() = 'RH'
---
--- Se aparecer "= 4" em qualquer uma, a versão do modelo antigo está no ar.
+-- Responde em uma linha, com true/false — a definição inteira não cabe na
+-- coluna do editor (02/10/2026: saiu cortada antes da parte que importa).
+-- As quatro colunas precisam sair true.
 -- ============================================================
 select
-  p.proname as funcao,
-  regexp_replace(pg_get_functiondef(p.oid), '\s+', ' ', 'g') as definicao_no_ar
-from pg_proc p
-join pg_namespace n on n.oid = p.pronamespace
-where n.nspname = 'public'
-  and p.proname in ('sou_admin', 'cuido_de_pessoas')
-order by 1;
+  pg_get_functiondef('public.sou_admin()'::regprocedure) like '%meu_nivel() >= 5%' as admin_e_nivel_5,
+  pg_get_functiondef('public.sou_admin()'::regprocedure) not like '%meu_nivel() = 4%' as admin_sem_regra_antiga,
+  pg_get_functiondef('public.cuido_de_pessoas()'::regprocedure) like '%meu_nivel() >= 4%' as rh_e_diretoria_4_ou_mais,
+  pg_get_functiondef('public.cuido_de_pessoas()'::regprocedure) like '%''RH''%' as rh_pelo_setor;
