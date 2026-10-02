@@ -15,17 +15,12 @@
 
 import {
   AvisoRede,
-  CategoriaPublicacao,
   Conversa,
   ConfiguracaoSistema,
-  DestinoPublicacao,
-  Loja,
   Mensagem,
-  PrioridadeAviso,
   RegistroAuditoria,
   TipoConversa,
   TipoMensagem,
-  TipoPublicacao,
 } from '../tipos';
 import { supabase } from './supabase';
 import { pedirAvisoDaMensagem } from './envioDeAviso';
@@ -38,6 +33,7 @@ import {
   type MapaDePreferencias,
 } from './preferenciasConversa';
 import { aplicarPermissoes, MapaDePermissoes } from './permissoes';
+import { horaDe, LinhaAviso, paraAvisoRede } from './linhasDoBanco';
 
 const CHAVE_CONVERSAS = 'conecta_v4_conversas';
 /**
@@ -124,8 +120,6 @@ const lerPendentesDoAparelho = (): Mensagem[] => {
   }
 };
 
-const horaDe = (iso: string): string =>
-  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 /**
  * Carimbo da auditoria como ele aparece na tela. Leva o dia junto da hora
@@ -199,32 +193,6 @@ interface LinhaMensagem {
   criado_em: string;
 }
 
-interface LinhaAviso {
-  id: string;
-  titulo: string;
-  conteudo: string;
-  prioridade: string;
-  autor_id: string | null;
-  autor_nome: string;
-  autor_cargo: string;
-  loja_destino: string;
-  fixado_no_topo: boolean;
-  criado_em: string;
-  /**
-   * `null`, e não `undefined`, nas colunas novas.
-   *
-   * As 24 publicações que já existiam nascem com elas em branco, e a
-   * coluna em branco chega aqui como `null`. Tratar isso com `??` ou
-   * `!== undefined` deixaria o `null` passar — foi exatamente assim que
-   * a carga horária da Lyvia virou zero.
-   */
-  tipo: string | null;
-  categoria: string | null;
-  anexo_caminho: string | null;
-  anexo_nome: string | null;
-  exige_confirmacao: boolean | null;
-  destinos: DestinoPublicacao[] | null;
-}
 
 const paraLinhaMensagem = (m: Mensagem) => ({
   publicacao_id: m.publicacaoId ?? null,
@@ -895,43 +863,9 @@ class PonteComunicacao {
       }
     });
 
-    const lista: AvisoRede[] = ((avisos.data || []) as LinhaAviso[]).map((linha) => {
-      const data = new Date(linha.criado_em);
-      return {
-        id: linha.id,
-        titulo: linha.titulo,
-        conteudo: linha.conteudo,
-        prioridade: linha.prioridade as PrioridadeAviso,
-        autorId: linha.autor_id || '',
-        autorNome: linha.autor_nome,
-        autorCargo: linha.autor_cargo,
-        criadoEm: linha.criado_em,
-        horaFormatada: horaDe(linha.criado_em),
-        dataPorExtenso: data.toLocaleDateString('pt-BR', {
-          day: '2-digit',
-          month: 'long',
-          year: 'numeric',
-        }),
-        fixadoNoTopo: linha.fixado_no_topo,
-        /**
-         * A TRADUÇÃO ACONTECE AQUI, na borda, e não em cada tela.
-         *
-         * Publicação antiga não tem tipo nem categoria. Ela é um aviso
-         * operacional — era a única coisa que dava para publicar quando
-         * foi escrita. Deixar o campo vazio obrigaria toda tela a ter o
-         * seu próprio `|| 'aviso'`, e uma delas escolheria diferente.
-         */
-        tipo: (linha.tipo || 'aviso') as TipoPublicacao,
-        categoria: (linha.categoria || 'operacional') as CategoriaPublicacao,
-        anexoCaminho: linha.anexo_caminho || undefined,
-        anexoNome: linha.anexo_nome || undefined,
-        exigeConfirmacao: linha.exige_confirmacao === true,
-        destinos: linha.destinos || undefined,
-        lojaDestino: linha.loja_destino as Loja | 'Todas',
-        lidoPorIds: lidos.get(linha.id) || [],
-        confirmacoesIds: confirmados.get(linha.id) || [],
-      };
-    });
+    const lista: AvisoRede[] = ((avisos.data || []) as LinhaAviso[]).map((linha) =>
+      paraAvisoRede(linha, lidos.get(linha.id) || [], confirmados.get(linha.id) || [])
+    );
 
     localStorage.setItem(CHAVE_AVISOS_REDE, JSON.stringify(lista));
     this.avisar();

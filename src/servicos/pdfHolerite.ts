@@ -12,6 +12,7 @@
  * usá-las.
  */
 import { salvarHolerite } from './rh';
+import { pedirAvisoDeDocumentoRh } from './envioDeAviso';
 import { corteEntreVias } from './cargaDeHolerites';
 import { carregarLeitorDePdf } from './leitorDePdf';
 
@@ -107,6 +108,8 @@ export const publicarCargaDeHolerites = async (dados: {
 }): Promise<ResultadoDaCarga> => {
   const pessoas = Object.entries(dados.grupos).filter(([, paginas]) => paginas.length > 0);
   const resultado: ResultadoDaCarga = { publicados: 0, falhas: [] };
+  // Os publicados, para um aviso só no fim — e não quarenta pedidos no meio do envio
+  const avisar: string[] = [];
 
   for (let i = 0; i < pessoas.length; i++) {
     const [colaboradorId, paginas] = pessoas[i];
@@ -118,7 +121,9 @@ export const publicarCargaDeHolerites = async (dados: {
         competencia: dados.competencia,
         conteudo,
         arquivoNome: `Holerite ${dados.competencia} - ${nome}.pdf`,
+        avisar: false,
       });
+      if (res.sucesso && res.id) avisar.push(res.id);
       if (res.sucesso) resultado.publicados++;
       else resultado.falhas.push({ colaboradorId, erro: res.erro || 'Falha ao publicar.' });
     } catch (erro) {
@@ -130,5 +135,6 @@ export const publicarCargaDeHolerites = async (dados: {
     dados.aoAvancar?.(i + 1, pessoas.length);
   }
 
+  pedirAvisoDeDocumentoRh('holerite', avisar);
   return resultado;
 };

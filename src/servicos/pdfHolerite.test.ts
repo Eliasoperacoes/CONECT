@@ -15,8 +15,14 @@ mock.module('./rh', () => ({
   salvarHolerite: async (dados: any) => {
     if (dados.colaboradorId === recusar) return { sucesso: false, erro: 'O banco recusou.' };
     publicados.push(dados);
-    return { sucesso: true };
+    return { sucesso: true, id: `hol-${dados.colaboradorId}-${dados.competencia}` };
   },
+}));
+
+/** Os pedidos de aviso ao celular que a carga fez. */
+const avisos: Array<{ tipo: string; ids: string[] }> = [];
+mock.module('./envioDeAviso', () => ({
+  pedirAvisoDeDocumentoRh: (tipo: string, ids: string[]) => avisos.push({ tipo, ids }),
 }));
 
 const { separarPaginas, publicarCargaDeHolerites } = await import('./pdfHolerite');
@@ -41,6 +47,7 @@ const paginasDe = async (dataUri: string): Promise<number> => {
 
 beforeEach(() => {
   publicados.length = 0;
+  avisos.length = 0;
   recusar = null;
 });
 
@@ -132,4 +139,19 @@ test('pessoa sem página nenhuma não gera holerite vazio', async () => {
   });
   expect(res.publicados).toBe(1);
   expect(publicados.map((p) => p.colaboradorId)).toEqual(['joao']);
+});
+
+test('a carga avisa os publicados de uma vez, no fim — e não quem falhou', async () => {
+  recusar = 'maria';
+  const arquivo = await pdfCom(['MARIA', 'JOAO', 'ANA']);
+  await publicarCargaDeHolerites({
+    arquivo,
+    competencia: '2026-09',
+    grupos: { maria: [1], joao: [2], ana: [3] },
+    nomeDe: (id) => id,
+  });
+  // Cada publicação foi gravada SEM aviso próprio...
+  expect(publicados.every((p: any) => p.avisar === false)).toBe(true);
+  // ...e sai um pedido só, com os dois que entraram
+  expect(avisos).toEqual([{ tipo: 'holerite', ids: ['hol-joao-2026-09', 'hol-ana-2026-09'] }]);
 });

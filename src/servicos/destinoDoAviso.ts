@@ -11,11 +11,19 @@
  * quebrava o próprio aviso nos testes e pesava na abertura.
  */
 
-export const SECOES_DESTINO = ['aprovar_jornadas', 'escala_folgas', 'meu_ponto'] as const;
+export const SECOES_DESTINO = [
+  'aprovar_jornadas',
+  'escala_folgas',
+  'meu_ponto',
+  'meus_holerites',
+  'minhas_advertencias',
+] as const;
 
 /**
  * `meu_ponto` é o ponto de quem pediu: é para onde leva o aviso de que
- * o pedido dele foi decidido.
+ * o pedido dele foi decidido. `meus_holerites` e `minhas_advertencias`
+ * abrem a aba Eu com a folha certa: o holerite publicado, o documento
+ * para dar ciência, e os lembretes diários de cada um.
  */
 export type SecaoDestino = (typeof SECOES_DESTINO)[number];
 

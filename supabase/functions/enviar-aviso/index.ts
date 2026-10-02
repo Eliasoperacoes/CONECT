@@ -9,10 +9,12 @@
  * A função acha quem participa da conversa, pega os aparelhos dessas
  * pessoas na tabela `aparelhos`, e pede ao Firebase para acordá-los.
  *
- * Quatro caminhos: a mensagem enviada pelo aplicativo, a resposta vinda da
+ * Os caminhos: a mensagem enviada pelo aplicativo, a resposta vinda da
  * notificação (o vale), o PONTO — ajuste de jornada, ausência e folga
- * quando entram na fila e quando são decididos (`avisosDePonto.ts`) — e
- * a PUBLICAÇÃO DIRIGIDA, que avisa só quem ela alcança.
+ * quando entram na fila e quando são decididos (`avisosDePonto.ts`) —, a
+ * PUBLICAÇÃO DIRIGIDA, que avisa só quem ela alcança, o DOCUMENTO DO RH
+ * (holerite publicado, advertência registrada) e a ENTREGA AGENDADA dos
+ * lembretes diários (`lembrar-pendencias`, com o segredo dos agendamentos).
  * O ponto lê o pedido com a sessão de quem chama, então também usa a
  * chave pública (`SUPABASE_ANON_KEY`), que o Supabase já entrega.
  *
@@ -476,6 +478,23 @@ const MAXIMO_DE_DESTINATARIOS = 30;
 const MAXIMO_DA_PUBLICACAO = 150;
 
 /**
+ * Os lembretes de um dia: até três por pessoa (holerite, advertência,
+ * publicação), para a rede de ~90 pessoas, com folga.
+ */
+const MAXIMO_DA_ENTREGA_AGENDADA = 500;
+const TIPOS_DA_ENTREGA_AGENDADA = ['secao', 'publicacao'];
+
+const MESES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+/** "2026-09" -> "Setembro de 2026" */
+const mesPorExtenso = (competencia: string): string => {
+  const [ano, mes] = competencia.split('-');
+  return `${MESES[Number(mes) - 1] || mes} de ${ano}`;
+};
+
+/**
  * A CHAVE PÚBLICA, nos dois formatos do Supabase — a mesma história da
  * chave de serviço. É com ela, mais a sessão de quem chama, que a função
  * lê o pedido COMO aquela pessoa, sob a RLS.
@@ -526,6 +545,45 @@ Deno.serve(async (req) => {
   // A chave de serviço: passa por cima da RLS, que é o que permite ler os
   // aparelhos dos OUTROS — coisa que ninguém no aplicativo pode.
   const banco = createClient(url, chaveDeServico());
+
+  // =============================================================
+  // CAMINHO 0 — A ENTREGA AGENDADA (os lembretes das 9h)
+  //
+  // Quem chama é a função `lembrar-pendencias`, todo dia: ela decide QUEM
+  // lembrar de QUÊ (com as regras do aplicativo embutidas) e entrega aqui,
+  // onde mora o Firebase. Sem sessão — prova quem é pelo segredo dos
+  // agendamentos, o mesmo da apuração da madrugada.
+  //
+  // Só leva a SEÇÃO ou a PUBLICAÇÃO como destino: um lembrete não abre
+  // conversa nem carrega vale de resposta.
+  // =============================================================
+  if (Array.isArray(pedido.entregaAgendada)) {
+    const segredo = Deno.env.get('APURAR_SEGREDO');
+    if (!segredo || req.headers.get('x-apurar-segredo') !== segredo) {
+      return responder({ erro: 'Sem autorização.' }, 401);
+    }
+
+    const itens = (pedido.entregaAgendada as unknown[]).slice(0, MAXIMO_DA_ENTREGA_AGENDADA);
+    let entregues = 0;
+    let recusados = 0;
+    for (const item of itens) {
+      const i = (item ?? {}) as Record<string, unknown>;
+      const colaboradorId = String(i.colaboradorId || '');
+      const dados = (i.dados ?? {}) as Record<string, unknown>;
+      if (!colaboradorId || !TIPOS_DA_ENTREGA_AGENDADA.includes(String(dados.tipo))) {
+        recusados++;
+        continue;
+      }
+      // O Firebase só carrega texto, e o aviso não precisa de mais que isto
+      const limpos = Object.fromEntries(
+        Object.entries(dados).map(([chave, valor]) => [chave, String(valor).slice(0, 240)])
+      );
+      const r = await entregarAosAparelhos(banco, [colaboradorId], limpos);
+      if (r.erro) return responder(r, 503);
+      entregues += r.entregues;
+    }
+    return responder({ pedidos: itens.length, entregues, recusados });
+  }
 
   // =============================================================
   // CAMINHO 1 — A RESPOSTA RÁPIDA, vinda da notificação
@@ -697,6 +755,57 @@ Deno.serve(async (req) => {
       ehGrupo: 'true',
     });
     return responder(aviso, aviso.erro ? 503 : 200);
+  }
+
+  // =============================================================
+  // CAMINHO 5 — UM DOCUMENTO DO RH: holerite publicado, advertência
+  // registrada
+  //
+  //  · QUEM CHAMA CUIDA DE PESSOAS — perguntado ao banco com a sessão
+  //    dele (`cuido_de_pessoas()`), a mesma regra que deixa publicar.
+  //  · OS DOCUMENTOS SÃO LIDOS COM A SESSÃO dele, e quem recebe é o dono
+  //    de cada um, tirado da linha — nunca do corpo.
+  //  · O TEXTO NÃO DIZ O QUE É: o aviso aparece na tela bloqueada, e
+  //    "advertência" ali seria contar a quem estiver do lado.
+  // =============================================================
+  if (pedido.documentoRh && typeof pedido.documentoRh === 'object') {
+    const p = pedido.documentoRh as Record<string, unknown>;
+    const tipo = String(p.tipo || '');
+    const ids = Array.isArray(p.ids) ? [...new Set(p.ids.map(String))].slice(0, MAXIMO_DA_PUBLICACAO) : [];
+    if (!['holerite', 'advertencia'].includes(tipo) || ids.length === 0) {
+      return responder({ erro: 'Pedido de aviso do RH incompleto.' }, 400);
+    }
+
+    const comoQuemChama = createClient(url, chavePublica(), {
+      global: { headers: { Authorization: `Bearer ${jwt}` } },
+      auth: { persistSession: false },
+    });
+    const { data: cuida } = await comoQuemChama.rpc('cuido_de_pessoas');
+    if (cuida !== true) return responder({ erro: 'Só quem cuida de pessoas avisa de documento do RH.' }, 403);
+
+    const ehHolerite = tipo === 'holerite';
+    const { data: documentos } = await comoQuemChama
+      .from(ehHolerite ? 'holerites' : 'advertencias')
+      .select(ehHolerite ? 'id, colaborador_id, competencia' : 'id, colaborador_id')
+      .in('id', ids);
+
+    let entregues = 0;
+    for (const d of documentos ?? []) {
+      const r = await entregarAosAparelhos(banco, [d.colaborador_id as string], {
+        tipo: 'secao',
+        conversaId: ehHolerite ? 'meus_holerites' : 'minhas_advertencias',
+        mensagemId: `${tipo}-${d.id}`,
+        remetente: 'RH',
+        texto: ehHolerite
+          ? `Seu holerite de ${mesPorExtenso(String(d.competencia))} está disponível. Toque para ver e assinar.`
+          : 'Há um documento do RH aguardando a sua ciência. Toque para abrir.',
+        conversa: ehHolerite ? 'Holerite disponível' : 'Documento do RH',
+        ehGrupo: 'true',
+      });
+      if (r.erro) return responder(r, 503);
+      entregues += r.entregues;
+    }
+    return responder({ documentos: (documentos ?? []).length, entregues });
   }
 
   // =============================================================

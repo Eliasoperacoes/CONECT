@@ -96,3 +96,26 @@ export const pedirAvisoDaPublicacao = (
     /* sem cliente de funções (teste, modo local): sem aviso, sem erro */
   }
 };
+
+/**
+ * AVISA O DONO DE UM DOCUMENTO DO RH: o holerite publicado, a advertência
+ * registrada.
+ *
+ * Vão só os ids. O servidor pergunta ao banco se quem chama cuida de
+ * pessoas, lê os documentos com a sessão dele e avisa o DONO de cada um —
+ * tirado da linha, nunca daqui. Na carga do PDF, um pedido só com todos.
+ */
+export const pedirAvisoDeDocumentoRh = (tipo: 'holerite' | 'advertencia', ids: string[]): void => {
+  if (!supabase || !usandoNuvem() || ids.length === 0) return;
+
+  try {
+    supabase.functions
+      .invoke(FUNCAO_DE_AVISO, { body: { documentoRh: { tipo, ids } } })
+      .then(({ error }) => {
+        if (error) console.warn('Aviso do documento do RH não saiu:', error.message);
+      })
+      .catch(() => {});
+  } catch {
+    /* sem cliente de funções (teste, modo local): sem aviso, sem erro */
+  }
+};

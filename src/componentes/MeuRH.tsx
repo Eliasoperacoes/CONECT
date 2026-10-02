@@ -34,6 +34,7 @@ import { Colaborador, Holerite, Advertencia, ROTULO_ADVERTENCIA, RecebimentoHole
 import { listarRecebimentos } from '../servicos/assinatura';
 import { dataHoraDeBrasilia } from '../servicos/comprovanteDeHolerite';
 import { AssinarHolerite } from './AssinarHolerite';
+import { ouvirFolhaPedida, tomarFolhaPedida } from '../servicos/folhaPedida';
 import { listarHolerites, listarAdvertencias, abrirDocumento, darCienciaNaAdvertencia } from '../servicos/rh';
 import { lerJustificativas, assinarJustificativas } from '../servicos/justificativasCache';
 import { formatarDataBR, dataDeHoje, batePonto } from '../servicos/ponto';
@@ -214,6 +215,16 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
     if (qual === 'holerites' || qual === 'advertencias') setVersao((v) => v + 1);
     setFolha(qual);
   };
+
+  // O toque no aviso de holerite (ou de documento do RH) pede a folha
+  useEffect(() => {
+    const atender = () => {
+      const pedida = tomarFolhaPedida();
+      if (pedida) abrirFolha(pedida);
+    };
+    atender();
+    return ouvirFolhaPedida(atender);
+  }, []);
 
   const mostrarAviso = (texto: string) => {
     setAviso(texto);

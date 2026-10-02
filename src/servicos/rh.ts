@@ -21,6 +21,7 @@ import { supabase, usandoNuvem } from './supabase';
 import { enviarDocumento, resolverCaminho, apagarAnexos } from './anexos';
 import { bancoDados } from './bancoDados';
 import { listarRecebimentos, obterAssinatura } from './assinatura';
+import { pedirAvisoDeDocumentoRh } from './envioDeAviso';
 import { montarComprovante, juntarPdfs } from './comprovanteDeHolerite';
 import { cuidaDePessoas, Holerite, Advertencia, TipoAdvertencia, RecebimentoHolerite } from '../tipos';
 
@@ -92,7 +93,9 @@ export const salvarHolerite = async (dados: {
   competencia: string;
   conteudo: string;
   arquivoNome: string;
-}): Promise<{ sucesso: boolean; erro?: string }> => {
+  /** Avisar a pessoa no celular. A carga do PDF desliga e avisa todos juntos no fim. */
+  avisar?: boolean;
+}): Promise<{ sucesso: boolean; id?: string; erro?: string }> => {
   if (!podeCuidarDeDocumentos()) {
     return { sucesso: false, erro: 'Apenas o RH publica holerite.' };
   }
@@ -156,7 +159,10 @@ export const salvarHolerite = async (dados: {
     }.`
   );
 
-  return { sucesso: true };
+  // A carga do PDF avisa todos de uma vez no fim (`avisar: false` aqui)
+  if (dados.avisar !== false) pedirAvisoDeDocumentoRh('holerite', [id]);
+
+  return { sucesso: true, id };
 };
 
 export const removerHolerite = async (
@@ -384,6 +390,9 @@ export const registrarAdvertencia = async (dados: {
       bancoDados.obterColaboradorPorId(dados.colaboradorId)?.nome || dados.colaboradorId
     }.`
   );
+
+  // A pessoa é avisada no celular de que há um documento para dar ciência
+  pedirAvisoDeDocumentoRh('advertencia', [id]);
 
   return { sucesso: true };
 };

@@ -69,6 +69,7 @@ import {
   type DestinoNotificacao,
   type SecaoDestino,
 } from './servicos/centralDeNotificacoes';
+import { pedirFolhaDoMeuRH } from './servicos/folhaPedida';
 import { ModalNovaConversa } from './componentes/ModalNovaConversa';
 import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
@@ -1156,6 +1157,14 @@ export default function App() {
     if (destino.secao === 'meu_ponto') {
       setConversaAtivaId(null);
       setAbaAtiva('ponto');
+      return;
+    }
+
+    // Holerite e documento do RH: a aba Eu, com a folha já aberta
+    if (destino.secao === 'meus_holerites' || destino.secao === 'minhas_advertencias') {
+      setConversaAtivaId(null);
+      setAbaAtiva('eu');
+      pedirFolhaDoMeuRH(destino.secao === 'meus_holerites' ? 'holerites' : 'advertencias');
       return;
     }
 
