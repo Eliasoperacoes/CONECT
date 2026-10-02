@@ -1610,7 +1610,7 @@ export default function App() {
             )}
             {abaAtiva === 'conversas' && !buscaConversas.trim() && (
               <>
-                {conversasIndividuais.length === 0 && grupos.length === 0 ? (
+                {conversasVisiveis.length === 0 && gruposVisiveis.length === 0 ? (
                   <div className="p-8 text-center text-[var(--c-texto-3)] text-xs space-y-3">
                     <p>Nenhuma conversa iniciada ainda.</p>
                     <button

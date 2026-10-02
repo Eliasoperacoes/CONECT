@@ -638,6 +638,29 @@ test('quem subiu para ler o passado nao e arrancado de la', async () => {
   expect(tela).toContain('if (grudadoNoFim.current)');
 });
 
+test('a rolagem do sistema nao fecha o menu da mensagem', async () => {
+  const tela = semComentarios(await lerTela());
+
+  /**
+   * "O duplo clique para fixar ou excluir continua" (Elias, 03/10/2026).
+   * O menu abria e, quando chegava mensagem nova, a tela rolava sozinha
+   * até o fim — e o onScroll, sem saber quem rolou, fechava o menu. A
+   * pessoa tocava de novo. Toda rolagem programada passa por
+   * rolarAteOFim, que levanta a trava; o onScroll respeita a trava ANTES
+   * de fechar qualquer coisa.
+   */
+  const rolagem = s_rolagem(tela);
+  const trava = rolagem.indexOf('if (rolagemDoSistema.current) return;');
+  expect(trava).toBeGreaterThan(-1);
+  expect(trava).toBeLessThan(rolagem.indexOf('fecharMenuMensagem()'));
+  expect(trava).toBeLessThan(rolagem.indexOf('fecharPainelReacao()'));
+
+  // Nenhuma rolagem programada fora do caminho que levanta a trava
+  const atribuicoes = tela.match(/\.scrollTop = /g) ?? [];
+  expect(atribuicoes.length).toBe(1);
+  expect(tela).toContain('rolagemDoSistema.current = true;\n    lista.scrollTop = lista.scrollHeight;');
+});
+
 test('abrir uma conversa desfaz a exclusao dela', async () => {
   const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
 

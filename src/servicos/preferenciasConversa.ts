@@ -275,15 +275,27 @@ export const deveAparecer = (
 };
 
 /**
- * Aplica as preferências a uma lista já ordenada: tira as ocultas e sobe as
- * fixadas, preservando a ordem de dentro de cada grupo.
+ * CONVERSA INDIVIDUAL SEM MENSAGEM NENHUMA NÃO ENTRA NA LISTA (Elias,
+ * 03/10/2026). Escolher um colega em "Nova conversa" já cria a conversa —
+ * e voltar sem escrever deixava "Fulano · Nenhuma mensagem" na lista para
+ * sempre. Como no WhatsApp: ela aparece na primeira mensagem, de qualquer
+ * um dos dois. Grupo aparece sempre: criar já é um acontecimento.
  */
-export const aplicarPreferencias = <T extends { id: string; atualizadoEm: string }>(
+export const ehConversaVazia = (c: { tipo?: string; ultimaMensagem?: unknown }): boolean =>
+  c.tipo === 'individual' && !c.ultimaMensagem;
+
+/**
+ * Aplica as preferências a uma lista já ordenada: tira as ocultas e as
+ * vazias, e sobe as fixadas, preservando a ordem de dentro de cada grupo.
+ */
+export const aplicarPreferencias = <
+  T extends { id: string; atualizadoEm: string; tipo?: string; ultimaMensagem?: unknown }
+>(
   colaboradorId: string,
   conversas: T[]
 ): T[] => {
   const mapa = obterPreferencias(colaboradorId);
-  const visiveis = conversas.filter((c) => deveAparecer(colaboradorId, c));
+  const visiveis = conversas.filter((c) => deveAparecer(colaboradorId, c) && !ehConversaVazia(c));
 
   const fixadas = visiveis.filter((c) => mapa[c.id]?.fixada);
   const demais = visiveis.filter((c) => !mapa[c.id]?.fixada);

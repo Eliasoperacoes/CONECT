@@ -531,6 +531,24 @@ test('sobre o que o banco CONHECE, quem manda continua sendo ele', () => {
   expect(deveAparecer(EU, conversa('conv-conhecida', ONTEM))).toBe(true);
 });
 
+test('conversa individual sem mensagem nao aparece na lista; grupo vazio aparece', () => {
+  /**
+   * "Se eu seleciono um colaborador em nova mensagem e não envio nada, ele
+   * fica na aba de mensagens" (Elias, 03/10/2026). Como no WhatsApp: a
+   * conversa a dois só entra na lista com a primeira mensagem. O grupo
+   * vazio fica — criar o grupo já é a intenção, e os outros foram
+   * avisados de que entraram.
+   */
+  const vazia = { id: 'c-vazia', atualizadoEm: '2026-10-03T10:00:00Z', tipo: 'individual' };
+  const comMensagem = { ...vazia, id: 'c-cheia', ultimaMensagem: { conteudo: 'oi' } };
+  const grupoVazio = { id: 'g-vazio', atualizadoEm: '2026-10-03T10:00:00Z', tipo: 'grupo' };
+
+  const ids = aplicarPreferencias(EU, [vazia, comMensagem, grupoVazio]).map((c) => c.id);
+  expect(ids).not.toContain('c-vazia');
+  expect(ids).toContain('c-cheia');
+  expect(ids).toContain('g-vazio');
+});
+
 test('o aplicativo avisa quando a preferencia nao achou linha no banco', async () => {
   const ponte = await Bun.file(
     new URL('./nuvemComunicacao.ts', import.meta.url)

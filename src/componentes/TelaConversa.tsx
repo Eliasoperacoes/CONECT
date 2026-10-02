@@ -255,6 +255,25 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
    * quando ela desce de novo até o fim.
    */
   const grudadoNoFim = useRef(true);
+
+  /**
+   * QUEM ROLOU A LISTA: a pessoa, ou o próprio sistema?
+   *
+   * O menu da mensagem (e o painel de reação) fecham quando a lista rola —
+   * é a pessoa indo para outro ponto da conversa. Mas o SISTEMA também rola:
+   * a cada atualização que chega do banco (a leitura marcada ao abrir, a
+   * mensagem do colega), ele leva a lista até a última mensagem. Isso
+   * fechava o menu um instante depois de aberto, e "Fixar" ou "Apagar"
+   * pediam dois toques (Elias, 03/10/2026). A rolagem do sistema passa por
+   * aqui e não fecha nada.
+   */
+  const rolagemDoSistema = useRef(false);
+  const rolarAteOFim = (lista: HTMLElement) => {
+    rolagemDoSistema.current = true;
+    lista.scrollTop = lista.scrollHeight;
+    // O evento de rolagem chega no quadro seguinte: a marca dura dois
+    requestAnimationFrame(() => requestAnimationFrame(() => (rolagemDoSistema.current = false)));
+  };
   const refTemporizadorPressione = useRef<NodeJS.Timeout | null>(null);
   const refAudioElemento = useRef<HTMLAudioElement | null>(null);
   const refInputArquivo = useRef<HTMLInputElement>(null);
@@ -318,16 +337,14 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     const lista = refLista.current;
     if (!lista) return;
 
-    if (grudadoNoFim.current) {
-      lista.scrollTop = lista.scrollHeight;
-    }
+    if (grudadoNoFim.current) rolarAteOFim(lista);
   }, [mensagens]);
 
   // Trocar de conversa volta a grudar no fim
   useLayoutEffect(() => {
     grudadoNoFim.current = true;
     const lista = refLista.current;
-    if (lista) lista.scrollTop = lista.scrollHeight;
+    if (lista) rolarAteOFim(lista);
   }, [conversa.id]);
 
   /**
@@ -342,7 +359,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     if (!lista) return;
 
     const aoCarregarAlgo = () => {
-      if (grudadoNoFim.current) lista.scrollTop = lista.scrollHeight;
+      if (grudadoNoFim.current) rolarAteOFim(lista);
     };
 
     lista.addEventListener('load', aoCarregarAlgo, true);
@@ -1012,6 +1029,8 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
           grudadoNoFim.current =
             el.scrollHeight - el.scrollTop - el.clientHeight <= 80;
 
+          // Só a rolagem da PESSOA fecha o menu — a do sistema, não
+          if (rolagemDoSistema.current) return;
           if (menuMensagem) fecharMenuMensagem();
           if (painelReacao) fecharPainelReacao();
         }}
