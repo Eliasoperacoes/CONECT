@@ -8,7 +8,7 @@
  *
  * Abre ajustado à largura da tela; o botão de tamanho amplia, rolando para
  * os lados, para ler número por número no celular. Fora do aplicativo há
- * também "Baixar", e onde o aparelho deixa, "Compartilhar".
+ * também "Baixar"; em todo lugar, "Compartilhar" (compartilharArquivo.ts).
  *
  * Quem decide que um PDF vem para cá é `mostrarPdf` (visorDeDocumento.ts).
  */
@@ -17,6 +17,7 @@ import { ArrowLeft, Download, Maximize2, Minimize2, Share2 } from 'lucide-react'
 import { fecharVisor } from '../servicos/visorDeDocumento';
 import { rodandoNoAplicativo } from '../servicos/aplicativo';
 import { carregarLeitorDePdf } from '../servicos/leitorDePdf';
+import { compartilharArquivo } from '../servicos/compartilharArquivo';
 
 /** A largura do "tamanho real" no celular: a folha A4 em pixels de tela, com folga. */
 const LARGURA_AMPLIADA = 1000;
@@ -132,29 +133,23 @@ export const VisorDePdf: React.FC<{ url: string; titulo: string; arquivoNome: st
   const aoFalhar = useMemo(() => () => setFalhou(true), []);
 
   /*
-    COMPARTILHAR O PDF — WhatsApp, e-mail, o que o aparelho oferecer. É a
-    folha de compartilhar do próprio sistema (Android, iPhone, Windows).
-    Onde ela não aceita arquivo — a WebView do aplicativo Android não tem
-    nenhuma —, o botão nem aparece.
+    COMPARTILHAR O PDF — sempre à vista. Escondê-lo onde o aparelho não
+    compartilha fez o Elias procurar um botão que não estava lá (02/10/2026,
+    no aplicativo). Agora ele aparece, e diz o que aconteceu.
   */
-  const arquivo = useMemo(
-    () => (dados ? new File([dados], arquivoNome, { type: 'application/pdf' }) : null),
-    [dados, arquivoNome]
-  );
-  const podeCompartilhar = useMemo(() => {
-    try {
-      return !!arquivo && typeof navigator.canShare === 'function' && navigator.canShare({ files: [arquivo] });
-    } catch {
-      return false;
-    }
-  }, [arquivo]);
+  const [recado, setRecado] = useState<string | null>(null);
   const compartilhar = async () => {
-    if (!arquivo) return;
-    try {
-      await navigator.share({ files: [arquivo], title: titulo });
-    } catch (erro) {
-      // Fechar a folha sem escolher nada não é erro
-      if ((erro as Error)?.name !== 'AbortError') console.error('Falha ao compartilhar o PDF:', erro);
+    if (!dados) return;
+    const resultado = await compartilharArquivo(dados, arquivoNome, 'application/pdf', titulo);
+    const recados: Partial<Record<typeof resultado, string>> = {
+      baixado: 'Este navegador não compartilha arquivo: o PDF foi baixado.',
+      atualizar_app: 'Para compartilhar pelo aplicativo, instale a versão nova do CONECTA.',
+      falhou: 'Não foi possível compartilhar. Tente de novo.',
+    };
+    const texto = recados[resultado];
+    if (texto) {
+      setRecado(texto);
+      setTimeout(() => setRecado(null), 5000);
     }
   };
 
@@ -189,7 +184,7 @@ export const VisorDePdf: React.FC<{ url: string; titulo: string; arquivoNome: st
             {ampliado ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
           </button>
         )}
-        {podeCompartilhar && (
+        {dados && (
           <button
             type="button"
             id="visor-compartilhar"
@@ -215,6 +210,12 @@ export const VisorDePdf: React.FC<{ url: string; titulo: string; arquivoNome: st
           </a>
         )}
       </header>
+
+      {recado && (
+        <p role="status" className="px-4 py-2 text-xs text-center bg-[var(--c-superficie-2)] text-[var(--c-texto-2)] border-b border-[var(--c-borda)]">
+          {recado}
+        </p>
+      )}
 
       <div ref={area} className="flex-1 overflow-auto overscroll-contain p-2">
         {falhou ? (
