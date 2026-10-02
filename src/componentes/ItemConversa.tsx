@@ -87,6 +87,22 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
    * conversa que a pessoa só queria arrastar.
    */
   const arrastou = useRef(false);
+  /**
+   * O TOQUE NUMA AÇÃO (Fixar, Arquivar, Excluir) VALE NO SOLTAR DO DEDO.
+   *
+   * "O duplo clique para fixar ou excluir continua" (Elias, 03/10/2026).
+   * Medido no S10 dele, evento por evento: depois de deslizar o item, o
+   * primeiro toque na ação chega inteiro ao botão — pointerdown, pointerup,
+   * touchend — mas o Chrome do aparelho NÃO gera o click. Só o segundo
+   * toque gerava. No navegador do computador o click vem sempre, por isso
+   * nunca apareceu aqui.
+   *
+   * O botão não depende mais do click no toque: soltar o dedo sem ter
+   * arrastado já executa, e o preventDefault do touchend cancela o click
+   * que viesse depois — senão, quando ele vem, a ação rodaria duas vezes
+   * (Fixar e já Desafixar). Mouse e teclado seguem pelo onClick.
+   */
+  const toqueNaAcao = useRef<{ x: number; y: number } | null>(null);
 
   /*
     GRUPO DE PESSOAS: "EXCLUIR" É SAIR E APAGAR (Elias, 03/10/2026). Excluir
@@ -212,15 +228,30 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
           style={{ width: largura }}
           aria-hidden={!aberto}
         >
-          {acoes.map(({ chave, rotulo, Icone, cor, dica, executar }) => (
+          {acoes.map(({ chave, rotulo, Icone, cor, dica, executar }) => {
+            const acionar = () => {
+              executar();
+              fechar();
+              aoMudarPreferencia?.();
+            };
+            return (
             <button
               key={chave}
               type="button"
               tabIndex={aberto ? 0 : -1}
-              onClick={() => {
-                executar();
-                fechar();
-                aoMudarPreferencia?.();
+              onClick={acionar}
+              onTouchStart={(e) => {
+                const t = e.touches[0];
+                toqueNaAcao.current = t ? { x: t.clientX, y: t.clientY } : null;
+              }}
+              onTouchEnd={(e) => {
+                const inicio = toqueNaAcao.current;
+                toqueNaAcao.current = null;
+                const fim = e.changedTouches[0];
+                if (!inicio || !fim) return;
+                if (Math.abs(fim.clientX - inicio.x) > 10 || Math.abs(fim.clientY - inicio.y) > 10) return;
+                e.preventDefault();
+                acionar();
               }}
               title={dica}
               style={{ width: LARGURA_ACAO }}
@@ -229,7 +260,8 @@ export const ItemConversa: React.FC<PropsItemConversa> = ({
               <Icone className="w-5 h-5" />
               <span className="text-[11px] font-semibold leading-none">{rotulo}</span>
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
 

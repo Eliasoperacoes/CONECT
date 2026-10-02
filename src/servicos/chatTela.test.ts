@@ -939,3 +939,23 @@ test('a barra de digitacao e uma capsula, com clipe e camera dentro e um botao r
   expect(classeRodape).not.toContain('border-t');
   expect(classeRodape).not.toContain('bg-[var(--c-superficie)]');
 });
+
+test('a acao do item da conversa vale no soltar do dedo, uma vez so', async () => {
+  const item = semComentarios(
+    await Bun.file(new URL('../componentes/ItemConversa.tsx', import.meta.url)).text()
+  );
+
+  /**
+   * Medido no S10 do Elias (03/10/2026): depois de deslizar o item, o
+   * primeiro toque em Fixar/Arquivar/Excluir chegava ao botão (touchend)
+   * mas o Chrome do aparelho não gerava o click — só o segundo toque. A
+   * ação roda no touchend sem arrasto, e o preventDefault cancela o click
+   * que viesse depois (senão Fixar viraria Desafixar no mesmo toque).
+   */
+  const inicio = item.indexOf('const acionar = () => {');
+  expect(inicio).toBeGreaterThan(-1);
+  const botao = item.slice(inicio, inicio + 1400);
+  const fimDoToque = botao.slice(botao.indexOf('onTouchEnd={'));
+  expect(fimDoToque).toContain('e.preventDefault();\n                acionar();');
+  expect(botao).toContain('onClick={acionar}');
+});
