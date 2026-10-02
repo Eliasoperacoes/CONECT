@@ -242,7 +242,14 @@ export const PainelGestao: React.FC<Props> = ({
   const [dataFim, setDataFim] = useState(dataDeHoje());
   const [busca, setBusca] = useState('');
   const [fichaAberta, setFichaAberta] = useState<Colaborador | null>(null);
-  const [versao] = useState(0);
+  /*
+    O PAINEL ACOMPANHA O PONTO: decidida uma jornada (ou lançada uma
+    batida), os números da aba Pendências e do resumo mudam na hora. Sem
+    isto, "Aprovar 88" seguia 88 depois de decidir — o número só
+    atualizava saindo e voltando.
+  */
+  const [versao, setVersao] = useState(0);
+  useEffect(() => servicoPonto.assinarAlteracoes(() => setVersao((v) => v + 1)), []);
 
   /**
    * O resumo já vem filtrado pela alçada — `obterResumoDoPeriodo` usa

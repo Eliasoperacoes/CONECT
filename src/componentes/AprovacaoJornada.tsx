@@ -18,7 +18,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, XCircle, Clock, AlertCircle, Inbox, Paperclip, Pencil } from 'lucide-react';
+import { CheckCircle2, ChevronRight, XCircle, Clock, AlertCircle, Inbox, Paperclip, Pencil } from 'lucide-react';
 import {
   AjusteJornada,
   Colaborador,
@@ -36,10 +36,59 @@ import { resolverCaminho } from '../servicos/anexos';
 import { resumoDaFicha } from '../servicos/fichaColaborador';
 import { ModalCorrigirJornada } from './ModalCorrigirJornada';
 import { useVoltar } from '../servicos/voltar';
+import { FolhaInferior } from './FolhaInferior';
+import { GruposDePessoas } from './GruposDePessoas';
 
 interface PropsAprovacaoJornada {
   colaboradorAtual: Colaborador;
 }
+
+type DiaParaDecidir = { ajuste: AjusteJornada; colaborador: Colaborador };
+type AusenciaParaDecidir = { justificativa: JustificativaAusencia; colaborador: Colaborador };
+
+/** As decisões de uma pessoa: os dias de jornada e as ausências. */
+export interface PendenciasDaPessoa {
+  colaborador: Colaborador;
+  ajustes: DiaParaDecidir[];
+  ausencias: AusenciaParaDecidir[];
+}
+
+/** Junta por pessoa, com os dias em ordem — o mais antigo primeiro, como a fila os decide. */
+export const agruparPorPessoa = (
+  ajustes: DiaParaDecidir[],
+  ausencias: AusenciaParaDecidir[]
+): PendenciasDaPessoa[] => {
+  const mapa = new Map<string, PendenciasDaPessoa>();
+  const daPessoa = (c: Colaborador) => {
+    if (!mapa.has(c.id)) mapa.set(c.id, { colaborador: c, ajustes: [], ausencias: [] });
+    return mapa.get(c.id)!;
+  };
+  for (const a of ajustes) daPessoa(a.colaborador).ajustes.push(a);
+  for (const a of ausencias) daPessoa(a.colaborador).ausencias.push(a);
+  for (const p of mapa.values()) p.ajustes.sort((a, b) => a.ajuste.data.localeCompare(b.ajuste.data));
+  return [...mapa.values()];
+};
+
+/**
+ * O RESUMO DA LINHA: o que espera decisão, sem abrir a folha.
+ * "+2h10 extra · −0h40 · 1 dia sem fechar · 1 ausência"
+ */
+export const resumoDasPendencias = (ajustes: DiaParaDecidir[], ausencias: AusenciaParaDecidir[]): string => {
+  const somar = (lista: DiaParaDecidir[]) => lista.reduce((t, { ajuste }) => t + ajuste.minutos, 0);
+  const extras = ajustes.filter(({ ajuste }) => ajuste.tipo === 'hora_extra');
+  const semFechar = ajustes.filter(({ ajuste }) => ajuste.tipo === 'dia_incompleto');
+  const aMenos = ajustes.filter(({ ajuste }) => ajuste.tipo !== 'hora_extra' && ajuste.tipo !== 'dia_incompleto');
+  return [
+    extras.length ? `+${formatarMinutos(somar(extras))} extra` : '',
+    aMenos.length ? `−${formatarMinutos(somar(aMenos))}` : '',
+    semFechar.length ? `${semFechar.length} ${semFechar.length === 1 ? 'dia sem fechar' : 'dias sem fechar'}` : '',
+    ausencias.length ? `${ausencias.length} ${ausencias.length === 1 ? 'ausência' : 'ausências'}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+};
+
+const pessoaDoGrupo = (p: PendenciasDaPessoa) => p.colaborador;
 
 export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorAtual }) => {
   const [versao, setVersao] = useState(0);
@@ -85,6 +134,17 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
   // Sem a folga: ela é decidida na Escala de folgas, com o calendário à vista
   const ausencias = pendenciasDeAusencia();
   void versao;
+
+  /** As decisões de cada pessoa: os dias de jornada e as ausências, juntos. */
+  const porPessoa = agruparPorPessoa(pendencias, ausencias);
+
+  /**
+   * A FOLHA DE QUEM ESTÁ ABERTA, lida da lista viva: decidido o último dia
+   * da pessoa, ela sai da lista — e a folha fecha sozinha, sem deixar o
+   * gestor diante de uma folha vazia.
+   */
+  const [pessoaAberta, setPessoaAberta] = useState<string | null>(null);
+  const aberta = porPessoa.find((p) => p.colaborador.id === pessoaAberta) || null;
 
   const mostrar = (texto: string, erro = false) => {
     setAviso({ texto, erro });
@@ -132,7 +192,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
         </div>
       )}
 
-      {pendencias.length === 0 ? (
+      {porPessoa.length === 0 ? (
         <div className="p-8 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex flex-col items-center text-center gap-2">
           <Inbox className="w-8 h-8 text-[var(--c-texto-3)]" />
           <span className="text-sm font-bold text-[var(--c-texto)]">Nada para decidir</span>
@@ -141,8 +201,68 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
           </span>
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          {pendencias.map(({ ajuste, colaborador }) => {
+        /*
+          UMA LINHA POR PESSOA, e não por dia (Elias, 03/10/2026: "matando
+          essas listas grandes"). Três dias de hora extra da mesma pessoa
+          eram três cartões altos; agora é uma linha com o resumo, e o toque
+          abre a folha com os dias dela — os mesmos cartões, os mesmos botões.
+        */
+        <GruposDePessoas
+          itens={porPessoa}
+          pessoaDe={pessoaDoGrupo}
+          idDaBusca="busca-aprovar-jornadas"
+          linha={(item) => (
+            <button
+              type="button"
+              id={`aprovar-${item.colaborador.id}`}
+              onClick={() => setPessoaAberta(item.colaborador.id)}
+              className="w-full px-3.5 py-2.5 flex items-center gap-2.5 text-left hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-superficie-2)] transition-colors"
+            >
+              <FotoPresenca
+                foto={item.colaborador.foto}
+                nome={item.colaborador.nome}
+                presenca={item.colaborador.presenca}
+                tamanho="w-8 h-8"
+              />
+              <span className="flex-1 min-w-0">
+                <span className="block text-[13px] font-semibold text-[var(--c-texto)] truncate">
+                  {item.colaborador.nome}
+                </span>
+                <span className="block text-[11px] text-[var(--c-texto-3)] truncate">
+                  {resumoDasPendencias(item.ajustes, item.ausencias)}
+                </span>
+              </span>
+              <span className="min-w-[1.5rem] h-6 px-2 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 text-[11px] font-bold flex items-center justify-center tabular-nums flex-shrink-0">
+                {item.ajustes.length + item.ausencias.length}
+              </span>
+              <ChevronRight className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
+            </button>
+          )}
+        />
+      )}
+
+      {/* OS DIAS DE UMA PESSOA: os cartões de decisão de sempre, numa folha */}
+      <FolhaInferior
+        aberto={!!aberta}
+        titulo={aberta?.colaborador.nome || ''}
+        subtitulo={aberta ? resumoDaFicha(aberta.colaborador) : undefined}
+        aoFechar={() => setPessoaAberta(null)}
+      >
+        {aberta && (
+          <div className="p-4 flex flex-col gap-2">
+            {aviso && (
+              <div
+                className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                  aviso.erro
+                    ? 'bg-conecta-erro/10 border border-conecta-erro/20 text-conecta-erro'
+                    : 'bg-conecta-ok/10 border border-conecta-ok/20 text-conecta-ok'
+                }`}
+              >
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{aviso.texto}</span>
+              </div>
+            )}
+            {aberta.ajustes.map(({ ajuste, colaborador }) => {
             const ehExtra = ajuste.tipo === 'hora_extra';
             const ehDiaSemFechar = ajuste.tipo === 'dia_incompleto';
             // Dia sem batida nenhuma: a mesma decisão, com o nome certo
@@ -151,19 +271,13 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
             return (
               <div
                 key={ajuste.id}
-                className="p-3.5 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex flex-col sm:flex-row sm:items-center gap-3"
+                className="p-3.5 rounded-2xl bg-[var(--c-canvas)] border border-[var(--c-borda)] flex flex-col sm:flex-row sm:items-center gap-3"
               >
-                <FotoPresenca
-                  foto={colaborador.foto}
-                  nome={colaborador.nome}
-                  presenca={colaborador.presenca}
-                  tamanho="w-10 h-10"
-                />
-
                 <div className="flex-1 min-w-0">
+                  {/* Na folha da pessoa, o título do cartão é o DIA: o nome já está no alto */}
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-bold text-[var(--c-texto)] truncate">
-                      {colaborador.nome}
+                    <span className="text-sm font-bold text-[var(--c-texto)] capitalize">
+                      {formatarDiaCurto(ajuste.data)}
                     </span>
                     <span
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
@@ -185,12 +299,6 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                       )}
                     </span>
                   </div>
-
-                  {/* Matrícula junto do nome: quem decide precisa saber de
-                      qual pessoa se trata, e nome se repete na rede. */}
-                  <span className="text-xs text-[var(--c-texto-3)] block">
-                    {resumoDaFicha(colaborador)}
-                  </span>
 
                   {/*
                     O MOTIVO, quando a pessoa escreveu no ato da batida.
@@ -227,7 +335,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
 
                   {/* O que a batida apurou, para a decisão não ser no escuro */}
                   <span className="text-[11px] text-[var(--c-texto-3)] block mt-1">
-                    {formatarDiaCurto(ajuste.data)} ({formatarDataBR(ajuste.data)}) ·{' '}
+                    {formatarDataBR(ajuste.data)} ·{' '}
                     trabalhou <strong className="text-[var(--c-texto-2)]">
                       {formatarMinutos(ajuste.minutosTrabalhados)}
                     </strong>{' '}
@@ -324,48 +432,22 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                 )}
               </div>
             );
-          })}
-        </div>
-      )}
+            })}
 
-      {/*
-        AUSÊNCIAS AGUARDANDO DECISÃO.
-
-        Mesma tela da jornada de propósito: quem responde pela pessoa decide
-        as duas coisas, e obrigar o gestor a procurar em dois lugares faria
-        uma das filas ser esquecida — provavelmente a menor.
-      */}
-      {ausencias.length > 0 && (
-        <div className="flex flex-col gap-2 mt-2">
-          <h3 className="text-sm font-bold text-[var(--c-texto)]">
-            Atestados e faltas aguardando decisão
-          </h3>
-
-          {ausencias.map(({ justificativa, colaborador }) => (
+            {aberta.ausencias.length > 0 && (
+              <h3 className="text-xs font-bold text-[var(--c-texto-2)] mt-2">Atestados e faltas</h3>
+            )}
+            {aberta.ausencias.map(({ justificativa, colaborador }) => (
             <div
               key={justificativa.id}
-              className="p-3.5 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex flex-col sm:flex-row sm:items-center gap-3"
+              className="p-3.5 rounded-2xl bg-[var(--c-canvas)] border border-[var(--c-borda)] flex flex-col sm:flex-row sm:items-center gap-3"
             >
-              <FotoPresenca
-                foto={colaborador.foto}
-                nome={colaborador.nome}
-                presenca={colaborador.presenca}
-                tamanho="w-10 h-10"
-              />
-
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-bold text-[var(--c-texto)] truncate">
-                    {colaborador.nome}
-                  </span>
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-conecta-info/10 text-conecta-info border-conecta-info/20">
                     {ROTULO_TIPO_AUSENCIA[justificativa.tipo]}
                   </span>
                 </div>
-
-                <span className="text-xs text-[var(--c-texto-3)] block">
-                  {resumoDaFicha(colaborador)}
-                </span>
 
                 <span className="text-[11px] text-[var(--c-texto-2)] block mt-1">
                   {justificativa.dataInicio === justificativa.dataFim
@@ -420,14 +502,23 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                 </button>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </FolhaInferior>
+
+      {/*
+        AUSÊNCIAS AGUARDANDO DECISÃO.
+
+        Mesma tela da jornada de propósito: quem responde pela pessoa decide
+        as duas coisas, e obrigar o gestor a procurar em dois lugares faria
+        uma das filas ser esquecida — provavelmente a menor.
+      */}
 
       {/* Recusar ausência: mesmo desenho da jornada — motivo obrigatório,
           porque a pessoa vai querer saber o que corrigir */}
       {recusandoAusencia && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
           <div className="bg-[var(--c-superficie)] w-full max-w-sm rounded-2xl border border-[var(--c-borda)] shadow-xl p-4 flex flex-col gap-3">
             <span className="text-sm font-bold text-[var(--c-texto)]">
               Recusar {ROTULO_TIPO_AUSENCIA[recusandoAusencia.tipo]}
@@ -479,7 +570,7 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
 
       {/* Recusar exige motivo: a pessoa perde horas e vai querer saber por quê */}
       {recusando && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
           <div className="bg-[var(--c-superficie)] rounded-2xl border border-[var(--c-borda)] shadow-xl max-w-sm w-full p-5 space-y-3">
             <h3 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-2">
               <Clock className="w-4 h-4 text-conecta-atencao" />

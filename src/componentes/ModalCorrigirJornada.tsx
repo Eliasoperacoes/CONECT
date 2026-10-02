@@ -144,7 +144,7 @@ export const ModalCorrigirJornada: React.FC<Props> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3"
+      className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3"
       onClick={aoFechar}
     >
       <div
