@@ -1617,6 +1617,22 @@ test('domingo não cobra horário de entrada', () => {
   ).toBe(false);
 });
 
+test('a saída no horário do turno não pede motivo — medida contra 8h10, e não contra as 8h', () => {
+  /*
+    01/10/2026, vários relatos: "Saída fora do horário" às 18:00. Com a
+    jornada de 8h (CLT), a saída era comparada às 8h e já nascia com +10 —
+    um minuto a mais e pedia motivo. Os 10 são a compensação do sábado.
+  */
+  equipe = [GESTOR, DO_TURNO_B];
+  // Turno B: entrou 08:19 (1 antes), almoço 11:00–12:30, sai 18:00
+  baterParcial(DO_TURNO_B, '2026-09-16', { entrada: '08:19', saida_almoco: '11:00', retorno_almoco: '12:30' });
+  expect(servicoPonto.avaliarMarcacao(DO_TURNO_B.id, 'saida', new Date('2026-09-16T18:00:00')).precisaMotivo).toBe(false);
+  // Ficou até 18:12: 13 além do horário do turno, aí pergunta
+  const tarde = servicoPonto.avaliarMarcacao(DO_TURNO_B.id, 'saida', new Date('2026-09-16T18:12:00'));
+  expect(tarde.precisaMotivo).toBe(true);
+  expect(tarde.minutos).toBe(13);
+});
+
 test('o almoço CURTO também pede motivo — o de 11 segundos do José Eduardo', () => {
   /*
     01/10/2026: sem conseguir bater no almoço, ele bateu a saída às 15:16:07

@@ -106,6 +106,7 @@ import {
   decidirApuracao,
   decidirLevantamento,
   listarDatasDoPeriodo,
+  compensacaoEsperadaDoDia,
 } from './apuracaoDoDia';
 export { paraDataLocal, deDataLocal, ehDiaDeFolga, ehSabado, marcacoesEsperadas, listarDatasDoPeriodo };
 
@@ -1903,7 +1904,15 @@ class ServicoPonto {
       minutosAgora -
       (entrouEm.getHours() * 60 + entrouEm.getMinutes()) -
       jornada.minutosIntervalo;
-    const diferenca = trabalhado - jornada.minutosPrevistos;
+    /*
+      CONTRA O HORÁRIO DO TURNO, e não contra as 8h da CLT. Desde 01/10/2026
+      o previsto é de 8h e os 10 minutos são a compensação do sábado: medida
+      contra as 8h, a saída das 18:00 do turno B já nascia com +10, e
+      qualquer minuto a mais virava "Saída fora do horário" — vários
+      colaboradores relataram no mesmo dia. A compensação é do combinado.
+    */
+    const diferenca =
+      trabalhado - jornada.minutosPrevistos - compensacaoEsperadaDoDia(bancoDados.obterColaboradorPorId(colaboradorId), data);
 
     if (Math.abs(diferenca) <= tolerancia) return semMotivo;
     return {
