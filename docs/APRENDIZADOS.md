@@ -569,3 +569,29 @@ apontou o commit sem precisar deduzir.
 teste da combinação proibida. E aviso que "não aparece" mede-se do lado
 do sistema operacional antes de mexer no código: o registro do Windows
 diz se o navegador sequer tentou.
+
+## O cursor que recuava uma casa a cada pausa
+
+**Sintoma (achado em 03/10/2026, existia desde o editor ao vivo):** no
+editor da Central, depois de uma pausa digitando, a letra seguinte
+entrava antes da última — "urgente" + "!" virava "urgent!e" — e o negrito
+ou a cor aplicados numa seleção caíam um caractere deslocados.
+
+**Causa:** o campo se redesenha 250 ms depois da última tecla, num
+relógio armado na renderização de ANTES dessa tecla. A função que devolve
+o cursor media a posição contra o `valor` daquela renderização — o texto
+sem a última letra. No fim da linha a posição estourava e era cortada uma
+casa antes. Junto vinham dois agravantes: a volta do cursor esperava o
+próximo quadro (`requestAnimationFrame`), deixando uma tecla entrar no
+meio; e o cursor fora de qualquer linha (clique na área vazia) contava
+como posição 0.
+
+**Como achei:** dirigindo o editor no navegador e lendo a seleção
+(`getSelection`) e o texto do campo depois de cada tecla, e um registro
+temporário em `desenhar` mostrando que a posição calculada estava certa e
+a aplicada, não.
+
+**A regra:** dentro de callback de relógio ou de evento, não confie na
+prop da renderização em que ele foi armado — leia o estado de agora (aqui,
+o texto do próprio campo). E campo editável se testa digitando, com pausa,
+no navegador: o teste de texto puro (`textoAoVivo`) não enxerga o cursor.
