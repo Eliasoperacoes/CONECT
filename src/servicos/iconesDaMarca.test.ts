@@ -50,6 +50,32 @@ test('o aviso do Android é a silhueta da logo, em 24 dp, nas cinco densidades',
   }
 });
 
+test('o aviso mostra o M recortado no losango, grande, e nao uma mancha', async () => {
+  /*
+    No S10 (03/10/2026) o aviso era um losango cheio: o Android pinta o
+    ícone de uma cor só, e o M branco virava a mesma mancha das cores.
+    O M precisa ser BURACO, e o losango, quase os 24 dp inteiros.
+  */
+  const { createCanvas } = await import('@napi-rs/canvas');
+  const img = await loadImage(`${RES}/drawable-xxxhdpi/ic_stat_conecta.png`);
+  const lado = img.width;
+  const cv = createCanvas(lado, lado);
+  const c = cv.getContext('2d');
+  c.drawImage(img, 0, 0);
+  const alfa = (x: number, y: number) => c.getImageData(Math.round(x), Math.round(y), 1, 1).data[3];
+  const R = (lado * OCUPACAO.aviso) / 2;
+  const P = (x: number, y: number) => [lado / 2 + x * R, lado / 2 + y * R] as const;
+
+  expect(alfa(...P(0, 0.25))).toBe(0); // dentro do M: recortado
+  expect(alfa(...P(0, 0.8))).toBe(255); // o triângulo de baixo
+  expect(alfa(...P(0.75, 0))).toBe(255); // o triângulo da direita
+  expect(alfa(...P(0, -0.85))).toBe(255); // o alto do losango, acima do V
+
+  // Grande: as pontas do losango chegam perto da borda (22 de 24 dp)
+  expect(OCUPACAO.aviso).toBeGreaterThanOrEqual(0.9);
+  expect(alfa(lado / 2, lado / 2 - R + 3)).toBe(255);
+});
+
 test('a web aponta só para ícones que existem', () => {
   const html = readFileSync('index.html', 'utf8');
   const manifesto = JSON.parse(readFileSync('public/manifest.json', 'utf8'));

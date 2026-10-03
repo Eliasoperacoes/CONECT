@@ -31,7 +31,8 @@
  *     densidades do Android (ícone, adaptativo, monocromático e aviso) e a
  *     abertura do aplicativo.
  *
- * A silhueta do aviso vem do pacote como está: conferida, está no padrão.
+ * A silhueta do aviso NÃO vem do pacote: é desenhada aqui (`desenharSilhueta`)
+ * — a do pacote, reduzida a 24 dp, virava um losango sem o M (03/10/2026).
  * Os favicons ganham o quadro claro (ver abaixo).
  */
 import { createCanvas, loadImage, type Image } from '@napi-rs/canvas';
@@ -51,6 +52,11 @@ const FUNDO_DA_ABERTURA = '#FFFFFF';
  * losango: cabendo nesta fração, cabe também no círculo de mesmo diâmetro.
  */
 export const OCUPACAO = {
+  /**
+   * O aviso na barra: o Android reserva 1 dp de cada lado dos 24 — 22/24.
+   * A silhueta do pacote ocupava bem menos, e o desenho já é pequeno.
+   */
+  aviso: 22 / 24,
   /** Ícone legado do Android e o "any" do PWA: quadro arredondado, sem máscara do sistema. */
   icone: 0.68,
   /**
@@ -107,19 +113,64 @@ const desenhar = (
   return cv.toBuffer('image/png');
 };
 
-/** A silhueta branca (aviso, ícone monocromático) redimensionada. */
-const redimensionar = (img: Image, largura: number, altura: number, ocupacao = 1): Buffer => {
-  const cv = createCanvas(largura, altura);
+/**
+ * A SILHUETA DO AVISO, DESENHADA — e não a do pacote reduzida.
+ *
+ * O Android pinta o ícone do aviso de uma cor só: vale a forma, não as
+ * cores. A silhueta do pacote era o losango cheio — o M branco e as cores
+ * viravam a mesma mancha — e as nove listras, a 24 dp, ficavam com menos
+ * de um pixel. No S10 o aviso mostrava um losango sem sentido (Elias,
+ * 03/10/2026).
+ *
+ * Aqui a forma é a da logo, medida no master (centro 0, raio 1 do
+ * losango): o losango cheio com o M RECORTADO — é o M que diz "Malachias"
+ * — e duas listras grossas no lugar das nove finas. Desenhada no tamanho
+ * de cada densidade, sai nítida em todas.
+ */
+export const SILHUETA = {
+  /** O M recortado: o retângulo com o V em cima, medido no master. */
+  m: [[-0.53, -0.53], [0, -0.07], [0.52, -0.53], [0.52, 0.49], [-0.53, 0.49]] as [number, number][],
+  /** Os vãos entre as listras: faixas de x+y constante, paralelas à borda de cima-esquerda. */
+  vaos: [-0.5],
+  larguraDoVao: 0.16,
+} as const;
+
+export const desenharSilhueta = (lado: number, ocupacao: number): Buffer => {
+  const cv = createCanvas(lado, lado);
   const c = cv.getContext('2d');
-  c.imageSmoothingQuality = 'high';
-  const lado = Math.min(largura, altura) * ocupacao;
-  c.drawImage(img, (largura - lado) / 2, (altura - lado) / 2, lado, lado);
+  const R = (lado * ocupacao) / 2;
+  const P = (x: number, y: number): [number, number] => [lado / 2 + x * R, lado / 2 + y * R];
+
+  c.fillStyle = '#FFFFFF';
+  c.beginPath();
+  c.moveTo(...P(0, -1));
+  c.lineTo(...P(1, 0));
+  c.lineTo(...P(0, 1));
+  c.lineTo(...P(-1, 0));
+  c.closePath();
+  c.fill();
+
+  c.globalCompositeOperation = 'destination-out';
+  c.beginPath();
+  SILHUETA.m.forEach(([x, y], i) => (i === 0 ? c.moveTo(...P(x, y)) : c.lineTo(...P(x, y))));
+  c.closePath();
+  c.fill();
+  for (const v of SILHUETA.vaos) {
+    const a0 = v - SILHUETA.larguraDoVao / 2;
+    const a1 = v + SILHUETA.larguraDoVao / 2;
+    c.beginPath();
+    c.moveTo(...P(a0 + 2, -2));
+    c.lineTo(...P(a1 + 2, -2));
+    c.lineTo(...P(a1 - 2, 2));
+    c.lineTo(...P(a0 - 2, 2));
+    c.closePath();
+    c.fill();
+  }
   return cv.toBuffer('image/png');
 };
 
 export const gerarIcones = async () => {
   const master = await loadImage(`${PACOTE}/logo-master-1024.png`);
-  const silhueta = await loadImage(`${PACOTE}/android-notification-icon-96.png`);
   const gerados: string[] = [];
   const gravar = (caminho: string, png: Buffer) => {
     salvar(caminho, png);
@@ -142,7 +193,7 @@ export const gerarIcones = async () => {
   gravar('public/icone-maskable-512.png', desenhar(master, 512, 512, OCUPACAO.maskable, { cor: FUNDO_DO_ICONE, forma: 'cheio' }));
   gravar('public/apple-touch-icon.png', desenhar(master, 180, 180, OCUPACAO.iphone, { cor: FUNDO_DO_ICONE, forma: 'cheio' }));
   // O "badge" do aviso no navegador: só a silhueta, como o Android pede
-  gravar('public/icone-aviso-96.png', redimensionar(silhueta, 96, 96));
+  gravar('public/icone-aviso-96.png', desenharSilhueta(96, OCUPACAO.aviso));
 
   /*
     A LOGO TRANSPARENTE, no caminho de sempre. `/logo-malachias.svg` está
@@ -170,9 +221,9 @@ export const gerarIcones = async () => {
     const camada = Math.round(108 * fator);
     gravar(`${RES}/mipmap-${nome}/ic_launcher_foreground.png`, desenhar(master, camada, camada, OCUPACAO.adaptativo, null));
     // O monocromático (ícones temáticos do Android 13): a silhueta no mesmo lugar
-    gravar(`${RES}/mipmap-${nome}/ic_launcher_monochrome.png`, redimensionar(silhueta, camada, camada, OCUPACAO.adaptativo));
-    // O aviso na barra: 24 dp, a silhueta do pacote
-    gravar(`${RES}/drawable-${nome}/ic_stat_conecta.png`, redimensionar(silhueta, Math.round(24 * fator), Math.round(24 * fator)));
+    gravar(`${RES}/mipmap-${nome}/ic_launcher_monochrome.png`, desenharSilhueta(camada, OCUPACAO.adaptativo));
+    // O aviso na barra: 24 dp, a silhueta desenhada, grande (22 dos 24 dp)
+    gravar(`${RES}/drawable-${nome}/ic_stat_conecta.png`, desenharSilhueta(Math.round(24 * fator), OCUPACAO.aviso));
     // A abertura do Android 12+: 240 dp
     const abertura = Math.round(240 * fator);
     gravar(`${RES}/drawable-${nome}/abertura_logo.png`, desenhar(master, abertura, abertura, OCUPACAO.abertura, null));
