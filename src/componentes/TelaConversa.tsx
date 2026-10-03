@@ -72,6 +72,11 @@ interface PropsTelaConversa {
   mensagemAlvoId?: string;
   /** "Conversar com Fulano", dos dados do grupo: abre a conversa individual. */
   aoConversarCom?: (colegaId: string) => void;
+  /**
+   * No chat em tela cheia do computador a lista está sempre ao lado: a
+   * seta de voltar não leva a lugar nenhum lá. Fica só no celular.
+   */
+  voltarSoNoCelular?: boolean;
 }
 
 /**
@@ -187,6 +192,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   aoAbrirPublicacao,
   mensagemAlvoId,
   aoConversarCom,
+  voltarSoNoCelular,
 }) => {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [textoMensagem, setTextoMensagem] = useState('');
@@ -932,7 +938,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               type="button"
               id="botao-voltar-conversa"
               onClick={aoVoltar}
-              className="w-9 h-9 flex items-center justify-center text-[var(--c-texto)] rounded-full hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-superficie-2)] -ml-1 flex-shrink-0"
+              className={`${voltarSoNoCelular ? 'md:hidden ' : ''}w-9 h-9 flex items-center justify-center text-[var(--c-texto)] rounded-full hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-superficie-2)] -ml-1 flex-shrink-0`}
               aria-label="Voltar"
             >
               <ArrowLeft className="w-5 h-5" />

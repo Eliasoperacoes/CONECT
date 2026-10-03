@@ -8,7 +8,6 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { NIVEL_TI, NIVEL_GERENTE, vePainelDeRede } from './tipos';
 import {
   MessageSquare,
-  Users,
   User,
   Plus,
   LayoutDashboard,
@@ -18,10 +17,6 @@ import {
   Clock,
   ClipboardList,
   Megaphone,
-  ChevronUp,
-  ChevronDown,
-  Search,
-  X,
 } from 'lucide-react';
 import { ABAS_PRINCIPAIS, AbaPrincipal, Colaborador, Conversa, Mensagem } from './tipos';
 
@@ -54,8 +49,6 @@ import {
   lembrarOndeParei,
   esquecerOndeParei,
 } from './servicos/navegacaoLembrada';
-import { ItemConversa } from './componentes/ItemConversa';
-import { ResultadosDaBusca } from './componentes/ResultadosDaBusca';
 import { FaixaAvisoDirecao } from './componentes/FaixaAvisoDirecao';
 import { TelaConversa } from './componentes/TelaConversa';
 import { ConviteAvisos } from './componentes/ConviteAvisos';
@@ -83,6 +76,7 @@ import { JanelaChat } from './componentes/JanelaChat';
 import { ConversasEmEspera } from './componentes/ConversasEmEspera';
 import { FaixaDeTeste } from './componentes/FaixaDeTeste';
 import { PainelConversas } from './componentes/PainelConversas';
+import { BuscaDeConversas, ListaDeConversas } from './componentes/ListaDeConversas';
 import { podeUsar } from './servicos/permissoes';
 import {
   aplicarPreferencias,
@@ -229,6 +223,24 @@ export default function App() {
   const [janelas, setJanelas] = useState<Array<{ id: string; encolhida: boolean }>>([]);
 
   /**
+   * O CHAT EM TELA CHEIA DO COMPUTADOR — o modo "Teams" (Elias, 03/10/2026).
+   *
+   * Dois estados, e o chat vive nos dois:
+   *   - EXPANDIDO: a lista à esquerda e a conversa no resto da tela, como no
+   *     Microsoft Teams. É onde "Conversas", no alto, leva.
+   *   - MINIMIZADO: a tela de antes (RH, Central...) com a conversa numa
+   *     janela flutuante no canto, que tem o botão de expandir de volta.
+   *
+   * A conversa escolhida no expandido é a mesma `conversaAtivaId` do
+   * celular: no celular ela já é "a conversa em tela cheia". O ref existe
+   * para quem chama de fora do desenho atual (o toque no aviso do sistema,
+   * guardado com o desenho da hora em que o aviso saiu).
+   */
+  const [chatExpandido, setChatExpandido] = useState(false);
+  const refChatExpandido = useRef(false);
+  refChatExpandido.current = chatExpandido;
+
+  /**
    * OS GRUPOS RECOLHEM, e nascem recolhidos.
    *
    * Eles entraram na lista de conversas, e numa loja com cinco canais
@@ -297,6 +309,13 @@ export default function App() {
       return;
     }
 
+    // Com o chat expandido, a conversa abre nele — e não numa janela por
+    // cima da tela cheia, que ficaria escondendo a lista
+    if (refChatExpandido.current) {
+      abrirConversaEmTelaCheia(id);
+      return;
+    }
+
     /**
      * ABRIR É O PEDIDO DE TRAZER DE VOLTA.
      *
@@ -330,6 +349,28 @@ export default function App() {
 
   const fecharJanela = (id: string) =>
     setJanelas((atuais) => atuais.filter((j) => j.id !== id));
+
+  /** Expande o chat para a tela cheia, já na conversa pedida (a da janela). */
+  const expandirChat = (conversaId?: string) => {
+    if (conversaId) {
+      fecharJanela(conversaId);
+      abrirConversaEmTelaCheia(conversaId);
+    }
+    refChatExpandido.current = true;
+    setChatExpandido(true);
+  };
+
+  /**
+   * Minimiza: volta para a tela de antes, e a conversa que estava aberta
+   * segue numa janela no canto — minimizar não é fechar.
+   */
+  const minimizarChat = () => {
+    const aberta = conversaAtivaId;
+    refChatExpandido.current = false;
+    setChatExpandido(false);
+    setConversaAtivaId(null);
+    if (aberta) abrirJanela(aberta);
+  };
 
   /**
    * O TOQUE NO AVISO ABRE A CONVERSA DO AVISO.
@@ -1417,7 +1458,7 @@ export default function App() {
               */
               const ativa = ehLista
                 ? secaoListaAberta === (aba.id === 'grupos' ? 'grupos' : 'individuais')
-                : abaDesktop === aba.alvo;
+                : !chatExpandido && abaDesktop === aba.alvo;
 
               return (
                 <button
@@ -1431,6 +1472,9 @@ export default function App() {
                       return;
                     }
                     setSecaoListaAberta(null);
+                    // Outra tela do topo sai do chat em tela cheia
+                    setChatExpandido(false);
+                    setConversaAtivaId(null);
                     if (aba.alvo) setAbaAtiva(aba.alvo);
                   }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
@@ -1474,11 +1518,11 @@ export default function App() {
           <button
             type="button"
             id="botao-abrir-conversas"
-            onClick={() => setSecaoListaAberta(secaoListaAberta ? null : 'individuais')}
-            aria-pressed={!!secaoListaAberta}
-            title="Conversas e grupos"
+            onClick={() => (chatExpandido ? minimizarChat() : expandirChat())}
+            aria-pressed={chatExpandido}
+            title={chatExpandido ? 'Minimizar as conversas' : 'Conversas e grupos em tela cheia'}
             className={`relative px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-              secaoListaAberta
+              chatExpandido
                 ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
                 : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)]'
             }`}
@@ -1511,6 +1555,7 @@ export default function App() {
               id="botao-topo-perfil-eu"
               onClick={() => {
                 setAbaAtiva('eu');
+                setChatExpandido(false);
                 setConversaAtivaId(null);
               }}
               className="flex items-center gap-1.5 py-1 px-2 rounded-lg hover:bg-[var(--c-superficie-2)] transition-colors text-xs"
@@ -1578,29 +1623,7 @@ export default function App() {
             WhatsApp. Procura no nome das conversas e dentro das mensagens.
           */}
           {abaAtiva === 'conversas' && (
-            <div className="px-3 pt-3 pb-2 bg-[var(--c-superficie)] flex-shrink-0">
-              <label className="flex items-center gap-2.5 h-11 px-4 rounded-full bg-[var(--c-superficie-2)] border border-transparent focus-within:border-[var(--c-acento)] transition-colors">
-                <Search className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
-                <input
-                  id="busca-conversas"
-                  type="search"
-                  value={buscaConversas}
-                  onChange={(e) => setBuscaConversas(e.target.value)}
-                  placeholder="Pesquisar conversas e mensagens"
-                  className="flex-1 min-w-0 bg-transparent outline-none text-[15px] text-[var(--c-texto)] placeholder:text-[var(--c-texto-3)] [&::-webkit-search-cancel-button]:hidden"
-                />
-                {buscaConversas && (
-                  <button
-                    type="button"
-                    onClick={() => setBuscaConversas('')}
-                    aria-label="Limpar a busca"
-                    className="w-7 h-7 -mr-1.5 rounded-full flex items-center justify-center text-[var(--c-texto-3)] active:bg-[var(--c-canvas)]"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </label>
-            </div>
+            <BuscaDeConversas valor={buscaConversas} aoMudar={setBuscaConversas} />
           )}
 
           {/* Faixa fixa no topo se houver aviso não lido da direção (apenas na aba Conversas) */}
@@ -1632,109 +1655,24 @@ export default function App() {
               quantas não lidas há dentro, que é o que faz alguém
               abrir.
             */}
-            {abaAtiva === 'conversas' && buscaConversas.trim() && (
-              <ResultadosDaBusca
-                termo={buscaConversas}
-                conversas={[...conversasIndividuais, ...grupos]}
+            {abaAtiva === 'conversas' && (
+              <ListaDeConversas
+                busca={buscaConversas}
+                todas={[...conversasIndividuais, ...grupos]}
+                conversasVisiveis={conversasVisiveis}
+                gruposVisiveis={gruposVisiveis}
+                naoLidasDosGrupos={naoLidasDosGrupos}
+                gruposAbertos={gruposAbertos}
+                aoAlternarGrupos={alternarGrupos}
+                selecionadaId={conversaAtivaId}
+                colaboradorId={colaboradorAtual.id}
                 aoAbrir={(conversaId, mensagemId) => {
                   setMensagemAlvo(mensagemId ? { conversaId, mensagemId } : null);
                   abrirConversaEmTelaCheia(conversaId);
                 }}
+                aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
+                aoNovaConversa={() => setModalNovaConversaAberto(true)}
               />
-            )}
-            {abaAtiva === 'conversas' && !buscaConversas.trim() && (
-              <>
-                {conversasVisiveis.length === 0 && gruposVisiveis.length === 0 ? (
-                  <div className="p-8 text-center text-[var(--c-texto-3)] text-xs space-y-3">
-                    <p>Nenhuma conversa iniciada ainda.</p>
-                    <button
-                      type="button"
-                      onClick={() => setModalNovaConversaAberto(true)}
-                      className="py-2 px-3.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-xs"
-                    >
-                      + Nova conversa
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {/*
-                      OS GRUPOS VÊM PRIMEIRO, logo abaixo da busca (Elias,
-                      03/10/2026): no fim da lista, com muitas conversas,
-                      eles ficavam lá embaixo, longe do polegar. Recolhidos,
-                      ocupam uma linha só e dizem quantas não lidas há.
-                    */}
-                    {gruposVisiveis.length > 0 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={alternarGrupos}
-                          aria-expanded={gruposAbertos}
-                          className="w-full px-4 py-2.5 border-b border-[var(--c-borda)] bg-[var(--c-superficie)] flex items-center gap-2 text-left active:bg-[var(--c-superficie-2)] transition-colors"
-                        >
-                          {gruposAbertos ? (
-                            <ChevronUp className="w-4 h-4 text-[var(--c-texto-3)] shrink-0" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-[var(--c-texto-3)] shrink-0" />
-                          )}
-                          <Users className="w-3.5 h-3.5 text-[var(--c-texto-3)] shrink-0" />
-                          <span className="text-xs font-bold uppercase tracking-wider text-[var(--c-texto-2)]">
-                            Grupos
-                          </span>
-                          <span className="text-[11px] text-[var(--c-texto-3)]">
-                            {gruposVisiveis.length}
-                          </span>
-
-                          <div className="flex-1" />
-
-                          {/* Recolhido, o número de não lidas é o que faz abrir */}
-                          {naoLidasDosGrupos > 0 && (
-                            <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-[11px] font-bold flex items-center justify-center">
-                              {naoLidasDosGrupos}
-                            </span>
-                          )}
-                        </button>
-
-                        {gruposAbertos && (
-                          <div className="divide-y divide-[var(--c-borda)]">
-                            {gruposVisiveis.map((g) => (
-                              <ItemConversa
-                                key={g.id}
-                                conversa={g}
-                                selecionada={conversaAtivaId === g.id}
-                                aoClicar={() => abrirConversaEmTelaCheia(g.id)}
-                                colaboradorId={colaboradorAtual.id}
-                                aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {/* Com os grupos abertos, as conversas ganham o título delas:
-                        sem ele, a primeira conversa parecia mais um grupo */}
-                    {gruposAbertos && gruposVisiveis.length > 0 && conversasVisiveis.length > 0 && (
-                      <div className="px-4 py-2.5 border-b border-[var(--c-borda)] bg-[var(--c-superficie)] flex items-center gap-2">
-                        <MessageSquare className="w-3.5 h-3.5 text-[var(--c-texto-3)] shrink-0" />
-                        <span className="text-xs font-bold uppercase tracking-wider text-[var(--c-texto-2)]">Conversas</span>
-                        <span className="text-[11px] text-[var(--c-texto-3)]">{conversasVisiveis.length}</span>
-                      </div>
-                    )}
-                    <div className="divide-y divide-[var(--c-borda)]">
-                      {conversasVisiveis.map((c) => (
-                        <ItemConversa
-                          key={c.id}
-                          conversa={c}
-                          selecionada={conversaAtivaId === c.id}
-                          aoClicar={() => abrirConversaEmTelaCheia(c.id)}
-                          colaboradorId={colaboradorAtual.id}
-                          aoMudarPreferencia={() => setVersaoPreferencias((v) => v + 1)}
-                        />
-                      ))}
-                    </div>
-
-                  </>
-                )}
-              </>
             )}
 
             {/* ABA 3: PAINEL DA REDE & GESTÃO DE PESSOAS (No mobile) */}
@@ -1930,18 +1868,59 @@ export default function App() {
             conversaAtiva ? 'flex' : 'hidden md:flex'
           }`}
         >
-          {conversaAtiva ? (
-            <div className="w-full max-w-[760px] h-full flex flex-col bg-[var(--c-canvas)] border-x border-[var(--c-borda)]">
-              <TelaConversa
-                conversa={conversaAtiva}
-                colaboradorAtual={colaboradorAtual}
-                mensagemAlvoId={
-                  mensagemAlvo?.conversaId === conversaAtiva.id ? mensagemAlvo.mensagemId : undefined
-                }
-                aoVoltar={() => setConversaAtivaId(null)}
-                aoAbrirPublicacao={abrirPublicacao}
-                aoConversarCom={lidarSelecionarColega}
-              />
+          {chatExpandido || conversaAtiva ? (
+            /*
+              O CHAT EM TELA CHEIA, como o Microsoft Teams (Elias, 03/10/2026):
+              a lista à esquerda, a conversa no resto. No celular a coluna da
+              lista não aparece — lá a lista é a aba Conversas, e aqui fica
+              só a conversa, como sempre foi.
+            */
+            <div id="chat-em-tela-cheia" className="w-full h-full flex min-w-0">
+              {chatExpandido && (
+                <div className="hidden md:flex h-full flex-shrink-0">
+                  <PainelConversas
+                    secaoInicial="individuais"
+                    conversas={conversasIndividuais}
+                    grupos={grupos}
+                    conversaAbertaId={conversaAtivaId}
+                    colaboradorId={colaboradorAtual.id}
+                    podeCriarGrupo
+                    aoAbrir={(id, mensagemId) => {
+                      setMensagemAlvo(mensagemId ? { conversaId: id, mensagemId } : null);
+                      abrirConversaEmTelaCheia(id);
+                    }}
+                    aoNovaConversa={() => setModalNovaConversaAberto(true)}
+                    aoNovoGrupo={() => setModalCriarGrupoAberto(true)}
+                    aoFechar={minimizarChat}
+                  />
+                </div>
+              )}
+              <div className="flex-1 min-w-0 h-full flex flex-col bg-[var(--c-canvas)] border-x border-[var(--c-borda)] md:border-x-0">
+                {conversaAtiva ? (
+                  <TelaConversa
+                    key={conversaAtiva.id}
+                    conversa={conversaAtiva}
+                    colaboradorAtual={colaboradorAtual}
+                    mensagemAlvoId={
+                      mensagemAlvo?.conversaId === conversaAtiva.id ? mensagemAlvo.mensagemId : undefined
+                    }
+                    aoVoltar={() => setConversaAtivaId(null)}
+                    aoAbrirPublicacao={abrirPublicacao}
+                    aoConversarCom={lidarSelecionarColega}
+                    voltarSoNoCelular={chatExpandido}
+                  />
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-center p-8 text-[var(--c-texto-3)]">
+                    <div className="w-16 h-16 rounded-full bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex items-center justify-center mb-4 text-[var(--c-acento)]">
+                      <MessageSquare className="w-8 h-8" />
+                    </div>
+                    <h2 className="text-base font-bold text-[var(--c-texto)] mb-1">Escolha uma conversa</h2>
+                    <p className="text-sm max-w-xs">
+                      Ou comece uma nova — a lista à esquerda tem as conversas e os grupos da rede.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           ) : abaDesktop === 'painel' ? (
             <div className="w-full h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
@@ -2047,21 +2026,6 @@ export default function App() {
         aoFechar={() => setModalCriarGrupoAberto(false)}
       />
 
-      {/* Lista de conversas por cima, no lugar da antiga coluna fixa */}
-      {secaoListaAberta && (
-        <PainelConversas
-          secaoInicial={secaoListaAberta}
-          conversas={conversasIndividuais}
-          grupos={grupos}
-          conversaAbertaId={conversaFlutuanteId}
-          colaboradorId={colaboradorAtual.id}
-          podeCriarGrupo
-          aoAbrir={(id) => abrirJanela(id)}
-          aoNovaConversa={() => setModalNovaConversaAberto(true)}
-          aoNovoGrupo={() => setModalCriarGrupoAberto(true)}
-          aoFechar={() => setSecaoListaAberta(null)}
-        />
-      )}
 
       {/* As conversas por cima do que estiver aberto — quem pediu o chat de
           dentro do RH não perde a consulta que estava fazendo. No computador
@@ -2071,13 +2035,14 @@ export default function App() {
         Tudo que não coube nos três lugares abertos, num botão só no canto.
         Nada se espalha para a esquerda porque não há nada para espalhar.
       */}
-      <ConversasEmEspera
+      {!chatExpandido && <ConversasEmEspera
         conversas={conversasEncolhidas}
         aoAbrir={(id) => abrirJanela(id)}
         aoFechar={(id) => fecharJanela(id)}
-      />
+      />}
 
-      {posicoesDasJanelas.map((janela, indice) => {
+      {/* Com o chat expandido as janelas esperam: voltam ao minimizar */}
+      {!chatExpandido && posicoesDasJanelas.map((janela, indice) => {
         const conversa = bancoDados.obterConversaPorId(janela.id);
         if (!conversa) return null;
 
@@ -2089,6 +2054,7 @@ export default function App() {
             direita={janela.direita}
             visivelNoCelular={indice === posicoesDasJanelas.length - 1}
             aoEncolher={() => alternarEncolhida(janela.id)}
+            aoExpandir={() => expandirChat(janela.id)}
             aoFechar={() => fecharJanela(janela.id)}
             aoConversarCom={lidarSelecionarColega}
             /* Fecha a janela ao ir para a publicação: deixá-la aberta

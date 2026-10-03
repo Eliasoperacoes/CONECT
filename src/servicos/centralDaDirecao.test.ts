@@ -450,11 +450,14 @@ test('GRUPOS SAIU DA BARRA e virou seção dentro de Conversas', async () => {
 
   // Nasce recolhido: só abre de saída se a pessoa deixou aberto NESTE aparelho
   expect(app).toContain("return localStorage.getItem('conecta_grupos_abertos') === 'sim';");
-  // E os grupos vêm ANTES das conversas, logo abaixo da busca (Elias, 03/10/2026)
-  expect(app.indexOf('{gruposVisiveis.length > 0 && (')).toBeLessThan(app.indexOf('{conversasVisiveis.map((c) => ('));
+  // E os grupos vêm ANTES das conversas, logo abaixo da busca (Elias, 03/10/2026).
+  // A lista mora em ListaDeConversas desde que o computador ganhou a tela cheia.
+  const lista = await Bun.file('src/componentes/ListaDeConversas.tsx').text();
+  expect(app).toContain('<ListaDeConversas');
+  expect(lista.indexOf('{gruposVisiveis.length > 0 && (')).toBeLessThan(lista.indexOf('{conversasVisiveis.map(item)}'));
   expect(app).toContain('const naoLidasDosGrupos = grupos.reduce');
-  expect(app).toContain('{naoLidasDosGrupos > 0 && (');
-  expect(app).toContain('{gruposAbertos && (');
+  expect(lista).toContain('{naoLidasDosGrupos > 0 && (');
+  expect(lista).toContain('{gruposAbertos && <div');
 
   // A permissão de grupos continua existindo — o que saiu foi a aba
   const catalogo = await Bun.file('src/servicos/ferramentas.ts').text();

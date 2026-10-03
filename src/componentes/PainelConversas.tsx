@@ -1,17 +1,19 @@
 /**
- * Lista de conversas em painel flutuante — CONECTA / Malachias Autopeças
+ * A lista do chat em tela cheia do computador — CONECTA / Malachias Autopeças
  *
- * Com a conversa abrindo por cima, a coluna fixa da esquerda perdeu sentido:
- * ocupava um terço da tela do computador para mostrar uma lista que só é
- * consultada na hora de escolher com quem falar. Aqui ela vira um painel que
- * se abre quando se precisa dela e sai da frente depois.
+ * Foi um painel flutuante à direita, aberto pelo botão "Conversas". Com o
+ * chat do computador virando tela cheia, como o Microsoft Teams (Elias,
+ * 03/10/2026), ela passou a ser a COLUNA DA ESQUERDA dele: a lista ao lado
+ * da conversa, sempre à vista enquanto se conversa. Fechar virou
+ * MINIMIZAR — a conversa aberta segue numa janela no canto.
  *
- * No celular ocupa a tela, porque lá não há "por cima" que caiba.
+ * Só existe no computador. No celular a lista é a aba Conversas
+ * (ListaDeConversas).
  */
 
 import React, { useState, useMemo } from 'react';
 import {
-  X,
+  Minimize2,
   Plus,
   MessageSquare,
   Users,
@@ -23,6 +25,8 @@ import {
 import { Conversa } from '../tipos';
 import { ItemConversa } from './ItemConversa';
 import { FolhaInferior } from './FolhaInferior';
+import { BuscaDeConversas } from './ListaDeConversas';
+import { ResultadosDaBusca } from './ResultadosDaBusca';
 import { bancoDados } from '../servicos/bancoDados';
 import {
   aplicarPreferencias,
@@ -40,9 +44,11 @@ interface PropsPainelConversas {
   grupos: Conversa[];
   conversaAbertaId: string | null;
   podeCriarGrupo: boolean;
-  aoAbrir: (conversaId: string) => void;
+  /** Com `mensagemId`, veio da busca: abrir já na mensagem achada. */
+  aoAbrir: (conversaId: string, mensagemId?: string) => void;
   aoNovaConversa: () => void;
   aoNovoGrupo: () => void;
+  /** Minimiza o chat em tela cheia. */
   aoFechar: () => void;
   /** Quem está logado — as preferências de fixar e ocultar são dele. */
   colaboradorId: string;
@@ -64,6 +70,8 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
   const [selecionando, setSelecionando] = useState(false);
   const [versao, setVersao] = useState(0);
   const [menuAberto, setMenuAberto] = useState<string | null>(null);
+  /** A mesma busca da lista do celular: nomes e dentro das mensagens. */
+  const [busca, setBusca] = useState('');
   /**
    * As conversas marcadas para uma ação em conjunto.
    *
@@ -157,8 +165,8 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
 
   return (
     <div
-      id="painel-conversas-flutuante"
-      className="fixed z-40 top-0 left-0 right-0 bottom-0 w-full h-full md:top-[64px] md:left-auto md:right-4 md:bottom-4 md:w-[356px] md:h-auto flex flex-col bg-[var(--c-superficie)] md:rounded-2xl md:border md:border-[var(--c-borda)] md:shadow-[var(--s-3)] overflow-hidden"
+      id="lista-do-chat"
+      className="h-full w-[340px] xl:w-[380px] flex flex-col bg-[var(--c-superficie)] border-r border-[var(--c-borda)] overflow-hidden"
     >
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--c-borda)] flex-shrink-0">
         <div className="flex items-center gap-1">
@@ -206,17 +214,23 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
 
           <button
             type="button"
+            id="botao-minimizar-chat"
             onClick={aoFechar}
             className="p-1.5 rounded-lg hover:bg-[var(--c-superficie-2)] text-[var(--c-texto-3)] hover:text-[var(--c-texto)] transition-colors cursor-pointer"
-            aria-label="Fechar lista"
+            aria-label="Minimizar as conversas"
+            title="Minimizar — volta para a tela anterior, com a conversa aberta no canto"
           >
-            <X className="w-4 h-4" />
+            <Minimize2 className="w-4 h-4" />
           </button>
         </div>
       </div>
 
+      <BuscaDeConversas id="busca-do-chat" valor={busca} aoMudar={setBusca} />
+
       <div className="flex-1 overflow-y-auto">
-        {lista.length === 0 ? (
+        {busca.trim() ? (
+          <ResultadosDaBusca termo={busca} conversas={todasAsConversas} aoAbrir={aoAbrir} />
+        ) : lista.length === 0 ? (
           <p className="p-6 text-center text-xs text-[var(--c-texto-3)]">
             {secao === 'individuais'
               ? 'Nenhuma conversa iniciada ainda.'

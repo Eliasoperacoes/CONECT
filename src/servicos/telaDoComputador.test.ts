@@ -15,7 +15,8 @@ const ler = (arq: string) =>
 test('o menu do topo marca a tela que está NA TELA, e não a escolhida por baixo', () => {
   // A sessão nasce em "conversas", que no computador vira o painel:
   // comparando com a escolhida, nada ficava marcado
-  expect(ler('App.tsx')).toContain(': abaDesktop === aba.alvo;');
+  // ...e com o chat em tela cheia, nenhuma das outras fica marcada
+  expect(ler('App.tsx')).toContain(': !chatExpandido && abaDesktop === aba.alvo;');
 });
 
 test('conversas no cabeçalho, sem botão flutuando por cima do conteúdo', () => {
@@ -26,10 +27,37 @@ test('conversas no cabeçalho, sem botão flutuando por cima do conteúdo', () =
   expect(cabecalho).toContain('totalNaoLidas');
 });
 
-test('a gaveta de conversas ocupa o lugar onde as janelas de chat começam', () => {
-  // 356 de largura + 16 de margem = 372, o início das janelas no App
-  expect(ler('componentes/PainelConversas.tsx')).toContain('md:right-4 md:bottom-4 md:w-[356px]');
-  expect(ler('App.tsx')).toContain('const INICIO_DAS_JANELAS = 372;');
+/*
+  O CHAT DO COMPUTADOR EM DOIS ESTADOS, como o Microsoft Teams (Elias,
+  03/10/2026): expandido em tela cheia — lista à esquerda, conversa no
+  resto — e minimizado, a tela de antes com a conversa numa janela no canto.
+*/
+test('Conversas, no alto, expande o chat em tela cheia, e o mesmo botao minimiza', () => {
+  const app = ler('App.tsx');
+  expect(app).toContain("onClick={() => (chatExpandido ? minimizarChat() : expandirChat())}");
+  // Tela cheia: a lista (a antiga gaveta) vira a coluna da esquerda, só no computador
+  const tela = app.slice(app.indexOf('id="chat-em-tela-cheia"'), app.indexOf(") : abaDesktop === 'painel' ? ("));
+  expect(tela).toContain('<div className="hidden md:flex h-full flex-shrink-0">');
+  expect(tela).toContain('<PainelConversas');
+  expect(tela).toContain('aoFechar={minimizarChat}');
+  expect(ler('componentes/PainelConversas.tsx')).toContain('id="lista-do-chat"');
+  expect(ler('componentes/PainelConversas.tsx')).not.toContain('fixed z-40');
+  // Com a lista sempre ao lado, a seta de voltar some no computador
+  expect(tela).toContain('voltarSoNoCelular={chatExpandido}');
+});
+
+test('minimizar nao fecha: a conversa segue numa janela, que expande de volta', () => {
+  const app = ler('App.tsx');
+  const minimizar = app.slice(app.indexOf('const minimizarChat = () => {'), app.indexOf('const minimizarChat = () => {') + 300);
+  expect(minimizar).toContain('refChatExpandido.current = false;');
+  expect(minimizar).toContain('if (aberta) abrirJanela(aberta);');
+  // A janela tem o caminho de volta
+  expect(app).toContain('aoExpandir={() => expandirChat(janela.id)}');
+  expect(ler('componentes/JanelaChat.tsx')).toContain('aria-label="Expandir conversa"');
+  // Expandido, nada flutua por cima da tela cheia; e abrir conversa abre nela
+  expect(app).toContain('{!chatExpandido && posicoesDasJanelas.map(');
+  expect(app).toContain('if (refChatExpandido.current) {\n      abrirConversaEmTelaCheia(id);');
+  expect(app).toContain('const INICIO_DAS_JANELAS = 372;');
 });
 
 test('no computador as abas não esmaecem nas pontas', () => {

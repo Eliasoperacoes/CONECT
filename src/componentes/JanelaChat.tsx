@@ -13,7 +13,7 @@
  */
 
 import React from 'react';
-import { Minus, X } from 'lucide-react';
+import { Maximize2, Minus, X } from 'lucide-react';
 import { Colaborador, Conversa } from '../tipos';
 import { TelaConversa } from './TelaConversa';
 
@@ -44,6 +44,11 @@ interface PropsJanelaChat {
    */
   aoEncolher?: () => void;
   /**
+   * Expande para o chat em tela cheia, já nesta conversa — o caminho de
+   * volta do "Minimizar" de lá (Elias, 03/10/2026: como o Teams).
+   */
+  aoExpandir?: () => void;
+  /**
    * No celular só uma janela aparece: não há espaço para lado a lado, e
    * empilhar janelas em tela cheia esconderia umas às outras sem aviso.
    */
@@ -58,6 +63,7 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
   aoFechar,
   direita = 372,
   aoEncolher,
+  aoExpandir,
   visivelNoCelular = true,
   aoAbrirPublicacao,
   aoConversarCom,
@@ -82,6 +88,17 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
           Conversa
         </span>
         <div className="flex items-center gap-0.5">
+          {aoExpandir && (
+            <button
+              type="button"
+              onClick={aoExpandir}
+              className="p-1.5 rounded-lg hover:bg-[var(--c-superficie)] text-[var(--c-texto-3)] hover:text-[var(--c-texto)] transition-colors cursor-pointer"
+              aria-label="Expandir conversa"
+              title="Expandir — abre em tela cheia, com a lista ao lado"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={aoEncolher}
