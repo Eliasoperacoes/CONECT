@@ -283,7 +283,47 @@ export const mostrarAvisoDeMensagem = async (dados: {
    */
   if (janelaEstaVisivel()) return;
 
-  const opcoes: NotificationOptions = {
+  const opcoes = opcoesDoAviso(dados, somLigado() && ehComputador());
+
+  // Caminho do trabalhador primeiro: é o único que o Android aceita, e no
+  // computador funciona igual.
+  try {
+    const pronto = registro || (await navigator.serviceWorker?.getRegistration());
+    if (pronto) {
+      await pronto.showNotification(dados.titulo, opcoes);
+      return;
+    }
+  } catch (erro) {
+    console.error('Aviso pelo trabalhador falhou:', erro);
+  }
+
+  try {
+    const aviso = new Notification(dados.titulo, opcoes);
+    aviso.onclick = () => {
+      window.focus();
+      dados.aoClicar?.();
+      aviso.close();
+    };
+  } catch (erro) {
+    console.error('Aviso direto falhou:', erro);
+  }
+};
+
+/**
+ * As opções do aviso do sistema.
+ *
+ * SILENCIOSO NÃO LEVA VIBRAÇÃO. O Chrome RECUSA a combinação ("Silent
+ * notifications must not specify vibration patterns") e lança erro: de
+ * 30/09 a 03/10/2026 o computador tocava o som do CONECTA e nenhum aviso
+ * do Windows aparecia — o erro ficava no console. Medido: o último aviso
+ * que o Chrome entregou ao Windows foi às 14:45 de 30/09; o `silent`
+ * entrou às 17:10.
+ */
+export const opcoesDoAviso = (
+  dados: { corpo: string; conversaId: string },
+  silencioso: boolean
+): NotificationOptions =>
+  ({
     body: dados.corpo,
     tag: `conecta-${dados.conversaId}`,
     icon: '/logo-malachias.svg',
@@ -310,7 +350,7 @@ export const mostrarAvisoDeMensagem = async (dados: {
      * dele (`tocarAvisoDeMensagem`): eram dois sons juntos a cada mensagem.
      * No celular fica como estava — lá o aviso do sistema é quem vibra.
      */
-    silent: somLigado() && ehComputador(),
+    silent: silencioso,
 
     /**
      * Na loja o celular quase sempre está no bolso ou em cima do balcão, com
@@ -319,7 +359,8 @@ export const mostrarAvisoDeMensagem = async (dados: {
      * O padrão é curto de propósito: vibrar longo a cada mensagem de grupo
      * cansa, e aviso que cansa é aviso que a pessoa desliga.
      */
-    vibrate: [120, 60, 120],
+    // Nunca junto do `silent`: o Chrome recusa o aviso inteiro (ver acima)
+    ...(silencioso ? {} : { vibrate: [120, 60, 120] }),
 
     /** O horário real da mensagem, e não o do momento em que o aviso saiu. */
     timestamp: Date.now(),
@@ -334,31 +375,7 @@ export const mostrarAvisoDeMensagem = async (dados: {
       conversaId: dados.conversaId,
       url: '/',
     },
-  } as NotificationOptions;
-
-  // Caminho do trabalhador primeiro: é o único que o Android aceita, e no
-  // computador funciona igual.
-  try {
-    const pronto = registro || (await navigator.serviceWorker?.getRegistration());
-    if (pronto) {
-      await pronto.showNotification(dados.titulo, opcoes);
-      return;
-    }
-  } catch (erro) {
-    console.error('Aviso pelo trabalhador falhou:', erro);
-  }
-
-  try {
-    const aviso = new Notification(dados.titulo, opcoes);
-    aviso.onclick = () => {
-      window.focus();
-      dados.aoClicar?.();
-      aviso.close();
-    };
-  } catch (erro) {
-    console.error('Aviso direto falhou:', erro);
-  }
-};
+  }) as NotificationOptions;
 
 /**
  * Dispara os três avisos de uma vez, para a pessoa conferir se estão

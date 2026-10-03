@@ -140,7 +140,29 @@ test('o canal do Android tem o som, e o manifesto aponta para ele', () => {
 });
 
 test('no computador o aviso do sistema é silencioso: toca só o som do CONECTA', () => {
-  expect(ler('src/servicos/notificacoes.ts')).toContain('silent: somLigado() && ehComputador(),');
+  expect(ler('src/servicos/notificacoes.ts')).toContain(
+    'const opcoes = opcoesDoAviso(dados, somLigado() && ehComputador());'
+  );
+});
+
+test('aviso silencioso nunca leva vibracao: o Chrome recusa o aviso inteiro', async () => {
+  /*
+    De 30/09 a 03/10/2026 o computador tocava o som e nenhum aviso do
+    Windows aparecia. Medido no Chrome: showNotification com silent E
+    vibrate lança "Silent notifications must not specify vibration
+    patterns" — o erro ficava no console.
+  */
+  const { opcoesDoAviso } = await import('./notificacoes');
+  const dados = { corpo: 'oi', conversaId: 'c1' };
+
+  const doComputador = opcoesDoAviso(dados, true) as NotificationOptions & { vibrate?: number[] };
+  expect(doComputador.silent).toBe(true);
+  expect(doComputador.vibrate).toBeUndefined();
+
+  // No celular (não silencioso) a vibração é o que avisa no balcão
+  const doCelular = opcoesDoAviso(dados, false) as NotificationOptions & { vibrate?: number[] };
+  expect(doCelular.silent).toBe(false);
+  expect(doCelular.vibrate).toEqual([120, 60, 120]);
 });
 
 // ------------------------------------------------------------------
