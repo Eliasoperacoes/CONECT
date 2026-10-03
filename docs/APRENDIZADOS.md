@@ -546,3 +546,26 @@ justamente porque é ele que fica à vista.
 
 **Sinal para procurar:** pedir um resultado duas vezes. Se a informação
 não chega, o conserto não é insistir — é olhar como ela é apresentada.
+
+## O som tocava, e o aviso do Windows não aparecia
+
+**Sintoma (30/09 a 03/10/2026):** no computador, mensagem nova tocava o
+som do CONECTA e nenhum aviso do Windows aparecia. Permissão concedida,
+"Não incomodar" desligado, Chrome ligado nas configurações do Windows.
+
+**Causa:** o aviso do computador passou a sair `silent` (para não tocar
+o som do Windows junto com o do CONECTA), e levava junto o `vibrate` do
+celular. O Chrome RECUSA essa combinação — "Silent notifications must not
+specify vibration patterns" — e lança erro. O `catch` mandava o erro ao
+console, e o som, que vem de outro caminho, continuava tocando: tudo
+parecia funcionar pela metade, que é o pior jeito de quebrar.
+
+**Como achei:** o Windows guarda quando cada aplicativo entregou o último
+aviso (`HKCU\...\Notifications\Settings\Chrome\LastNotificationAddedTime`).
+Era 30/09 às 14:45; o `silent` entrou às 17:10 do mesmo dia. A data
+apontou o commit sem precisar deduzir.
+
+**A regra:** opções de aviso montadas num lugar só (`opcoesDoAviso`), com
+teste da combinação proibida. E aviso que "não aparece" mede-se do lado
+do sistema operacional antes de mexer no código: o registro do Windows
+diz se o navegador sequer tentou.
