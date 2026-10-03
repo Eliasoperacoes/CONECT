@@ -858,7 +858,8 @@ test('o campo ao vivo NÃO tem um segundo desenhador de texto', async () => {
    */
   const aoVivo = semComentarios(await Bun.file('src/servicos/textoAoVivo.ts').text());
 
-  expect(aoVivo).toContain("import { escapar, enderecoSeguro } from './textoRico'");
+  // E a leitura das opções da imagem e a paleta também (03/10/2026)
+  expect(aoVivo).toContain("import { escapar, enderecoSeguro, lerImagem, CORES_DO_TEXTO } from './textoRico'");
   expect(aoVivo).not.toContain('const escapar =');
   expect(aoVivo).not.toContain('const enderecoSeguro =');
 });
