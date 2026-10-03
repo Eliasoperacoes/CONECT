@@ -624,3 +624,29 @@ test('o resumo do cartao e a busca nao mostram os sinais novos', async () => {
   expect(limpo).toContain('Atenção:');
   expect(limpo).toContain('Tragam o coletor');
 });
+
+test('a barra troca o estilo da linha, centraliza e poe em caixa', async () => {
+  const { definirEstiloDaLinha, alternarCentro, aplicarDestaque } = await import('./textoRico');
+  // Troca, não soma — e respeita o centralizado
+  expect(definirEstiloDaLinha('# Inventário', 0, 0, 'h2').texto).toBe('## Inventário');
+  expect(definirEstiloDaLinha('-> # Inventário <-', 3, 3, 'texto').texto).toBe('-> Inventário <-');
+  expect(definirEstiloDaLinha('a\nb', 0, 3, 'pequeno').texto).toBe('-# a\n-# b');
+  // Centralizar duas vezes volta ao que era
+  const centrado = alternarCentro('## Título\ntexto', 0, 10).texto;
+  expect(centrado).toBe('-> ## Título <-\n-> texto <-');
+  expect(alternarCentro(centrado, 0, centrado.length).texto).toBe('## Título\ntexto');
+  // Caixa em volta da seleção, e o exemplo quando não há o que envolver
+  expect(aplicarDestaque('linha um\nlinha dois', 0, 12, 'ATENCAO').texto).toBe(
+    '> [!ATENCAO]\n> linha um\n> linha dois'
+  );
+  const vazia = aplicarDestaque('', 0, 0, 'DICA');
+  expect(vazia.texto.startsWith('> [!DICA]\n> ')).toBe(true);
+  expect(vazia.texto.slice(vazia.inicio, vazia.fim)).toBe('Escreva aqui o que precisa de destaque.');
+});
+
+test('a capa nao entra no resumo do cartao: ela ja aparece como miniatura', async () => {
+  const { resumoCurto } = await import('./textoRico');
+  expect(resumoCurto('![capa](a/c.png "capa")\n\nTodas as lojas fecham')).toBe('Todas as lojas fecham');
+  // Imagem comum continua dizendo que há uma imagem ali
+  expect(resumoCurto('veja ![print](a/b.png)')).toBe('veja [print]');
+});

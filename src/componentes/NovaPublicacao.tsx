@@ -327,28 +327,28 @@ export const NovaPublicacao: React.FC<Props> = ({
       <div className="flex-1 min-h-0 overflow-y-auto lg:overflow-hidden">
         <div className="h-full flex flex-col lg:flex-row">
           {/* ESQUERDA: onde se escreve */}
-          <div className="flex-1 min-w-0 flex flex-col p-4 sm:p-6 gap-3 lg:overflow-hidden">
-            <input
-              type="text"
-              value={titulo}
-              onChange={(e) => setTitulo(e.target.value)}
-              placeholder="Título da publicação"
-              className="w-full px-0 py-1 text-xl font-bold bg-transparent border-0 border-b border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:border-[var(--c-acento)] placeholder:text-[var(--c-texto-3)] placeholder:font-normal shrink-0"
-            />
-
+          <div className="flex-1 min-w-0 flex flex-col lg:overflow-hidden">
             {/*
-              O EDITOR OCUPA O QUE SOBRAR.
+              O EDITOR OCUPA O QUE SOBRAR, e o TÍTULO MORA NA FOLHA.
 
-              Com altura fixa em linhas, ele ficava do mesmo tamanho num
-              monitor de 27" e num notebook — desperdiçando espaço lá e
-              faltando aqui. `flex-1` + `min-h-0` é o que faz ele crescer
-              sem empurrar o resto para fora.
+              A folha tem a largura e a fonte da leitura (Elias,
+              03/10/2026: "muito básico"): o título fica onde o leitor o
+              verá, e não numa linha solta acima de uma área cinza.
             */}
-            <div className="flex-1 min-h-[260px] lg:min-h-0 flex flex-col">
+            <div className="flex-1 min-h-[70vh] lg:min-h-0 flex flex-col">
               <EditorTexto
                 valor={conteudo}
                 aoMudar={setConteudo}
-                alturaCheia
+                cabecalho={
+                  <input
+                    type="text"
+                    id="titulo-da-publicacao"
+                    value={titulo}
+                    onChange={(e) => setTitulo(e.target.value)}
+                    placeholder="Título da publicação"
+                    className="w-full px-0 py-1 text-2xl sm:text-3xl font-extrabold bg-transparent border-0 text-[var(--c-texto)] focus:outline-none placeholder:text-[var(--c-texto-3)] placeholder:font-bold"
+                  />
+                }
                 aoSubirImagem={subirImagem}
                 /**
                  * Só quem está na ativa pode ser citado: citar quem saiu

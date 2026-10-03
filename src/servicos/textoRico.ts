@@ -631,8 +631,9 @@ export const semFormatacao = (texto: string): string =>
      * casaria primeiro e o resumo sairia com uma exclamação solta —
      * "veja !a foto aqui".
      */
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, (todo, descricao: string) =>
-      descricao ? `[${descricao}]` : '[imagem]'
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (todo, descricao: string, dentro: string) =>
+      // A capa já aparece no cartão como miniatura: no resumo seria "[capa]"
+      lerImagem(dentro).capa ? '' : descricao ? `[${descricao}]` : '[imagem]'
     )
     .replace(/==([^=]+)==/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
@@ -685,7 +686,10 @@ export const semFormatacao = (texto: string): string =>
     .replace(/^---+$/gm, '')
     .replace(/\n{2,}/g, ' · ')
     .replace(/\n/g, ' ')
-    .trim();
+    .trim()
+    // O que some (a capa) não pode deixar o separador órfão nas pontas
+    .replace(/^(?:·\s*)+/, '')
+    .replace(/(?:\s*·)+$/, '');
 
 /**
  * O RESUMO QUE CABE NUM CARTÃO.
@@ -737,6 +741,90 @@ export const aplicarMarcacao = (
     inicio: inicio + antes.length,
     fim: inicio + antes.length + selecionado.length,
   };
+};
+
+/** As linhas inteiras que a seleção toca: onde começam e onde terminam. */
+const linhasDaSelecao = (texto: string, inicio: number, fim: number) => {
+  const comeco = texto.lastIndexOf('\n', inicio - 1) + 1;
+  const quebraFinal = texto.indexOf('\n', fim);
+  const final = quebraFinal === -1 ? texto.length : quebraFinal;
+  return { comeco, final, linhas: texto.slice(comeco, final).split('\n') };
+};
+
+const trocarLinhas = (
+  texto: string,
+  inicio: number,
+  fim: number,
+  mudar: (linhas: string[]) => string[]
+): { texto: string; inicio: number; fim: number } => {
+  const { comeco, final, linhas } = linhasDaSelecao(texto, inicio, fim);
+  const bloco = mudar(linhas).join('\n');
+  return { texto: texto.slice(0, comeco) + bloco + texto.slice(final), inicio: comeco, fim: comeco + bloco.length };
+};
+
+/** Separa o envelope de centro (`-> ... <-`) do miolo da linha. */
+const abrirCentro = (linha: string) => {
+  const m = linha.match(/^->\s*(.*?)\s*<-$/);
+  return m ? { centro: true, miolo: m[1] } : { centro: false, miolo: linha };
+};
+const fecharCentro = (centro: boolean, miolo: string) => (centro ? `-> ${miolo} <-` : miolo);
+
+export type EstiloDaLinha = 'h1' | 'h2' | 'h3' | 'texto' | 'pequeno';
+const PREFIXO_DO_ESTILO: Record<EstiloDaLinha, string> = {
+  h1: '# ',
+  h2: '## ',
+  h3: '### ',
+  texto: '',
+  pequeno: '-# ',
+};
+
+/**
+ * O ESTILO DA LINHA (Título 1, 2, 3, texto, texto pequeno), na barra.
+ *
+ * TROCA o estilo, e não soma: "Título 2" numa linha que era título 1
+ * vira título 2 — e não `## # Inventário`. Respeita o centralizado.
+ */
+export const definirEstiloDaLinha = (
+  texto: string,
+  inicio: number,
+  fim: number,
+  estilo: EstiloDaLinha
+) =>
+  trocarLinhas(texto, inicio, fim, (linhas) =>
+    linhas.map((linha) => {
+      const { centro, miolo } = abrirCentro(linha);
+      const semEstilo = miolo.replace(/^(#{1,3}|-#)\s+/, '');
+      return fecharCentro(centro, PREFIXO_DO_ESTILO[estilo] + semEstilo);
+    })
+  );
+
+/** Centraliza as linhas da seleção — ou descentraliza, se todas já estavam. */
+export const alternarCentro = (texto: string, inicio: number, fim: number) =>
+  trocarLinhas(texto, inicio, fim, (linhas) => {
+    const todas = linhas.filter((l) => l.trim()).every((l) => abrirCentro(l).centro);
+    return linhas.map((l) => {
+      if (!l.trim()) return l;
+      const { miolo } = abrirCentro(l);
+      return todas ? miolo : fecharCentro(true, miolo);
+    });
+  });
+
+/**
+ * A CAIXA DE DESTAQUE em volta das linhas da seleção. Sem seleção,
+ * insere uma caixa com um exemplo para substituir.
+ */
+export const aplicarDestaque = (texto: string, inicio: number, fim: number, tipo: TipoDeDestaque) => {
+  const linhaVazia = !linhasDaSelecao(texto, inicio, fim).linhas.join('').trim();
+  if (inicio === fim && linhaVazia) {
+    const bloco = `> [!${tipo}]\n> Escreva aqui o que precisa de destaque.`;
+    const novo = texto.slice(0, inicio) + bloco + texto.slice(inicio);
+    const comecoDoExemplo = inicio + bloco.indexOf('Escreva');
+    return { texto: novo, inicio: comecoDoExemplo, fim: inicio + bloco.length };
+  }
+  return trocarLinhas(texto, inicio, fim, (linhas) => [
+    `> [!${tipo}]`,
+    ...linhas.map((l) => `> ${l.replace(/^>\s?/, '')}`),
+  ]);
 };
 
 /**

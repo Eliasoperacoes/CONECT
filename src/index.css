@@ -779,9 +779,13 @@ html, body {
   color: var(--c-sobre-acento);
   font-weight: 700;
 }
-.tr-vivo .tr-figura-viva { display: inline-block; vertical-align: top; }
-.tr-vivo .tr-figura-viva.tr-al-centro { display: block; text-align: center; }
-.tr-vivo .tr-figura-viva.tr-al-direita { display: block; text-align: right; }
+/* A figura encolhe ao tamanho da imagem (`table`) e se alinha pelas
+   margens; a legenda fica centrada embaixo da PRÓPRIA imagem. Com
+   `text-align`, a imagem — que é bloco — não andava. */
+.tr-vivo .tr-figura-viva { display: table; margin: 0.3rem 0; }
+.tr-vivo .tr-figura-viva .tr-imagem { margin: 0; }
+.tr-vivo .tr-figura-viva.tr-al-centro { margin-left: auto; margin-right: auto; }
+.tr-vivo .tr-figura-viva.tr-al-direita { margin-left: auto; }
 .tr-vivo .tr-figura-viva.tr-tam-pequena .tr-imagem { max-height: 6rem; }
 .tr-vivo .tr-figura-viva.tr-tam-media .tr-imagem { max-height: 9rem; }
 .tr-vivo .tr-figura-viva[data-legenda]::after {

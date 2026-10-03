@@ -77,6 +77,7 @@ import { enviarAnexo } from '../servicos/anexos';
 import { resumoCurto } from '../servicos/textoRico';
 import { NovaPublicacao } from './NovaPublicacao';
 import { PainelPublicacao } from './PainelPublicacao';
+import { CapaDaPublicacao } from './CapaDaPublicacao';
 import { FotoPresenca } from './FotoPresenca';
 import { FolhaInferior } from './FolhaInferior';
 
@@ -829,6 +830,8 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
                       </span>
                       <ChevronRight className="w-4 h-4 text-[var(--c-texto-3)]" />
                     </div>
+                    {/* A capa, se a publicação tiver (03/10/2026) */}
+                    <CapaDaPublicacao conteudo={p.conteudo} />
                   </button>
                 );
               })}

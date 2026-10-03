@@ -294,7 +294,8 @@ test('O CONTEÚDO É TEXTO, e a tela é que formata', async () => {
     await Bun.file('src/componentes/NovaPublicacao.tsx').text()
   );
   expect(escrita).toContain('<EditorTexto');
-  expect(escrita).toContain('alturaCheia');
+  // O título mora na folha do editor (03/10/2026)
+  expect(escrita).toContain('cabecalho={');
 
   /**
    * O CHAT RECEBE O AVISO, NÃO A PUBLICAÇÃO.
@@ -383,7 +384,7 @@ test('A ESCRITA É TELA INTEIRA, e não um modal', async () => {
   expect(escrita).toContain('fixed inset-0');
   expect(escrita).toContain('lg:flex-row');
   // O editor cresce com a tela, em vez de ter altura em linhas
-  expect(escrita).toContain('alturaCheia');
+  expect(escrita).toContain('flex-1 min-h-[70vh] lg:min-h-0 flex flex-col');
 
   // E a lista não tem mais o formulário dentro dela
   const lista = await lerTela();
@@ -769,7 +770,8 @@ test('A BARRA E O `@` SERVEM AOS DOIS CAMPOS', async () => {
   expect((editor.match(/\{candidatos\.length > 0 && \(/g) || []).length).toBe(1);
 
   /* E a barra é desenhada uma vez também, fora da escolha de campo */
-  expect((editor.match(/FERRAMENTAS\.map/g) || []).length).toBe(1);
+  expect((editor.match(/id="barra-do-editor"/g) || []).length).toBe(1);
+  expect(editor.indexOf('id="barra-do-editor"')).toBeLessThan(editor.indexOf("{modo === 'vivo' ? ("));
 });
 
 test('ENTER E COLAR SÃO TRATADOS POR NÓS, o resto é do navegador', async () => {
@@ -872,4 +874,22 @@ test('a data da publicação é calculada, e não o "Hoje" gravado para sempre',
   expect(quandoFoiPublicada({ criadoEm: new Date(2026, 8, 3, 8, 0).toISOString() }, agora)).toBe('03/09');
   const tela = await Bun.file('src/componentes/CentralAvisos.tsx').text();
   expect(tela).toContain('{quandoFoiPublicada(p)}');
+});
+
+test('O CURSOR VOLTA PELO TEXTO DO CAMPO, e nao pelo valor da renderizacao antiga', async () => {
+  /*
+    Medido no editor (03/10/2026): depois de cada pausa de digitação o
+    cursor recuava uma casa no fim da linha — "urgente" + "!" virava
+    "urgent!e", e o negrito e a cor caíam um caractere deslocados. O
+    relógio da pausa é armado na renderização de ANTES da última letra, e
+    a posição era medida contra o `valor` dela, ainda sem a letra.
+  */
+  const campo = await Bun.file('src/componentes/SuperficieAoVivo.tsx').text();
+  const aplicar = campo.slice(campo.indexOf('const aplicarSelecao = useCallback('), campo.indexOf('const aplicarSelecao = useCallback(') + 1400);
+  expect(aplicar).toContain('const texto = lerTexto();');
+  expect(semComentarios(aplicar)).not.toContain('const texto = valor;');
+  // E a volta é na hora: um quadro de espera deixava uma tecla entrar no meio
+  expect(semComentarios(campo)).not.toContain('requestAnimationFrame(() => aplicarSelecao');
+  // Fora de qualquer linha é o fim do texto, não o começo
+  expect(campo).toContain('if (!bloco) return texto.length;');
 });
