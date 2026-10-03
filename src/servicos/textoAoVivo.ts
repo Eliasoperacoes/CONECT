@@ -47,7 +47,7 @@
  * vêm de `textoRico`. Essa é a regra que não pode divergir — isto
  * também vira `innerHTML` numa tela que 89 pessoas usam.
  */
-import { escapar, enderecoSeguro } from './textoRico';
+import { escapar, enderecoSeguro, lerImagem, CORES_DO_TEXTO } from './textoRico';
 
 /** A classe dos sinais: é ela que o CSS esconde e reacende. */
 export const CLASSE_SINAL = 'tr-sinal';
@@ -73,11 +73,14 @@ const REGRAS = new RegExp(
     '(`[^`]+`)', // 1 código
     '(!\\[[^\\]]*\\]\\([^)]+\\))', // 2 imagem
     '(@\\[[^\\]]+\\]\\(pessoa:[^)]+\\))', // 3 citação
-    '(\\[[^\\]]+\\]\\([^)]+\\))', // 4 link
-    '(==[^=]+==)', // 5 marca-texto
-    '(\\*\\*[^*]+\\*\\*)', // 6 negrito
-    '(~~[^~]+~~)', // 7 riscado
-    '(\\*[^*]+\\*)', // 8 itálico
+    '(\\[\\[[^\\]]+\\]\\]\\([^)]+\\))', // 4 botão — antes do link, que o comeria
+    '(\\[[^\\]]+\\]\\([^)]+\\))', // 5 link
+    '(==[^=]+==)', // 6 marca-texto
+    '(\\*\\*[^*]+\\*\\*)', // 7 negrito
+    '(~~[^~]+~~)', // 8 riscado
+    '(\\*[^*]+\\*)', // 9 itálico
+    '(\\+\\+[^+]+\\+\\+)', // 10 sublinhado
+    `(\\{(?:${CORES_DO_TEXTO.join('|')})\\}[^{}]+\\{\\/\\})`, // 11 cor
   ].join('|'),
   'g'
 );
@@ -107,11 +110,14 @@ const dentroDaLinhaAoVivo = (
       codigo,
       imagem,
       citacao,
+      botao,
       link,
       marcaTexto,
       negrito,
       riscado,
       italico,
+      sublinhado,
+      cor,
     ] = achado;
 
     if (codigo) {
@@ -128,7 +134,9 @@ const dentroDaLinhaAoVivo = (
        */
       const partes = imagem.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
       const descricao = escapar(partes?.[1] || '');
-      const caminho = (partes?.[2] || '').trim();
+      // As opções entre aspas (tamanho, legenda, capa) não são o caminho
+      const opcoes = lerImagem(partes?.[2] || '');
+      const caminho = opcoes.caminho;
       const endereco = /^https?:\/\//i.test(caminho)
         ? enderecoSeguro(caminho)
         : imagens[caminho];
@@ -141,8 +149,20 @@ const dentroDaLinhaAoVivo = (
        * `textContent` é o que vai ser GRAVADO. Um aviso de tela não
        * pode entrar no documento.
        */
+      /*
+        Tamanho, alinhamento e capa como na leitura. A LEGENDA vem do CSS
+        (`data-legenda` + `::after`): escrita aqui, ela entraria no
+        `textContent` — que é o que é gravado — duas vezes.
+      */
+      const classes = opcoes.capa
+        ? ' tr-capa-viva'
+        : opcoes.tamanho || opcoes.alinhamento
+          ? ` tr-tam-${opcoes.tamanho || 'inteira'} tr-al-${opcoes.alinhamento || 'centro'}`
+          : '';
       saida += endereco
-        ? `<img src="${endereco}" alt="${descricao}" class="tr-imagem" loading="lazy" />`
+        ? `<span class="tr-figura-viva${classes}"${
+            opcoes.legenda ? ` data-legenda="${escapar(opcoes.legenda)}"` : ''
+          }><img src="${endereco}" alt="${descricao}" class="tr-imagem" loading="lazy" /></span>`
         : '<span class="tr-imagem-faltando"></span>';
     } else if (citacao) {
       /**
@@ -160,6 +180,11 @@ const dentroDaLinhaAoVivo = (
 
       saida += `<span class="tr-citado">@${sinal('[')}${escapar(nome)}</span>${sinal(
         escapar(`](${partes?.[2] || ''})`)
+      )}`;
+    } else if (botao) {
+      const partes = botao.match(/^\[\[([^\]]+)\]\]\(([^)]+)\)$/);
+      saida += `${sinal('[[')}<span class="tr-botao-vivo">${escapar(partes?.[1] || '')}</span>${sinal(
+        escapar(`]](${partes?.[2] || ''})`)
       )}`;
     } else if (link) {
       const partes = link.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
@@ -184,6 +209,13 @@ const dentroDaLinhaAoVivo = (
       saida += `${sinal('~~')}<s>${escapar(riscado.slice(2, -2))}</s>${sinal('~~')}`;
     } else if (italico) {
       saida += `${sinal('*')}<em>${escapar(italico.slice(1, -1))}</em>${sinal('*')}`;
+    } else if (sublinhado) {
+      saida += `${sinal('++')}<u>${escapar(sublinhado.slice(2, -2))}</u>${sinal('++')}`;
+    } else if (cor) {
+      const partes = cor.match(/^\{([a-z]+)\}([^{}]+)\{\/\}$/);
+      saida += `${sinal(escapar(`{${partes?.[1]}}`))}<span class="tr-cor-${partes?.[1]}">${escapar(
+        partes?.[2] || ''
+      )}</span>${sinal('{/}')}`;
     }
   }
 
@@ -205,12 +237,49 @@ export const linhaAoVivo = (
   linha: string,
   indice: number,
   ativa: boolean,
-  imagens: Record<string, string> = {}
+  imagens: Record<string, string> = {},
+  /** A caixa de destaque em que esta linha está, se estiver (textoAoVivo sabe). */
+  destaque?: string
 ): string => {
   const abre = (classe: string) =>
     `<div class="tr-l ${classe}${ativa ? ' tr-l-ativa' : ''}" data-linha="${indice}">`;
 
   if (linha === '') return `${abre('tr-l-vazia')}<br></div>`;
+
+  /*
+    A CAIXA DE DESTAQUE: a linha que abre (`> [!ATENCAO]`) mostra o nome
+    da caixa pelo CSS — escrito aqui, entraria no texto gravado —, e as
+    linhas `>` seguintes ganham o fundo dela.
+  */
+  if (destaque) {
+    const quote = linha.match(/^(>)(\s?)(.*)$/);
+    if (quote) {
+      const abreCaixa = quote[3].match(/^(\[![A-Za-z]+\])(.*)$/);
+      return `${abre(`tr-l-destaque tr-l-destaque-${destaque}${abreCaixa ? ' tr-l-destaque-abre' : ''}`)}${sinal(
+        escapar(quote[1] + quote[2] + (abreCaixa ? abreCaixa[1] : ''))
+      )}${dentroDaLinhaAoVivo(abreCaixa ? abreCaixa[2] : quote[3], imagens)}</div>`;
+    }
+  }
+
+  // Centralizado: `-> texto <-`, e vale para título também
+  const centro = linha.match(/^(->\s*)(.*?)(\s*<-)$/);
+  if (centro) {
+    const tituloDentro = centro[2].match(/^(#{1,3})(\s+)(.*)$/);
+    return `${abre(`tr-l-centro${tituloDentro ? ` tr-l-h${tituloDentro[1].length}` : ' tr-l-p'}`)}${sinal(
+      escapar(centro[1] + (tituloDentro ? tituloDentro[1] + tituloDentro[2] : ''))
+    )}${dentroDaLinhaAoVivo(tituloDentro ? tituloDentro[3] : centro[2], imagens)}${sinal(
+      escapar(centro[3])
+    )}</div>`;
+  }
+
+  // Texto pequeno: `-# observação`
+  const pequeno = linha.match(/^(-#)(\s+)(.*)$/);
+  if (pequeno) {
+    return `${abre('tr-l-pequeno')}${sinal(escapar(pequeno[1] + pequeno[2]))}${dentroDaLinhaAoVivo(
+      pequeno[3],
+      imagens
+    )}</div>`;
+  }
 
   const titulo = linha.match(/^(#{1,3})(\s+)(.*)$/);
   if (titulo) {
@@ -293,11 +362,20 @@ export const textoAoVivo = (
   texto: string,
   linhaAtiva: number,
   imagens: Record<string, string> = {}
-): string =>
-  (texto || '')
+): string => {
+  // A caixa de destaque atravessa linhas: abre em `> [!TIPO]` e segue
+  // enquanto as linhas começarem com `>`
+  let destaque: string | undefined;
+  return (texto || '')
     .split('\n')
-    .map((l, i) => linhaAoVivo(l, i, i === linhaAtiva, imagens))
+    .map((l, i) => {
+      const abreCaixa = l.match(/^>\s?\[!(IMPORTANTE|ATENCAO|DICA)\]/i);
+      if (abreCaixa) destaque = abreCaixa[1].toLowerCase();
+      else if (!l.startsWith('>')) destaque = undefined;
+      return linhaAoVivo(l, i, i === linhaAtiva, imagens, destaque);
+    })
     .join('');
+};
 
 /**
  * A LINHA E A COLUNA de uma posição do texto.

@@ -491,6 +491,77 @@ html, body {
   margin: 0.6rem 0;
 }
 
+/* ------------------------------------------------------------
+   O EDITOR DE 03/10/2026 — diagramação, texto e imagem.
+   As cores vêm dos tokens do tema: mudam sozinhas no escuro.
+   ------------------------------------------------------------ */
+.texto-rico .tr-centro { text-align: center; }
+.texto-rico .tr-pequeno { font-size: 0.8em; color: var(--c-texto-3); }
+.texto-rico .tr-sublinhado { text-underline-offset: 3px; }
+
+.tr-cor-azul { color: var(--c-info); }
+.tr-cor-vermelho { color: var(--c-erro); }
+.tr-cor-verde { color: var(--c-ok); }
+.tr-cor-laranja { color: var(--c-atencao); }
+.tr-cor-cinza { color: var(--c-texto-3); }
+
+/* A CAIXA DE DESTAQUE: faixa colorida à esquerda, fundo suave, título forte */
+.texto-rico .tr-destaque {
+  --tr-cor-caixa: var(--c-info);
+  margin: 0.8rem 0;
+  padding: 0.7rem 0.9rem;
+  border-left: 4px solid var(--tr-cor-caixa);
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--tr-cor-caixa) 10%, transparent);
+}
+.texto-rico .tr-destaque-atencao { --tr-cor-caixa: var(--c-atencao); }
+.texto-rico .tr-destaque-dica { --tr-cor-caixa: var(--c-ok); }
+.texto-rico .tr-destaque-titulo {
+  font-weight: 700;
+  color: var(--tr-cor-caixa);
+  margin-bottom: 0.25rem;
+}
+.texto-rico .tr-destaque-corpo > :last-child { margin-bottom: 0; }
+
+/* O BOTÃO DE AÇÃO: alvo de toque grande, na cor do sistema */
+.texto-rico .tr-botao {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0.55rem 1.2rem;
+  margin: 0.4rem 0;
+  border-radius: 0.8rem;
+  background: var(--c-acento);
+  color: var(--c-sobre-acento);
+  font-weight: 700;
+  text-decoration: none;
+}
+.texto-rico .tr-botao:hover { filter: brightness(1.08); }
+
+/* A FIGURA: imagem com tamanho, alinhamento e legenda */
+.texto-rico .tr-figura { display: block; margin: 0.8rem 0; }
+.texto-rico .tr-figura .tr-imagem { margin: 0; width: 100%; }
+.texto-rico .tr-tam-pequena { max-width: min(16rem, 100%); }
+.texto-rico .tr-tam-media { max-width: min(28rem, 100%); }
+.texto-rico .tr-tam-inteira { max-width: 100%; }
+.texto-rico .tr-al-centro { margin-left: auto; margin-right: auto; }
+.texto-rico .tr-al-direita { margin-left: auto; }
+.texto-rico .tr-legenda {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.78em;
+  color: var(--c-texto-3);
+  text-align: center;
+}
+/* A CAPA: faixa larga no alto, recortada na proporção de banner */
+.texto-rico .tr-capa { margin: 0 0 1rem; }
+.texto-rico .tr-capa .tr-imagem {
+  aspect-ratio: 16 / 6;
+  object-fit: cover;
+  border-radius: 0.8rem;
+}
+
 /* ============================================================
    O CAMPO QUE MOSTRA O TEXTO JÁ FORMATADO
    ============================================================
@@ -673,6 +744,59 @@ html, body {
   max-height: 11rem;
   width: auto;
   margin: 0.3rem 0;
+}
+
+/* Os recursos de 03/10/2026 enquanto se escreve — o mesmo desenho da
+   leitura, sem tirar os sinais do texto. */
+.tr-vivo .tr-l-centro { text-align: center; }
+.tr-vivo .tr-l-pequeno { font-size: 0.8em; color: var(--c-texto-3); }
+.tr-vivo .tr-l-destaque {
+  --tr-cor-caixa: var(--c-info);
+  border-left: 4px solid var(--tr-cor-caixa);
+  background: color-mix(in srgb, var(--tr-cor-caixa) 10%, transparent);
+  padding: 0.1rem 0.8rem;
+}
+.tr-vivo .tr-l-destaque-atencao { --tr-cor-caixa: var(--c-atencao); }
+.tr-vivo .tr-l-destaque-dica { --tr-cor-caixa: var(--c-ok); }
+.tr-vivo .tr-l-destaque-abre {
+  padding-top: 0.5rem;
+  font-weight: 700;
+  color: var(--tr-cor-caixa);
+}
+/* O nome da caixa vem do CSS: no desenho, seria gravado no texto */
+.tr-vivo .tr-l-destaque-abre::before {
+  font-weight: 700;
+  margin-right: 0.4rem;
+}
+.tr-vivo .tr-l-destaque-importante.tr-l-destaque-abre::before { content: 'Importante'; }
+.tr-vivo .tr-l-destaque-atencao.tr-l-destaque-abre::before { content: 'Atenção'; }
+.tr-vivo .tr-l-destaque-dica.tr-l-destaque-abre::before { content: 'Dica'; }
+.tr-vivo .tr-botao-vivo {
+  display: inline-block;
+  padding: 0.3rem 0.9rem;
+  border-radius: 0.7rem;
+  background: var(--c-acento);
+  color: var(--c-sobre-acento);
+  font-weight: 700;
+}
+.tr-vivo .tr-figura-viva { display: inline-block; vertical-align: top; }
+.tr-vivo .tr-figura-viva.tr-al-centro { display: block; text-align: center; }
+.tr-vivo .tr-figura-viva.tr-al-direita { display: block; text-align: right; }
+.tr-vivo .tr-figura-viva.tr-tam-pequena .tr-imagem { max-height: 6rem; }
+.tr-vivo .tr-figura-viva.tr-tam-media .tr-imagem { max-height: 9rem; }
+.tr-vivo .tr-figura-viva[data-legenda]::after {
+  content: attr(data-legenda);
+  display: block;
+  font-size: 0.75rem;
+  color: var(--c-texto-3);
+  text-align: center;
+}
+.tr-vivo .tr-capa-viva { display: block; }
+.tr-vivo .tr-capa-viva .tr-imagem {
+  width: 100%;
+  max-height: 10rem;
+  object-fit: cover;
+  border-radius: 0.8rem;
 }
 
 /* O link não é clicável enquanto se edita: clicar levaria a pessoa

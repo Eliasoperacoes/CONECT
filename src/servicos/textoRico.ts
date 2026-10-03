@@ -63,6 +63,99 @@ export const enderecoSeguro = (bruto: string): string | null => {
 };
 
 /**
+ * ===================================================================
+ * O QUE O EDITOR GANHOU EM 03/10/2026 — e como fica no texto
+ * ===================================================================
+ *
+ * Pedido do Elias: diagramação, personalização do texto e imagens
+ * "muito básicas". Tudo continua sendo TEXTO, pelas três razões do
+ * alto deste arquivo; quem escreve não vê nada disto, a barra escreve.
+ *
+ *   ++sublinhado++            {vermelho}texto colorido{/}
+ *   -> centralizado <-        -# texto pequeno         ### título 3
+ *   > [!IMPORTANTE]           > [!ATENCAO]             > [!DICA]
+ *   > texto da caixa          (as linhas `>` seguintes entram na caixa)
+ *   [[Abrir formulário]](https://...)   — o botão de ação
+ *   ![descrição](caminho "media centro | Legenda da foto")
+ *   ![descrição](caminho "capa")        — a imagem de capa
+ *
+ * A IMAGEM GUARDA AS OPÇÕES NO "TÍTULO" DO MARKDOWN (o texto entre
+ * aspas depois do caminho), que o formato já previa. Imagem antiga, sem
+ * título, continua exatamente como era — e a descrição NÃO vira legenda:
+ * nas antigas ela é o nome do arquivo ("IMG_20260925_103344").
+ */
+
+/** As cores do texto: paleta fechada, da marca e dos alertas. */
+export const CORES_DO_TEXTO = ['azul', 'vermelho', 'verde', 'laranja', 'cinza'] as const;
+export type CorDoTexto = (typeof CORES_DO_TEXTO)[number];
+
+/** As caixas de destaque: a palavra no texto e o que aparece na caixa. */
+export const DESTAQUES = {
+  IMPORTANTE: 'Importante',
+  ATENCAO: 'Atenção',
+  DICA: 'Dica',
+} as const;
+export type TipoDeDestaque = keyof typeof DESTAQUES;
+
+export const TAMANHOS_DE_IMAGEM = ['pequena', 'media', 'inteira'] as const;
+export const ALINHAMENTOS_DE_IMAGEM = ['esquerda', 'centro', 'direita'] as const;
+export type TamanhoDeImagem = (typeof TAMANHOS_DE_IMAGEM)[number];
+export type AlinhamentoDeImagem = (typeof ALINHAMENTOS_DE_IMAGEM)[number];
+
+export interface OpcoesDaImagem {
+  caminho: string;
+  tamanho?: TamanhoDeImagem;
+  alinhamento?: AlinhamentoDeImagem;
+  legenda: string;
+  capa: boolean;
+}
+
+/**
+ * O que está entre os parênteses de `![x](...)`: o caminho, e as opções
+ * entre aspas. Aceita `&quot;` porque `paraHtml` lê o texto já escapado.
+ * UM lugar só lê isto — quem desenha, quem assina e quem resume.
+ */
+export const lerImagem = (dentro: string): OpcoesDaImagem => {
+  const limpo = (dentro || '').replace(/&quot;/g, '"').trim();
+  const partes = limpo.match(/^(\S+)(?:\s+"([^"]*)")?$/);
+  const caminho = partes ? partes[1] : limpo;
+  const [opcoes = '', ...resto] = (partes?.[2] || '').split('|');
+  const palavras = opcoes.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+  return {
+    caminho,
+    tamanho: TAMANHOS_DE_IMAGEM.find((t) => palavras.includes(t)),
+    alinhamento: ALINHAMENTOS_DE_IMAGEM.find((a) => palavras.includes(a)),
+    legenda: resto.join('|').trim(),
+    capa: palavras.includes('capa'),
+  };
+};
+
+/** O caminho de volta: as opções escritas como texto, para o editor gravar. */
+export const montarImagem = (
+  descricao: string,
+  opcoes: Omit<OpcoesDaImagem, 'legenda' | 'capa'> & { legenda?: string; capa?: boolean }
+): string => {
+  const palavras = [opcoes.capa ? 'capa' : '', opcoes.tamanho || '', opcoes.alinhamento || '']
+    .filter(Boolean)
+    .join(' ');
+  // Aspas e barra-vertical saem da legenda: são os separadores do título
+  const legenda = (opcoes.legenda || '').replace(/["|\n]/g, ' ').trim();
+  const titulo = legenda ? `${palavras} | ${legenda}` : palavras;
+  const desc = (descricao || 'imagem').replace(/[[\]\n]/g, ' ');
+  return `![${desc}](${opcoes.caminho}${titulo ? ` "${titulo}"` : ''})`;
+};
+
+/** A imagem de capa do texto, se houver — o cartão da Central a mostra. */
+export const capaDe = (texto: string): string | null => {
+  for (const m of (texto || '').matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) {
+    const imagem = lerImagem(m[1]);
+    if (imagem.capa) return imagem.caminho;
+  }
+  return null;
+};
+
+/**
  * A marcação que vale dentro de uma linha: negrito, itálico, código, link.
  *
  * O CÓDIGO SAI DE CENA ANTES, e volta no fim.
@@ -106,13 +199,41 @@ const dentroDaLinha = (
      * como texto. Uma imagem quebrada no meio de um procedimento é pior
      * do que a legenda dela — a legenda ao menos diz o que falta.
      */
-    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (todo, descricao: string, caminho: string) => {
-      const limpo = caminho.trim();
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (todo, descricao: string, dentro: string) => {
+      const imagem = lerImagem(dentro);
+      const limpo = imagem.caminho;
       const endereco = /^https?:\/\//i.test(limpo) ? enderecoSeguro(limpo) : imagens[limpo];
 
       if (!endereco) return descricao || '(imagem)';
 
-      return `<img src="${endereco}" alt="${descricao}" class="tr-imagem" loading="lazy" />`;
+      /*
+        Com opções, a imagem vira FIGURA: tamanho, alinhamento e legenda.
+        Sem opções, é a imagem de sempre — publicação antiga não muda.
+      */
+      const temOpcoes = imagem.tamanho || imagem.alinhamento || imagem.legenda || imagem.capa;
+      const img = `<img src="${endereco}" alt="${descricao}" class="tr-imagem" loading="lazy" />`;
+      if (!temOpcoes) return img;
+
+      const classes = [
+        'tr-figura',
+        imagem.capa ? 'tr-capa' : `tr-tam-${imagem.tamanho || 'inteira'}`,
+        imagem.capa ? '' : `tr-al-${imagem.alinhamento || 'centro'}`,
+      ]
+        .filter(Boolean)
+        .join(' ');
+      return `<span class="${classes}">${img}${
+        imagem.legenda ? `<span class="tr-legenda">${imagem.legenda}</span>` : ''
+      }</span>`;
+    })
+    /**
+     * O BOTÃO DE AÇÃO, `[[Rótulo]](https://...)`, antes do link — ele é
+     * um link com colchete dobrado, e a regra do link o comeria primeiro.
+     * Endereço que não é http(s) não vira botão: vira o rótulo, como o link.
+     */
+    .replace(/\[\[([^\]]+)\]\]\(([^)]+)\)/g, (todo, rotulo: string, destino: string) => {
+      const endereco = enderecoSeguro(destino);
+      if (!endereco) return rotulo;
+      return `<a href="${endereco}" target="_blank" rel="noopener noreferrer" class="tr-botao">${rotulo}</a>`;
     })
     /**
      * A CITAÇÃO DE PESSOA, também antes do link.
@@ -131,6 +252,12 @@ const dentroDaLinha = (
     // Marca-texto antes do negrito: `==x==` não colide, mas a ordem
     // deixa claro que ele é marcação de linha como as outras
     .replace(/==([^=]+)==/g, '<mark class="tr-marca">$1</mark>')
+    .replace(/\+\+([^+]+)\+\+/g, '<u class="tr-sublinhado">$1</u>')
+    // Só as cores da paleta: `{qualquercoisa}` continua sendo texto
+    .replace(
+      new RegExp(`\\{(${CORES_DO_TEXTO.join('|')})\\}([^{}]+)\\{\\/\\}`, 'g'),
+      '<span class="tr-cor-$1">$2</span>'
+    )
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
     .replace(/~~([^~]+)~~/g, '<s>$1</s>')
@@ -178,7 +305,8 @@ const dentroDaLinha = (
 export const imagensCitadas = (texto: string): string[] => [
   ...new Set(
     [...(texto || '').matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)]
-      .map((m) => m[1].trim())
+      // Só o caminho: as opções entre aspas não fazem parte dele
+      .map((m) => lerImagem(m[1]).caminho)
       .filter((c) => c && !/^https?:\/\//i.test(c))
   ),
 ];
@@ -292,8 +420,21 @@ export const paraHtml = (texto: string, imagens: Record<string, string> = {}): s
     tabelaAberta = null;
   };
 
+  /**
+   * A CAIXA DE DESTAQUE aberta: `> [!IMPORTANTE]` abre, e as linhas `>`
+   * seguintes entram nela. Qualquer outra linha fecha.
+   */
+  let destaqueAberto = false;
+  const fecharDestaque = () => {
+    if (!destaqueAberto) return;
+    partes.push('</div></div>');
+    destaqueAberto = false;
+  };
+
   for (const linha of linhas) {
     const limpa = linha.trim();
+
+    if (destaqueAberto && !/^&gt;/.test(limpa)) fecharDestaque();
 
     if (limpa === '') {
       fecharParagrafo();
@@ -351,14 +492,37 @@ export const paraHtml = (texto: string, imagens: Record<string, string> = {}): s
       continue;
     }
 
-    const titulo = limpa.match(/^(#{1,3})\s+(.*)$/);
+    /**
+     * CENTRALIZADO: `-> texto <-` (com `<` e `>` já escapados). Vale para
+     * parágrafo e para título — "-> ## Inventário <-" é o caso comum.
+     */
+    const centro = limpa.match(/^-&gt;\s*(.*?)\s*&lt;-$/);
+    const conteudoDaLinha = centro ? centro[1] : limpa;
+    const classeCentro = centro ? ' tr-centro' : '';
+
+    const titulo = conteudoDaLinha.match(/^(#{1,3})\s+(.*)$/);
     if (titulo) {
       fecharParagrafo();
       fecharLista();
       fecharTabela();
       const nivel = titulo[1].length;
       partes.push(
-        `<h${nivel + 2} class="tr-h${nivel}">${dentroDaLinha(titulo[2], imagens)}</h${nivel + 2}>`
+        `<h${nivel + 2} class="tr-h${nivel}${classeCentro}">${dentroDaLinha(titulo[2], imagens)}</h${nivel + 2}>`
+      );
+      continue;
+    }
+
+    // Texto pequeno, para observação e rodapé: `-# texto`
+    const pequeno = conteudoDaLinha.match(/^-#\s+(.*)$/);
+    if (pequeno || centro) {
+      fecharParagrafo();
+      fecharLista();
+      fecharTabela();
+      partes.push(
+        `<p class="tr-p${pequeno ? ' tr-pequeno' : ''}${classeCentro}">${dentroDaLinha(
+          pequeno ? pequeno[1] : conteudoDaLinha,
+          imagens
+        )}</p>`
       );
       continue;
     }
@@ -368,6 +532,24 @@ export const paraHtml = (texto: string, imagens: Record<string, string> = {}): s
       fecharParagrafo();
       fecharLista();
       fecharTabela();
+
+      // A primeira linha de uma caixa: `> [!IMPORTANTE] título opcional`
+      const abre = citacao[1].match(/^\[!(IMPORTANTE|ATENCAO|DICA)\]\s*(.*)$/i);
+      if (abre) {
+        fecharDestaque();
+        const tipo = abre[1].toUpperCase() as TipoDeDestaque;
+        const rotulo = abre[2] ? dentroDaLinha(abre[2], imagens) : DESTAQUES[tipo];
+        partes.push(
+          `<div class="tr-destaque tr-destaque-${tipo.toLowerCase()}"><div class="tr-destaque-titulo">${rotulo}</div><div class="tr-destaque-corpo">`
+        );
+        destaqueAberto = true;
+        continue;
+      }
+      if (destaqueAberto) {
+        if (citacao[1].trim()) partes.push(`<p class="tr-p">${dentroDaLinha(citacao[1], imagens)}</p>`);
+        continue;
+      }
+
       partes.push(`<blockquote class="tr-citacao">${dentroDaLinha(citacao[1], imagens)}</blockquote>`);
       continue;
     }
@@ -427,6 +609,7 @@ export const paraHtml = (texto: string, imagens: Record<string, string> = {}): s
   fecharParagrafo();
   fecharLista();
   fecharTabela();
+  fecharDestaque();
 
   return partes.join('');
 };
@@ -455,6 +638,17 @@ export const semFormatacao = (texto: string): string =>
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
     .replace(/~~([^~]+)~~/g, '$1')
+    // Os de 03/10/2026: sublinhado, cor, botão, centro, pequeno e caixa
+    .replace(/\+\+([^+]+)\+\+/g, '$1')
+    .replace(new RegExp(`\\{(?:${CORES_DO_TEXTO.join('|')})\\}([^{}]+)\\{\\/\\}`, 'g'), '$1')
+    .replace(/\[\[([^\]]+)\]\]\([^)]+\)/g, '$1')
+    .replace(/^->\s*(.*?)\s*<-$/gm, '$1')
+    .replace(/^-#\s+/gm, '')
+    // `[ \t]`, e não `\s`: `\s` também come a quebra de linha, e o `>` da
+    // linha seguinte sobrava no resumo
+    .replace(/^(?:>|&gt;)[ \t]?\[!(IMPORTANTE|ATENCAO|DICA)\][ \t]*/gim, (todo, tipo: string) =>
+      `${DESTAQUES[tipo.toUpperCase() as TipoDeDestaque]}: `
+    )
     /**
      * O link vira o rótulo — e A CITAÇÃO VEM JUNTO, de graça:
      * `@[Fabio](pessoa:c-12)` é esta mesma forma com um `@` na frente,

@@ -553,3 +553,74 @@ test('o termo digitado acha o nome sem acento e pelo sobrenome', () => {
   expect(casaComNome('Fábio Souza', 'abio')).toBe(false);
   expect(casaComNome('Fábio Souza', 'lyvia')).toBe(false);
 });
+
+// ============================================================
+// O EDITOR DE 03/10/2026: diagramação, texto e imagem
+// ============================================================
+
+test('caixa de destaque junta as linhas > seguintes, e fecha na primeira que nao e', async () => {
+  const { paraHtml } = await import('./textoRico');
+  const html = paraHtml(['> [!ATENCAO] Sábado', '> Tragam o **coletor**', '> e confiram', 'fora'].join('\n'));
+  expect(html).toBe(
+    '<div class="tr-destaque tr-destaque-atencao"><div class="tr-destaque-titulo">Sábado</div>' +
+      '<div class="tr-destaque-corpo"><p class="tr-p">Tragam o <strong>coletor</strong></p>' +
+      '<p class="tr-p">e confiram</p></div></div><p class="tr-p">fora</p>'
+  );
+  // Sem título, o nome da caixa; e citação comum continua citação
+  expect(paraHtml('> [!DICA]\n> x')).toContain('<div class="tr-destaque-titulo">Dica</div>');
+  expect(paraHtml('> só citação')).toBe('<blockquote class="tr-citacao">só citação</blockquote>');
+});
+
+test('centro, texto pequeno, sublinhado e cor da paleta', async () => {
+  const { paraHtml } = await import('./textoRico');
+  expect(paraHtml('-> ## Inventário <-')).toBe('<h4 class="tr-h2 tr-centro">Inventário</h4>');
+  expect(paraHtml('-> Todas as lojas <-')).toBe('<p class="tr-p tr-centro">Todas as lojas</p>');
+  expect(paraHtml('-# rodapé')).toBe('<p class="tr-p tr-pequeno">rodapé</p>');
+  expect(paraHtml('a ++b++ {vermelho}c{/}')).toBe(
+    '<p class="tr-p">a <u class="tr-sublinhado">b</u> <span class="tr-cor-vermelho">c</span></p>'
+  );
+  // Fora da paleta não vira classe — nem um nome inventado entra no HTML
+  expect(paraHtml('{roxo}c{/}')).toBe('<p class="tr-p">{roxo}c{/}</p>');
+});
+
+test('botao de acao so com http(s), e HTML digitado nao entra em lugar nenhum', async () => {
+  const { paraHtml } = await import('./textoRico');
+  expect(paraHtml('[[Formulário]](https://x.com/f)')).toContain(
+    '<a href="https://x.com/f" target="_blank" rel="noopener noreferrer" class="tr-botao">Formulário</a>'
+  );
+  expect(paraHtml('[[Clique]](javascript:alert)')).not.toContain('<a');
+  // Legenda e conteúdo de cor passam pelo escape como todo o resto
+  const perigoso = paraHtml('![x](a.png "media | <img onerror=1>")\n{azul}<script>{/}', { 'a.png': 'U' });
+  expect(perigoso).not.toContain('<script>');
+  expect(perigoso).not.toContain('<img onerror');
+});
+
+test('imagem: opcoes no titulo, a antiga intacta, e a capa achada', async () => {
+  const { paraHtml, imagensCitadas, capaDe, lerImagem, montarImagem } = await import('./textoRico');
+  const imgs = { 'a/b.png': 'U1', 'a/c.png': 'U2' };
+  // Antiga: igual a antes — a descrição (nome do arquivo) NÃO vira legenda
+  expect(paraHtml('![IMG_2026](a/b.png)', imgs)).toBe(
+    '<p class="tr-p"><img src="U1" alt="IMG_2026" class="tr-imagem" loading="lazy" /></p>'
+  );
+  expect(paraHtml('![f](a/c.png "pequena esquerda | Fachada")', imgs)).toContain(
+    '<span class="tr-figura tr-tam-pequena tr-al-esquerda"><img src="U2" alt="f" class="tr-imagem" loading="lazy" /><span class="tr-legenda">Fachada</span></span>'
+  );
+  // O caminho sem as opções: é ele que se assina
+  expect(imagensCitadas('![f](a/c.png "media | x")')).toEqual(['a/c.png']);
+  expect(capaDe('texto\n![c](a/capa.png "capa")')).toBe('a/capa.png');
+  expect(capaDe('![f](a/c.png "media")')).toBeNull();
+  // Ida e volta: o que o editor monta é o que a leitura entende
+  const montada = montarImagem('foto', { caminho: 'x/y.png', tamanho: 'media', alinhamento: 'direita', legenda: 'A | "B"' });
+  expect(lerImagem(montada.slice(montada.indexOf('(') + 1, -1))).toEqual({
+    caminho: 'x/y.png', tamanho: 'media', alinhamento: 'direita', legenda: 'A    B', capa: false,
+  });
+});
+
+test('o resumo do cartao e a busca nao mostram os sinais novos', async () => {
+  const { semFormatacao } = await import('./textoRico');
+  const texto = ['-> ## Inventário <-', '> [!ATENCAO]', '> Tragam o coletor', '-# rodapé', '++a++ {verde}b{/} [[Ir]](https://x.com)'].join('\n');
+  const limpo = semFormatacao(texto);
+  expect(limpo).not.toMatch(/->|<-|\[!|-#|\+\+|\{verde\}|\{\/\}|\[\[/);
+  expect(limpo).toContain('Atenção:');
+  expect(limpo).toContain('Tragam o coletor');
+});

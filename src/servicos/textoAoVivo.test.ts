@@ -296,3 +296,54 @@ test('texto vazio não quebra', () => {
   expect(textoAoVivo('', 0)).toContain('tr-l-vazia');
   expect(textoAoVivo(undefined as unknown as string, 0)).toContain('tr-l-vazia');
 });
+
+// ============================================================
+// OS RECURSOS DE 03/10/2026 — a mesma igualdade, que não pode cair
+// ============================================================
+
+const DOCUMENTO_NOVO = [
+  '-> # Inventário de sábado <-',
+  '-> Todas as lojas fecham ao meio-dia <-',
+  '',
+  '> [!ATENCAO] Antes de começar',
+  '> Tragam o **coletor** carregado.',
+  '> Confiram as etiquetas.',
+  'Fora da caixa.',
+  '',
+  '> [!DICA]',
+  '> Comecem pelo fundo.',
+  '',
+  'Texto ++sublinhado++, {vermelho}urgente{/} e {azul}calmo{/}.',
+  '-# Observação pequena no rodapé.',
+  '### Título três',
+  '[[Abrir formulário]](https://exemplo.com/form)',
+  '![fachada](central/loja.png "media direita | Fachada da loja")',
+  '![capa](central/capa.png "capa")',
+].join('\n');
+
+test('O TEXTO VOLTA IDÊNTICO também com cor, caixa, centro, botão e imagem com opções', () => {
+  const esperadas = DOCUMENTO_NOVO.split('\n');
+  const imagens = { 'central/loja.png': 'https://assinado/l.png', 'central/capa.png': 'https://assinado/c.png' };
+
+  for (let ativa = -1; ativa < esperadas.length; ativa++) {
+    const voltou = linhasDoDesenho(textoAoVivo(DOCUMENTO_NOVO, ativa, imagens));
+    expect(voltou.length).toBe(esperadas.length);
+    for (let i = 0; i < esperadas.length; i++) expect(voltou[i]).toBe(esperadas[i]);
+  }
+});
+
+test('os recursos novos ganham a classe certa, e a legenda nao entra no texto', () => {
+  const html = textoAoVivo(DOCUMENTO_NOVO, -1, { 'central/loja.png': 'https://assinado/l.png' });
+  expect(html).toContain('tr-l-centro tr-l-h1');
+  expect(html).toContain('tr-l-destaque tr-l-destaque-atencao tr-l-destaque-abre');
+  // As linhas `>` seguintes entram na caixa; a de fora, não
+  expect((html.match(/tr-l-destaque-atencao/g) || []).length).toBe(3);
+  expect(html).toContain('tr-l-destaque-dica');
+  expect(html).toContain('<u>sublinhado</u>');
+  expect(html).toContain('<span class="tr-cor-vermelho">urgente</span>');
+  expect(html).toContain('tr-l-pequeno');
+  expect(html).toContain('<span class="tr-botao-vivo">Abrir formulário</span>');
+  expect(html).toContain('tr-figura-viva tr-tam-media tr-al-direita" data-legenda="Fachada da loja"');
+  // Cor fora da paleta continua sendo texto
+  expect(textoAoVivo('{roxo}x{/}', -1)).not.toContain('tr-cor-');
+});
