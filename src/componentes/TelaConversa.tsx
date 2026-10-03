@@ -167,6 +167,14 @@ const comSeparadoresDeDia = (
   });
 };
 
+/**
+ * O espaço reservado no fim do texto para a hora (e "Editada" e o selo de
+ * visto, quando há). Um pouco maior que a hora de fato, para o texto nunca
+ * encostar nela.
+ */
+const larguraDaHora = (minha: boolean, editada: boolean): number =>
+  42 + (minha ? 22 : 0) + (editada ? 46 : 0);
+
 /** Segundos em M:SS — 3 vira "0:03" e 75 vira "1:15". */
 const formatarSegundos = (total: number): string => {
   const seguros = Math.max(0, Math.round(total));
@@ -1196,6 +1204,18 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
              */
             const balaoDeFoto = ehFoto && !!urlDaFoto;
 
+            /*
+              A HORA DIVIDE A ÚLTIMA LINHA DO TEXTO, como no WhatsApp e no
+              Teams (Elias, 03/10/2026). Ela tinha uma linha só dela, e "ok"
+              virava um balão de duas linhas. No fim do texto vai um espaço
+              do tamanho da hora, e a hora fica presa no canto de baixo: se a
+              última linha tem lugar, o espaço cabe nela e a hora divide a
+              linha; se não tem, o espaço desce sozinho para uma linha nova.
+              Só no texto puro — foto, arquivo, áudio e o recado da Central
+              têm o que fazer embaixo.
+            */
+            const horaNaLinha = msg.tipo === 'texto' && editandoId !== msg.id && !msg.publicacaoId;
+
             return (
               <div
                 key={msg.id}
@@ -1226,9 +1246,18 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
 
                   Com `min-w-0`, o `max-w` do balão volta a valer e a foto
                   se ajusta a ele.
+
+                  E a linha ocupa a LARGURA DA CONVERSA (`w-full`). Sem isso
+                  ela tinha só a largura do conteúdo, e o "70%" do balão era
+                  70% DELA: a conta era circular, e "OPA AI ME AGRADA"
+                  quebrava num balão de 132px com mil livres ao lado (Elias,
+                  03/10/2026). A regra de chat: o balão tem a largura do texto
+                  e só quebra quando passa do limite, que é uma fração da
+                  conversa — a minha mensagem encosta à direita pelo
+                  `flex-row-reverse`, a dos outros à esquerda.
                 */}
                 <div
-                  className={`flex items-center gap-2 max-w-full min-w-0 ${
+                  className={`flex items-center gap-2 w-full min-w-0 ${
                     ehMinha ? 'flex-row-reverse' : 'flex-row'
                   }`}
                 >
@@ -1264,7 +1293,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       e.preventDefault();
                       abrirMenuDaMensagem(msg, e.currentTarget);
                     }}
-                    className={`relative max-w-[85%] sm:max-w-[70%] min-w-0 rounded-2xl text-sm shadow-[var(--s-1)] ${
+                    className={`relative max-w-[85%] sm:max-w-[70%] lg:max-w-[min(70%,42rem)] min-w-0 rounded-2xl text-sm shadow-[var(--s-1)] ${
                       editandoId === msg.id ? '' : 'select-none md:select-text [-webkit-touch-callout:none]'
                     } ${
                       balaoDeFoto ? 'p-[3px]' : 'px-3.5 py-2.5'
@@ -1347,6 +1376,14 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                     {msg.tipo === 'texto' && editandoId !== msg.id && (
                       <p className="whitespace-pre-wrap break-words leading-relaxed text-base sm:text-sm">
                         {msg.texto}
+                        {/* O lugar da hora no fim do texto (ver horaNaLinha) */}
+                        {horaNaLinha && (
+                          <span
+                            aria-hidden
+                            className="inline-block align-bottom h-3"
+                            style={{ width: larguraDaHora(ehMinha, !!msg.editadaEm) }}
+                          />
+                        )}
                       </p>
                     )}
 
@@ -1616,9 +1653,9 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       Transbordar é o que produz a aparência de defeito.
                     */}
                     <div
-                      className={`flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 mt-1 select-none ${
-                        balaoDeFoto ? 'px-2 pb-0.5' : ''
-                      }`}
+                      className={`flex flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 select-none ${
+                        horaNaLinha ? 'absolute right-3 bottom-1.5' : 'mt-1'
+                      } ${balaoDeFoto ? 'px-2 pb-0.5' : ''}`}
                     >
                       {/* Marca de edição: quem lê precisa saber que o texto
                           mudou depois de enviado. */}

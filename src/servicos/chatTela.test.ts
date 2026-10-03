@@ -769,8 +769,9 @@ test('o balao pode encolher, e a foto se ajusta a ele', async () => {
   const tela = await lerTela();
 
   // O balão volta a respeitar o próprio limite
-  expect(tela).toContain("relative max-w-[85%] sm:max-w-[70%] min-w-0 rounded-2xl");
-  expect(tela).toContain('flex items-center gap-2 max-w-full min-w-0');
+  expect(tela).toContain("relative max-w-[85%] sm:max-w-[70%] lg:max-w-[min(70%,42rem)] min-w-0 rounded-2xl");
+  // ...e o limite é da CONVERSA: a linha ocupa a largura toda (03/10/2026)
+  expect(tela).toContain('flex items-center gap-2 w-full min-w-0');
 
   // A foto pede porcentagem do balão, não uma medida fixa maior que ele
   expect(semComentarios(tela)).not.toContain('min-w-[180px] max-w-xs sm:max-w-sm');
@@ -1012,4 +1013,20 @@ test('disponivel, o padrao de todo cadastro, nao pinta anel; ocupado e ausente s
   expect(anelDaPresenca('disponivel')).not.toContain('emerald');
   expect(anelDaPresenca('ocupado')).toBe('ring-amber-500');
   expect(anelDaPresenca('ausente')).toBe('ring-slate-400');
+});
+
+test('regra de chat: o balao tem a largura do texto, e a hora divide a ultima linha', async () => {
+  const tela = await lerTela();
+  /*
+    "OPA AI ME AGRADA" quebrava num balão de 132px com mil livres ao lado
+    (Elias, 03/10/2026): o "70%" do balão era 70% da LINHA, e a linha só
+    tinha a largura do conteúdo — conta circular. Medido no simulador: com
+    a linha na largura da conversa, as curtas cabem numa linha só.
+  */
+  expect(tela).not.toContain('flex items-center gap-2 max-w-full min-w-0');
+
+  // A hora no fim do texto: espaço reservado + hora presa no canto de baixo
+  expect(tela).toContain("const horaNaLinha = msg.tipo === 'texto' && editandoId !== msg.id && !msg.publicacaoId;");
+  expect(tela).toContain("horaNaLinha ? 'absolute right-3 bottom-1.5' : 'mt-1'");
+  expect(tela).toContain('style={{ width: larguraDaHora(ehMinha, !!msg.editadaEm) }}');
 });
