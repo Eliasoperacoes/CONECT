@@ -132,3 +132,20 @@ test('holerite assinado não é substituído — nem o arquivo chega a subir', a
   await salvarHolerite({ colaboradorId: 'bia', competencia: '2026-09', conteudo: 'data:', arquivoNome: 'x.pdf' });
   expect(enviados).toEqual(['holerites/bia/2026-09.pdf']);
 });
+
+test('O COMPROVANTE DO COLABORADOR: só o do próprio holerite; o RH continua com o da rede', async () => {
+  const { gerarMeuComprovante, gerarComprovantes } = await import('./rh');
+  const holerite = (colaboradorId: string) =>
+    ({ id: `hol-${colaboradorId}`, colaboradorId, competencia: '2026-09', arquivoCaminho: 'x.pdf', arquivoNome: 'x.pdf', criadoEm: '' }) as any;
+  const recebimento = { assinaturaId: 'a1' } as any;
+
+  // A Ana abre o da Bia: recusado antes de buscar arquivo nenhum
+  eu = { id: 'ana', nome: 'Ana', nivel: 1, setor: 'Balcão' };
+  expect((await gerarMeuComprovante(holerite('bia'), recebimento)).erro).toBe('Este holerite não é seu.');
+  // O dela passa da trava (e para no arquivo, que o teste não tem)
+  expect((await gerarMeuComprovante(holerite('ana'), recebimento)).erro).toBe('Não foi possível abrir o holerite de Ana.');
+  // E o comprovante da rede continua só do RH
+  expect((await gerarComprovantes([{ holerite: holerite('bia'), recebimento, nome: 'Bia' }])).erro).toBe(
+    'Apenas o RH gera o comprovante.'
+  );
+});

@@ -54,7 +54,7 @@ import {
   EstadoDaAssinatura,
 } from '../servicos/assinaturasDoRH';
 import { dataHoraDeBrasilia } from '../servicos/comprovanteDeHolerite';
-import { mostrarDocumento, mostrarPdf } from '../servicos/visorDeDocumento';
+import { mostrarDocumento, mostrarPdf, mostrarPdfGerado } from '../servicos/visorDeDocumento';
 import { baixarArquivo } from '../servicos/compartilharArquivo';
 import { nuvem } from '../servicos/nuvem';
 import { usandoNuvem } from '../servicos/supabase';
@@ -191,11 +191,24 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
     }
     const holerite = dados.holerites.find((h) => h.id === item.referencia);
     if (!holerite) return;
+    const titulo = `Holerite · ${item.nome} · ${rotuloDoMes(mes)}`;
     setOcupado(item.chave);
+    /*
+      O QUE O RH CONFERE É O ASSINADO (Elias, 05/10/2026): o comprovante com
+      o carimbo do colaborador — e o do responsável, depois de assinado. O
+      PDF em branco só abre enquanto a pessoa não assinou.
+    */
+    const recebimento = dados.recebimentos.get(holerite.id);
+    if (recebimento) {
+      const res = await gerarComprovantes([{ holerite, recebimento, nome: item.nome }]);
+      setOcupado(null);
+      if (!res.pdf) return mostrarAviso(res.erro || 'Não foi possível montar o comprovante.', true);
+      return mostrarPdfGerado(res.pdf, titulo, `Holerite assinado ${item.nome} ${mes}.pdf`);
+    }
     const url = await abrirDocumento(holerite.arquivoCaminho);
     setOcupado(null);
     if (!url) return mostrarAviso('Não foi possível abrir o holerite. Tente de novo em instantes.', true);
-    mostrarPdf(url, `Holerite · ${item.nome} · ${rotuloDoMes(mes)}`, holerite.arquivoNome);
+    mostrarPdf(url, titulo, holerite.arquivoNome);
   };
 
   // --- Os assinados, juntos ---

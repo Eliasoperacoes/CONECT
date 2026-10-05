@@ -41,7 +41,13 @@ import { dataHoraDeBrasilia } from '../servicos/comprovanteDeHolerite';
 import { AssinarHolerite } from './AssinarHolerite';
 import { AssinarEspelho } from './AssinarEspelho';
 import { ouvirFolhaPedida, tomarFolhaPedida } from '../servicos/folhaPedida';
-import { listarHolerites, listarAdvertencias, abrirDocumento, darCienciaNaAdvertencia } from '../servicos/rh';
+import {
+  listarHolerites,
+  listarAdvertencias,
+  abrirDocumento,
+  darCienciaNaAdvertencia,
+  gerarMeuComprovante,
+} from '../servicos/rh';
 import { lerJustificativas, assinarJustificativas } from '../servicos/justificativasCache';
 import { formatarDataBR, dataDeHoje, batePonto } from '../servicos/ponto';
 import {
@@ -57,7 +63,7 @@ import {
 } from '../servicos/meuRH';
 import { FolhaInferior } from './FolhaInferior';
 import { CartaoSolicitacao } from './AbaJustificar';
-import { mostrarParaAssinar, mostrarPdf } from '../servicos/visorDeDocumento';
+import { mostrarParaAssinar, mostrarPdf, mostrarPdfGerado } from '../servicos/visorDeDocumento';
 import { rodandoNoAplicativo } from '../servicos/aplicativo';
 
 interface Props {
@@ -271,14 +277,38 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
     nada de baixar para ver, nem de sair do aplicativo. É ali que a
     assinatura digital vai entrar.
   */
+  /*
+    ASSINADO, ABRE O COMPROVANTE (Elias, 05/10/2026): o holerite com o
+    carimbo da pessoa — e, quando o RH assina como responsável, com as duas
+    assinaturas. O PDF em branco só abre antes de assinar, porque é ELE que
+    se assina. O recebimento é lido na hora: logo depois de assinar, a lista
+    da tela ainda não sabe.
+  */
   const abrirHolerite = async (h: Holerite) => {
+    const titulo = `Holerite · ${rotuloDoMes(h.competencia)}`;
+    const barra = (dados: ArrayBuffer) => (
+      <AssinarHolerite
+        holerite={h}
+        dados={dados}
+        aoAssinar={() => {
+          setVersao((v) => v + 1);
+          abrirHolerite(h);
+        }}
+      />
+    );
     setAbrindo(h.id);
+    const recebimento = (await listarRecebimentos({ holeriteIds: [h.id] })).get(h.id);
+    if (recebimento) {
+      const comprovante = await gerarMeuComprovante(h, recebimento);
+      if (comprovante.pdf) {
+        setAbrindo(null);
+        return mostrarPdfGerado(comprovante.pdf, titulo, `Holerite assinado ${h.competencia}.pdf`, barra);
+      }
+    }
     const url = await abrirDocumento(h.arquivoCaminho);
     setAbrindo(null);
     if (!url) return mostrarAviso('Não foi possível abrir o holerite. Tente de novo em instantes.');
-    mostrarPdf(url, `Holerite · ${rotuloDoMes(h.competencia)}`, h.arquivoNome, (dados) => (
-      <AssinarHolerite holerite={h} dados={dados} aoAssinar={() => setVersao((v) => v + 1)} />
-    ));
+    mostrarPdf(url, titulo, h.arquivoNome, barra);
   };
 
   /*

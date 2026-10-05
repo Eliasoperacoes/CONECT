@@ -114,6 +114,24 @@ export const mostrarPdf = (url: string, titulo: string, arquivoNome: string, rod
   avisar();
 };
 
+let ultimoGerado: string | null = null;
+
+/**
+ * UM PDF GERADO AQUI, no visor — o comprovante carimbado do holerite. Ele
+ * não tem endereço no banco: vira um endereço do próprio aparelho, e o
+ * anterior é liberado, para não acumular arquivos na memória.
+ */
+export const mostrarPdfGerado = (
+  pdf: Uint8Array,
+  titulo: string,
+  arquivoNome: string,
+  rodape?: RodapeDoPdf
+): void => {
+  if (ultimoGerado) URL.revokeObjectURL(ultimoGerado);
+  ultimoGerado = URL.createObjectURL(new Blob([pdf.slice()], { type: 'application/pdf' }));
+  mostrarPdf(ultimoGerado, titulo, arquivoNome, rodape);
+};
+
 /**
  * Abre o documento e manda imprimir — no computador, numa janela à parte;
  * no celular, no visor. Morava em `documento.ts`, que é folha (o serviço

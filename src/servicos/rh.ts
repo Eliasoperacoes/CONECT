@@ -246,6 +246,29 @@ export const gerarComprovantes = async (
   itens: Array<{ holerite: Holerite; recebimento: RecebimentoHolerite; nome: string }>
 ): Promise<{ pdf?: Uint8Array; erro?: string }> => {
   if (!podeCuidarDeDocumentos()) return { erro: 'Apenas o RH gera o comprovante.' };
+  return montarComprovantes(itens);
+};
+
+/**
+ * O COMPROVANTE DO PRÓPRIO HOLERITE, para o colaborador.
+ *
+ * Depois de assinado, o documento que vale é o carimbado — e não o PDF em
+ * branco. Quando o RH assina como responsável, o mesmo comprovante passa a
+ * sair com as duas assinaturas, sem ninguém reenviar nada (Elias,
+ * 05/10/2026). Só o próprio: o banco já só entrega os dele.
+ */
+export const gerarMeuComprovante = async (
+  holerite: Holerite,
+  recebimento: RecebimentoHolerite
+): Promise<{ pdf?: Uint8Array; erro?: string }> => {
+  const eu = bancoDados.obterColaboradorAtual();
+  if (holerite.colaboradorId !== eu.id) return { erro: 'Este holerite não é seu.' };
+  return montarComprovantes([{ holerite, recebimento, nome: eu.nome }]);
+};
+
+const montarComprovantes = async (
+  itens: Array<{ holerite: Holerite; recebimento: RecebimentoHolerite; nome: string }>
+): Promise<{ pdf?: Uint8Array; erro?: string }> => {
   const arquivos: Uint8Array[] = [];
 
   /*
