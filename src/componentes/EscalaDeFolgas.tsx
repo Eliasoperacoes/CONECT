@@ -39,7 +39,8 @@ import {
   emitidoHoje,
 } from '../servicos/documento';
 import { imprimirDocumento } from '../servicos/visorDeDocumento';
-import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
+import { useTelaEmbutida, margemDaTela, AcaoNoCabecalho } from './TelaEmbutida';
+import { classeDoBotao } from './PadraoWeb';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -330,9 +331,33 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
     URL.revokeObjectURL(url);
   };
 
+  const navegacaoDoMes = (
+    <div className={`flex items-center gap-3 ${embutida ? 'justify-between' : 'justify-center'}`}>
+      <button
+        type="button"
+        onClick={() => mudarMes(-1)}
+        className="p-2 rounded-lg border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-texto)]"
+        aria-label="Mês anterior"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      <span className="text-sm font-bold text-[var(--c-texto)] min-w-[160px] text-center">
+        {NOMES_DOS_MESES[mes]} de {ano}
+      </span>
+      <button
+        type="button"
+        onClick={() => mudarMes(1)}
+        className="p-2 rounded-lg border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-texto)]"
+        aria-label="Próximo mês"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+
   return (
     <div className={`w-full flex flex-col gap-4 ${margemDaTela(embutida)}`}>
-      <div className={`flex flex-col sm:flex-row sm:items-center gap-3 ${embutida ? 'sm:justify-end' : 'justify-between'}`}>
+      <div className={embutida ? 'hidden' : 'flex flex-col sm:flex-row sm:items-center gap-3 justify-between'}>
         <div className={embutida ? 'hidden' : ''}>
           <h2 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-2">
             <CalendarDays className="w-4 h-4" />
@@ -345,7 +370,7 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className={embutida ? 'hidden' : 'flex items-center gap-1.5'}>
           <button
             type="button"
             onClick={exportarCsv}
@@ -365,6 +390,17 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         </div>
       </div>
 
+      <AcaoNoCabecalho>
+        <button type="button" onClick={exportarCsv} className={classeDoBotao.secundario}>
+          <Download className="w-4 h-4" />
+          Exportar
+        </button>
+        <button type="button" onClick={imprimir} className={classeDoBotao.principal}>
+          <Printer className="w-4 h-4" />
+          Imprimir
+        </button>
+      </AcaoNoCabecalho>
+
       {aviso && (
         <div
           className={`p-3 rounded-xl text-xs font-semibold ${
@@ -379,28 +415,8 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
 
 
 
-      {/* Navegação do mês */}
-      <div className="flex items-center justify-center gap-3">
-        <button
-          type="button"
-          onClick={() => mudarMes(-1)}
-          className="p-2 rounded-lg border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-texto)]"
-          aria-label="Mês anterior"
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-        <span className="text-sm font-bold text-[var(--c-texto)] min-w-[160px] text-center">
-          {NOMES_DOS_MESES[mes]} de {ano}
-        </span>
-        <button
-          type="button"
-          onClick={() => mudarMes(1)}
-          className="p-2 rounded-lg border border-[var(--c-borda)] text-[var(--c-texto-2)] hover:text-[var(--c-texto)]"
-          aria-label="Próximo mês"
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
+      {/* Navegação do mês — no computador, dentro do quadro (navegacaoDoMes) */}
+      {!embutida && navegacaoDoMes}
 
       {/*
         O QUADRO DA ESCALA.
@@ -422,6 +438,7 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
         aoSalvar={gravarEscala}
         aoAprovar={(j) => decidir(j, true)}
         aoRecusar={(j) => setRecusando(j)}
+        navegacaoDoMes={embutida ? navegacaoDoMes : undefined}
       />
 
       {/*

@@ -53,6 +53,7 @@ import { abrirDocumento } from '../servicos/rh';
 import { FotoPresenca } from './FotoPresenca';
 import { useVoltar } from '../servicos/voltar';
 import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
+import { CartaoNumero, CartaoLista, EstadoVazio, FiltroSegmentado, BuscaDaLista } from './PadraoWeb';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -320,6 +321,256 @@ export const AbaAtestados: React.FC<Props> = ({ colaboradorAtual }) => {
     }
   };
 
+  /** Uma linha do acervo: o papel, quem entregou, de quando — e decidir ali mesmo. */
+  const linhaDoAtestado = (j: JustificativaAusencia, noCartao: boolean) => {
+    const pessoa = bancoDados.obterColaboradorPorId(j.colaboradorId);
+    const dias = diasCobertos(j);
+
+    return (
+      <div
+        key={j.id}
+        className={
+          // No cartão de lista (computador), a linha é uma faixa; solta (celular), um cartão
+          noCartao
+            ? `px-4 py-3 flex gap-3 border-b border-[var(--c-borda)] last:border-0 ${
+                j.estado === 'pendente' ? 'bg-amber-500/5' : j.estado === 'recusada' ? 'opacity-70' : ''
+              }`
+            : `p-3 rounded-xl border flex gap-3 ${
+                j.estado === 'pendente'
+                  ? 'bg-amber-500/5 border-amber-500/25'
+                  : j.estado === 'recusada'
+                    ? 'bg-[var(--c-canvas)] border-[var(--c-borda)] opacity-70'
+                    : 'bg-[var(--c-superficie)] border-[var(--c-borda)]'
+              }`
+        }
+      >
+        <Miniatura justificativa={j} aoAbrir={() => setVendo(j)} />
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            {pessoa && (
+              <FotoPresenca
+                foto={pessoa.foto}
+                nome={pessoa.nome}
+                presenca={pessoa.presenca}
+                tamanho="w-6 h-6"
+              />
+            )}
+            <span className="text-xs font-bold text-[var(--c-texto)]">
+              {pessoa?.nome || j.colaboradorId}
+            </span>
+            {pessoa && (
+              <span className="text-[10px] text-[var(--c-texto-3)]">
+                {pessoa.setor}
+                {pessoa.loja ? ` · ${pessoa.loja}` : ''}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap mt-1">
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-[var(--c-superficie-2)] text-[var(--c-texto-2)]">
+              {ROTULO_TIPO_AUSENCIA[j.tipo]}
+            </span>
+            <span className="text-[11px] font-semibold text-[var(--c-texto-2)]">
+              {formatarData(j.dataInicio)}
+              {j.dataFim !== j.dataInicio ? ` a ${formatarData(j.dataFim)}` : ''}
+              {dias > 1 ? ` · ${dias} dias` : ''}
+            </span>
+            {/* Quando o papel chegou — é o que responde "entregou a tempo?" */}
+            <span className="text-[10px] text-[var(--c-texto-3)]">
+              entregue em {formatarData(j.criadoEm)}
+            </span>
+          </div>
+
+          {j.observacao && (
+            <p className="text-xs text-[var(--c-texto-2)] leading-snug mt-1 break-words">
+              {j.observacao}
+            </p>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap mt-1.5">
+            {j.estado === 'aprovada' && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                <Check className="w-3 h-3" /> Aceito
+                {j.aprovadorNome ? ` por ${j.aprovadorNome}` : ''}
+              </span>
+            )}
+            {j.estado === 'recusada' && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 dark:text-red-400">
+                <X className="w-3 h-3" /> Recusado
+                {j.motivoRecusa ? ` · ${j.motivoRecusa}` : ''}
+              </span>
+            )}
+            {j.estado === 'pendente' && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                <Clock className="w-3 h-3" /> Aguardando
+              </span>
+            )}
+
+            {j.anexoCaminho && (
+              <button
+                type="button"
+                onClick={() => setVendo(j)}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--c-acento)]"
+              >
+                <Paperclip className="w-3 h-3" />
+                {j.anexoNome || 'Ver documento'}
+              </button>
+            )}
+          </div>
+
+          {j.estado === 'pendente' && (
+            <div className="flex items-center gap-1.5 mt-2">
+              <button
+                type="button"
+                onClick={() => setRecusando(j)}
+                className="px-2.5 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-bold text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/30 transition-colors"
+              >
+                Recusar
+              </button>
+              <button
+                type="button"
+                onClick={() => decidir(j, true)}
+                className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition-colors"
+              >
+                Aceitar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const visorEFolha = (
+    <>
+      {vendo && (
+        <VisorDocumento
+          justificativa={vendo}
+          nomeDaPessoa={bancoDados.obterColaboradorPorId(vendo.colaboradorId)?.nome || vendo.colaboradorId}
+          aoFechar={() => setVendo(null)}
+        />
+      )}
+
+      {/* Recusar exige motivo: a pessoa precisa saber o que fazer em seguida */}
+      {recusando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-[var(--c-superficie)] w-full max-w-sm rounded-2xl border border-[var(--c-borda)] shadow-xl p-4 flex flex-col gap-3">
+            <span className="text-sm font-bold text-[var(--c-texto)]">
+              Recusar o documento de {bancoDados.obterColaboradorPorId(recusando.colaboradorId)?.nome}
+            </span>
+            <textarea
+              value={motivoRecusa}
+              onChange={(e) => setMotivoRecusa(e.target.value)}
+              rows={3}
+              placeholder="Diga o motivo. A pessoa precisa saber o que fazer em seguida."
+              className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-xs text-[var(--c-texto)] resize-none"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRecusando(null);
+                  setMotivoRecusa('');
+                }}
+                className="px-3 py-2 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!motivoRecusa.trim()}
+                onClick={() => decidir(recusando, false, motivoRecusa.trim())}
+                className="px-3 py-2 rounded-xl bg-red-600 text-white text-xs font-bold disabled:opacity-40"
+              >
+                Recusar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  /*
+    NO COMPUTADOR, o padrão do desenho: os quatro números no cartão de
+    número; o filtro e a busca no topo da lista, junto do que filtram; a
+    lista num cartão só. No celular, nada muda.
+  */
+  if (embutida) {
+    const filtroWeb = somentePendentes ? 'aguardando' : verRecusados ? 'recusados' : 'todos';
+    const daLista = filtroWeb === 'recusados' ? lista.filter((j) => j.estado === 'recusada') : lista;
+    return (
+      <div className={`${margemDaTela(true)} flex flex-col gap-5`}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <CartaoNumero
+            rotulo="Aguardando"
+            valor={totais.pendentes}
+            detalhe="Esperam aceitar ou recusar"
+            tom={totais.pendentes > 0 ? 'atencao' : 'neutro'}
+          />
+          <CartaoNumero rotulo="Entregues no mês" valor={totais.doMes} detalhe="Documentos recebidos" />
+          <CartaoNumero rotulo="Dias abonados" valor={totais.diasDoMes} detalhe="Aceitos neste mês" />
+          <CartaoNumero
+            rotulo="Sem papel no arquivo"
+            valor={totais.semDocumento}
+            detalhe="Ausência sem documento entregue"
+            tom={totais.semDocumento > 0 ? 'erro' : 'neutro'}
+          />
+        </div>
+
+        {aviso && (
+          <div className="px-3 py-2 rounded-xl bg-red-500/5 border border-red-500/25 text-xs text-red-700 dark:text-red-400">
+            {aviso}
+          </div>
+        )}
+
+        <CartaoLista
+          barra={
+            <>
+              <FiltroSegmentado
+                opcoes={[
+                  { id: 'todos', rotulo: 'Todos' },
+                  { id: 'aguardando', rotulo: 'Aguardando', contador: totais.pendentes },
+                  { id: 'recusados', rotulo: 'Recusados', contador: recusados.length },
+                ]}
+                ativo={filtroWeb}
+                aoEscolher={(f) => {
+                  setSomentePendentes(f === 'aguardando');
+                  setVerRecusados(f === 'recusados');
+                }}
+              />
+              <BuscaDaLista id="atestados-busca" valor={busca} aoMudar={setBusca} placeholder="Buscar colaborador" />
+            </>
+          }
+        >
+          {daLista.length === 0 ? (
+            <EstadoVazio
+              icone={<Stethoscope className="w-6 h-6" />}
+              titulo={
+                busca.trim()
+                  ? 'Ninguém com esse nome nesta lista'
+                  : filtroWeb === 'aguardando'
+                    ? 'Nada aguardando decisão'
+                    : filtroWeb === 'recusados'
+                      ? 'Nenhum documento recusado'
+                      : 'Nenhum documento de ausência no arquivo'
+              }
+              descricao={
+                busca.trim()
+                  ? 'Confira a grafia, ou procure em outro filtro.'
+                  : 'Atestados, declarações de comparecimento e faltas justificadas que os colaboradores enviarem aparecem aqui, com o documento à vista.'
+              }
+            />
+          ) : (
+            <div>{daLista.map((j) => linhaDoAtestado(j, true))}</div>
+          )}
+        </CartaoLista>
+        {visorEFolha}
+      </div>
+    );
+  }
+
   return (
     <div className={`${margemDaTela(embutida)} flex flex-col gap-4`}>
       <div className={embutida ? 'hidden' : ''}>
@@ -447,170 +698,11 @@ export const AbaAtestados: React.FC<Props> = ({ colaboradorAtual }) => {
               : 'Nenhum documento de ausência no arquivo.'}
           </div>
         ) : (
-          lista.map((j) => {
-            const pessoa = bancoDados.obterColaboradorPorId(j.colaboradorId);
-            const dias = diasCobertos(j);
-
-            return (
-              <div
-                key={j.id}
-                className={`p-3 rounded-xl border flex gap-3 ${
-                  j.estado === 'pendente'
-                    ? 'bg-amber-500/5 border-amber-500/25'
-                    : j.estado === 'recusada'
-                      ? 'bg-[var(--c-canvas)] border-[var(--c-borda)] opacity-70'
-                      : 'bg-[var(--c-superficie)] border-[var(--c-borda)]'
-                }`}
-              >
-                <Miniatura justificativa={j} aoAbrir={() => setVendo(j)} />
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {pessoa && (
-                      <FotoPresenca
-                        foto={pessoa.foto}
-                        nome={pessoa.nome}
-                        presenca={pessoa.presenca}
-                        tamanho="w-6 h-6"
-                      />
-                    )}
-                    <span className="text-xs font-bold text-[var(--c-texto)]">
-                      {pessoa?.nome || j.colaboradorId}
-                    </span>
-                    {pessoa && (
-                      <span className="text-[10px] text-[var(--c-texto-3)]">
-                        {pessoa.setor}
-                        {pessoa.loja ? ` · ${pessoa.loja}` : ''}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-wrap mt-1">
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-[var(--c-superficie-2)] text-[var(--c-texto-2)]">
-                      {ROTULO_TIPO_AUSENCIA[j.tipo]}
-                    </span>
-                    <span className="text-[11px] font-semibold text-[var(--c-texto-2)]">
-                      {formatarData(j.dataInicio)}
-                      {j.dataFim !== j.dataInicio ? ` a ${formatarData(j.dataFim)}` : ''}
-                      {dias > 1 ? ` · ${dias} dias` : ''}
-                    </span>
-                    {/* Quando o papel chegou — é o que responde "entregou a tempo?" */}
-                    <span className="text-[10px] text-[var(--c-texto-3)]">
-                      entregue em {formatarData(j.criadoEm)}
-                    </span>
-                  </div>
-
-                  {j.observacao && (
-                    <p className="text-xs text-[var(--c-texto-2)] leading-snug mt-1 break-words">
-                      {j.observacao}
-                    </p>
-                  )}
-
-                  <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                    {j.estado === 'aprovada' && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
-                        <Check className="w-3 h-3" /> Aceito
-                        {j.aprovadorNome ? ` por ${j.aprovadorNome}` : ''}
-                      </span>
-                    )}
-                    {j.estado === 'recusada' && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-700 dark:text-red-400">
-                        <X className="w-3 h-3" /> Recusado
-                        {j.motivoRecusa ? ` · ${j.motivoRecusa}` : ''}
-                      </span>
-                    )}
-                    {j.estado === 'pendente' && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
-                        <Clock className="w-3 h-3" /> Aguardando
-                      </span>
-                    )}
-
-                    {j.anexoCaminho && (
-                      <button
-                        type="button"
-                        onClick={() => setVendo(j)}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--c-acento)]"
-                      >
-                        <Paperclip className="w-3 h-3" />
-                        {j.anexoNome || 'Ver documento'}
-                      </button>
-                    )}
-                  </div>
-
-                  {j.estado === 'pendente' && (
-                    <div className="flex items-center gap-1.5 mt-2">
-                      <button
-                        type="button"
-                        onClick={() => setRecusando(j)}
-                        className="px-2.5 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-bold text-[var(--c-texto-2)] hover:text-red-600 hover:border-red-500/30 transition-colors"
-                      >
-                        Recusar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => decidir(j, true)}
-                        className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold transition-colors"
-                      >
-                        Aceitar
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })
+          lista.map((j) => linhaDoAtestado(j, false))
         )}
       </div>
 
-      {vendo && (
-        <VisorDocumento
-          justificativa={vendo}
-          nomeDaPessoa={
-            bancoDados.obterColaboradorPorId(vendo.colaboradorId)?.nome ||
-            vendo.colaboradorId
-          }
-          aoFechar={() => setVendo(null)}
-        />
-      )}
-
-      {/* Recusar exige motivo: a pessoa precisa saber o que fazer em seguida */}
-      {recusando && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-[var(--c-superficie)] w-full max-w-sm rounded-2xl border border-[var(--c-borda)] shadow-xl p-4 flex flex-col gap-3">
-            <span className="text-sm font-bold text-[var(--c-texto)]">
-              Recusar o documento de{' '}
-              {bancoDados.obterColaboradorPorId(recusando.colaboradorId)?.nome}
-            </span>
-            <textarea
-              value={motivoRecusa}
-              onChange={(e) => setMotivoRecusa(e.target.value)}
-              rows={3}
-              placeholder="Diga o motivo. A pessoa precisa saber o que fazer em seguida."
-              className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-xs text-[var(--c-texto)] resize-none"
-            />
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setRecusando(null);
-                  setMotivoRecusa('');
-                }}
-                className="px-3 py-2 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)]"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={!motivoRecusa.trim()}
-                onClick={() => decidir(recusando, false, motivoRecusa.trim())}
-                className="px-3 py-2 rounded-xl bg-red-600 text-white text-xs font-bold disabled:opacity-40"
-              >
-                Recusar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {visorEFolha}
     </div>
   );
 };

@@ -9,7 +9,7 @@
 import { test, expect } from 'bun:test';
 import { permissoesPadrao } from './ferramentas';
 import { podeUsarComMapa } from './permissoes';
-import { telasQueVejo, assuntosDe, ASSUNTOS, TelaId } from './telasPorAssunto';
+import { telasQueVejo, assuntosDe, ASSUNTOS, TelaId, DE_QUEM_E_A_TELA } from './telasPorAssunto';
 
 const mapa = permissoesPadrao();
 const ver = (nivel: number, setor: string, temEquipe: boolean, batePonto: boolean) => {
@@ -124,4 +124,18 @@ test('TODA TELA DIZ O QUE É: cada tela e cada assunto têm a sua frase', async 
     expect(DESCRICAO_DO_ASSUNTO[assunto.id]?.length).toBeGreaterThan(10);
     for (const tela of assunto.telas) expect(DESCRICAO_DA_TELA[tela.id]?.length).toBeGreaterThan(10);
   }
+});
+
+test('O RÓTULO "DE QUEM É" não mente: o colaborador comum só vê "Para você" e "Toda a rede"', () => {
+  /*
+    O rótulo acima do título diz se a tela é da pessoa, da equipe dela ou
+    da gestão. Se uma tela de gestão ganhar o rótulo "Para você" (ou o
+    contrário), o colaborador lê errado o que está vendo.
+  */
+  const doColaborador = ver(1, 'Balcão', false, true);
+  const rotulos = new Set(doColaborador.map((t) => DE_QUEM_E_A_TELA[t]));
+  expect([...rotulos].sort()).toEqual(['Para você', 'Toda a rede']);
+  // E o que só o líder ganha a mais é dele como gestor, nunca "Para você"
+  const doLider = ver(2, 'Balcão', true, true).filter((t) => !doColaborador.includes(t));
+  for (const t of doLider) expect({ t, rotulo: DE_QUEM_E_A_TELA[t] }).not.toEqual({ t, rotulo: 'Para você' });
 });

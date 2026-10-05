@@ -1849,6 +1849,7 @@ export default function App() {
               temEquipe={acessoWeb.temEquipe}
               visiveis={acessoWeb.visiveis}
               pendenciasDoMeuRH={pendenciasDoMeuRHAgora}
+              pendenciasParaMim={pendenciasParaMim}
               aoAbrirConversa={(id) => abrirJanela(id)}
               aoAbrirAdmin={() => setPainelAdminAberto(true)}
               aoTrocarColaborador={lidarTrocarColaborador}

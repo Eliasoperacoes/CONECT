@@ -210,6 +210,40 @@ export const DESCRICAO_DA_TELA: Record<TelaWeb, string> = {
   perfil: 'Os seus dados, a sua presença e as preferências deste aparelho.',
 };
 
+/**
+ * DE QUEM É A TELA — o rótulo acima do título dela, no computador.
+ *
+ * "Não confundir e bagunçar as telas entre os usuários" (Elias,
+ * 05/10/2026): num mesmo assunto ficam lado a lado "Meus documentos" e
+ * "Holerites" (de toda a rede). O rótulo diz, antes do nome, se a tela é
+ * da própria pessoa, de quem ela gerencia ou da rede inteira.
+ */
+export const DE_QUEM_E_A_TELA: Record<TelaWeb, string> = {
+  inicio: 'Para você',
+  conversas: 'Para você',
+  central: 'Toda a rede',
+  meu_ponto: 'Para você',
+  meu_espelho: 'Para você',
+  equipe_banco: 'Sua equipe',
+  equipe_pendencias: 'Sua equipe',
+  ponto_rede: 'Gestão de pessoas',
+  qr_ponto: 'Gestão de pessoas',
+  pedir_ausencia: 'Para você',
+  minhas_ausencias: 'Para você',
+  escala_folgas: 'Gestão de pessoas',
+  ferias_planejamento: 'Gestão de pessoas',
+  atestados: 'Gestão de pessoas',
+  meus_documentos: 'Para você',
+  assinaturas: 'Gestão de pessoas',
+  holerites: 'Gestão de pessoas',
+  advertencias: 'Gestão de pessoas',
+  unidades: 'Toda a rede',
+  organograma: 'Toda a rede',
+  painel_rh: 'Gestão de pessoas',
+  administracao: 'Administração',
+  perfil: 'Para você',
+};
+
 /** O que cada assunto reúne, numa frase — o título da página. */
 export const DESCRICAO_DO_ASSUNTO: Record<AssuntoId, string> = {
   inicio: DESCRICAO_DA_TELA.inicio,

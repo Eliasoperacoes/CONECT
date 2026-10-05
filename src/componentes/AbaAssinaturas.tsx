@@ -60,8 +60,20 @@ import { mostrarDocumento, mostrarPdf, mostrarPdfGerado } from '../servicos/viso
 import { baixarArquivo } from '../servicos/compartilharArquivo';
 import { nuvem } from '../servicos/nuvem';
 import { usandoNuvem } from '../servicos/supabase';
+import { normalizarBusca } from '../servicos/buscaNasConversas';
 import { FolhaDeAssinar } from './FolhaDeAssinar';
-import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
+import { useTelaEmbutida, margemDaTela, AcaoNoCabecalho } from './TelaEmbutida';
+import {
+  CartaoNumero,
+  CartaoLista,
+  LinhaDaLista,
+  EstadoVazio,
+  FiltroSegmentado,
+  BuscaDaLista,
+  AvatarSuave,
+  classeDoBotao,
+  type TomDoNumero,
+} from './PadraoWeb';
 
 type Lista = 'para_assinar' | 'assinados' | 'falta_colaborador';
 type Tipo = 'todos' | 'holerite' | 'espelho';
@@ -106,6 +118,10 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
   const [folhaAberta, setFolhaAberta] = useState(false);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; erro?: boolean } | null>(null);
+  const [busca, setBusca] = useState('');
+
+  /** A ficha de cada um, para a linha dizer setor e loja (no computador). */
+  const fichas = useMemo(() => new Map(bancoDados.obterColaboradores().map((c) => [c.id, c])), []);
 
   const pessoas = useMemo(
     () =>
@@ -257,6 +273,213 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
     { id: 'falta_colaborador', rotulo: 'Falta o colaborador' },
   ];
 
+  const seletorDoMes = (
+    <div className="flex items-center justify-between gap-1 flex-shrink-0 rounded-xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-1">
+      <button
+        type="button"
+        aria-label="Mês anterior"
+        onClick={() => trocarMes(1)}
+        disabled={indice >= meses.length - 1}
+        className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--c-texto-2)] hover:bg-[var(--c-superficie-2)] disabled:opacity-30"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
+      <span id="assinaturas-mes" className="min-w-[124px] text-center text-xs font-bold text-[var(--c-texto)]">
+        {rotuloDoMes(mes)}
+      </span>
+      <button
+        type="button"
+        aria-label="Mês seguinte"
+        onClick={() => trocarMes(-1)}
+        disabled={indice <= 0}
+        className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--c-texto-2)] hover:bg-[var(--c-superficie-2)] disabled:opacity-30"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+  );
+
+  const caixaDeAviso = aviso && (
+    <div
+      role="status"
+      className={`p-3 rounded-xl text-xs font-semibold ${
+        aviso.erro
+          ? 'bg-red-500/10 border border-red-500/20 text-red-600'
+          : 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400'
+      }`}
+    >
+      {aviso.texto}
+    </div>
+  );
+
+  const folha = (
+    <FolhaDeAssinar
+      aberta={folhaAberta}
+      aoFechar={() => setFolhaAberta(false)}
+      titulo="Assinar como responsável"
+      declaracao="Declaro, como responsável pela Malachias Autopeças, que conferi os espelhos de ponto abaixo, já assinados pelos colaboradores."
+      resumo={
+        <div className="rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] p-3 text-xs text-[var(--c-texto-2)]">
+          <strong className="text-[var(--c-texto)]">{rotuloDoMes(mes)}</strong> · {descreverLote(lote)}
+        </div>
+      }
+      rotuloDoBotao={noLote === 1 ? 'Assinar 1 espelho' : `Assinar ${noLote} espelhos`}
+      assinar={assinarLote}
+      aoAssinar={() => {
+        setFolhaAberta(false);
+        setLista('assinados');
+        setVersao((v) => v + 1);
+      }}
+    />
+  );
+
+  /*
+    NO COMPUTADOR, o desenho do Figma (Elias, 05/10/2026): o mês e "Assinar
+    todos" no título da tela; os três números como cartões, e o escolhido é
+    a lista de baixo; a lista num cartão, com o filtro e a busca no topo, e
+    em cada linha o que fazer escrito. No celular, nada muda.
+  */
+  if (embutida) {
+    const procurado = normalizarBusca(busca);
+    const daBusca = procurado ? visiveis.filter((i) => normalizarBusca(i.nome).includes(procurado)) : visiveis;
+    const NUMEROS: Array<{ id: Lista; detalhe: string; tom: TomDoNumero }> = [
+      { id: 'para_assinar', detalhe: 'Esperam a sua assinatura', tom: 'atencao' },
+      { id: 'assinados', detalhe: 'Com as duas assinaturas', tom: 'acento' },
+      { id: 'falta_colaborador', detalhe: 'O colaborador ainda não assinou', tom: 'neutro' },
+    ];
+    return (
+      <div className={`${margemDaTela(true)} flex flex-col gap-5 w-full`}>
+        <AcaoNoCabecalho>
+          {seletorDoMes}
+          {noLote > 0 && (
+            <button type="button" id="assinar-lote" onClick={() => setFolhaAberta(true)} className={classeDoBotao.principal}>
+              <PenLine className="w-4 h-4" />
+              {noLote === 1 ? 'Assinar 1 espelho' : `Assinar todos (${noLote})`}
+            </button>
+          )}
+        </AcaoNoCabecalho>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {NUMEROS.map((n) => (
+            <CartaoNumero
+              key={n.id}
+              id={`assinaturas-lista-${n.id}`}
+              rotulo={ABAS.find((a) => a.id === n.id)!.rotulo}
+              valor={carregando ? '–' : contagem(n.id)}
+              detalhe={n.detalhe}
+              // O tom só quando há o que fazer: um zero colorido chama a atenção para nada
+              tom={!carregando && contagem(n.id) > 0 ? n.tom : 'neutro'}
+              ativo={lista === n.id}
+              aoAbrir={() => setLista(n.id)}
+            />
+          ))}
+        </div>
+
+        {caixaDeAviso}
+
+        <CartaoLista
+          barra={
+            <>
+              <FiltroSegmentado
+                opcoes={[
+                  { id: 'todos' as Tipo, rotulo: 'Todos' },
+                  { id: 'holerite' as Tipo, rotulo: 'Holerites' },
+                  { id: 'espelho' as Tipo, rotulo: 'Espelhos' },
+                ]}
+                ativo={tipo}
+                aoEscolher={setTipo}
+              />
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                {lista === 'assinados' && holeritesAssinados.length > 0 && (
+                  <button
+                    type="button"
+                    id="baixar-holerites-assinados"
+                    onClick={baixarHolerites}
+                    disabled={ocupado === 'baixar-holerites'}
+                    className={`${classeDoBotao.secundario} h-9`}
+                  >
+                    {ocupado === 'baixar-holerites' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    Baixar holerites (PDF)
+                  </button>
+                )}
+                {lista === 'assinados' && espelhosAssinados.length > 0 && (
+                  <button
+                    type="button"
+                    id="imprimir-espelhos-assinados"
+                    onClick={imprimirEspelhos}
+                    className={`${classeDoBotao.secundario} h-9`}
+                  >
+                    <Printer className="w-4 h-4" />
+                    Imprimir espelhos
+                  </button>
+                )}
+                <BuscaDaLista id="assinaturas-busca" valor={busca} aoMudar={setBusca} placeholder="Buscar colaborador" />
+              </div>
+            </>
+          }
+        >
+          {carregando ? (
+            <div className="py-14 flex items-center justify-center gap-2 text-xs text-[var(--c-texto-3)]">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Carregando os documentos do mês…
+            </div>
+          ) : daBusca.length === 0 ? (
+            <EstadoVazio
+              icone={lista === 'para_assinar' ? <CheckCircle2 className="w-6 h-6" /> : <PenLine className="w-6 h-6" />}
+              titulo={
+                procurado
+                  ? 'Ninguém com esse nome nesta lista'
+                  : lista === 'para_assinar'
+                    ? 'Nada esperando a sua assinatura'
+                    : lista === 'assinados'
+                      ? 'Nenhum documento assinado ainda'
+                      : 'Todos os colaboradores já assinaram'
+              }
+              descricao={
+                procurado
+                  ? 'Confira a grafia, ou procure em outra lista acima.'
+                  : lista === 'para_assinar'
+                    ? `Os espelhos de ${rotuloDoMes(mes)} que os colaboradores assinarem aparecem aqui, prontos para assinar todos de uma vez.`
+                    : lista === 'assinados'
+                      ? 'Os espelhos com a sua assinatura e os holerites assinados pelos colaboradores aparecem aqui, para baixar ou imprimir.'
+                      : 'Quem ainda não assinou o holerite ou o espelho do mês aparece aqui.'
+              }
+            />
+          ) : (
+            <div>
+              {daBusca.map((item) => {
+                const pessoa = fichas.get(item.colaboradorId);
+                return (
+                  <LinhaDaLista
+                    key={item.chave}
+                    avatar={<AvatarSuave nome={item.nome} foto={pessoa?.foto} />}
+                    titulo={item.nome}
+                    selo={
+                      FORA_DO_LOTE[item.estado] && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-2 py-0.5 text-[10px] font-bold text-[var(--c-atencao)]">
+                          <AlertTriangle className="w-3 h-3" />
+                          {FORA_DO_LOTE[item.estado]}
+                        </span>
+                      )
+                    }
+                    detalhe={`${item.documento === 'holerite' ? 'Holerite' : 'Espelho de ponto'} · ${detalheDoItem(item)}`}
+                    info={pessoa ? `${pessoa.setor} · ${pessoa.loja}` : undefined}
+                    acao={{
+                      rotulo: ACAO_DO_ESTADO[item.estado],
+                      aoTocar: () => abrir(item),
+                      ocupado: ocupado === item.chave,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </CartaoLista>
+        {folha}
+      </div>
+    );
+  }
+
   return (
     <div className={`${margemDaTela(embutida)} flex flex-col gap-4 w-full ${embutida ? '' : 'max-w-3xl'}`}>
       {/* 1. O mês */}
@@ -267,29 +490,7 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
             O espelho leva a sua assinatura; o holerite, só a do colaborador.
           </p>
         </div>
-        <div className="flex items-center justify-between gap-1 flex-shrink-0 rounded-xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-1">
-          <button
-            type="button"
-            aria-label="Mês anterior"
-            onClick={() => trocarMes(1)}
-            disabled={indice >= meses.length - 1}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--c-texto-2)] hover:bg-[var(--c-superficie-2)] disabled:opacity-30"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span id="assinaturas-mes" className="min-w-[124px] text-center text-xs font-bold text-[var(--c-texto)]">
-            {rotuloDoMes(mes)}
-          </span>
-          <button
-            type="button"
-            aria-label="Mês seguinte"
-            onClick={() => trocarMes(-1)}
-            disabled={indice <= 0}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--c-texto-2)] hover:bg-[var(--c-superficie-2)] disabled:opacity-30"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
+        {seletorDoMes}
       </div>
 
       {/* 2. Quanto espera por mim — e o único botão de ação da tela */}
@@ -333,18 +534,7 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
         </div>
       )}
 
-      {aviso && (
-        <div
-          role="status"
-          className={`p-3 rounded-xl text-xs font-semibold ${
-            aviso.erro
-              ? 'bg-red-500/10 border border-red-500/20 text-red-600'
-              : 'bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-400'
-          }`}
-        >
-          {aviso.texto}
-        </div>
-      )}
+      {caixaDeAviso}
 
       {/* 3. As listas */}
       <div className="flex flex-col gap-2">
@@ -449,26 +639,26 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
         </div>
       )}
 
-      <FolhaDeAssinar
-        aberta={folhaAberta}
-        aoFechar={() => setFolhaAberta(false)}
-        titulo="Assinar como responsável"
-        declaracao="Declaro, como responsável pela Malachias Autopeças, que conferi os espelhos de ponto abaixo, já assinados pelos colaboradores."
-        resumo={
-          <div className="rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] p-3 text-xs text-[var(--c-texto-2)]">
-            <strong className="text-[var(--c-texto)]">{rotuloDoMes(mes)}</strong> · {descreverLote(lote)}
-          </div>
-        }
-        rotuloDoBotao={noLote === 1 ? 'Assinar 1 espelho' : `Assinar ${noLote} espelhos`}
-        assinar={assinarLote}
-        aoAssinar={() => {
-          setFolhaAberta(false);
-          setLista('assinados');
-          setVersao((v) => v + 1);
-        }}
-      />
+      {folha}
     </div>
   );
+};
+
+/** O que a linha diz de onde o documento está: quem assinou, quando — ou o que falta. */
+const detalheDoItem = (item: ItemDeAssinatura): string =>
+  item.estado === 'assinado' && item.responsavel
+    ? `${item.responsavel.nome} assinou em ${quandoCurto(item.responsavel.assinadoEm)}`
+    : item.colaboradorAssinouEm
+      ? `Colaborador assinou em ${quandoCurto(item.colaboradorAssinouEm)}`
+      : 'Aguardando o colaborador';
+
+/** A ação escrita de cada linha, no computador: o que o toque faz. */
+const ACAO_DO_ESTADO: Record<EstadoDaAssinatura, string> = {
+  para_assinar: 'Revisar',
+  alterado: 'Conferir',
+  proprio: 'Ver documento',
+  assinado: 'Ver assinado',
+  falta_colaborador: 'Ver documento',
 };
 
 /** Uma linha da lista: quem, que documento, onde ele está — e o toque abre para conferir. */
@@ -479,12 +669,7 @@ const LinhaDoDocumento: React.FC<{ item: ItemDeAssinatura; ocupado: boolean; aoA
 }) => {
   const ehHolerite = item.documento === 'holerite';
   const foraDoLote = FORA_DO_LOTE[item.estado];
-  const detalhe =
-    item.estado === 'assinado' && item.responsavel
-      ? `${item.responsavel.nome} assinou em ${quandoCurto(item.responsavel.assinadoEm)}`
-      : item.colaboradorAssinouEm
-        ? `Colaborador assinou em ${quandoCurto(item.colaboradorAssinouEm)}`
-        : 'Aguardando o colaborador';
+  const detalhe = detalheDoItem(item);
 
   return (
     <li>

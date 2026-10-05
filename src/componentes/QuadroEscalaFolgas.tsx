@@ -71,6 +71,12 @@ interface Props {
    */
   aoAprovar: (j: JustificativaAusencia) => void;
   aoRecusar: (j: JustificativaAusencia) => void;
+  /**
+   * NO COMPUTADOR, o mês mora no topo do quadro (o desenho do Figma), e os
+   * sábados ficam num cartão, lado a lado. Sem isto — no celular — o
+   * quadro é o de sempre, com o mês acima dele.
+   */
+  navegacaoDoMes?: React.ReactNode;
 }
 
 /** As iniciais que aparecem no círculo quando não há foto. */
@@ -91,6 +97,7 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
   salvando,
   aoAprovar,
   aoRecusar,
+  navegacaoDoMes,
 }) => {
   const [busca, setBusca] = useState('');
   const [filtroLoja, setFiltroLoja] = useState<Loja | 'todas'>('todas');
@@ -361,7 +368,11 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
 
       <div className="flex flex-col lg:flex-row gap-3">
         {/* ---------- A EQUIPE ---------- */}
-        <div className="lg:w-72 flex-shrink-0 flex flex-col gap-2 p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)]">
+        <div
+          className={`lg:w-72 flex-shrink-0 flex flex-col gap-2 p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] ${
+            navegacaoDoMes ? 'shadow-[var(--s-1)] self-start' : ''
+          }`}
+        >
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--c-texto-3)]" />
             <input
@@ -494,173 +505,188 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
         </div>
 
         {/* ---------- OS SÁBADOS ---------- */}
-        <div className="flex-1 grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
-          {sabados.map((sabado) => {
-            const gente = doSabado(sabado);
-            // Quem trabalhou a folga não está fora da loja
-            const folgando = gente.filter((g) => !g.trabalhou).length;
-            const recebendo = sabadoAlvo === sabado;
+        <div
+          className={
+            navegacaoDoMes
+              ? 'flex-1 min-w-0 flex flex-col gap-4 p-4 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] shadow-[var(--s-1)] self-start'
+              : 'contents'
+          }
+        >
+          {navegacaoDoMes}
+          <div
+            className={`flex-1 grid gap-3 ${
+              navegacaoDoMes
+                ? 'grid-cols-[repeat(auto-fit,minmax(150px,1fr))]'
+                : 'grid-cols-1 sm:grid-cols-2 xl:grid-cols-4'
+            }`}
+          >
+            {sabados.map((sabado) => {
+              const gente = doSabado(sabado);
+              // Quem trabalhou a folga não está fora da loja
+              const folgando = gente.filter((g) => !g.trabalhou).length;
+              const recebendo = sabadoAlvo === sabado;
 
-            return (
-              <div
-                key={sabado}
-                data-sabado={sabado}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  if (sabadoAlvo !== sabado) setSabadoAlvo(sabado);
-                }}
-                onDragLeave={() => setSabadoAlvo((s) => (s === sabado ? null : s))}
-                onDrop={(e) => aoSoltar(e, sabado)}
-                className={`rounded-2xl border-2 p-2.5 flex flex-col gap-2 min-h-[220px] transition-colors ${
-                  recebendo
-                    ? 'border-dashed border-[var(--c-acento)] bg-[var(--c-acento-suave)]'
-                    : 'border-[var(--c-borda)] bg-[var(--c-superficie)]'
-                }`}
-              >
-                <div className="flex items-baseline justify-between gap-2">
-                  <span className="text-lg font-black text-[var(--c-texto)] leading-none">
-                    {sabado.slice(8, 10)}
-                    <span className="text-[10px] font-bold text-[var(--c-texto-3)] uppercase ml-1">
-                      {formatarDataBR(sabado).slice(3, 5) === '01' ? 'jan' : ''}
-                      {sabado.slice(5, 7)}
+              return (
+                <div
+                  key={sabado}
+                  data-sabado={sabado}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (sabadoAlvo !== sabado) setSabadoAlvo(sabado);
+                  }}
+                  onDragLeave={() => setSabadoAlvo((s) => (s === sabado ? null : s))}
+                  onDrop={(e) => aoSoltar(e, sabado)}
+                  className={`rounded-2xl border-2 p-2.5 flex flex-col gap-2 min-h-[220px] transition-colors ${
+                    recebendo
+                      ? 'border-dashed border-[var(--c-acento)] bg-[var(--c-acento-suave)]'
+                      : 'border-[var(--c-borda)] bg-[var(--c-superficie)]'
+                  }`}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-lg font-black text-[var(--c-texto)] leading-none">
+                      {sabado.slice(8, 10)}
+                      <span className="text-[10px] font-bold text-[var(--c-texto-3)] uppercase ml-1">
+                        {formatarDataBR(sabado).slice(3, 5) === '01' ? 'jan' : ''}
+                        {sabado.slice(5, 7)}
+                      </span>
                     </span>
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      folgando === 0
-                        ? 'bg-[var(--c-canvas)] text-[var(--c-texto-3)]'
-                        : 'bg-[var(--c-ok)]/10 text-[var(--c-ok)]'
-                    }`}
-                  >
-                    {folgando} {folgando === 1 ? 'folga' : 'folgas'}
-                  </span>
-                </div>
-
-                {/*
-                  QUANTOS FICAM, e não só quantos saem.
-
-                  "3 de folga" sozinho não decide nada; "3 de folga, 20 na
-                  loja" decide — é o número que o gestor precisa para
-                  autorizar mais uma no mesmo dia.
-
-                  Quase perdi isto ao trocar a grade antiga pelo quadro: o
-                  teste que o protegia é que acusou. O desenho que o Elias
-                  mandou dizia "6 de 6 vagas", mas a rede não tem limite de
-                  vagas por sábado cadastrado em lugar nenhum — inventar um
-                  seria criar regra de negócio por conta própria.
-                */}
-                <div className="flex items-center gap-1.5">
-                  <div className="flex-1 h-1 rounded-full bg-[var(--c-canvas)] overflow-hidden">
-                    <div
-                      className="h-full bg-[var(--c-acento)] rounded-full"
-                      style={{ width: `${proporcaoFora(folgando)}%` }}
-                    />
-                  </div>
-                  <span className="text-[10px] text-[var(--c-texto-3)] whitespace-nowrap">
-                    {Math.max(equipe.length - folgando, 0)} na loja
-                  </span>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  {gente.map(({ colaborador, justificativa, novo, trabalhou }) => (
-                    <div
-                      key={colaborador.id}
-                      className={`px-2 py-1.5 rounded-xl border flex items-center gap-2 ${
-                        novo
-                          ? 'bg-[var(--c-acento-suave)] border-dashed border-[var(--c-acento)]/50'
-                          : trabalhou
-                            ? 'bg-[var(--c-canvas)] border-dashed border-[var(--c-borda-forte)] opacity-70'
-                            : justificativa?.estado === 'pendente'
-                            ? 'bg-amber-500/5 border-amber-500/30'
-                            : 'bg-[var(--c-canvas)] border-[var(--c-borda)]'
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        folgando === 0
+                          ? 'bg-[var(--c-canvas)] text-[var(--c-texto-3)]'
+                          : 'bg-[var(--c-ok)]/10 text-[var(--c-ok)]'
                       }`}
                     >
-                      <FotoPresenca
-                        foto={colaborador.foto}
-                        nome={colaborador.nome}
-                        presenca={colaborador.presenca}
-                        tamanho="w-6 h-6"
+                      {folgando} {folgando === 1 ? 'folga' : 'folgas'}
+                    </span>
+                  </div>
+
+                  {/*
+                    QUANTOS FICAM, e não só quantos saem.
+
+                    "3 de folga" sozinho não decide nada; "3 de folga, 20 na
+                    loja" decide — é o número que o gestor precisa para
+                    autorizar mais uma no mesmo dia.
+
+                    Quase perdi isto ao trocar a grade antiga pelo quadro: o
+                    teste que o protegia é que acusou. O desenho que o Elias
+                    mandou dizia "6 de 6 vagas", mas a rede não tem limite de
+                    vagas por sábado cadastrado em lugar nenhum — inventar um
+                    seria criar regra de negócio por conta própria.
+                  */}
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 h-1 rounded-full bg-[var(--c-canvas)] overflow-hidden">
+                      <div
+                        className="h-full bg-[var(--c-acento)] rounded-full"
+                        style={{ width: `${proporcaoFora(folgando)}%` }}
                       />
+                    </div>
+                    <span className="text-[10px] text-[var(--c-texto-3)] whitespace-nowrap">
+                      {Math.max(equipe.length - folgando, 0)} na loja
+                    </span>
+                  </div>
 
-                      <div className="flex-1 min-w-0">
-                        <span className="block text-[11px] font-bold text-[var(--c-texto)] truncate">
-                          {colaborador.nome}
-                        </span>
-                        <span className="block text-[10px] text-[var(--c-texto-3)] truncate">
-                          {novo ? (
-                            <span className="text-[var(--c-acento)] font-semibold">
-                              a salvar
-                            </span>
-                          ) : trabalhou ? (
-                            <span className="text-[var(--c-texto-2)] font-semibold" title="A folga foi aprovada, mas a pessoa trabalhou o sábado: conta como dia normal, e a compensação fica para a folga trocada">
-                              trabalhou · folga não gozada
-                            </span>
-                          ) : justificativa?.estado === 'pendente' ? (
-                            <span className="text-amber-600 font-semibold">
-                              aguarda decisão
-                            </span>
-                          ) : (
-                            colaborador.setor
-                          )}
-                        </span>
-                      </div>
+                  <div className="flex flex-col gap-1.5">
+                    {gente.map(({ colaborador, justificativa, novo, trabalhou }) => (
+                      <div
+                        key={colaborador.id}
+                        className={`px-2 py-1.5 rounded-xl border flex items-center gap-2 ${
+                          novo
+                            ? 'bg-[var(--c-acento-suave)] border-dashed border-[var(--c-acento)]/50'
+                            : trabalhou
+                              ? 'bg-[var(--c-canvas)] border-dashed border-[var(--c-borda-forte)] opacity-70'
+                              : justificativa?.estado === 'pendente'
+                              ? 'bg-amber-500/5 border-amber-500/30'
+                              : 'bg-[var(--c-canvas)] border-[var(--c-borda)]'
+                        }`}
+                      >
+                        <FotoPresenca
+                          foto={colaborador.foto}
+                          nome={colaborador.nome}
+                          presenca={colaborador.presenca}
+                          tamanho="w-6 h-6"
+                        />
 
-                      {/*
-                        PEDIDO PENDENTE GANHA O VISTO, e não só o "x".
+                        <div className="flex-1 min-w-0">
+                          <span className="block text-[11px] font-bold text-[var(--c-texto)] truncate">
+                            {colaborador.nome}
+                          </span>
+                          <span className="block text-[10px] text-[var(--c-texto-3)] truncate">
+                            {novo ? (
+                              <span className="text-[var(--c-acento)] font-semibold">
+                                a salvar
+                              </span>
+                            ) : trabalhou ? (
+                              <span className="text-[var(--c-texto-2)] font-semibold" title="A folga foi aprovada, mas a pessoa trabalhou o sábado: conta como dia normal, e a compensação fica para a folga trocada">
+                                trabalhou · folga não gozada
+                              </span>
+                            ) : justificativa?.estado === 'pendente' ? (
+                              <span className="text-amber-600 font-semibold">
+                                aguarda decisão
+                              </span>
+                            ) : (
+                              colaborador.setor
+                            )}
+                          </span>
+                        </div>
 
-                        Quem pediu está esperando resposta: aprovar é a
-                        ação principal, e recusar pede motivo — a pessoa
-                        precisa saber por quê para escolher outro sábado.
+                        {/*
+                          PEDIDO PENDENTE GANHA O VISTO, e não só o "x".
 
-                        No cartão que o próprio gestor montou não há o que
-                        aprovar: ele já é a decisão, e ali só cabe tirar.
-                      */}
-                      {justificativa?.estado === 'pendente' && (
+                          Quem pediu está esperando resposta: aprovar é a
+                          ação principal, e recusar pede motivo — a pessoa
+                          precisa saber por quê para escolher outro sábado.
+
+                          No cartão que o próprio gestor montou não há o que
+                          aprovar: ele já é a decisão, e ali só cabe tirar.
+                        */}
+                        {justificativa?.estado === 'pendente' && (
+                          <button
+                            type="button"
+                            onClick={() => aoAprovar(justificativa)}
+                            aria-label={`Aprovar a folga de ${colaborador.nome}`}
+                            title="Aprovar este pedido"
+                            className="p-1 rounded-lg text-[var(--c-ok)] hover:bg-[var(--c-ok)]/10 transition-colors flex-shrink-0"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
                         <button
                           type="button"
-                          onClick={() => aoAprovar(justificativa)}
-                          aria-label={`Aprovar a folga de ${colaborador.nome}`}
-                          title="Aprovar este pedido"
-                          className="p-1 rounded-lg text-[var(--c-ok)] hover:bg-[var(--c-ok)]/10 transition-colors flex-shrink-0"
+                          onClick={() =>
+                            justificativa?.estado === 'pendente'
+                              ? aoRecusar(justificativa)
+                              : tirar(colaborador.id, sabado)
+                          }
+                          aria-label={
+                            justificativa?.estado === 'pendente'
+                              ? `Recusar a folga de ${colaborador.nome}`
+                              : `Tirar ${colaborador.nome} do sábado ${formatarDataBR(sabado)}`
+                          }
+                          title={
+                            justificativa?.estado === 'pendente'
+                              ? 'Recusar este pedido'
+                              : 'Tirar da escala'
+                          }
+                          className="p-1 rounded-lg text-[var(--c-texto-3)] hover:text-[var(--c-erro)] hover:bg-[var(--c-erro)]/10 transition-colors flex-shrink-0"
                         >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <X className="w-3.5 h-3.5" />
                         </button>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          justificativa?.estado === 'pendente'
-                            ? aoRecusar(justificativa)
-                            : tirar(colaborador.id, sabado)
-                        }
-                        aria-label={
-                          justificativa?.estado === 'pendente'
-                            ? `Recusar a folga de ${colaborador.nome}`
-                            : `Tirar ${colaborador.nome} do sábado ${formatarDataBR(sabado)}`
-                        }
-                        title={
-                          justificativa?.estado === 'pendente'
-                            ? 'Recusar este pedido'
-                            : 'Tirar da escala'
-                        }
-                        className="p-1 rounded-lg text-[var(--c-texto-3)] hover:text-[var(--c-erro)] hover:bg-[var(--c-erro)]/10 transition-colors flex-shrink-0"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                {gente.length === 0 && (
-                  <div className="flex-1 flex flex-col items-center justify-center gap-1 text-[var(--c-texto-3)] border border-dashed border-[var(--c-borda)] rounded-xl py-6">
-                    <span className="text-[11px]">Arraste aqui</span>
+                      </div>
+                    ))}
                   </div>
-                )}
-              </div>
-            );
-          })}
+
+                  {gente.length === 0 && (
+                    <div className="flex-1 flex flex-col items-center justify-center gap-1 text-[var(--c-texto-3)] border border-dashed border-[var(--c-borda)] rounded-xl py-6">
+                      <span className="text-[11px]">Arraste aqui</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
