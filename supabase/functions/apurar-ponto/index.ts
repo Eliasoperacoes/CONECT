@@ -142,7 +142,8 @@ var INFORMACOES_LOJAS = [
     cidade: "Pirassununga - SP",
     gerente: "Carlos Malachias / Marcos",
     telefone: "(19) 3561-1000",
-    grupoId: "grupo-loja-pirassununga"
+    grupoId: "grupo-loja-pirassununga",
+    coordenadas: { latitude: -21.996, longitude: -47.426 }
   },
   {
     nome: "Porto Ferreira",
@@ -150,7 +151,8 @@ var INFORMACOES_LOJAS = [
     cidade: "Porto Ferreira - SP",
     gerente: "Roberto Fagundes",
     telefone: "(19) 3581-2000",
-    grupoId: "grupo-loja-porto-ferreira"
+    grupoId: "grupo-loja-porto-ferreira",
+    coordenadas: { latitude: -21.854, longitude: -47.479 }
   },
   {
     nome: "Palmeiras",
@@ -158,7 +160,8 @@ var INFORMACOES_LOJAS = [
     cidade: "Santa Cruz das Palmeiras - SP",
     gerente: "Márcio Prado",
     telefone: "(19) 3672-3000",
-    grupoId: "grupo-loja-palmeiras"
+    grupoId: "grupo-loja-palmeiras",
+    coordenadas: { latitude: -21.827, longitude: -47.248 }
   },
   {
     nome: "Descalvado",
@@ -166,7 +169,8 @@ var INFORMACOES_LOJAS = [
     cidade: "Descalvado - SP",
     gerente: "Fernanda Alves",
     telefone: "(19) 3583-4000",
-    grupoId: "grupo-loja-descalvado"
+    grupoId: "grupo-loja-descalvado",
+    coordenadas: { latitude: -21.904, longitude: -47.62 }
   },
   {
     nome: "Santa Rita",
@@ -174,7 +178,8 @@ var INFORMACOES_LOJAS = [
     cidade: "Santa Rita do Passa Quatro - SP",
     gerente: "André Villanova",
     telefone: "(19) 3582-5000",
-    grupoId: "grupo-loja-santa-rita"
+    grupoId: "grupo-loja-santa-rita",
+    coordenadas: { latitude: -21.711, longitude: -47.478 }
   },
   {
     nome: "Rede",
@@ -182,7 +187,8 @@ var INFORMACOES_LOJAS = [
     cidade: "Operações Centrais",
     gerente: "Vanessa / Marcelo",
     telefone: "(19) 3561-9900",
-    grupoId: "grupo-avisos-da-rede"
+    grupoId: "grupo-avisos-da-rede",
+    coordenadas: { latitude: -21.996, longitude: -47.426 }
   }
 ];
 

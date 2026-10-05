@@ -104,6 +104,7 @@ import {
 } from './servicos/telasPorAssunto';
 import { BarraLateralWeb } from './componentes/BarraLateralWeb';
 import { BalaoDeConversas } from './componentes/BalaoDeConversas';
+import { SinoWeb } from './componentes/SinoWeb';
 import { ConteudoWeb } from './componentes/ConteudoWeb';
 import { vigiarRelogio } from './servicos/relogio';
 import { usandoNuvem } from './servicos/supabase';
@@ -1860,6 +1861,35 @@ export default function App() {
               aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}
               secaoAlvo={secaoAlvo}
               aoConsumirSecao={consumirSecaoAlvo}
+              aoAbrirPublicacao={abrirPublicacao}
+              acoesDoTopo={
+                <SinoWeb
+                  aoIrPara={irParaTelaWeb}
+                  itens={[
+                    {
+                      id: 'ponto',
+                      tipo: 'ponto',
+                      quantidade: pendenciasParaMim,
+                      texto: (n) => (n === 1 ? 'decisão de ponto espera por você' : 'decisões de ponto esperam por você'),
+                      tela: 'equipe_pendencias',
+                    },
+                    {
+                      id: 'central',
+                      tipo: 'central',
+                      quantidade: publicacoesNaoLidas,
+                      texto: (n) => (n === 1 ? 'comunicado não lido na Central' : 'comunicados não lidos na Central'),
+                      tela: 'central',
+                    },
+                    {
+                      id: 'documentos',
+                      tipo: 'documentos',
+                      quantidade: pendenciasDoMeuRHAgora,
+                      texto: (n) => (n === 1 ? 'documento seu para assinar ou dar ciência' : 'documentos seus para assinar ou dar ciência'),
+                      tela: 'meus_documentos',
+                    },
+                  ]}
+                />
+              }
             />
           )}
         </main>

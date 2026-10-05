@@ -1,0 +1,57 @@
+/**
+ * As notícias de fora do Início: o feed lido como texto puro, só links da
+ * fonte, e cada área com as suas.
+ */
+import { test, expect } from 'bun:test';
+import { lerFeed, escolherNoticias, areaDoSetor, textoPuro, AREA_DO_SETOR } from './noticias';
+import { SETORES } from '../tipos';
+
+/** Um item no formato do feed da Agência Brasil (conferido em 05/10/2026). */
+const item = (titulo: string, link: string, data: string, texto = 'Texto da matéria.') => `
+  <item>
+    <title>${titulo}</title>
+    <link>${link}</link>
+    <imagem-destaque>https://imagens.ebc.com.br/abc/foto.jpg</imagem-destaque>    <description>  &lt;p&gt;&lt;strong&gt;${texto}&lt;/strong&gt;&lt;img src=&quot;https://x/ebc.png&quot; /&gt;&lt;/p&gt;</description>
+    <pubDate>${data}</pubDate>
+  </item>`;
+
+const XML = `<rss><channel>
+${item('Venda de veículos cresce em setembro', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/veiculos', 'Mon, 05 Oct 2026 12:00:00 -0300')}
+${item('Prazo do FGTS termina na sexta', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/fgts', 'Mon, 05 Oct 2026 09:00:00 -0300')}
+${item('Mega-Sena acumula', 'https://agenciabrasil.ebc.com.br/geral/noticia/2026-10/mega', 'Mon, 05 Oct 2026 08:00:00 -0300')}
+${item('<script>alert(1)</script>Golpe', 'javascript:alert(1)', 'Mon, 05 Oct 2026 07:00:00 -0300')}
+</channel></rss>`;
+
+test('o feed vira notícia em TEXTO PURO, e só com link da própria fonte', () => {
+  const noticias = lerFeed(XML);
+  expect(noticias.map((n) => n.titulo)).toEqual([
+    'Venda de veículos cresce em setembro',
+    'Prazo do FGTS termina na sexta',
+    'Mega-Sena acumula',
+  ]);
+  // O resumo sem HTML, a data em ISO, a imagem só do servidor de imagens da EBC
+  expect(noticias[0].resumo).toBe('Texto da matéria.');
+  expect(noticias[0].publicadaEm).toBe('2026-10-05T15:00:00.000Z');
+  expect(noticias[0].imagem).toBe('https://imagens.ebc.com.br/abc/foto.jpg');
+  expect(textoPuro('&lt;b&gt;A &amp;amp; B&lt;/b&gt;')).toBe('A &amp; B');
+});
+
+test('cada área recebe as suas; sem nenhuma, as mais novas, ditas gerais', () => {
+  const noticias = lerFeed(XML);
+  const balcao = escolherNoticias(noticias, areaDoSetor('Balcão'));
+  expect(balcao).toEqual({ daArea: true, noticias: [noticias[0]] });
+  const rh = escolherNoticias(noticias, areaDoSetor('RH'));
+  expect(rh.noticias.map((n) => n.titulo)).toEqual(['Prazo do FGTS termina na sexta']);
+  // TI: nada de tecnologia no dia — vêm as mais novas, e o bloco sabe que são gerais
+  const ti = escolherNoticias(noticias, areaDoSetor('TI'));
+  expect(ti.daArea).toBe(false);
+  expect(ti.noticias[0].titulo).toBe('Venda de veículos cresce em setembro');
+  // ...e só de economia: a de "geral" (Mega-Sena) não vai para a tela da empresa
+  expect(ti.noticias.map((n) => n.editoria)).toEqual(['economia', 'economia']);
+  // O mesmo link em dois feeds aparece uma vez só
+  expect(escolherNoticias([...noticias, ...noticias], 'automotivo').noticias).toHaveLength(1);
+});
+
+test('todo setor da casa tem a sua área de notícia', () => {
+  for (const setor of SETORES) expect(AREA_DO_SETOR[setor]).toBeDefined();
+});

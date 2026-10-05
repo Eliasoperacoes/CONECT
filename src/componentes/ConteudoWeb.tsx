@@ -161,6 +161,8 @@ export const ConteudoWeb: React.FC<{
   aoConsumirSecao: () => void;
   /** O que vai no topo, ao lado da pessoa (o sino). */
   acoesDoTopo?: React.ReactNode;
+  /** Abre um comunicado da Central — o mesmo caminho do aviso. */
+  aoAbrirPublicacao: (id: string) => void;
 }> = (p) => {
   const { tela, assunto, colaboradorAtual } = p;
 
@@ -188,6 +190,7 @@ export const ConteudoWeb: React.FC<{
             visiveis={p.visiveis}
             pendenciasDoMeuRH={p.pendenciasDoMeuRH}
             aoIrPara={p.aoIrPara}
+            aoAbrirPublicacao={p.aoAbrirPublicacao}
           />
         );
       case 'central':
