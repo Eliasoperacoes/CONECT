@@ -246,9 +246,10 @@ test('A FERRAMENTA DO ESPELHO EXISTE NO CATÁLOGO', async () => {
 
   // E quem pergunta por ela usa exatamente esta chave
   const banco = await Bun.file('src/componentes/BancoDeHoras.tsx').text();
-  const gestao = await Bun.file('src/componentes/PainelGestao.tsx').text();
+  // Quem decide as abas de "Equipe e ponto" (e da barra do computador)
+  const acesso = await Bun.file('src/servicos/telasPorAssunto.ts').text();
   expect(banco).toContain("'espelho_equipe'");
-  expect(gestao).toContain("'espelho_equipe'");
+  expect(acesso).toContain("'espelho_equipe'");
 });
 
 test('O MODAL DE CORREÇÃO SEGUE A JORNADA DA PESSOA', async () => {

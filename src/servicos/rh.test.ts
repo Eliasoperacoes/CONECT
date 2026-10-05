@@ -136,20 +136,28 @@ test('quem tem a tela de RH nao ve escala e rede em Equipe & Ponto', async () =>
     new URL('../componentes/PainelGestao.tsx', import.meta.url)
   ).text();
 
-  expect(gestao).toContain('const temTelaDeRh =');
-  // O `!temTelaDeRh` continua valendo para as duas portas do espelho: quem
-  // tem a tela de RH não vê a mesma coisa repetida em Equipe & Ponto
-  expect(gestao).toContain("podeUsar('espelho_equipe', colaboradorAtual)) && !temTelaDeRh");
-  /**
-   * A escala passou a consultar o catálogo de permissões, que é o assunto
-   * de outra correção — ela não aparecia no painel de Permissões e não
-   * dava para ligar ou desligar por nível.
-   *
-   * O que ESTE teste protege continua igual: `!temTelaDeRh`. Não é
-   * permissão, é evitar duas portas para a mesma sala. Por isso a
-   * asserção mudou de forma, e não de intenção.
-   */
-  expect(gestao).toContain("podeUsar('escala_folgas', colaboradorAtual) && !temTelaDeRh");
+  /*
+    A regra mora em `acessoDe` (telasPorAssunto.ts) desde a organização por
+    assunto; a tela pergunta a ela. O que ESTE teste protege continua igual:
+    `!temTelaDeRh` — não é permissão, é evitar duas portas para a mesma
+    sala. Por isso a asserção mudou de forma, e não de intenção.
+  */
+  expect(gestao).toContain('const veRede = acesso.redeNaGestao;');
+  expect(gestao).toContain('const veEscala = acesso.escalaDaEquipe;');
+  const acesso = await Bun.file(new URL('./telasPorAssunto.ts', import.meta.url)).text();
+  expect(acesso).toContain('const temTelaDeRh =');
+  expect(acesso).toContain("pode('espelho_equipe')) && !temTelaDeRh");
+  expect(acesso).toContain("pode('escala_folgas') && !temTelaDeRh");
+
+  // E de fato: quem cuida de pessoas e tem a tela de RH não vê as duas em Equipe & Ponto
+  const { acessoDe } = await import('./telasPorAssunto');
+  const diretor = { id: 'd', nome: 'D', nivel: 4, setor: 'Diretoria' } as any;
+  const a = acessoDe(diretor, { pode: () => true, temEquipe: true, batePonto: false });
+  expect({ escala: a.escalaDaEquipe, rede: a.redeNaGestao, peloRh: a.escala && a.espelhosDaRede }).toEqual({
+    escala: false,
+    rede: false,
+    peloRh: true,
+  });
 
   // E a tela de RH usa os MESMOS componentes, não cópias
   const rh = await Bun.file(
@@ -170,7 +178,13 @@ test('a tela de RH e de quem cuida de pessoas, e nao de um nivel', async () => {
    * que é o que a regra do banco recusa, e a tela não promete o que o banco
    * nega.
    */
-  expect(painel).toContain("podeUsar('rh_pessoal', colaboradorAtual) && cuidaDeRh");
+  expect(painel).toContain("if (acesso.rh) lista.push('rh');");
+  const acesso = await Bun.file(new URL('./telasPorAssunto.ts', import.meta.url)).text();
+  expect(acesso).toContain("const rh = gerencia && pode('rh_pessoal') && cuidaDePessoas(c);");
+  // Um líder com a permissão ligada, sem o papel, não ganha a tela de RH
+  const { acessoDe } = await import('./telasPorAssunto');
+  const lider = { id: 'l', nome: 'L', nivel: 2, setor: 'Balcão' } as any;
+  expect(acessoDe(lider, { pode: () => true, temEquipe: true, batePonto: true }).rh).toBe(false);
   // A barra vem da lista, que já tem a condição acima
   expect(painel).toContain('abas={abasPermitidas.map((id) => ROTULO_SUBABA[id](');
 });
@@ -263,17 +277,13 @@ test('as abas que o RH NAO ve saem da barra e da lista juntas', async () => {
   expect(painel).toContain('abas={abasPermitidas.map((id) => ROTULO_SUBABA[id](');
 
   /**
-   * E na lista, todas moram DENTRO do mesmo bloco. O recorte vai do
-   * `if (!ehDoRh(...))` até o fecho dele — se alguma escapar de lá, a
-   * barra some com o botão e a aba continua alcançável por estado antigo.
+   * E as três que o RH não vê passam pela guarda do setor, em `acessoDe` —
+   * se alguma escapar dela, a barra mostra ao RH uma aba que não é dele.
    */
-  const inicio = painel.indexOf('if (!ehDoRh(colaboradorAtual)) {');
-  expect(inicio).toBeGreaterThan(-1);
-
-  const bloco = painel.slice(inicio, painel.indexOf("lista.push('avisos')", inicio));
-  for (const aba of ["'visao_geral'", "'gestao'", "'organograma'"]) {
-    expect(bloco).toContain(aba);
-  }
+  const acesso = await Bun.file(new URL('./telasPorAssunto.ts', import.meta.url)).text();
+  expect(acesso).toMatch(/const gestao =\s*gerencia &&\s*!ehDoRh\(c\)/);
+  expect(acesso).toContain("unidades: gerencia && !ehDoRh(c) && pode('visao_lojas')");
+  expect(acesso).toContain("organograma: gerencia && !ehDoRh(c) && pode('organograma')");
 });
 
 test('os holerites abrem com as lojas RECOLHIDAS', async () => {

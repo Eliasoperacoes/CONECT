@@ -29,6 +29,7 @@ import {
   ehDoRh,
 } from '../tipos';
 import { podeUsar } from '../servicos/permissoes';
+import { acessoDe } from '../servicos/telasPorAssunto';
 import { pendenciasParaDecidir as pendenciasDeAusencia } from '../servicos/justificativas';
 import { pendenciasDeFolga } from '../servicos/justificativas';
 import { bancoDados } from '../servicos/bancoDados';
@@ -198,46 +199,23 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    * Diretoria e TI, e amarrar aqui tiraria o organograma do Administrador
    * — que é justamente quem posiciona as pessoas nele.
    */
+  /** A pergunta ao catálogo, com a pessoa de agora. */
+  const pode = (chave: string) => podeUsar(chave, colaboradorAtual);
+
   const abasPermitidas = useMemo(() => {
+    /*
+      AS CONDIÇÕES MORAM EM `acessoDe` (telasPorAssunto.ts), a mesma
+      resposta que a barra lateral do computador usa — reorganizar por
+      assunto não pode mudar quem vê o quê. Lá estão os porquês: "Visão &
+      Lojas" e o organograma não são do RH; "Equipe & Ponto" reúne equipe,
+      banco de horas da rede e cartaz de QR.
+    */
+    const acesso = acessoDe(colaboradorAtual, { pode, temEquipe, batePonto: false });
     const lista: SubAbaPainel[] = [];
-    const temRh = podeUsar('rh_pessoal', colaboradorAtual) && cuidaDeRh;
-
-    if (temRh) lista.push('rh');
-
-    if (!ehDoRh(colaboradorAtual)) {
-      /**
-       * "VISÃO & LOJAS" NÃO É DO RH.
-       *
-       * Ela mostra indicadores de operação por unidade — o que a rede
-       * está vendendo, como cada loja vai. É a leitura de quem toca o
-       * negócio, e o RH não decide nada com ela.
-       *
-       * Entrou aqui junto das outras que o Elias já tinha tirado do RH
-       * pelo mesmo motivo: quadro de equipe, equipe & ponto e
-       * organograma. Aba que aparece e não serve é ruído na barra, e
-       * numa barra curta cada item a menos é um item a mais de clareza.
-       */
-      if (podeUsar('visao_lojas', colaboradorAtual)) lista.push('visao_geral');
-
-
-      /**
-       * "Equipe & Ponto" reúne a equipe, o banco de horas da rede e o
-       * cartaz de QR. A condição é a mesma da barra, e precisa ser: uma aba
-       * que aparece e não está nesta lista é escolhida e cai fora no clique
-       * seguinte.
-       */
-      if (
-        ((podeUsar('painel_gestao', colaboradorAtual) ||
-          podeUsar('aprovar_jornadas', colaboradorAtual)) &&
-          temEquipe) ||
-        podeUsar('banco_horas_rh', colaboradorAtual) ||
-        podeUsar('qr_ponto', colaboradorAtual)
-      )
-        lista.push('gestao');
-
-      if (podeUsar('organograma', colaboradorAtual)) lista.push('organograma');
-    }
-
+    if (acesso.rh) lista.push('rh');
+    if (acesso.unidades) lista.push('visao_geral');
+    if (acesso.gestao) lista.push('gestao');
+    if (acesso.organograma) lista.push('organograma');
     return lista;
   }, [colaboradorAtual, temEquipe, podeVerBancoDeHoras, cuidaDeRh]);
 
@@ -296,19 +274,11 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    * "Minha Equipe" ainda exige ter equipe: uma aba vazia não é permissão,
    * é ruído.
    */
-  const pode = (chave: string) => podeUsar(chave, colaboradorAtual);
-  /**
-   * Com o banco de horas e o cartaz de QR morando aqui dentro, esta aba
-   * deixou de ser só "tenho equipe".
-   *
-   * Um gerente sem ninguém cadastrado abaixo dele ainda precisa do cartaz
-   * da loja — e antes ele chegava nele por uma aba própria, que saiu. Sem
-   * este `||` a fusão tiraria o QR dele sem aviso.
-   */
-  const podeVerGestao =
-    ((pode('painel_gestao') || pode('aprovar_jornadas')) && temEquipe) ||
-    pode('banco_horas_rh') ||
-    pode('qr_ponto');
+  /*
+    Quem vê "Equipe & Ponto" — inclusive o gerente sem equipe cadastrada,
+    que ainda precisa do cartaz de QR da loja — é `acessoDe(...).gestao`,
+    em telasPorAssunto.ts.
+  */
 
   /**
    * O painel muda de nome conforme quem abre.

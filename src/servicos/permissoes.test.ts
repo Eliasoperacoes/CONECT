@@ -535,18 +535,26 @@ test('quem so tem o cartaz de QR continua alcancando a aba', async () => {
     new URL('../componentes/PainelRede.tsx', import.meta.url)
   ).text();
 
-  const inicio = painel.indexOf('const podeVerGestao =');
-  const regra = painel.slice(inicio, inicio + 300);
+  // A regra mora em `acessoDe` — uma só, para o celular e o computador
+  const acesso = await Bun.file(new URL('./telasPorAssunto.ts', import.meta.url)).text();
+  const inicio = acesso.indexOf('const gestao =');
+  const regra = acesso.slice(inicio, inicio + 300);
   expect(regra).toContain("pode('banco_horas_rh')");
   expect(regra).toContain("pode('qr_ponto')");
 
-  // E a mesma condição na lista de abas permitidas, senão as duas discordam
+  // E a lista de abas usa exatamente essa resposta, sem uma segunda conta
   const lista = painel.slice(
     painel.indexOf('const abasPermitidas'),
     painel.indexOf('const subAbaAtiva')
   );
-  expect(lista).toContain("podeUsar('banco_horas_rh', colaboradorAtual)");
-  expect(lista).toContain("podeUsar('qr_ponto', colaboradorAtual)");
+  expect(lista).toContain("if (acesso.gestao) lista.push('gestao');");
+  expect(painel).not.toContain('const podeVerGestao =');
+
+  // E de fato: o gerente sem equipe, só com o QR, alcança a aba
+  const { acessoDe } = await import('./telasPorAssunto');
+  const gerente = { id: 'g', nome: 'G', nivel: 3, setor: 'Gerência' } as any;
+  expect(acessoDe(gerente, { pode: (k) => k === 'qr_ponto', temEquipe: false, batePonto: false }).gestao).toBe(true);
+  expect(acessoDe(gerente, { pode: () => false, temEquipe: false, batePonto: false }).gestao).toBe(false);
 });
 
 test('as vistas do RH continuam com as permissoes delas', async () => {
@@ -564,9 +572,13 @@ test('as vistas do RH continuam com as permissoes delas', async () => {
    * conteúdo, que já vem filtrado pela cadeia, e o rótulo, que diz qual é.
    */
   expect(gestao).toContain("const veEspelhoDaRede = podeUsar('banco_horas_rh', colaboradorAtual)");
-  expect(gestao).toContain("podeUsar('espelho_equipe', colaboradorAtual)");
   expect(gestao).toContain("veEspelhoDaRede ? 'Rede' : 'Espelho de ponto'");
-  expect(gestao).toContain("const veQr = podeUsar('qr_ponto', colaboradorAtual)");
+  // As vistas perguntam a `acessoDe`, que as amarra ao catálogo
+  expect(gestao).toContain('const veRede = acesso.redeNaGestao;');
+  expect(gestao).toContain('const veQr = acesso.qr;');
+  const acesso = await Bun.file(new URL('./telasPorAssunto.ts', import.meta.url)).text();
+  expect(acesso).toContain("(pode('banco_horas_rh') || pode('espelho_equipe')) && !temTelaDeRh");
+  expect(acesso).toContain("const qr = gestao && pode('qr_ponto');");
   // As vistas entram na barra só com a permissão delas
   expect(gestao).toContain('...(veRede ? [');
   expect(gestao).toContain('...(veQr ? [');
@@ -736,9 +748,9 @@ test('quem e do RH ve RH e Visao & Lojas — e nada mais', async () => {
   const fim = painel.indexOf('const subAbaAtiva', inicio);
   const lista = painel.slice(inicio, fim);
 
-  // As três de quem é do RH ficam FORA da guarda
-  expect(lista).toContain("if (temRh) lista.push('rh');");
-  expect(lista).toContain("lista.push('visao_geral')");
+  // A lista vem inteira de `acessoDe`
+  expect(lista).toContain("if (acesso.rh) lista.push('rh');");
+  expect(lista).toContain("if (acesso.unidades) lista.push('visao_geral');");
   /*
     "Avisos" saiu daqui: a Central virou aba própria, de todo mundo.
     Ela morava atrás de uma permissão de liderança, e assim 70 das 89
@@ -746,10 +758,16 @@ test('quem e do RH ve RH e Visao & Lojas — e nada mais', async () => {
   */
   expect(lista).not.toContain("lista.push('avisos')");
 
-  // E as outras três ficam DENTRO dela
-  const dentroDaGuarda = lista.slice(lista.indexOf('if (!ehDoRh(colaboradorAtual))'));
-  expect(dentroDaGuarda).toContain("lista.push('gestao')");
-  expect(dentroDaGuarda).toContain("lista.push('organograma')");
+  // E quem é do RH, mesmo com todas as permissões ligadas, vê o RH — e só
+  const { acessoDe } = await import('./telasPorAssunto');
+  const rh = { id: 'r', nome: 'R', nivel: 2, setor: 'RH' } as any;
+  const a = acessoDe(rh, { pode: () => true, temEquipe: true, batePonto: true });
+  expect({ rh: a.rh, unidades: a.unidades, gestao: a.gestao, organograma: a.organograma }).toEqual({
+    rh: true,
+    unidades: false,
+    gestao: false,
+    organograma: false,
+  });
 });
 
 test('a aba do RH e a PRIMEIRA da lista', async () => {
@@ -833,7 +851,18 @@ test('TODA ABA DO PAINEL DE GESTÃO PASSA PELO CATÁLOGO', async () => {
     expect({ bandeira, achou: !!linha }).toEqual({ bandeira, achou: true });
   }
 
-  expect(gestao).toContain("podeUsar('escala_folgas'");
-  expect(gestao).toContain("podeUsar('qr_ponto'");
-  expect(gestao).toContain("podeUsar('banco_horas_rh'");
+  // E as bandeiras vêm de `acessoDe`, que pergunta ao catálogo
+  expect(gestao).toContain('const veEscala = acesso.escalaDaEquipe;');
+  const acesso = await Bun.file('src/servicos/telasPorAssunto.ts').text();
+  expect(acesso).toContain("pode('escala_folgas')");
+  expect(acesso).toContain("pode('qr_ponto')");
+  expect(acesso).toContain("pode('banco_horas_rh')");
+
+  // Desligar a escala no catálogo tira a aba de fato
+  const { acessoDe } = await import('./telasPorAssunto');
+  const lider = { id: 'l', nome: 'L', nivel: 2, setor: 'Balcão' } as any;
+  const comEscala = acessoDe(lider, { pode: () => true, temEquipe: true, batePonto: true });
+  const semEscala = acessoDe(lider, { pode: (k) => k !== 'escala_folgas', temEquipe: true, batePonto: true });
+  expect(comEscala.escalaDaEquipe).toBe(true);
+  expect(semEscala.escalaDaEquipe).toBe(false);
 });

@@ -46,7 +46,7 @@ import {
 } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 import { podeUsar } from '../servicos/permissoes';
-import { cuidaDePessoas } from '../tipos';
+import { acessoDe } from '../servicos/telasPorAssunto';
 import { BancoDeHoras } from './BancoDeHoras';
 import { CicloSemanal } from './CicloSemanal';
 import { FotoPresenca } from './FotoPresenca';
@@ -140,8 +140,16 @@ export const PainelGestao: React.FC<Props> = ({
    * Para o líder que NÃO cuida de pessoas nada muda: ele não tem a tela de
    * RH, e continua alcançando as duas por aqui.
    */
-  const temTelaDeRh =
-    cuidaDePessoas(colaboradorAtual) && podeUsar('rh_pessoal', colaboradorAtual);
+  /*
+    AS CONDIÇÕES MORAM EM `acessoDe` (telasPorAssunto.ts) — a mesma
+    resposta da barra lateral do computador. Os porquês de cada uma estão
+    aqui embaixo, onde sempre estiveram.
+  */
+  const acesso = acessoDe(colaboradorAtual, {
+    pode: (chave) => podeUsar(chave, colaboradorAtual),
+    temEquipe,
+    batePonto: false,
+  });
 
   /**
    * O espelho de ponto, com duas portas para a mesma tela.
@@ -155,9 +163,8 @@ export const PainelGestao: React.FC<Props> = ({
    * líder não tinha por onde lançar.
    */
   const veEspelhoDaRede = podeUsar('banco_horas_rh', colaboradorAtual);
-  const veRede =
-    (veEspelhoDaRede || podeUsar('espelho_equipe', colaboradorAtual)) && !temTelaDeRh;
-  const veQr = podeUsar('qr_ponto', colaboradorAtual);
+  const veRede = acesso.redeNaGestao;
+  const veQr = acesso.qr;
   /**
    * A ESCALA PASSA PELO CATÁLOGO, como as outras.
    *
@@ -169,7 +176,7 @@ export const PainelGestao: React.FC<Props> = ({
    * é evitar duas portas para a mesma sala — quem tem a tela de RH acessa
    * a escala por lá.
    */
-  const veEscala = podeUsar('escala_folgas', colaboradorAtual) && !temTelaDeRh;
+  const veEscala = acesso.escalaDaEquipe;
 
   /**
    * Quem NÃO tem equipe ainda pode entrar aqui — um gerente sem ninguém
