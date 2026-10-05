@@ -144,6 +144,30 @@ export const ehSabado = (data: string): boolean =>
   deDataLocal(data).getDay() === 6;
 
 /**
+ * A SITUAÇÃO QUE VALE NO DIA — e não só a que foi aprovada.
+ *
+ * FOLGA APROVADA COM BATIDA É FOLGA NÃO GOZADA. A folga de sábado é paga
+ * pela compensação (os 10 minutos de cada dia útil): ela consome até 4h
+ * dela. A Fernanda tinha a folga de 26/09 aprovada e TRABALHOU o sábado,
+ * combinado com o RH para folgar em outubro — o mesmo combinado que fez a
+ * compensação passar de um mês ao outro (01/10/2026). Contada como folga,
+ * ela consumia as 3h30 que deviam chegar a outubro (Elias, 05/10/2026).
+ *
+ * Trabalhou, não folgou: o dia é um sábado normal, a compensação fica, e o
+ * banco não muda. TODO lugar que pergunta "folgou?" pergunta AQUI — o
+ * previsto, o espelho, a semana da equipe e o fechamento da compensação.
+ */
+export const situacaoEfetiva = (colaboradorId: string, data: string): SituacaoDoDia => {
+  const situacao = fonte.situacaoDoDia(colaboradorId, data);
+  if (situacao === 'folga' && fonte.marcacoesDoDia(colaboradorId, data).length > 0) return 'normal';
+  return situacao;
+};
+
+/** Folgou de verdade neste sábado — é o que consome a compensação. */
+export const folgouNoSabado = (colaboradorId: string, data: string): boolean =>
+  ehSabado(data) && situacaoEfetiva(colaboradorId, data) === 'folga';
+
+/**
  * As marcações que fecham o dia.
  *
  * Sábado tem DUAS: entra às 8 e sai ao meio-dia, sem intervalo. Exigir as
@@ -194,7 +218,7 @@ export const marcacoesEsperadas = (
    * folga não tinha — apesar de a folga de sábado ser mensal e valer
    * para a rede inteira.
    */
-  if (colaborador && fonte.situacaoDoDia(colaborador.id, data) !== 'normal') return [];
+  if (colaborador && situacaoEfetiva(colaborador.id, data) !== 'normal') return [];
 
   const feriado = fonte.feriadoEm(data, colaborador?.loja);
   if (feriado) return feriado.minutosPrevistos > 0 ? ['entrada', 'saida'] : [];
@@ -247,14 +271,14 @@ export const cargaPrevistaEmMinutos = (colaborador: Colaborador | undefined, dat
    * previsto é a jornada normal, e `obterJornadaDoDia` impede o saldo
    * de ficar negativo — a falta daquele dia continua perdoada.
    *
-   * ISSO É DO ABONO, NÃO DO DESCANSO. Folga e férias não são falta
-   * perdoada: o dia não era de trabalho. A mesma Fernanda trabalhou o
-   * sábado de folga de 26/09, combinado com o RH para acumular, e com a
-   * regra do abono o sábado previu 4h e fechou em zero (05/10/2026).
-   * Descanso prevê zero sempre, e o que se trabalha nele é crédito.
+   * ISSO É DO ABONO, NÃO DO DESCANSO. Férias não são falta perdoada: o
+   * dia não era de trabalho, prevê zero, e o que se trabalha nele é
+   * crédito. A FOLGA com batida nem chega aqui como folga:
+   * `situacaoEfetiva` a devolve como dia normal — trabalhou, não folgou,
+   * e a compensação que paga a folga fica para quando ela for gozada.
    */
   if (colaborador) {
-    const situacao = fonte.situacaoDoDia(colaborador.id, data);
+    const situacao = situacaoEfetiva(colaborador.id, data);
     if (
       situacao !== 'normal' &&
       (ehDescanso(situacao) || fonte.marcacoesDoDia(colaborador.id, data).length === 0)
@@ -682,7 +706,7 @@ export const jornadaDoDia = (colaboradorId: string, data: string): JornadaDia =>
    * da jornada normal continua sendo extra, como em qualquer dia.
    */
   // Só o ABONO segura o saldo em zero; no descanso o previsto já é zero
-  const situacaoDoDia = fonte.situacaoDoDia(colaboradorId, data);
+  const situacaoDoDia = situacaoEfetiva(colaboradorId, data);
   const abonado = situacaoDoDia !== 'normal' && !ehDescanso(situacaoDoDia);
   let saldoMinutos = abonado ? Math.max(0, tolerancia.saldoApurado) : tolerancia.saldoApurado;
   let saldoBrutoDoDia = saldoBrutoMinutos;
@@ -1016,7 +1040,7 @@ export const decidirLevantamento = (
   // Domingo não tem jornada; dia fechado não é problema
   if (ehDiaDeFolga(data)) return { acao: 'nada' };
   // Dia abonado não é dia pela metade: já foi decidido por outra via
-  if (fonte.situacaoDoDia(pessoa.id, data) !== 'normal') return { acao: 'nada' };
+  if (situacaoEfetiva(pessoa.id, data) !== 'normal') return { acao: 'nada' };
   // Sem batida esperada o dia não é dela — sábado de quem não vem
   if (esperadas.length === 0) return { acao: 'nada' };
   /*

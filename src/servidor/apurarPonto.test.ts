@@ -162,4 +162,24 @@ test('a madrugada fecha o saldo de compensação do sábado do mês anterior', (
     opcoes
   );
   expect(comFolga.compensacoes[0]).toMatchObject({ folgas: 1, consumida: 50, saldoFinal: 0 });
+
+  /*
+    A FOLGA APROVADA E TRABALHADA não foi gozada: não consome. É o sábado
+    de 26/09 da Fernanda, combinado com o RH para folgar em outubro — os
+    50 minutos seguem para pagar a folga trocada (Elias, 05/10/2026).
+  */
+  const trabalhouNaFolga = planejarApuracao(
+    dados({
+      batidas: [
+        ...semanaCerta(),
+        ...setembro,
+        batida('ana', '2026-09-19', 'entrada', '08:02'),
+        batida('ana', '2026-09-19', 'saida', '11:57'),
+      ],
+      compensacoes: [agosto],
+      ausencias: [{ id: 'f', colaboradorId: 'ana', dataInicio: '2026-09-19', dataFim: '2026-09-19', tipo: 'folga_sabado', estado: 'aprovada', criadoEm: '' } as any],
+    }),
+    opcoes
+  );
+  expect(trabalhouNaFolga.compensacoes[0]).toMatchObject({ folgas: 0, consumida: 0, saldoFinal: 50 });
 });

@@ -1621,10 +1621,11 @@ export const SITUACAO_POR_TIPO: Record<TipoAusencia, SituacaoDoDia> = {
  * trabalho, e a falta foi perdoada. Com batida, prevê a jornada normal e
  * o saldo não fica negativo — perdoa, mas não paga o trabalho em dobro.
  *
- * Misturar as duas custou: em 30/09 a regra do abono (feita para o
- * atestado da Fernanda em 25/09) passou a valer também para a folga, e o
- * sábado de folga que ela TRABALHOU em 26/09, combinado com o RH para
- * acumular, fechou em zero (Elias, 05/10/2026).
+ * A FOLGA DE SÁBADO TRABALHADA não é descanso nem abono: é folga NÃO
+ * GOZADA, e vale como dia normal (`situacaoEfetiva`, em apuracaoDoDia). A
+ * folga é paga pela compensação do sábado; se ela não foi gozada, a
+ * compensação não é consumida — é assim que o sábado de 26/09 que a
+ * Fernanda trabalhou, combinado com o RH, chega a outubro (05/10/2026).
  */
 export const SITUACOES_DE_DESCANSO: readonly SituacaoDoDia[] = ['folga', 'ferias'];
 export const ehDescanso = (situacao: SituacaoDoDia): boolean => SITUACOES_DE_DESCANSO.includes(situacao);

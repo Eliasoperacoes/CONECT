@@ -295,7 +295,8 @@ test('o ciclo marca QUEM folgou, para a conta nao parecer errada', async () => {
    * explicação, e desconfia da conta.
    */
   expect(corpo).toContain('folgouNoCiclo');
-  expect(corpo).toContain("situacaoDoDia(colaborador.id, data) === 'folga'");
+  // Folgou DE VERDADE: a folga aprovada e trabalhada não conta (05/10/2026)
+  expect(corpo).toContain('folgouNoSabado(colaborador.id, data)');
 });
 
 test('quem precisa de decisao vem primeiro na relacao', async () => {

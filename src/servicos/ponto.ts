@@ -107,6 +107,8 @@ import {
   decidirLevantamento,
   listarDatasDoPeriodo,
   compensacaoEsperadaDoDia,
+  situacaoEfetiva,
+  folgouNoSabado,
 } from './apuracaoDoDia';
 export { paraDataLocal, deDataLocal, ehDiaDeFolga, ehSabado, marcacoesEsperadas, listarDatasDoPeriodo };
 
@@ -220,7 +222,8 @@ export const motivoSemMarcacao = (
    * o rótulo de cada um.
    */
   if (colaborador) {
-    const situacao = situacaoDoDia(colaborador.id, data);
+    // A efetiva: folga trabalhada é sábado comum, e não "Folga" no espelho
+    const situacao = situacaoEfetiva(colaborador.id, data);
     if (situacao !== 'normal') return ROTULO_SITUACAO[situacao];
   }
 
@@ -1170,7 +1173,7 @@ class ServicoPonto {
        */
       const esperadas = marcacoesEsperadas(data, colaborador);
       if (esperadas.length === 0) continue;
-      if (situacaoDoDia(colaboradorId, data) !== 'normal') continue;
+      if (situacaoEfetiva(colaboradorId, data) !== 'normal') continue;
 
       /**
        * DIA SEM NENHUMA BATIDA TAMBÉM É FALTA DE BATIDA.
@@ -1268,8 +1271,7 @@ class ServicoPonto {
          * 44h50 na de baixo sem explicação, e desconfia da conta.
          */
         const folgouNoCiclo = listarDatasDoPeriodo(inicio, fim).some(
-          (data) =>
-            ehSabado(data) && situacaoDoDia(colaborador.id, data) === 'folga'
+          (data) => folgouNoSabado(colaborador.id, data)
         );
 
         return {
@@ -2475,7 +2477,8 @@ class ServicoPonto {
         // A compensação do sábado juntada no período, e as folgas que a consomem
         const compensacaoMinutos = jornadas.reduce((t, j) => t + j.compensacaoMinutos, 0);
         const folgasDeSabado = jornadas.filter(
-          (j) => ehSabado(j.data) && situacaoDoDia(colaborador.id, j.data) === 'folga'
+          // Folgou de verdade: a folga trabalhada não consome a compensação
+          (j) => folgouNoSabado(colaborador.id, j.data)
         ).length;
         // O saldo que veio do mês anterior, como a madrugada o fechou
         const compensacaoAnteriorMinutos =

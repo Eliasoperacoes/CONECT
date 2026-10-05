@@ -280,8 +280,15 @@ var listarDatasDoPeriodo = (dataInicio, dataFim) => {
 };
 var ehDiaDeFolga = (data) => deDataLocal(data).getDay() === 0;
 var ehSabado = (data) => deDataLocal(data).getDay() === 6;
+var situacaoEfetiva = (colaboradorId, data) => {
+  const situacao = fonte.situacaoDoDia(colaboradorId, data);
+  if (situacao === "folga" && fonte.marcacoesDoDia(colaboradorId, data).length > 0)
+    return "normal";
+  return situacao;
+};
+var folgouNoSabado = (colaboradorId, data) => ehSabado(data) && situacaoEfetiva(colaboradorId, data) === "folga";
 var marcacoesEsperadas = (data, colaborador) => {
-  if (colaborador && fonte.situacaoDoDia(colaborador.id, data) !== "normal")
+  if (colaborador && situacaoEfetiva(colaborador.id, data) !== "normal")
     return [];
   const feriado = fonte.feriadoEm(data, colaborador?.loja);
   if (feriado)
@@ -301,7 +308,7 @@ var cargaPrevistaEmMinutos = (colaborador, data) => {
   if (ehDiaDeFolga(data))
     return 0;
   if (colaborador) {
-    const situacao = fonte.situacaoDoDia(colaborador.id, data);
+    const situacao = situacaoEfetiva(colaborador.id, data);
     if (situacao !== "normal" && (ehDescanso(situacao) || fonte.marcacoesDoDia(colaborador.id, data).length === 0)) {
       return 0;
     }
@@ -402,7 +409,7 @@ var jornadaDoDia = (colaboradorId, data) => {
       intervalo: TOLERANCIA_INTERVALO_PADRAO_MINUTOS
     }
   });
-  const situacaoDoDia = fonte.situacaoDoDia(colaboradorId, data);
+  const situacaoDoDia = situacaoEfetiva(colaboradorId, data);
   const abonado = situacaoDoDia !== "normal" && !ehDescanso(situacaoDoDia);
   let saldoMinutos = abonado ? Math.max(0, tolerancia.saldoApurado) : tolerancia.saldoApurado;
   let saldoBrutoDoDia = saldoBrutoMinutos;
@@ -506,7 +513,7 @@ var decidirLevantamento = (pessoa, data, agora) => {
   const feitas = esperadas.filter((t) => !!jornada.marcacoes[t]).length;
   if (ehDiaDeFolga(data))
     return { acao: "nada" };
-  if (fonte.situacaoDoDia(pessoa.id, data) !== "normal")
+  if (situacaoEfetiva(pessoa.id, data) !== "normal")
     return { acao: "nada" };
   if (esperadas.length === 0)
     return { acao: "nada" };
@@ -1008,7 +1015,7 @@ var planejarApuracao = (dados, opcoes) => {
   for (const pessoa of pessoas) {
     const datas = listarDatasDoPeriodo(inicio, fim);
     const juntada = datas.reduce((t, d) => t + jornadaDoDia(pessoa.id, d).compensacaoMinutos, 0);
-    const folgas = datas.filter((d) => deDataLocal(d).getDay() === 6 && situacaoNaLista(dados.ausencias, pessoa.id, d) === "folga").length;
+    const folgas = datas.filter((d) => folgouNoSabado(pessoa.id, d)).length;
     const anterior = gravados.get(`${pessoa.id}|${mesAnterior(mes)}`)?.saldoFinal ?? 0;
     const atual = gravados.get(`${pessoa.id}|${mes}`);
     if (!atual && juntada === 0 && anterior === 0 && folgas === 0)

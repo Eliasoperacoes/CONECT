@@ -4397,24 +4397,42 @@ test('o que passa da jornada normal continua sendo extra, com ou sem abono', () 
 });
 
 // ============================================================
-// DESCANSO NÃO É ABONO — o sábado de folga TRABALHADO é crédito
+// FOLGA TRABALHADA É FOLGA NÃO GOZADA — dia normal, e a compensação fica
 //
 // A Fernanda trabalhou o sábado de folga de 26/09 (08:02–11:57), combinado
-// com o RH para acumular e folgar outro sábado. A regra do abono, acima,
-// valia para a folga também: o sábado previu 4h e fechou em zero
-// (Elias, 05/10/2026). Folga e férias não são falta perdoada — o dia não
-// era de trabalho, e o que se trabalha nele vai para o banco.
+// com o RH para folgar em outubro. A folga é paga pela compensação do
+// sábado; trabalhada, ela não foi gozada: o sábado vale como sábado comum,
+// e a compensação de setembro passa a outubro para pagar a folga trocada
+// (Elias, 05/10/2026). Férias, que não são pagas pela compensação, são
+// descanso: o que se trabalha nelas é crédito.
 // ============================================================
 
-test('sábado de folga aprovado e TRABALHADO: prevê zero, e as horas são crédito', () => {
+test('sábado de folga aprovado e TRABALHADO: vale como sábado comum, não como folga', () => {
   equipe = [GESTOR, DO_TURNO_A];
   comAusenciaAprovada(DO_TURNO_A, '2026-09-26', 'folga_sabado');
   baterParcial(DO_TURNO_A, '2026-09-26', { entrada: '08:02', saida: '11:57' });
 
   const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-26');
-  expect(dia.minutosPrevistos).toBe(0);
+  expect(dia.minutosPrevistos).toBe(240);
   expect(dia.minutosTrabalhados).toBe(235);
-  expect(dia.saldoMinutos).toBe(235);
+  // Os 5 minutos a menos ficam na tolerância, como em qualquer sábado
+  expect(dia.saldoMinutos).toBe(0);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('a folga trabalhada NÃO consome a compensação; a gozada consome', async () => {
+  const { folgouNoSabado } = await import('./apuracaoDoDia');
+  equipe = [GESTOR, DO_TURNO_A];
+
+  comAusenciaAprovada(DO_TURNO_A, '2026-09-26', 'folga_sabado');
+  expect(folgouNoSabado(DO_TURNO_A.id, '2026-09-26')).toBe(true);
+
+  baterParcial(DO_TURNO_A, '2026-09-26', { entrada: '08:02', saida: '11:57' });
+  expect(folgouNoSabado(DO_TURNO_A.id, '2026-09-26')).toBe(false);
+  // E o espelho não chama de folga o sábado em que ela trabalhou
+  const { motivoSemMarcacao } = await import('./ponto');
+  expect(motivoSemMarcacao('2026-09-26', 'saida_almoco', DO_TURNO_A as any)).toBe('Sábado');
 
   armazenamento.removeItem('conecta_v4_justificativas_ausencia');
 });

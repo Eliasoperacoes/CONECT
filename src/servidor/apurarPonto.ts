@@ -35,6 +35,7 @@ import {
   deDataLocal,
   paraDataLocal,
   listarDatasDoPeriodo,
+  folgouNoSabado,
 } from '../servicos/apuracaoDoDia';
 import { situacaoNaLista } from '../servicos/justificativasCache';
 import { feriadoNaLista } from '../servicos/feriadosCache';
@@ -230,7 +231,8 @@ export const planejarApuracao = (
     const datas = listarDatasDoPeriodo(inicio, fim);
     const juntada = datas.reduce((t, d) => t + jornadaDoDia(pessoa.id, d).compensacaoMinutos, 0);
     const folgas = datas.filter(
-      (d) => deDataLocal(d).getDay() === 6 && situacaoNaLista(dados.ausencias, pessoa.id, d) === 'folga'
+      // Folgou de verdade: folga aprovada e trabalhada não consome (05/10/2026)
+      (d) => folgouNoSabado(pessoa.id, d)
     ).length;
     const anterior = gravados.get(`${pessoa.id}|${mesAnterior(mes)}`)?.saldoFinal ?? 0;
     const atual = gravados.get(`${pessoa.id}|${mes}`);
