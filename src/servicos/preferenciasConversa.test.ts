@@ -562,3 +562,36 @@ test('o aplicativo avisa quando a preferencia nao achou linha no banco', async (
   expect(ponte).toContain(".select('conversa_id')");
   expect(ponte).toContain('if (!data || data.length === 0)');
 });
+
+test('O SELO CONTA O QUE A LISTA MOSTRA: removida, oculta e vazia não acendem aviso', async () => {
+  /**
+   * Relato do Elias (05/10/2026): "tem uma notificação de mensagem, mas ao
+   * abrir não resulta em nada". O selo somava as não lidas de TODAS as
+   * conversas; a lista tira as removidas, as ocultas e as vazias.
+   */
+  const { naoLidasDaLista, estaNaLista } = await import('./preferenciasConversa');
+  const msg = { texto: 'oi' };
+  const lista = [
+    { id: 'normal', atualizadoEm: AGORA, tipo: 'individual', ultimaMensagem: msg, naoLidas: 1 },
+    { id: 'removida', atualizadoEm: DEPOIS, tipo: 'individual', ultimaMensagem: msg, naoLidas: 3 },
+    { id: 'oculta', atualizadoEm: ONTEM, tipo: 'individual', ultimaMensagem: msg, naoLidas: 5 },
+    { id: 'vazia', atualizadoEm: AGORA, tipo: 'individual', naoLidas: 7 },
+  ];
+  removerConversaDaLista(EU, 'removida');
+  ocultarConversa(EU, 'oculta');
+
+  expect(naoLidasDaLista(EU, lista)).toBe(1);
+  // A regra do número é a mesma da lista
+  expect(aplicarPreferencias(EU, lista).map((c) => c.id)).toEqual(lista.filter((c) => estaNaLista(EU, c)).map((c) => c.id));
+
+  // A oculta que recebe mensagem volta à lista — e ao selo
+  const mexida = { ...lista[2], atualizadoEm: DEPOIS };
+  expect(naoLidasDaLista(EU, [lista[0], mexida])).toBe(6);
+});
+
+test('o título da aba e o aviso usam a mesma regra do selo', async () => {
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+  expect(app).toContain('const totalNaoLidas = naoLidasDaLista(colaboradorAtual.id, conversasIndividuais);');
+  expect(app).toContain('const naoLidasDosGrupos = naoLidasDaLista(colaboradorAtual.id, grupos);');
+  expect(app).toContain('bancoDados.obterMensagensPorLer().filter((m) => naLista.has(m.conversaId))');
+});

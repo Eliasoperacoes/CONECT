@@ -285,6 +285,25 @@ export const ehConversaVazia = (c: { tipo?: string; ultimaMensagem?: unknown }):
   c.tipo === 'individual' && !c.ultimaMensagem;
 
 /**
+ * A CONVERSA ESTÁ NA LISTA DA PESSOA? Não removida, não oculta (ou oculta
+ * e mexida depois), e não vazia. É a pergunta da lista E dos números: o
+ * selo de Conversas e o título da aba contavam todas, e a mensagem de uma
+ * conversa removida acendia um aviso que, aberto, não levava a nada
+ * (Elias, 05/10/2026).
+ */
+export const estaNaLista = (
+  colaboradorId: string,
+  c: { id: string; atualizadoEm: string; tipo?: string; ultimaMensagem?: unknown }
+): boolean => deveAparecer(colaboradorId, c) && !ehConversaVazia(c);
+
+/** As não lidas que a pessoa consegue abrir: só as das conversas da lista. */
+export const naoLidasDaLista = (
+  colaboradorId: string,
+  conversas: Array<{ id: string; atualizadoEm: string; tipo?: string; ultimaMensagem?: unknown; naoLidas?: number }>
+): number =>
+  conversas.filter((c) => estaNaLista(colaboradorId, c)).reduce((soma, c) => soma + (c.naoLidas || 0), 0);
+
+/**
  * Aplica as preferências a uma lista já ordenada: tira as ocultas e as
  * vazias, e sobe as fixadas, preservando a ordem de dentro de cada grupo.
  */
@@ -295,7 +314,7 @@ export const aplicarPreferencias = <
   conversas: T[]
 ): T[] => {
   const mapa = obterPreferencias(colaboradorId);
-  const visiveis = conversas.filter((c) => deveAparecer(colaboradorId, c) && !ehConversaVazia(c));
+  const visiveis = conversas.filter((c) => estaNaLista(colaboradorId, c));
 
   const fixadas = visiveis.filter((c) => mapa[c.id]?.fixada);
   const demais = visiveis.filter((c) => !mapa[c.id]?.fixada);

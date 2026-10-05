@@ -82,6 +82,8 @@ import {
   aplicarPreferencias,
   assinarPreferencias,
   reexibirConversa,
+  estaNaLista,
+  naoLidasDaLista,
 } from './servicos/preferenciasConversa';
 import { assinarJustificativas } from './servicos/justificativas';
 import { servicoPonto, batePonto, dataDeHoje } from './servicos/ponto';
@@ -267,7 +269,7 @@ export default function App() {
     });
 
   /** O que o cabeçalho diz RECOLHIDO: é o número que faz abrir. */
-  const naoLidasDosGrupos = grupos.reduce((soma, g) => soma + (g.naoLidas || 0), 0);
+  const naoLidasDosGrupos = naoLidasDaLista(colaboradorAtual.id, grupos);
 
 
   /** A janela do topo, para o que ainda pensa em "a conversa aberta". */
@@ -917,7 +919,15 @@ export default function App() {
       return;
     }
 
-    const porLer = bancoDados.obterMensagensPorLer();
+    /*
+      SÓ O QUE A PESSOA CONSEGUE ABRIR (`estaNaLista`): a mensagem de uma
+      conversa removida não acende o título, não toca e não avisa — o
+      aviso levaria a uma lista onde ela não está.
+    */
+    const naLista = new Set(
+      [...conversasIndividuais, ...grupos].filter((c) => estaNaLista(colaboradorAtual.id, c)).map((c) => c.id)
+    );
+    const porLer = bancoDados.obterMensagensPorLer().filter((m) => naLista.has(m.conversaId));
     atualizarTituloDaAba(porLer.length);
 
     // Primeira passagem: registra o que já existia, sem avisar
@@ -951,7 +961,7 @@ export default function App() {
       conversaId: ultima.conversaId,
       aoClicar: () => abrirJanela(ultima.conversaId),
     });
-  }, [conversasIndividuais, grupos, conversaAtivaId, conversaFlutuanteId, autenticado, colaboradorAtual.id]);
+  }, [conversasIndividuais, grupos, conversaAtivaId, conversaFlutuanteId, autenticado, colaboradorAtual.id, versaoPreferencias]);
 
   // Recupera a sessão do banco antes de decidir o que mostrar
   useEffect(() => {
@@ -1341,7 +1351,8 @@ export default function App() {
 
   const abasNavegacao = todasAsAbas.filter((aba) => aba.visivel);
 
-  const totalNaoLidas = conversasIndividuais.reduce((soma, c) => soma + (c.naoLidas || 0), 0);
+  // O selo conta o que a lista mostra — nem uma conversa a mais (`naoLidasDaLista`)
+  const totalNaoLidas = naoLidasDaLista(colaboradorAtual.id, conversasIndividuais);
 
 
   /**

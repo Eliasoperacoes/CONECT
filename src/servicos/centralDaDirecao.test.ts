@@ -456,7 +456,7 @@ test('GRUPOS SAIU DA BARRA e virou seção dentro de Conversas', async () => {
   const lista = await Bun.file('src/componentes/ListaDeConversas.tsx').text();
   expect(app).toContain('<ListaDeConversas');
   expect(lista.indexOf('{gruposVisiveis.length > 0 && (')).toBeLessThan(lista.indexOf('{conversasVisiveis.map(item)}'));
-  expect(app).toContain('const naoLidasDosGrupos = grupos.reduce');
+  expect(app).toContain('const naoLidasDosGrupos = naoLidasDaLista(colaboradorAtual.id, grupos);');
   expect(lista).toContain('{naoLidasDosGrupos > 0 && (');
   expect(lista).toContain('{gruposAbertos && <div');
 
