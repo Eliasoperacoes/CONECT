@@ -35,8 +35,10 @@ import {
   cuidaDePessoas,
   ehDoRh,
   ROTULO_TIPO_AUSENCIA,
+  FOLGAS_DE_SABADO_POR_MES,
 } from '../tipos';
 import { deveSerAvisadoSobre } from './organograma';
+import { folgouNoSabado } from './apuracaoDoDia';
 import {
   lerJustificativas,
   gravarJustificativas,
@@ -208,7 +210,7 @@ export const solicitarAusencia = async (dados: {
       return { sucesso: false, erro: 'A folga é sempre num sábado.' };
     }
 
-    const jaTem = folgaDoMes(eu.id, dados.dataInicio);
+    const jaTem = folgaQueOcupaOMes(eu.id, dados.dataInicio);
     if (jaTem) {
       return {
         sucesso: false,
@@ -314,7 +316,7 @@ export const lancarAusenciaPelaLideranca = async (dados: {
     if (!ehSabado(dados.dataInicio)) {
       return { sucesso: false, erro: 'A folga é sempre num sábado.' };
     }
-    const jaTem = folgaDoMes(pessoa.id, dados.dataInicio);
+    const jaTem = folgaQueOcupaOMes(pessoa.id, dados.dataInicio);
     if (jaTem) {
       return {
         sucesso: false,
@@ -390,6 +392,56 @@ export const folgaDoMes = (
       j.estado !== 'recusada' &&
       j.dataInicio.slice(0, 7) === mes
   );
+};
+
+/** "2026-10" → "2026-09". */
+const mesAntesDe = (mes: string): string => {
+  const [ano, m] = mes.split('-').map(Number);
+  return m === 1 ? `${ano - 1}-12` : `${ano}-${String(m - 1).padStart(2, '0')}`;
+};
+
+/**
+ * QUANTAS FOLGAS DE SÁBADO A PESSOA PODE TER NO MÊS.
+ *
+ * Uma por mês — e MAIS UMA para cada folga aprovada que ela TRABALHOU no
+ * mês anterior. A folga é paga pela compensação do sábado; a que não foi
+ * gozada deixou a compensação inteira, e é ela que paga a folga trocada.
+ * Sem isto, a Fernanda, que trabalhou o sábado de folga de 26/09
+ * combinado com o RH para folgar em 03/10, não conseguia ter a folga de
+ * 03/10 aprovada (outubro já tinha a de 31/10) — e o dia virou falta
+ * (Elias, 05/10/2026: "automática").
+ */
+export const folgasPermitidasNoMes = (colaboradorId: string, data: string): number => {
+  const anterior = mesAntesDe(data.slice(0, 7));
+  const naoGozadas = ler().filter(
+    (j) =>
+      j.colaboradorId === colaboradorId &&
+      j.tipo === 'folga_sabado' &&
+      j.estado === 'aprovada' &&
+      j.dataInicio.slice(0, 7) === anterior &&
+      // Aprovada e não gozada: a pessoa trabalhou o sábado
+      !folgouNoSabado(colaboradorId, j.dataInicio)
+  ).length;
+  return FOLGAS_DE_SABADO_POR_MES + naoGozadas;
+};
+
+/**
+ * A folga que impede mais uma no mês — ou nada, se ainda cabe. É o que os
+ * dois caminhos de pedido (a pessoa e o gestor/RH) perguntam.
+ */
+export const folgaQueOcupaOMes = (
+  colaboradorId: string,
+  data: string
+): JustificativaAusencia | undefined => {
+  const mes = data.slice(0, 7);
+  const doMes = ler().filter(
+    (j) =>
+      j.colaboradorId === colaboradorId &&
+      j.tipo === 'folga_sabado' &&
+      j.estado !== 'recusada' &&
+      j.dataInicio.slice(0, 7) === mes
+  );
+  return doMes.length >= folgasPermitidasNoMes(colaboradorId, data) ? doMes[0] : undefined;
 };
 
 /** As minhas, da mais recente para a mais antiga. */

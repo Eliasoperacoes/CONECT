@@ -198,6 +198,12 @@ export const planejarApuracao = (
         faltas++;
         continue;
       }
+      // O pendente de um dia que ganhou ausência aprovada sai da fila
+      if (levantamento.acao === 'resolverPorAusencia') {
+        registrar(levantamento.ajuste, false);
+        apurados++;
+        continue;
+      }
 
       /*
         O DIA FECHADO É APURADO — tenha ou não passado pela saída no

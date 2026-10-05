@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { Colaborador, JustificativaAusencia, Loja } from '../tipos';
 import { formatarDataBR } from '../servicos/ponto';
+import { folgasPermitidasNoMes } from '../servicos/justificativas';
 import { FotoPresenca } from './FotoPresenca';
 
 interface Props {
@@ -211,6 +212,13 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
       const nova = new Set(atual);
       for (const id of ids) {
         const onde = folgaDaPessoa.get(id);
+        /*
+          A FOLGA TROCADA SOMA, não move. Quem trabalhou uma folga aprovada
+          no mês anterior pode ter uma a mais neste (`folgasPermitidasNoMes`):
+          arrastá-la para outro sábado acrescenta, e a folga que já estava
+          fica (a Fernanda: 31/10 e a trocada de 03/10, 05/10/2026).
+        */
+        if (folgasPermitidasNoMes(id, sabado) > 1 && onde?.justificativa) continue;
         if (onde?.justificativa && onde.sabado !== sabado) {
           nova.add(onde.justificativa.id);
         }

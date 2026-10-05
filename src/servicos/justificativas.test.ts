@@ -85,6 +85,7 @@ const {
   conflitosDeFerias,
   diasDeFeriasNoAno,
   diasCorridos,
+  folgasPermitidasNoMes,
 } = await import('./justificativas');
 
 beforeEach(() => {
@@ -601,6 +602,42 @@ test('O LIMITE DE UMA FOLGA POR MÊS VALE TAMBÉM PARA A LIDERANÇA', async () =
     expect(segunda.sucesso).toBe(false);
     expect(segunda.erro).toContain('já tem folga');
   }
+});
+
+test('A FOLGA TRABALHADA no mês anterior dá direito a uma folga a mais (a troca)', async () => {
+  /*
+    A Fernanda trabalhou a folga aprovada de 26/09, combinado com o RH
+    para folgar em 03/10 — e outubro já tinha a de 31/10: o limite
+    recusava a troca e o 03/10 virou falta (Elias, 05/10/2026). A folga
+    não gozada deixou a compensação inteira; é ela que paga a trocada.
+  */
+  logado = CHEFE;
+  const folgaDeSetembro = {
+    id: 'f-set', colaboradorId: ANA.id, dataInicio: '2026-09-26', dataFim: '2026-09-26',
+    tipo: 'folga_sabado', estado: 'aprovada', criadoEm: '2026-09-20T10:00:00.000Z',
+  };
+  const lancarOutubro = (sabado: string) =>
+    lancarAusenciaPelaLideranca({ colaboradorId: ANA.id, dataInicio: sabado, dataFim: sabado, tipo: 'folga_sabado' });
+
+  // Gozada (sem batida): outubro continua com UMA
+  armazenamento.setItem('conecta_v4_justificativas_ausencia', JSON.stringify([folgaDeSetembro]));
+  expect(folgasPermitidasNoMes(ANA.id, '2026-10-31')).toBe(1);
+
+  // Trabalhada: outubro aceita a dela e a trocada
+  const batida = (tipo: string, hora: string) => ({
+    id: `r-${tipo}`, colaboradorId: ANA.id, data: '2026-09-26', tipo,
+    horario: new Date(`2026-09-26T${hora}:00`).toISOString(), horaFormatada: hora,
+    metodo: 'qrcode', loja: 'Pirassununga', criadoEm: '',
+  });
+  armazenamento.setItem('conecta_v4_registros_ponto', JSON.stringify([batida('entrada', '08:02'), batida('saida', '11:57')]));
+  expect(folgasPermitidasNoMes(ANA.id, '2026-10-31')).toBe(2);
+
+  expect((await lancarOutubro('2026-10-31')).sucesso).toBe(true);
+  expect((await lancarOutubro('2026-10-03')).sucesso).toBe(true);
+  // A terceira passa do que a troca dá
+  const terceira = await lancarOutubro('2026-10-17');
+  expect(terceira.sucesso).toBe(false);
+  expect(terceira.erro).toContain('já tem folga');
 });
 
 test('folga lançada pela liderança continua caindo só em sábado', async () => {

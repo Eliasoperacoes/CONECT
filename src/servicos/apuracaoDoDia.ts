@@ -1020,7 +1020,8 @@ export const decidirApuracao = (
 export type DecisaoDoLevantamento =
   | { acao: 'nada' }
   | { acao: 'reapurar' }
-  | { acao: 'criarFalta'; ajuste: AjusteJornada };
+  | { acao: 'criarFalta'; ajuste: AjusteJornada }
+  | { acao: 'resolverPorAusencia'; ajuste: AjusteJornada };
 
 export const decidirLevantamento = (
   pessoa: Colaborador,
@@ -1040,7 +1041,30 @@ export const decidirLevantamento = (
   // Domingo não tem jornada; dia fechado não é problema
   if (ehDiaDeFolga(data)) return { acao: 'nada' };
   // Dia abonado não é dia pela metade: já foi decidido por outra via
-  if (situacaoEfetiva(pessoa.id, data) !== 'normal') return { acao: 'nada' };
+  if (situacaoEfetiva(pessoa.id, data) !== 'normal') {
+    /*
+      E O QUE ESTAVA PENDENTE NELE SAI DA FILA. A falta do sábado 03/10
+      da Fernanda nasceu antes de a folga trocada ser aprovada; depois, o
+      dia passou a prever zero, mas o pedido ficava na fila do gestor — e
+      um "confirmar débito" por engano tirava 4h dela (05/10/2026). Sai
+      como as outras resolvidas pelo próprio dia: aprovado, com zero.
+    */
+    const pendente = fonte.ajusteDoDia(pessoa.id, data);
+    if (pendente && pendente.estado === 'pendente') {
+      return {
+        acao: 'resolverPorAusencia',
+        ajuste: {
+          ...pendente,
+          minutos: 0,
+          estado: 'aprovado',
+          aprovadorId: undefined,
+          aprovadorNome: 'Ausência aprovada',
+          decididoEm: agora,
+        },
+      };
+    }
+    return { acao: 'nada' };
+  }
   // Sem batida esperada o dia não é dela — sábado de quem não vem
   if (esperadas.length === 0) return { acao: 'nada' };
   /*

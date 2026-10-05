@@ -513,8 +513,23 @@ var decidirLevantamento = (pessoa, data, agora) => {
   const feitas = esperadas.filter((t) => !!jornada.marcacoes[t]).length;
   if (ehDiaDeFolga(data))
     return { acao: "nada" };
-  if (situacaoEfetiva(pessoa.id, data) !== "normal")
+  if (situacaoEfetiva(pessoa.id, data) !== "normal") {
+    const pendente = fonte.ajusteDoDia(pessoa.id, data);
+    if (pendente && pendente.estado === "pendente") {
+      return {
+        acao: "resolverPorAusencia",
+        ajuste: {
+          ...pendente,
+          minutos: 0,
+          estado: "aprovado",
+          aprovadorId: undefined,
+          aprovadorNome: "Ausência aprovada",
+          decididoEm: agora
+        }
+      };
+    }
     return { acao: "nada" };
+  }
   if (esperadas.length === 0)
     return { acao: "nada" };
   const existente = fonte.ajusteDoDia(pessoa.id, data);
@@ -992,6 +1007,11 @@ var planejarApuracao = (dados, opcoes) => {
       if (levantamento.acao === "criarFalta") {
         registrar(levantamento.ajuste, true);
         faltas++;
+        continue;
+      }
+      if (levantamento.acao === "resolverPorAusencia") {
+        registrar(levantamento.ajuste, false);
+        apurados++;
         continue;
       }
       const jornada = jornadaDoDia(pessoa.id, data);

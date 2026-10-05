@@ -129,6 +129,30 @@ test('dia decidido não é reaberto, e ausência aprovada não vira falta', () =
   expect(plano.gravar).toEqual([]);
 });
 
+test('a falta pendente de um dia que ganhou folga aprovada sai da fila, com zero', () => {
+  /*
+    O sábado 03/10 da Fernanda virou falta antes de a folga trocada ser
+    aprovada. Depois, o dia passou a prever zero — e a falta ficava na
+    fila, onde um "confirmar débito" por engano tirava 4h (05/10/2026).
+  */
+  const faltaPendente = {
+    id: 'falta-0310', colaboradorId: 'ana', data: '2026-10-03', tipo: 'debito' as const, minutos: 240,
+    minutosTrabalhados: 0, minutosPrevistos: 240, estado: 'pendente' as const, criadoEm: '',
+  };
+  const plano = planejarApuracao(
+    dados({
+      batidas: semanaCerta(),
+      ajustes: [faltaPendente],
+      ausencias: [{ id: 'f', colaboradorId: 'ana', dataInicio: '2026-10-03', dataFim: '2026-10-03', tipo: 'folga_sabado', estado: 'aprovada', criadoEm: '' } as any],
+    }),
+    opcoes
+  );
+  const resolvida = plano.gravar.find((a) => a.id === 'falta-0310');
+  expect(resolvida).toMatchObject({ estado: 'aprovado', minutos: 0, aprovadorNome: 'Ausência aprovada' });
+  // E não entra como novidade na fila de ninguém
+  expect(plano.novosNaFila.find((a) => a.id === 'falta-0310')).toBeUndefined();
+});
+
 test('a madrugada fecha o saldo de compensação do sábado do mês anterior', () => {
   /*
     Hoje é 08/10: o mês fechado é setembro. A Ana cumpriu dois dias úteis
