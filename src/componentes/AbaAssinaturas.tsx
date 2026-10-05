@@ -3,8 +3,10 @@
  *
  * Pedido do Elias (05/10/2026): "simplificar o trabalho do RH, tanto para
  * assinar a parte de responsável quanto ter acesso a todos os documentos".
- * Holerite e espelho assinados pelos colaboradores chegam aqui, mês a mês,
- * e o RH assina TODOS de uma vez — uma senha, um lote —, e não um por um.
+ * Holerite e espelho assinados pelos colaboradores chegam aqui, mês a mês.
+ * O RH assina como responsável SÓ O ESPELHO — todos de uma vez, uma senha,
+ * um lote. O holerite leva apenas a assinatura do funcionário: aqui ele é
+ * consulta e arquivo, não tarefa.
  *
  * O DESENHO, de cima para baixo, na ordem em que o RH pergunta:
  *
@@ -75,7 +77,7 @@ const LISTA_DO_ESTADO: Record<EstadoDaAssinatura, Lista> = {
 /** Por que um documento da lista não entra no lote — dito na própria linha. */
 const FORA_DO_LOTE: Partial<Record<EstadoDaAssinatura, string>> = {
   alterado: 'Alterado depois que o colaborador assinou',
-  proprio: 'Documento seu: outra pessoa do RH assina',
+  proprio: 'Espelho seu: outra pessoa do RH assina',
 };
 
 interface DadosDoMes {
@@ -157,7 +159,7 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
     [mes, colaboradorAtual.id, pessoas, dados]
   );
   const lote = loteDaFila(fila);
-  const noLote = lote.holerites.length + lote.espelhos.length;
+  const noLote = lote.length;
 
   const contagem = (l: Lista) => fila.filter((i) => LISTA_DO_ESTADO[i.estado] === l).length;
   const visiveis = fila.filter(
@@ -236,10 +238,10 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
   const assinarLote = async (senha: string) => {
     const res = await assinarComoResponsavel(senha, lote);
     if (res.sucesso) {
-      const feitos = (res.holerites || 0) + (res.espelhos || 0);
+      const feitos = res.espelhos || 0;
       mostrarAviso(
         feitos === noLote
-          ? `${feitos} documento${feitos === 1 ? '' : 's'} assinado${feitos === 1 ? '' : 's'} como responsável.`
+          ? `${descreverLote(lote)} assinado${feitos === 1 ? '' : 's'} como responsável.`
           : `${feitos} de ${noLote} assinados. Os outros já tinham sido assinados por outra pessoa do RH.`
       );
     }
@@ -258,7 +260,9 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-sm font-bold text-[var(--c-texto)]">Assinaturas do responsável</h2>
-          <p className="text-xs text-[var(--c-texto-3)]">Holerites e espelhos que os colaboradores já assinaram.</p>
+          <p className="text-xs text-[var(--c-texto-3)]">
+            O espelho leva a sua assinatura; o holerite, só a do colaborador.
+          </p>
         </div>
         <div className="flex items-center justify-between gap-1 flex-shrink-0 rounded-xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-1">
           <button
@@ -300,9 +304,11 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
             <span className="text-3xl font-black tabular-nums text-[var(--c-acento)]">{noLote}</span>
             <span className="min-w-0">
               <span className="block text-sm font-bold text-[var(--c-texto)]">
-                {noLote === 1 ? 'documento aguarda' : 'documentos aguardam'} a sua assinatura
+                {noLote === 1 ? 'espelho de ponto aguarda' : 'espelhos de ponto aguardam'} a sua assinatura
               </span>
-              <span className="block text-xs text-[var(--c-texto-3)]">{descreverLote(lote)}, já assinados pelos colaboradores</span>
+              <span className="block text-xs text-[var(--c-texto-3)]">
+                Já assinado{noLote === 1 ? '' : 's'} pelos colaboradores · o holerite não precisa do responsável
+              </span>
             </span>
           </div>
           <button
@@ -319,7 +325,7 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
         <div className="p-3.5 rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex items-center gap-2.5">
           <CheckCircle2 className="w-4 h-4 text-[var(--c-ok)] flex-shrink-0" />
           <p className="text-xs text-[var(--c-texto-2)]">
-            Nada aguardando a sua assinatura em {rotuloDoMes(mes)}. O que os colaboradores assinarem aparece aqui.
+            Nenhum espelho aguardando a sua assinatura em {rotuloDoMes(mes)}. Os que os colaboradores assinarem aparecem aqui.
           </p>
         </div>
       )}
@@ -390,7 +396,7 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
             {visiveis.length === 0 ? (
               <p className="px-6 py-10 text-center text-sm text-[var(--c-texto-3)] leading-relaxed">
                 {lista === 'para_assinar'
-                  ? 'Nenhum documento esperando o responsável neste filtro.'
+                  ? 'Nenhum espelho esperando o responsável neste filtro.'
                   : lista === 'assinados'
                     ? 'Nenhum documento com as duas assinaturas ainda.'
                     : 'Todos os colaboradores já assinaram neste filtro.'}
@@ -444,13 +450,13 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
         aberta={folhaAberta}
         aoFechar={() => setFolhaAberta(false)}
         titulo="Assinar como responsável"
-        declaracao="Declaro, como responsável pela Malachias Autopeças, que conferi os documentos abaixo, já assinados pelos colaboradores."
+        declaracao="Declaro, como responsável pela Malachias Autopeças, que conferi os espelhos de ponto abaixo, já assinados pelos colaboradores."
         resumo={
           <div className="rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] p-3 text-xs text-[var(--c-texto-2)]">
             <strong className="text-[var(--c-texto)]">{rotuloDoMes(mes)}</strong> · {descreverLote(lote)}
           </div>
         }
-        rotuloDoBotao={noLote === 1 ? 'Assinar 1 documento' : `Assinar ${noLote} documentos`}
+        rotuloDoBotao={noLote === 1 ? 'Assinar 1 espelho' : `Assinar ${noLote} espelhos`}
         assinar={assinarLote}
         aoAssinar={() => {
           setFolhaAberta(false);

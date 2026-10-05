@@ -166,7 +166,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
   }, [versao]);
 
   /**
-   * Os documentos que os colaboradores assinaram e esperam o responsável.
+   * Os espelhos que os colaboradores assinaram e esperam o responsável.
    * Confere de novo ao voltar ao painel: é lá que o número aparece, e a
    * assinatura acontece na seção ao lado.
    */
@@ -276,9 +276,9 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
     pendencias.push({
       id: 'assinaturas',
       titulo: `${paraOResponsavel} ${
-        paraOResponsavel === 1 ? 'documento aguarda' : 'documentos aguardam'
+        paraOResponsavel === 1 ? 'espelho de ponto aguarda' : 'espelhos de ponto aguardam'
       } a assinatura do responsável`,
-      explicacao: 'Holerites e espelhos que os colaboradores já assinaram',
+      explicacao: 'Já assinados pelos colaboradores — todos de uma vez',
       acao: 'Assinar',
       icone: <PenLine className="w-4 h-4" />,
       aoAbrir: () => setSecao('assinaturas'),

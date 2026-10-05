@@ -126,24 +126,27 @@ test('RESPONSÁVEL: só quem cuida de pessoas, com a senha, e antes de gravar qu
   expect(assinar.indexOf('cuido_de_pessoas')).toBeLessThan(primeiraGravacao);
   expect(assinar.indexOf('conferir_senha_de_quem_assina')).toBeLessThan(primeiraGravacao);
   expect(sql).toContain(
-    'revoke all on function public.assinar_como_responsavel(text, text[], text[]) from public, anon;'
+    'revoke all on function public.assinar_como_responsavel(text, text[]) from public, anon;'
   );
 });
 
-test('RESPONSÁVEL: só o que o colaborador JÁ assinou, nunca o próprio, e o código vem do banco', () => {
+test('RESPONSÁVEL: só o espelho que o colaborador JÁ assinou, nunca o próprio, e o código vem do banco', () => {
   const assinar = corpoDe('assinar_como_responsavel');
-  // Os documentos saem das tabelas do que o colaborador assinou
-  expect(assinar).toContain('from public.recebimentos_holerite r');
+  // O espelho sai da tabela do que o colaborador assinou
   expect(assinar).toContain('from public.espelhos_assinados e');
-  // Ninguém assina como responsável o próprio documento
-  expect(assinar).toContain('and r.colaborador_id <> eu');
+  // Ninguém assina como responsável o próprio espelho
   expect(assinar).toContain('and e.colaborador_id <> eu');
   // O código é o que o colaborador assinou — o aparelho não manda código
-  expect(assinar).toContain('r.arquivo_hash');
   expect(assinar).toContain('e.conteudo_hash');
   expect(assinar).not.toContain('p_hash');
   // Assinar de novo não troca quem assinou primeiro
-  expect(assinar.match(/on conflict \(documento, referencia\) do nothing/g)).toHaveLength(2);
+  expect(assinar.match(/on conflict \(documento, referencia\) do nothing/g)).toHaveLength(1);
+});
+
+test('O HOLERITE NÃO TEM ASSINATURA DO RESPONSÁVEL — só a do funcionário (Elias, 05/10/2026)', () => {
+  const assinar = corpoDe('assinar_como_responsavel');
+  expect(assinar).not.toContain('holerite');
+  expect(sql).toContain("check (documento in ('espelho'))");
 });
 
 test('o colaborador lê a assinatura do responsável SÓ no próprio documento', () => {

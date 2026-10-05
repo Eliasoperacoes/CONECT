@@ -42,9 +42,7 @@ mock.module('./supabase', () => ({ usandoNuvem: () => true, supabase: { from: ca
 mock.module('./assinatura', () => ({
   listarRecebimentos: async ({ holeriteIds }: { holeriteIds: string[] }) =>
     new Map(holeriteIds.filter((id) => assinados.includes(id)).map((id) => [id, {}])),
-  listarAssinaturasDoResponsavel: async () => new Map(),
   imagensDasAssinaturas: async () => new Map(),
-  chaveDoResponsavel: (documento: string, referencia: string) => `${documento}#${referencia}`,
 }));
 const enviados: string[] = [];
 mock.module('./anexos', () => ({

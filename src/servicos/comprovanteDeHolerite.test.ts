@@ -111,24 +111,3 @@ test('o mês inteiro num PDF só, na ordem', async () => {
   const junto = await PDFDocument.load(await juntarPdfs([await a.save(), await b.save()]));
   expect(junto.getPages().map((p) => p.getWidth())).toEqual([100, 200, 300]);
 });
-
-test('COM O RESPONSÁVEL: a faixa dele entra embaixo, e o recibo do colaborador continua inteiro', async () => {
-  const pdf = await holerite();
-  const comprovante = await montarComprovante({
-    pdf,
-    nome: 'EGNALDO DE ARAUJO MAGALHAES',
-    recebimento: await recebimento(pdf),
-    imagem: DESENHO,
-    responsavel: { imagem: DESENHO, nome: 'Renata RH', assinadoEm: '2026-10-06T12:05:00.000Z' },
-  });
-  const doc = await PDFDocument.load(comprovante);
-  // A última página cresce a faixa do responsável; a primeira não muda
-  expect(doc.getPages().map((p) => [p.getWidth(), p.getHeight()])).toEqual([
-    [595, 385],
-    [595, 385 + 118 + 64],
-  ]);
-  const ultima = (await textoDe(comprovante)).at(-1)!;
-  expect(ultima).toContain('Recebido eletronicamente por EGNALDO DE ARAUJO MAGALHAES');
-  expect(ultima).toContain('Assinado como responsável pela empresa por Renata RH');
-  expect(ultima).toContain('06/10/2026 às 09:05');
-});

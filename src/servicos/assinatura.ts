@@ -362,17 +362,18 @@ export const imagensDasAssinaturas = async (ids: string[]): Promise<Map<string, 
 // ============================================================
 // A ASSINATURA DO RESPONSÁVEL
 //
-// O RH assina, de uma vez, os holerites e espelhos que os colaboradores
-// já assinaram (`assinar_como_responsavel`, em
+// O RH assina, de uma vez, os espelhos de ponto que os colaboradores já
+// assinaram (`assinar_como_responsavel`, em
 // `supabase/assinatura-holerite.sql`). O banco escolhe o que entra: só o
-// que o colaborador assinou, e nunca o documento de quem assina.
+// que o colaborador assinou, e nunca o espelho de quem assina. O holerite
+// não tem responsável: leva só a assinatura do funcionário.
 // ============================================================
 
-export type DocumentoAssinavel = 'holerite' | 'espelho';
+export type DocumentoAssinavel = 'espelho';
 
 export interface AssinaturaDoResponsavel {
   documento: DocumentoAssinavel;
-  /** holerite: o id dele; espelho: `chaveDoEspelho`. */
+  /** `chaveDoEspelho`: "colaborador_id|AAAA-MM". */
   referencia: string;
   colaboradorId: string;
   mes: string;
@@ -434,8 +435,9 @@ export const listarAssinaturasDoResponsavel = async (filtro: {
 /** ASSINA COMO RESPONSÁVEL, de uma vez, os documentos do lote. */
 export const assinarComoResponsavel = async (
   senha: string,
-  lote: { holerites: string[]; espelhos: string[] }
-): Promise<{ sucesso: boolean; holerites?: number; espelhos?: number; erro?: string }> => {
+  /** As chaves dos espelhos (`chaveDoEspelho`). */
+  espelhos: string[]
+): Promise<{ sucesso: boolean; espelhos?: number; erro?: string }> => {
   if (!usandoNuvem() || !supabase) {
     return { sucesso: false, erro: 'Disponível apenas com o banco da rede ligado.' };
   }
@@ -443,8 +445,7 @@ export const assinarComoResponsavel = async (
 
   const { data, error } = await supabase.rpc('assinar_como_responsavel', {
     p_senha: senha,
-    p_holerites: lote.holerites,
-    p_espelhos: lote.espelhos,
+    p_espelhos: espelhos,
   });
   if (error) {
     console.error('Falha ao assinar como responsável:', error.message);
@@ -454,32 +455,24 @@ export const assinarComoResponsavel = async (
         error.code === 'PGRST202' ? 'A assinatura do responsável ainda não foi ligada no banco. Avise o TI.' : error.message,
     };
   }
-  const resposta = (data || {}) as { ok?: boolean; motivo?: string; holerites?: number; espelhos?: number };
+  const resposta = (data || {}) as { ok?: boolean; motivo?: string; espelhos?: number };
   if (!resposta.ok) {
     return { sucesso: false, erro: MOTIVOS[resposta.motivo || ''] || 'A assinatura não foi registrada.' };
   }
-  return { sucesso: true, holerites: resposta.holerites || 0, espelhos: resposta.espelhos || 0 };
+  return { sucesso: true, espelhos: resposta.espelhos || 0 };
 };
 
 /**
- * QUANTOS DOCUMENTOS ESPERAM O RESPONSÁVEL, na rede inteira — o aviso do
+ * QUANTOS ESPELHOS ESPERAM O RESPONSÁVEL, na rede inteira — o aviso do
  * painel do RH. Conta o que o colaborador assinou e o RH ainda não, menos
- * o documento de quem pergunta. Não confere espelho alterado (isso pede as
+ * o espelho de quem pergunta. Não confere espelho alterado (isso pede as
  * batidas do mês): a tela das Assinaturas mostra cada um com o motivo.
  */
 export const contarParaOResponsavel = async (eu: string): Promise<number> => {
-  const [recebimentos, espelhos, feitas] = await Promise.all([
-    listarRecebimentos({}),
-    listarEspelhosAssinados({}),
-    listarAssinaturasDoResponsavel({}),
-  ]);
-  const holerites = [...recebimentos.values()].filter(
-    (r) => r.colaboradorId !== eu && !feitas.has(chaveDoResponsavel('holerite', r.holeriteId))
-  );
-  const espelhosPendentes = [...espelhos.values()].filter(
+  const [espelhos, feitas] = await Promise.all([listarEspelhosAssinados({}), listarAssinaturasDoResponsavel({})]);
+  return [...espelhos.values()].filter(
     (e) =>
       e.colaboradorId !== eu &&
       !feitas.has(chaveDoResponsavel('espelho', chaveDoEspelho(e.colaboradorId, e.mes)))
-  );
-  return holerites.length + espelhosPendentes.length;
+  ).length;
 };

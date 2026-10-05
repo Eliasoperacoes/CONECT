@@ -2,12 +2,13 @@
 -- DELTA: A ASSINATURA DO RESPONSÁVEL — CONECTA
 --
 -- Pedido do Elias (05/10/2026): o RH assina como responsável, de uma vez,
--- os holerites e espelhos que os colaboradores já assinaram.
+-- os espelhos de ponto que os colaboradores já assinaram. O holerite fica
+-- só com a assinatura do funcionário.
 --
 -- Só o que mudou desde `assinatura-espelho.sql` (a fonte, com tudo, é
 -- `assinatura-holerite.sql`): a tabela e a função do responsável, e a
 -- leitura de `assinaturas`, para o colaborador ver a assinatura do
--- responsável no próprio documento.
+-- responsável no próprio espelho.
 --
 -- Rode depois de `assinatura-espelho.sql`. Pode rodar mais de uma vez.
 -- ============================================================
@@ -15,9 +16,10 @@
 -- ============================================================
 -- A ASSINATURA DO RESPONSÁVEL — o outro lado do papel
 --
--- Pedido do Elias (05/10/2026): o RH assina como responsável os holerites
--- e espelhos que os colaboradores já assinaram — de uma vez, não um por
--- um. Uma senha, um lote.
+-- Pedido do Elias (05/10/2026): o RH assina como responsável os espelhos
+-- de ponto que os colaboradores já assinaram — de uma vez, não um por um.
+-- Uma senha, um lote. SÓ O ESPELHO: o holerite leva apenas a assinatura do
+-- funcionário (o recibo), e o responsável não assina holerite.
 --
 -- Só entra o documento que o colaborador JÁ assinou: o responsável assina
 -- por cima do que a pessoa reconheceu, nunca antes. E ninguém assina como
@@ -27,8 +29,9 @@
 -- tabelas, e não mandado pelo aparelho.
 -- ============================================================
 create table if not exists public.assinaturas_do_responsavel (
-  documento         text not null check (documento in ('holerite', 'espelho')),
-  -- holerite: o id dele; espelho: "colaborador_id|AAAA-MM"
+  -- Só espelho; a coluna fica para o dia em que outro documento pedir
+  documento         text not null check (documento in ('espelho')),
+  -- "colaborador_id|AAAA-MM"
   referencia        text not null,
   -- O dono do documento: é ele quem lê, além do RH
   colaborador_id    text not null references public.colaboradores(id) on delete cascade,
@@ -65,7 +68,6 @@ create policy assinaturas_leitura on public.assinaturas
 
 create or replace function public.assinar_como_responsavel(
   p_senha     text,
-  p_holerites text[],
   -- "colaborador_id|AAAA-MM"
   p_espelhos  text[]
 )
@@ -79,7 +81,6 @@ declare
   meu_nome   text;
   vigente    uuid;
   motivo     text;
-  holerites  integer := 0;
   espelhos   integer := 0;
 begin
   if eu is null then
@@ -88,10 +89,10 @@ begin
   if not public.cuido_de_pessoas() then
     return jsonb_build_object('ok', false, 'motivo', 'sem_permissao');
   end if;
-  if coalesce(cardinality(p_holerites), 0) + coalesce(cardinality(p_espelhos), 0) = 0 then
+  if coalesce(cardinality(p_espelhos), 0) = 0 then
     return jsonb_build_object('ok', false, 'motivo', 'vazio');
   end if;
-  if coalesce(cardinality(p_holerites), 0) + coalesce(cardinality(p_espelhos), 0) > 2000 then
+  if cardinality(p_espelhos) > 2000 then
     return jsonb_build_object('ok', false, 'motivo', 'lote');
   end if;
 
@@ -107,18 +108,7 @@ begin
   end if;
   select nome into meu_nome from public.colaboradores where id = eu;
 
-  -- Holerite: só o que tem recebimento, e não é de quem assina
-  insert into public.assinaturas_do_responsavel
-    (documento, referencia, colaborador_id, mes, responsavel_id, responsavel_nome, assinatura_id, documento_hash)
-  select 'holerite', r.holerite_id, r.colaborador_id, h.competencia, eu, meu_nome, vigente, r.arquivo_hash
-    from public.recebimentos_holerite r
-    join public.holerites h on h.id = r.holerite_id
-   where r.holerite_id = any (coalesce(p_holerites, '{}'))
-     and r.colaborador_id <> eu
-  on conflict (documento, referencia) do nothing;
-  get diagnostics holerites = row_count;
-
-  -- Espelho: só o que o colaborador assinou, e não é de quem assina
+  -- Só o que o colaborador assinou, e não é de quem assina
   insert into public.assinaturas_do_responsavel
     (documento, referencia, colaborador_id, mes, responsavel_id, responsavel_nome, assinatura_id, documento_hash)
   select 'espelho', e.colaborador_id || '|' || e.mes, e.colaborador_id, e.mes, eu, meu_nome, vigente, e.conteudo_hash
@@ -128,12 +118,12 @@ begin
   on conflict (documento, referencia) do nothing;
   get diagnostics espelhos = row_count;
 
-  return jsonb_build_object('ok', true, 'holerites', holerites, 'espelhos', espelhos, 'assinado_em', now());
+  return jsonb_build_object('ok', true, 'espelhos', espelhos, 'assinado_em', now());
 end;
 $$;
 
-revoke all on function public.assinar_como_responsavel(text, text[], text[]) from public, anon;
-grant execute on function public.assinar_como_responsavel(text, text[], text[]) to authenticated;
+revoke all on function public.assinar_como_responsavel(text, text[]) from public, anon;
+grant execute on function public.assinar_como_responsavel(text, text[]) to authenticated;
 
 notify pgrst, 'reload schema';
 

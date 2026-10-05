@@ -83,7 +83,7 @@ import {
 import { situacaoDoDia } from './justificativasCache';
 import { feriadoEm } from './feriadosCache';
 import { montarDocumento } from './documento';
-import { codigoDeVerificacao, dataHoraDeBrasilia, ResponsavelNoDocumento } from './comprovanteDeHolerite';
+import { codigoDeVerificacao, dataHoraDeBrasilia } from './comprovanteDeHolerite';
 import { nuvem } from './nuvem';
 import { fecharCompensacao, mesAnterior, CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { usandoNuvem } from './supabase';
@@ -496,11 +496,22 @@ export interface AssinaturaNoEspelho {
   /** O conteúdo de hoje é o mesmo que a pessoa assinou? */
   confere: boolean;
   /** O RH, quando já assinou como responsável (`assinaturas_do_responsavel`). */
-  responsavel?: ResponsavelNoDocumento;
+  responsavel?: ResponsavelNoEspelho;
+}
+
+/**
+ * Quem assinou o espelho como responsável. Só o espelho tem: o holerite
+ * leva apenas a assinatura do funcionário (Elias, 05/10/2026).
+ */
+export interface ResponsavelNoEspelho {
+  /** A assinatura dele (data URL de PNG). */
+  imagem: string;
+  nome: string;
+  assinadoEm: string;
 }
 
 /** A linha do responsável: em branco, ou assinada pelo RH. */
-const assinaturaDoResponsavel = (responsavel?: ResponsavelNoDocumento): string => {
+const assinaturaDoResponsavel = (responsavel?: ResponsavelNoEspelho): string => {
   if (!responsavel) return '<span class="linha"></span>Responsável / RH';
   return `<img class="rubrica" src="${responsavel.imagem.replace(/"/g, '')}" alt="Assinatura do responsável">
     <span class="linha"></span>Responsável / RH — ${responsavel.nome.replace(/</g, '&lt;')}

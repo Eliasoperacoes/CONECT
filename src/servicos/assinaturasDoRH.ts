@@ -2,8 +2,9 @@
  * A FILA DE ASSINATURAS DO RH — o que cada documento do mês espera.
  *
  * Pedido do Elias (05/10/2026): o RH assina como responsável, de uma vez,
- * os holerites e espelhos que os colaboradores já assinaram, e enxerga o
- * mês inteiro num lugar só. Esta é a regra que separa os documentos; a
+ * os ESPELHOS que os colaboradores já assinaram, e enxerga o mês inteiro
+ * — holerites inclusive — num lugar só. O holerite não tem responsável:
+ * assinado pelo funcionário, está completo. Esta é a regra que separa os documentos; a
  * tela (`AbaAssinaturas`) só mostra, e o banco (`assinar_como_responsavel`)
  * é quem decide o que de fato entra — esta conta não substitui a dele, só
  * evita mandar ao banco o que ele recusaria.
@@ -12,13 +13,15 @@
  */
 import type { Holerite, RecebimentoHolerite } from '../tipos';
 import type { AssinaturaNoEspelho } from './ponto';
-import type { AssinaturaDoResponsavel, DocumentoAssinavel } from './assinatura';
+import type { AssinaturaDoResponsavel } from './assinatura';
 import { chaveDoEspelho, chaveDoResponsavel } from './assinatura';
+
+export type DocumentoDaFila = 'holerite' | 'espelho';
 
 /**
  * Onde o documento está:
- *   - para_assinar: o colaborador assinou, falta o responsável — entra no lote;
- *   - assinado: as duas assinaturas;
+ *   - para_assinar: o colaborador assinou o espelho, falta o responsável — entra no lote;
+ *   - assinado: completo (espelho com as duas assinaturas; holerite com a do funcionário);
  *   - falta_colaborador: publicado (ou fechado), e a pessoa ainda não assinou;
  *   - alterado: o espelho mudou depois que a pessoa assinou — fora do lote;
  *   - proprio: o documento é de quem assina — outra pessoa do RH assina.
@@ -28,7 +31,7 @@ export type EstadoDaAssinatura = 'para_assinar' | 'assinado' | 'falta_colaborado
 export interface ItemDeAssinatura {
   /** Única na fila: o tipo e a referência. */
   chave: string;
-  documento: DocumentoAssinavel;
+  documento: DocumentoDaFila;
   /** holerite: o id; espelho: `chaveDoEspelho`. É o que vai ao banco. */
   referencia: string;
   colaboradorId: string;
@@ -75,19 +78,18 @@ export const montarFilaDoMes = (dados: {
     return 'para_assinar';
   };
 
+  // O holerite está completo com a assinatura do funcionário: só consulta
   for (const h of dados.holerites) {
     if (h.competencia !== dados.mes) continue;
     const recebimento = dados.recebimentos.get(h.id);
-    const responsavel = dados.responsaveis.get(chaveDoResponsavel('holerite', h.id));
     itens.push({
-      chave: chaveDoResponsavel('holerite', h.id),
+      chave: `holerite#${h.id}`,
       documento: 'holerite',
       referencia: h.id,
       colaboradorId: h.colaboradorId,
       nome: nomeDe.get(h.colaboradorId) || 'Colaborador removido',
-      estado: estadoDe(h.colaboradorId, recebimento?.assinadoEm, responsavel),
+      estado: recebimento ? 'assinado' : 'falta_colaborador',
       colaboradorAssinouEm: recebimento?.assinadoEm,
-      responsavel: responsavel && { nome: responsavel.responsavelNome, assinadoEm: responsavel.assinadoEm },
     });
   }
 
@@ -115,20 +117,9 @@ export const montarFilaDoMes = (dados: {
 };
 
 /** O lote do botão "Assinar": só o que está para assinar, separado por tipo para o banco. */
-export const loteDaFila = (itens: ItemDeAssinatura[]): { holerites: string[]; espelhos: string[] } => {
-  const prontos = itens.filter((i) => i.estado === 'para_assinar');
-  return {
-    holerites: prontos.filter((i) => i.documento === 'holerite').map((i) => i.referencia),
-    espelhos: prontos.filter((i) => i.documento === 'espelho').map((i) => i.referencia),
-  };
-};
+export const loteDaFila = (itens: ItemDeAssinatura[]): string[] =>
+  itens.filter((i) => i.estado === 'para_assinar' && i.documento === 'espelho').map((i) => i.referencia);
 
-/** "9 holerites e 5 espelhos de ponto" — a frase do lote, no singular e no plural. */
-export const descreverLote = (lote: { holerites: string[]; espelhos: string[] }): string => {
-  const partes = [
-    lote.holerites.length && `${lote.holerites.length} holerite${lote.holerites.length === 1 ? '' : 's'}`,
-    lote.espelhos.length &&
-      `${lote.espelhos.length} espelho${lote.espelhos.length === 1 ? '' : 's'} de ponto`,
-  ].filter(Boolean);
-  return partes.join(' e ');
-};
+/** "5 espelhos de ponto" — a frase do lote, no singular e no plural. */
+export const descreverLote = (lote: string[]): string =>
+  `${lote.length} espelho${lote.length === 1 ? '' : 's'} de ponto`;

@@ -51,22 +51,6 @@ export const linhasDoRecibo = (nome: string, recebimento: RecebimentoHolerite): 
 
 /** Altura do recibo acrescentado embaixo da última página, em pontos. */
 const ALTURA_DO_RECIBO = 118;
-/** A faixa do responsável, embaixo da do colaborador, quando ele já assinou. */
-const ALTURA_DO_RESPONSAVEL = 64;
-
-/** Quem assinou como responsável (o RH), como entra no documento. */
-export interface ResponsavelNoDocumento {
-  /** A assinatura dele (data URL de PNG). */
-  imagem: string;
-  nome: string;
-  assinadoEm: string;
-}
-
-/** As linhas da faixa do responsável. */
-export const linhasDoResponsavel = (responsavel: ResponsavelNoDocumento): string[] => [
-  `Assinado como responsável pela empresa por ${responsavel.nome}`,
-  `em ${dataHoraDeBrasilia(responsavel.assinadoEm)} (horário de Brasília), confirmado com senha pessoal.`,
-];
 
 export const montarComprovante = async (dados: {
   pdf: ArrayBuffer;
@@ -74,8 +58,6 @@ export const montarComprovante = async (dados: {
   recebimento: RecebimentoHolerite;
   /** A assinatura desenhada (data URL de PNG). */
   imagem: string;
-  /** O responsável, quando o RH já assinou (`assinaturas_do_responsavel`). */
-  responsavel?: ResponsavelNoDocumento;
 }): Promise<Uint8Array> => {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
 
@@ -100,9 +82,7 @@ export const montarComprovante = async (dados: {
       top: caixa.y + caixa.height,
     });
     const ultima = i === paginas.length - 1;
-    // A faixa do responsável vai EMBAIXO da do colaborador, que sobe junto
-    const faixa = dados.responsavel ? ALTURA_DO_RESPONSAVEL : 0;
-    const extra = ultima ? ALTURA_DO_RECIBO + faixa : 0;
+    const extra = ultima ? ALTURA_DO_RECIBO : 0;
     const folha = novo.addPage([caixa.width, caixa.height + extra]);
     folha.drawPage(embutida, { x: 0, y: extra, width: caixa.width, height: caixa.height });
     if (!ultima) continue;
@@ -113,44 +93,36 @@ export const montarComprovante = async (dados: {
       x: margem,
       y: 10,
       width: caixa.width - margem * 2,
-      height: ALTURA_DO_RECIBO - 18 + faixa,
+      height: ALTURA_DO_RECIBO - 18,
       borderColor: rgb(0, 0, 0),
       borderWidth: 0.8,
     });
-    folha.drawText('RECIBO ELETRÔNICO', { x: margem + 8, y: faixa + ALTURA_DO_RECIBO - 24, size: 8, font: negrito });
+    folha.drawText('RECIBO ELETRÔNICO', { x: margem + 8, y: ALTURA_DO_RECIBO - 24, size: 8, font: negrito });
 
-    /** Uma assinatura sobre a linha, com o nome embaixo; `base` é a altura da linha. */
+    // A assinatura desenhada, sobre a linha, com o nome embaixo
     const maximo = { largura: 150, altura: 52 };
-    const xTexto = margem + 8 + maximo.largura + 16;
-    const assinaturaSobreALinha = (
-      imagem: Awaited<ReturnType<typeof novo.embedPng>>,
-      nome: string,
-      base: number,
-      alturaMaxima: number
-    ) => {
-      const escala = Math.min(maximo.largura / imagem.width, alturaMaxima / imagem.height, 1);
-      const largura = imagem.width * escala;
-      folha.drawImage(imagem, {
-        x: margem + 8 + (maximo.largura - largura) / 2,
-        y: base + 2,
-        width: largura,
-        height: imagem.height * escala,
-      });
-      folha.drawLine({
-        start: { x: margem + 8, y: base },
-        end: { x: margem + 8 + maximo.largura, y: base },
-        thickness: 0.6,
-        color: rgb(0, 0, 0),
-      });
-      folha.drawText(nome, { x: margem + 8, y: base - 10, size: 6.5, font: fonte, maxWidth: maximo.largura });
-    };
+    const escala = Math.min(maximo.largura / desenho.width, maximo.altura / desenho.height, 1);
+    const larguraDoDesenho = desenho.width * escala;
+    folha.drawImage(desenho, {
+      x: margem + 8 + (maximo.largura - larguraDoDesenho) / 2,
+      y: 36,
+      width: larguraDoDesenho,
+      height: desenho.height * escala,
+    });
+    folha.drawLine({
+      start: { x: margem + 8, y: 34 },
+      end: { x: margem + 8 + maximo.largura, y: 34 },
+      thickness: 0.6,
+      color: rgb(0, 0, 0),
+    });
+    folha.drawText(dados.nome, { x: margem + 8, y: 24, size: 6.5, font: fonte, maxWidth: maximo.largura });
 
-    // O colaborador: a assinatura à esquerda, o texto do recibo à direita
-    assinaturaSobreALinha(desenho, dados.nome, faixa + 34, maximo.altura);
+    // O texto do recibo, à direita da assinatura
+    const xTexto = margem + 8 + maximo.largura + 16;
     linhasDoRecibo(dados.nome, dados.recebimento).forEach((linha, n) => {
       folha.drawText(linha, {
         x: xTexto,
-        y: faixa + ALTURA_DO_RECIBO - 40 - n * 13,
+        y: ALTURA_DO_RECIBO - 40 - n * 13,
         size: 7.5,
         font: n === 1 ? negrito : fonte,
         maxWidth: caixa.width - xTexto - margem - 6,
@@ -159,30 +131,10 @@ export const montarComprovante = async (dados: {
     if (!confere) {
       folha.drawText('ATENÇÃO: este arquivo NÃO é o mesmo que foi assinado.', {
         x: xTexto,
-        y: faixa + 20,
+        y: 20,
         size: 7.5,
         font: negrito,
         color: rgb(0.8, 0, 0),
-      });
-    }
-
-    // O responsável, na faixa de baixo, do mesmo jeito
-    if (dados.responsavel) {
-      folha.drawLine({
-        start: { x: margem + 8, y: faixa + 10 },
-        end: { x: caixa.width - margem - 8, y: faixa + 10 },
-        thickness: 0.4,
-        color: rgb(0.6, 0.6, 0.6),
-      });
-      assinaturaSobreALinha(await novo.embedPng(dados.responsavel.imagem), dados.responsavel.nome, 26, 36);
-      linhasDoResponsavel(dados.responsavel).forEach((linha, n) => {
-        folha.drawText(linha, {
-          x: xTexto,
-          y: 50 - n * 13,
-          size: 7.5,
-          font: n === 0 ? negrito : fonte,
-          maxWidth: caixa.width - xTexto - margem - 6,
-        });
       });
     }
   }

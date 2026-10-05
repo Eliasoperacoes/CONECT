@@ -20,12 +20,7 @@
 import { supabase, usandoNuvem } from './supabase';
 import { enviarDocumento, resolverCaminho, apagarAnexos } from './anexos';
 import { bancoDados } from './bancoDados';
-import {
-  listarRecebimentos,
-  listarAssinaturasDoResponsavel,
-  imagensDasAssinaturas,
-  chaveDoResponsavel,
-} from './assinatura';
+import { listarRecebimentos, imagensDasAssinaturas } from './assinatura';
 import { pedirAvisoDeDocumentoRh } from './envioDeAviso';
 import { montarComprovante, juntarPdfs } from './comprovanteDeHolerite';
 import { cuidaDePessoas, Holerite, Advertencia, TipoAdvertencia, RecebimentoHolerite } from '../tipos';
@@ -253,9 +248,9 @@ export const gerarComprovantes = async (
  * O COMPROVANTE DO PRÓPRIO HOLERITE, para o colaborador.
  *
  * Depois de assinado, o documento que vale é o carimbado — e não o PDF em
- * branco. Quando o RH assina como responsável, o mesmo comprovante passa a
- * sair com as duas assinaturas, sem ninguém reenviar nada (Elias,
- * 05/10/2026). Só o próprio: o banco já só entrega os dele.
+ * branco (Elias, 05/10/2026). O holerite leva só a assinatura do
+ * funcionário; o responsável assina o espelho, não o holerite. Só o
+ * próprio: o banco já só entrega os dele.
  */
 export const gerarMeuComprovante = async (
   holerite: Holerite,
@@ -271,18 +266,8 @@ const montarComprovantes = async (
 ): Promise<{ pdf?: Uint8Array; erro?: string }> => {
   const arquivos: Uint8Array[] = [];
 
-  /*
-    As assinaturas de uma vez: a do colaborador e, quando o RH já assinou
-    como responsável, a dele — o comprovante sai com as duas.
-  */
-  const responsaveis = await listarAssinaturasDoResponsavel({
-    documento: 'holerite',
-    referencias: itens.map((i) => i.holerite.id),
-  });
-  const desenhos = await imagensDasAssinaturas([
-    ...itens.map((i) => i.recebimento.assinaturaId),
-    ...[...responsaveis.values()].map((r) => r.assinaturaId),
-  ]);
+  // As assinaturas de todos de uma vez — o holerite leva só a do funcionário
+  const desenhos = await imagensDasAssinaturas(itens.map((i) => i.recebimento.assinaturaId));
 
   for (const { holerite, recebimento, nome } of itens) {
     const url = await resolverCaminho(holerite.arquivoCaminho);
@@ -292,21 +277,7 @@ const montarComprovantes = async (
     const desenho = desenhos.get(recebimento.assinaturaId);
     if (!desenho) return { erro: `Não foi possível ler a assinatura de ${nome}.` };
 
-    const doResponsavel = responsaveis.get(chaveDoResponsavel('holerite', holerite.id));
-    const imagemDoResponsavel = doResponsavel && desenhos.get(doResponsavel.assinaturaId);
-
-    arquivos.push(
-      await montarComprovante({
-        pdf: await resposta.arrayBuffer(),
-        nome,
-        recebimento,
-        imagem: desenho,
-        responsavel:
-          doResponsavel && imagemDoResponsavel
-            ? { imagem: imagemDoResponsavel, nome: doResponsavel.responsavelNome, assinadoEm: doResponsavel.assinadoEm }
-            : undefined,
-      })
-    );
+    arquivos.push(await montarComprovante({ pdf: await resposta.arrayBuffer(), nome, recebimento, imagem: desenho }));
   }
 
   if (arquivos.length === 0) return { erro: 'Nenhum holerite assinado.' };
