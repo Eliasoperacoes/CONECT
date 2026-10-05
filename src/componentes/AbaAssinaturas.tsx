@@ -61,6 +61,7 @@ import { baixarArquivo } from '../servicos/compartilharArquivo';
 import { nuvem } from '../servicos/nuvem';
 import { usandoNuvem } from '../servicos/supabase';
 import { FolhaDeAssinar } from './FolhaDeAssinar';
+import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
 
 type Lista = 'para_assinar' | 'assinados' | 'falta_colaborador';
 type Tipo = 'todos' | 'holerite' | 'espelho';
@@ -93,6 +94,8 @@ const VAZIO: DadosDoMes = { holerites: [], recebimentos: new Map(), espelhos: ne
 const quandoCurto = (iso: string) => dataHoraDeBrasilia(iso).replace(/\/\d{4}/, '');
 
 export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ colaboradorAtual }) => {
+  /** Dentro da estrutura do computador: sem o título próprio, na margem padrão. */
+  const embutida = useTelaEmbutida();
   const meses = useMemo(() => mesesFechados(dataDeHoje()), []);
   const [mes, setMes] = useState(meses[0]);
   const [dados, setDados] = useState<DadosDoMes>(VAZIO);
@@ -255,10 +258,10 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
   ];
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col gap-4 w-full max-w-3xl">
+    <div className={`${margemDaTela(embutida)} flex flex-col gap-4 w-full max-w-3xl`}>
       {/* 1. O mês */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="min-w-0">
+        <div className={embutida ? 'hidden' : 'min-w-0'}>
           <h2 className="text-sm font-bold text-[var(--c-texto)]">Assinaturas do responsável</h2>
           <p className="text-xs text-[var(--c-texto-3)]">
             O espelho leva a sua assinatura; o holerite, só a do colaborador.

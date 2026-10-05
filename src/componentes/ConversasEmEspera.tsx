@@ -57,7 +57,11 @@ export const ConversasEmEspera: React.FC<PropsConversasEmEspera> = ({
       No celular não existe "conversa em espera": a tela é pequena demais
       para duas coisas, e lá a conversa ocupa tudo.
     */
-    <div className="hidden md:block fixed bottom-0 left-3 z-40">
+    /*
+      Encostado na barra lateral do computador (w-16 até 1024px, w-60
+      depois): em `left-3` ele caía em cima do item "Administração".
+    */
+    <div className="hidden md:block fixed bottom-0 left-[76px] lg:left-[252px] z-40">
       {listaAberta && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setListaAberta(false)} />

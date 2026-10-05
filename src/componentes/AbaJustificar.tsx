@@ -55,6 +55,7 @@ import {
 import { enviarAnexo } from '../servicos/anexos';
 import { formatarDataBR, dataDeHoje } from '../servicos/ponto';
 import { FolhaInferior } from './FolhaInferior';
+import { useTelaEmbutida } from './TelaEmbutida';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -230,6 +231,8 @@ const campo =
 const rotulo = 'text-[13px] font-semibold text-[var(--c-texto-2)] mb-1.5 block';
 
 export const AbaJustificar: React.FC<Props> = ({ colaboradorAtual }) => {
+  /** Dentro da estrutura do computador: alinhada ao cabeçalho padrão. */
+  const embutida = useTelaEmbutida();
   const [versao, setVersao] = useState(0);
   const [folhaAberta, setFolhaAberta] = useState(false);
   const [passo, setPasso] = useState<'motivo' | 'dados'>('motivo');
@@ -343,9 +346,10 @@ export const AbaJustificar: React.FC<Props> = ({ colaboradorAtual }) => {
   const ehFolga = tipo === 'folga_sabado';
 
   return (
-    <div className="w-full flex flex-col pb-28">
-      {/* A ação principal da tela, onde o polegar alcança logo de cara */}
-      <div className="px-4 pt-4 pb-2">
+    <div className={`w-full flex flex-col ${embutida ? 'px-2 pb-6' : 'pb-28'}`}>
+      {/* A ação principal da tela, onde o polegar alcança logo de cara. No
+          computador, do tamanho de um botão — e não uma faixa de lado a lado */}
+      <div className={`px-4 pt-4 pb-2 ${embutida ? 'max-w-md' : ''}`}>
         <button
           type="button"
           id="botao-nova-justificativa"

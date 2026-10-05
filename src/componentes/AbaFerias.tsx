@@ -61,6 +61,7 @@ import {
   emitidoHoje,
 } from '../servicos/documento';
 import { imprimirDocumento } from '../servicos/visorDeDocumento';
+import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -72,6 +73,8 @@ const MESES = [
 ];
 
 export const AbaFerias: React.FC<Props> = ({ colaboradorAtual }) => {
+  /** Dentro da estrutura do computador: sem o título próprio, na margem padrão. */
+  const embutida = useTelaEmbutida();
   const [ano, setAno] = useState(new Date().getFullYear());
   const [versao, setVersao] = useState(0);
   const [busca, setBusca] = useState('');
@@ -349,9 +352,9 @@ export const AbaFerias: React.FC<Props> = ({ colaboradorAtual }) => {
   const podeSalvar = selecionados.length > 0 && dias > 0 && !salvando;
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+    <div className={`${margemDaTela(embutida)} flex flex-col gap-4`}>
+      <div className={`flex flex-wrap items-start gap-3 ${embutida ? 'justify-end' : 'justify-between'}`}>
+        <div className={embutida ? 'hidden' : ''}>
           <h2 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-1.5">
             <Palmtree className="w-4 h-4 text-emerald-600" />
             Férias

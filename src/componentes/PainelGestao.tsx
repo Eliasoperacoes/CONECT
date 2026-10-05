@@ -47,6 +47,7 @@ import {
 import { bancoDados } from '../servicos/bancoDados';
 import { podeUsar } from '../servicos/permissoes';
 import { acessoDe } from '../servicos/telasPorAssunto';
+import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
 import { BancoDeHoras } from './BancoDeHoras';
 import { CicloSemanal } from './CicloSemanal';
 import { FotoPresenca } from './FotoPresenca';
@@ -136,6 +137,8 @@ export const PainelGestao: React.FC<Props> = ({
   aoConsumirSecao,
   abaFixa,
 }) => {
+  /** Dentro da estrutura do computador: sem o título próprio, na margem padrão. */
+  const embutida = useTelaEmbutida();
   /**
    * ESCALA E REDE MUDARAM DE LUGAR PARA QUEM CUIDA DE PESSOAS.
    *
@@ -399,8 +402,8 @@ export const PainelGestao: React.FC<Props> = ({
   );
 
   return (
-    <div className="w-full flex flex-col gap-4 p-4 sm:p-6">
-      <div>
+    <div className={`w-full flex flex-col gap-4 ${margemDaTela(embutida)}`}>
+      <div className={embutida ? 'hidden' : ''}>
         <h2 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-2">
           <Users className="w-4 h-4" />
           Minha equipe

@@ -25,6 +25,7 @@
  * decide quem vê o quê é uma segunda cópia da regra que o banco já tem.
  */
 import { TituloDaPagina } from './TituloDaPagina';
+import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Megaphone,
@@ -190,6 +191,8 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
   publicacaoAAbrir,
   aoConsumirPublicacao,
 }) => {
+  /** Dentro da estrutura do computador: sem o título próprio, na margem padrão. */
+  const embutida = useTelaEmbutida();
   const [versao, setVersao] = useState(0);
   const [tipoAtivo, setTipoAtivo] = useState<TipoPublicacao>('aviso');
   const [busca, setBusca] = useState('');
@@ -418,7 +421,11 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
   };
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col gap-4 pb-28 lg:pb-6 md:w-full md:max-w-7xl md:mx-auto">
+    <div
+      className={`${
+        embutida ? margemDaTela(true) : 'p-4 sm:p-6 pb-28 lg:pb-6 md:max-w-7xl md:mx-auto'
+      } flex flex-col gap-4 md:w-full`}
+    >
       {/*
         NO CELULAR, A CENTRAL É UMA TELA DE APLICATIVO — pedido do Elias:
         "não só funções espalhadas pela tela". Título curto, busca e um
@@ -524,7 +531,21 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
         )}
       </div>
 
-      {/* Cabeçalho do computador: o mesmo título de todas as telas */}
+      {/* Cabeçalho do computador: o mesmo título de todas as telas. Embutida
+          na estrutura, o título é o dela — aqui fica só a ação. */}
+      {embutida ? (
+        podeAdministrar && (
+          <div className="hidden lg:flex justify-end">
+            <button
+              type="button"
+              onClick={() => setFormularioAberto(true)}
+              className="px-4 py-2.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center gap-1.5 hover:brightness-110 transition-all"
+            >
+              <Plus className="w-4 h-4" /> Nova publicação
+            </button>
+          </div>
+        )
+      ) : (
       <TituloDaPagina
         className="hidden lg:flex"
         titulo="Central da Direção"
@@ -541,6 +562,7 @@ export const CentralAvisos: React.FC<PropsCentralAvisos> = ({
           )
         }
       />
+      )}
 
       <div className="flex flex-col lg:flex-row gap-4 items-start">
         {/* Coluna da esquerda */}

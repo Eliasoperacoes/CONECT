@@ -29,6 +29,7 @@ import {
 } from '../servicos/rh';
 import { dataDeHoje } from '../servicos/ponto';
 import { FotoPresenca } from './FotoPresenca';
+import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -46,6 +47,8 @@ const formatarData = (iso: string): string => {
 };
 
 export const AbaAdvertencias: React.FC<Props> = ({ colaboradorAtual }) => {
+  /** Dentro da estrutura do computador: sem o título próprio, na margem padrão. */
+  const embutida = useTelaEmbutida();
   const [lista, setLista] = useState<Advertencia[]>([]);
   const [versao, setVersao] = useState(0);
   const [formAberto, setFormAberto] = useState(false);
@@ -119,9 +122,9 @@ export const AbaAdvertencias: React.FC<Props> = ({ colaboradorAtual }) => {
   const semCiencia = lista.filter((a) => !a.cienciaEm).length;
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+    <div className={`${margemDaTela(embutida)} flex flex-col gap-4`}>
+      <div className={`flex items-start gap-3 ${embutida ? 'justify-end' : 'justify-between'}`}>
+        <div className={embutida ? 'hidden' : 'min-w-0'}>
           <h2 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-1.5">
             <AlertTriangle className="w-4 h-4 text-amber-600" />
             Advertências

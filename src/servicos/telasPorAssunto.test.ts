@@ -117,3 +117,11 @@ test('CADA CAMINHO DE HOJE LEVA A UMA TELA DA BARRA, e a tela que a pessoa não 
   expect(telaQueAbre('perfil', visiveis)).toBe('perfil');
   expect(telaQueAbre(null, visiveis)).toBe('inicio');
 });
+
+test('TODA TELA DIZ O QUE É: cada tela e cada assunto têm a sua frase', async () => {
+  const { DESCRICAO_DA_TELA, DESCRICAO_DO_ASSUNTO } = await import('./telasPorAssunto');
+  for (const assunto of ASSUNTOS) {
+    expect(DESCRICAO_DO_ASSUNTO[assunto.id]?.length).toBeGreaterThan(10);
+    for (const tela of assunto.telas) expect(DESCRICAO_DA_TELA[tela.id]?.length).toBeGreaterThan(10);
+  }
+});

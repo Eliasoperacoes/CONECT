@@ -52,6 +52,7 @@ import { decidirAusencia } from '../servicos/justificativas';
 import { abrirDocumento } from '../servicos/rh';
 import { FotoPresenca } from './FotoPresenca';
 import { useVoltar } from '../servicos/voltar';
+import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -235,6 +236,8 @@ const VisorDocumento: React.FC<{
 };
 
 export const AbaAtestados: React.FC<Props> = ({ colaboradorAtual }) => {
+  /** Dentro da estrutura do computador: sem o título próprio, na margem padrão. */
+  const embutida = useTelaEmbutida();
   const [versao, setVersao] = useState(0);
   const [busca, setBusca] = useState('');
   const [somentePendentes, setSomentePendentes] = useState(false);
@@ -318,8 +321,8 @@ export const AbaAtestados: React.FC<Props> = ({ colaboradorAtual }) => {
   };
 
   return (
-    <div className="p-4 sm:p-6 flex flex-col gap-4">
-      <div>
+    <div className={`${margemDaTela(embutida)} flex flex-col gap-4`}>
+      <div className={embutida ? 'hidden' : ''}>
         <h2 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-1.5">
           <Stethoscope className="w-4 h-4 text-[var(--c-acento)]" />
           Documentos de ausência

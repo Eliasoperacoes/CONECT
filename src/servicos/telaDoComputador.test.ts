@@ -81,7 +81,9 @@ test('toda tela tem o mesmo título e a mesma largura', () => {
   // é uma só para toda tela do computador
   const web = ler('componentes/ConteudoWeb.tsx');
   expect(web).toContain("const titulo = tela === 'perfil' ? 'Meu perfil' : assunto?.rotulo || 'CONECTA';");
-  expect(web).toContain('<div key={tela} className="max-w-7xl mx-auto w-full pb-10">');
+  // A mesma largura e a mesma margem para toda tela, com o fim reservado ao balão
+  expect(web).toContain('<div key={tela} className="max-w-7xl mx-auto w-full px-2 pb-28">');
+  expect(web).toContain('<ContextoTelaEmbutida.Provider value={true}>');
 
   // Ponto e Eu deixaram a coluna de 900px pela largura das outras telas
   expect(app).not.toContain('max-w-[900px]');
@@ -94,4 +96,26 @@ test('Ponto e Eu em duas colunas só a partir da tela grande', () => {
   const eu = ler('componentes/AbaEu.tsx');
   expect(eu).toContain('lg:grid lg:grid-cols-[360px_minmax(0,1fr)]');
   expect(eu).toContain('<div className="lg:col-start-2 lg:row-start-1 lg:row-span-2">');
+});
+
+test('O CHAT NO BALÃO DO CANTO, e não na barra lateral (Elias, 05/10/2026)', () => {
+  const app = ler('App.tsx');
+  expect(app).toContain("assuntos={acessoWeb.assuntos.filter((a) => a.id !== 'conversas')}");
+  expect(app).toContain('<BalaoDeConversas naoLidas={totalNaoLidas} aoAbrir={() => expandirChat()} />');
+  const balao = ler('componentes/BalaoDeConversas.tsx');
+  expect(balao).toContain('fixed bottom-6 right-6');
+  // Só no computador: no celular as conversas são a barra de baixo
+  expect(balao).toContain('hidden md:flex');
+});
+
+test('TELA EMBUTIDA: o título próprio some, a ação fica, e a margem é a padrão', () => {
+  // Cada tela que tinha título próprio esconde só o título quando embutida
+  for (const tela of ['AbaHolerites', 'AbaAdvertencias', 'EscalaDeFolgas', 'AbaFerias', 'AbaAtestados', 'AbaAssinaturas', 'PainelGestao']) {
+    const fonte = ler(`componentes/${tela}.tsx`);
+    expect({ tela, usa: fonte.includes('useTelaEmbutida()') }).toEqual({ tela, usa: true });
+    expect({ tela, margem: fonte.includes('margemDaTela(embutida') }).toEqual({ tela, margem: true });
+  }
+  // As ações continuam: Registrar (advertência) e Imprimir (escala) não moram no título escondido
+  const adv = ler('componentes/AbaAdvertencias.tsx');
+  expect(adv).toContain("${embutida ? 'justify-end' : 'justify-between'}");
 });

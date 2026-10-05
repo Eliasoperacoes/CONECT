@@ -62,6 +62,7 @@ import {
   ESPELHO_ASSINADO_DESDE,
 } from '../servicos/meuRH';
 import { FolhaInferior } from './FolhaInferior';
+import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
 import { CartaoSolicitacao } from './AbaJustificar';
 import { mostrarParaAssinar, mostrarPdf, mostrarPdfGerado } from '../servicos/visorDeDocumento';
 import { rodandoNoAplicativo } from '../servicos/aplicativo';
@@ -173,6 +174,8 @@ const Linha: React.FC<{
 );
 
 export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo }) => {
+  /** Dentro da estrutura do computador: na margem padrão. */
+  const embutida = useTelaEmbutida();
   /** Este cartão entra? Sem lista, todos. */
   const mostra = (folha: Folha) => !cartoes || cartoes.includes(folha);
   const eu = colaboradorAtual;
@@ -390,7 +393,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
   };
 
   return (
-    <section id="meu-rh" className="px-4 pt-5 pb-1 lg:px-0 lg:pt-0">
+    <section id="meu-rh" className={embutida ? margemDaTela(true) : 'px-4 pt-5 pb-1 lg:px-0 lg:pt-0'}>
       <div className={semTitulo ? 'hidden' : 'flex items-baseline justify-between mb-3'}>
         <h2 className="text-base font-bold text-[var(--c-texto)]">Meu RH</h2>
         <span className="text-xs text-[var(--c-texto-3)]">Só você vê</span>

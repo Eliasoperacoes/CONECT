@@ -171,6 +171,58 @@ export interface Assunto {
 }
 
 /**
+ * O QUE CADA TELA É, numa frase — o cabeçalho padrão do computador.
+ *
+ * "Tudo muito despadronizado, sem informação" (Elias, 05/10/2026): cada
+ * tela abria com um título diferente, ou nenhum, e a pessoa tinha de
+ * adivinhar para que ela servia. Agora toda tela diz, no mesmo lugar e do
+ * mesmo jeito, o que é e o que se faz nela.
+ */
+export const DESCRICAO_DA_TELA: Record<TelaWeb, string> = {
+  inicio: 'O seu dia em resumo, e o que espera por você.',
+  conversas: 'As conversas e os grupos da rede.',
+  central: 'Comunicados, documentos e tutoriais da direção para a rede.',
+  meu_ponto: 'Suas batidas de hoje, a próxima marcação e o histórico dos dias.',
+  meu_espelho: 'O espelho de cada mês fechado, para conferir e assinar.',
+  equipe_banco: 'O saldo de cada pessoa da sua equipe, ciclo a ciclo.',
+  equipe_pendencias: 'Quem não bateu, os dias que não fecharam e as horas que esperam a sua decisão.',
+  ponto_rede: 'O espelho de todas as pessoas, com correção de marcação, impressão e exportação.',
+  qr_ponto: 'O cartaz de QR de cada loja, para imprimir e afixar.',
+  pedir_ausencia: 'Peça folga, envie atestado ou justifique uma falta — e acompanhe cada resposta.',
+  minhas_ausencias: 'As suas férias programadas e os documentos que você entregou.',
+  escala_folgas:
+    'As folgas de sábado do mês: arraste cada pessoa para o dia dela. Cada uma tem uma folga por mês — e mais uma quem trabalhou a do mês anterior (o selo 1/2 na lista).',
+  ferias_planejamento:
+    'O ano de férias da equipe, num calendário só. Selecione uma ou mais pessoas para lançar o mesmo período.',
+  atestados:
+    'Atestados, declarações de comparecimento e faltas justificadas: quem entregou, de quando e o documento — para aceitar, recusar e manter o arquivo em dia.',
+  meus_documentos: 'Os seus holerites e os documentos do RH que pedem a sua ciência.',
+  assinaturas:
+    'Os espelhos que os colaboradores assinaram e esperam a assinatura do responsável — todos de uma vez. O holerite leva só a assinatura do colaborador.',
+  holerites:
+    'Os holerites do mês, publicados a partir do PDF do escritório. Cada pessoa vê só o dela; reenviar substitui o do mesmo mês.',
+  advertencias:
+    'O registro disciplinar da rede. A pessoa vê a dela e dá ciência na própria tela — a confirmação é dela, não de quem aplicou.',
+  unidades: 'As lojas da rede: equipe, supervisão e quem está online.',
+  organograma: 'Quem responde a quem — é o que decide quem aprova as horas de cada um.',
+  painel_rh: 'O que está parado esperando uma decisão do RH.',
+  administracao: 'Cadastro, permissões e configurações do sistema.',
+  perfil: 'Os seus dados, a sua presença e as preferências deste aparelho.',
+};
+
+/** O que cada assunto reúne, numa frase — o título da página. */
+export const DESCRICAO_DO_ASSUNTO: Record<AssuntoId, string> = {
+  inicio: DESCRICAO_DA_TELA.inicio,
+  conversas: DESCRICAO_DA_TELA.conversas,
+  central: DESCRICAO_DA_TELA.central,
+  ponto: 'Batidas, espelhos e banco de horas — os seus, os da sua equipe e os da rede.',
+  ausencias: 'Folgas de sábado, férias e atestados: pedir, acompanhar e planejar.',
+  documentos: 'Holerites, advertências e assinaturas — os seus e os que o RH cuida.',
+  pessoas: 'As lojas da rede e quem responde a quem.',
+  administracao: DESCRICAO_DA_TELA.administracao,
+};
+
+/**
  * A BARRA LATERAL, POR ASSUNTO. Tudo de ponto num lugar, tudo de folga e
  * férias em outro, tudo de documento em outro (mapa aprovado pelo Elias,
  * 05/10/2026). A tela é a mesma de hoje; o que muda é a porta.

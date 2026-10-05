@@ -314,7 +314,8 @@ test('nao existe mais fila de conversas encolhidas se espalhando', async () => {
     new URL('../componentes/ConversasEmEspera.tsx', import.meta.url)
   ).text();
   // Posição fixa no canto: não acompanha as janelas, então não escorrega
-  expect(espera).toContain('fixed bottom-0 left-3');
+  // Encostado na barra lateral do computador (e não por cima dela)
+  expect(espera).toContain('fixed bottom-0 left-[76px] lg:left-[252px]');
   expect(espera).not.toContain('maxWidth');
 });
 

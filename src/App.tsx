@@ -103,6 +103,7 @@ import {
   type TelaWeb,
 } from './servicos/telasPorAssunto';
 import { BarraLateralWeb } from './componentes/BarraLateralWeb';
+import { BalaoDeConversas } from './componentes/BalaoDeConversas';
 import { ConteudoWeb } from './componentes/ConteudoWeb';
 import { vigiarRelogio } from './servicos/relogio';
 import { usandoNuvem } from './servicos/supabase';
@@ -1511,7 +1512,8 @@ export default function App() {
       <div className="flex-1 flex w-full h-full overflow-hidden">
         {/* A NAVEGAÇÃO DO COMPUTADOR, por assunto (só md+; o celular tem a barra de baixo) */}
         <BarraLateralWeb
-          assuntos={acessoWeb.assuntos}
+          /* Conversas é o balão do canto (Elias): uma porta só para o chat */
+          assuntos={acessoWeb.assuntos.filter((a) => a.id !== 'conversas')}
           ativo={assuntoMostrado}
           contadores={contadoresWeb}
           aoEscolher={(assunto) => escolherAssunto(assunto.id, assunto.telas[0].id)}
@@ -1891,6 +1893,11 @@ export default function App() {
         Tudo que não coube nos três lugares abertos, num botão só no canto.
         Nada se espalha para a esquerda porque não há nada para espalhar.
       */}
+      {/* O chat no balão do canto, no computador; some com o chat aberto */}
+      {!chatExpandido && podeUsar('conversas', colaboradorAtual) && (
+        <BalaoDeConversas naoLidas={totalNaoLidas} aoAbrir={() => expandirChat()} />
+      )}
+
       {!chatExpandido && <ConversasEmEspera
         conversas={conversasEncolhidas}
         aoAbrir={(id) => abrirJanela(id)}

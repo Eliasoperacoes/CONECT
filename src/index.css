@@ -105,6 +105,28 @@
 
 /*
   ============================================================
+  A VERSÃO DE COMPUTADOR — o visual do desenho do Elias (05/10/2026)
+  ============================================================
+
+  Só a partir de 768px, onde mora a barra lateral: a fonte Manrope e o azul
+  do logo da Malachias no lugar do azul genérico. No celular e no app nada
+  muda — foi o combinado ("somente para a versão navegador").
+
+  O seletor repete `:root[data-tema="claro"]` porque o tema escolhido à mão
+  tem prioridade sobre `:root`; o escuro mantém o azul claro de lá, que já
+  é o tom do logo sobre fundo escuro.
+*/
+@media (min-width: 768px) {
+  :root,
+  :root[data-tema="claro"] {
+    --fonte: "Manrope Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    --c-acento: #315BAA;
+    --c-acento-suave: #E3EBFA;
+  }
+}
+
+/*
+  ============================================================
   OS TOKENS ACIMA, DISPONÍVEIS COMO CLASSES
   ============================================================
 

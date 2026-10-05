@@ -39,6 +39,7 @@ import {
   emitidoHoje,
 } from '../servicos/documento';
 import { imprimirDocumento } from '../servicos/visorDeDocumento';
+import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -67,6 +68,8 @@ const sabadosDoMes = (ano: number, mes: number): string[] => {
 };
 
 export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
+  /** Dentro da estrutura do computador: sem o título próprio, na margem padrão. */
+  const embutida = useTelaEmbutida();
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth());
@@ -328,9 +331,9 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
   };
 
   return (
-    <div className="w-full flex flex-col gap-4 p-4 sm:p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
+    <div className={`w-full flex flex-col gap-4 ${margemDaTela(embutida)}`}>
+      <div className={`flex flex-col sm:flex-row sm:items-center gap-3 ${embutida ? 'sm:justify-end' : 'justify-between'}`}>
+        <div className={embutida ? 'hidden' : ''}>
           <h2 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-2">
             <CalendarDays className="w-4 h-4" />
             Escala de folgas

@@ -4,6 +4,8 @@ import App from './App.tsx';
 import {iniciarTema} from './servicos/tema';
 import {iniciarNuvem} from './servicos/nuvem';
 import {calarSugestoesDoNavegador} from './servicos/sugestoesDoNavegador';
+// A fonte do computador (index.css, a partir de 768px); o celular não a baixa
+import '@fontsource-variable/manrope';
 import './index.css';
 
 // Restaura o tema escolhido antes de renderizar, evitando piscar o tema errado.
