@@ -20,7 +20,12 @@
 import { supabase, usandoNuvem } from './supabase';
 import { enviarDocumento, resolverCaminho, apagarAnexos } from './anexos';
 import { bancoDados } from './bancoDados';
-import { listarRecebimentos, obterAssinatura } from './assinatura';
+import {
+  listarRecebimentos,
+  listarAssinaturasDoResponsavel,
+  imagensDasAssinaturas,
+  chaveDoResponsavel,
+} from './assinatura';
 import { pedirAvisoDeDocumentoRh } from './envioDeAviso';
 import { montarComprovante, juntarPdfs } from './comprovanteDeHolerite';
 import { cuidaDePessoas, Holerite, Advertencia, TipoAdvertencia, RecebimentoHolerite } from '../tipos';
@@ -241,22 +246,44 @@ export const gerarComprovantes = async (
   itens: Array<{ holerite: Holerite; recebimento: RecebimentoHolerite; nome: string }>
 ): Promise<{ pdf?: Uint8Array; erro?: string }> => {
   if (!podeCuidarDeDocumentos()) return { erro: 'Apenas o RH gera o comprovante.' };
-  const desenhos = new Map<string, string>();
   const arquivos: Uint8Array[] = [];
+
+  /*
+    As assinaturas de uma vez: a do colaborador e, quando o RH já assinou
+    como responsável, a dele — o comprovante sai com as duas.
+  */
+  const responsaveis = await listarAssinaturasDoResponsavel({
+    documento: 'holerite',
+    referencias: itens.map((i) => i.holerite.id),
+  });
+  const desenhos = await imagensDasAssinaturas([
+    ...itens.map((i) => i.recebimento.assinaturaId),
+    ...[...responsaveis.values()].map((r) => r.assinaturaId),
+  ]);
 
   for (const { holerite, recebimento, nome } of itens) {
     const url = await resolverCaminho(holerite.arquivoCaminho);
     const resposta = url ? await fetch(url).catch(() => null) : null;
     if (!resposta?.ok) return { erro: `Não foi possível abrir o holerite de ${nome}.` };
 
-    let desenho = desenhos.get(recebimento.assinaturaId);
-    if (!desenho) {
-      desenho = (await obterAssinatura(recebimento.assinaturaId))?.imagem;
-      if (!desenho) return { erro: `Não foi possível ler a assinatura de ${nome}.` };
-      desenhos.set(recebimento.assinaturaId, desenho);
-    }
+    const desenho = desenhos.get(recebimento.assinaturaId);
+    if (!desenho) return { erro: `Não foi possível ler a assinatura de ${nome}.` };
 
-    arquivos.push(await montarComprovante({ pdf: await resposta.arrayBuffer(), nome, recebimento, imagem: desenho }));
+    const doResponsavel = responsaveis.get(chaveDoResponsavel('holerite', holerite.id));
+    const imagemDoResponsavel = doResponsavel && desenhos.get(doResponsavel.assinaturaId);
+
+    arquivos.push(
+      await montarComprovante({
+        pdf: await resposta.arrayBuffer(),
+        nome,
+        recebimento,
+        imagem: desenho,
+        responsavel:
+          doResponsavel && imagemDoResponsavel
+            ? { imagem: imagemDoResponsavel, nome: doResponsavel.responsavelNome, assinadoEm: doResponsavel.assinadoEm }
+            : undefined,
+      })
+    );
   }
 
   if (arquivos.length === 0) return { erro: 'Nenhum holerite assinado.' };

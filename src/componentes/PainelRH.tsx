@@ -31,6 +31,7 @@ import {
   TrendingDown,
   CheckCircle2,
   Palmtree,
+  PenLine,
 } from 'lucide-react';
 import { Colaborador, SE_COMPROVA_COM_DOCUMENTO } from '../tipos';
 import { ondeParei, lembrarOndeParei } from '../servicos/navegacaoLembrada';
@@ -48,6 +49,8 @@ import {
 import { EscalaDeFolgas } from './EscalaDeFolgas';
 import { BancoDeHoras } from './BancoDeHoras';
 import { AbaHolerites } from './AbaHolerites';
+import { AbaAssinaturas } from './AbaAssinaturas';
+import { contarParaOResponsavel } from '../servicos/assinatura';
 import { AbaAdvertencias } from './AbaAdvertencias';
 import { AbaAtestados } from './AbaAtestados';
 import { AbaFerias } from './AbaFerias';
@@ -71,6 +74,7 @@ import { SeparacaoPorSetor } from './SeparacaoPorSetor';
  */
 const SECOES = [
   'painel',
+  'assinaturas',
   'holerites',
   'atestados',
   'advertencias',
@@ -160,6 +164,20 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
       vivo = false;
     };
   }, [versao]);
+
+  /**
+   * Os documentos que os colaboradores assinaram e esperam o responsável.
+   * Confere de novo ao voltar ao painel: é lá que o número aparece, e a
+   * assinatura acontece na seção ao lado.
+   */
+  const [paraOResponsavel, setParaOResponsavel] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    contarParaOResponsavel(colaboradorAtual.id).then((n) => vivo && setParaOResponsavel(n));
+    return () => {
+      vivo = false;
+    };
+  }, [colaboradorAtual.id, secao]);
 
   const numeros = useMemo(() => {
     void versao;
@@ -254,6 +272,19 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
     aoAbrir?: () => void;
   }> = [];
 
+  if (paraOResponsavel > 0) {
+    pendencias.push({
+      id: 'assinaturas',
+      titulo: `${paraOResponsavel} ${
+        paraOResponsavel === 1 ? 'documento aguarda' : 'documentos aguardam'
+      } a assinatura do responsável`,
+      explicacao: 'Holerites e espelhos que os colaboradores já assinaram',
+      acao: 'Assinar',
+      icone: <PenLine className="w-4 h-4" />,
+      aoAbrir: () => setSecao('assinaturas'),
+    });
+  }
+
   if (numeros.aguardando > 0) {
     pendencias.push({
       id: 'aguardando',
@@ -297,14 +328,20 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
     });
   }
 
-  const abas: Array<{ id: Secao; rotulo: string; icone: React.ReactNode; alerta?: boolean }> = [
+  const abas: Array<{ id: Secao; rotulo: string; icone: React.ReactNode; contador?: number }> = [
     { id: 'painel', rotulo: 'Painel', icone: <ClipboardList className="w-3.5 h-3.5" /> },
+    {
+      id: 'assinaturas',
+      rotulo: 'Assinaturas',
+      icone: <PenLine className="w-3.5 h-3.5" />,
+      contador: paraOResponsavel || undefined,
+    },
     { id: 'holerites', rotulo: 'Holerites', icone: <Receipt className="w-3.5 h-3.5" /> },
     {
       id: 'atestados',
       rotulo: 'Atestados',
       icone: <Stethoscope className="w-3.5 h-3.5" />,
-      alerta: numeros.aguardando > 0,
+      contador: numeros.aguardando || undefined,
     },
     {
       id: 'advertencias',
@@ -327,7 +364,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
           id: aba.id,
           rotulo: aba.rotulo,
           icone: aba.icone,
-          contador: aba.alerta ? numeros.aguardando : undefined,
+          contador: aba.contador,
           domId: `aba-rh-${aba.id}`,
         }))}
       />
@@ -477,6 +514,7 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
         </div>
       )}
 
+      {secao === 'assinaturas' && <AbaAssinaturas colaboradorAtual={colaboradorAtual} />}
       {secao === 'holerites' && <AbaHolerites colaboradorAtual={colaboradorAtual} />}
       {secao === 'atestados' && <AbaAtestados colaboradorAtual={colaboradorAtual} />}
       {secao === 'advertencias' && <AbaAdvertencias colaboradorAtual={colaboradorAtual} />}

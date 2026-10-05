@@ -81,14 +81,6 @@ export const obterMinhaAssinatura = async (): Promise<Assinatura | null> => {
   return linha ? paraAssinatura(linha) : null;
 };
 
-/** Uma assinatura pelo id — a que foi usada num recebimento, mesmo que trocada depois. */
-export const obterAssinatura = async (id: string): Promise<Assinatura | null> => {
-  if (!supabase) return null;
-  const { data, error } = await supabase.from('assinaturas').select('*').eq('id', id).maybeSingle();
-  if (error || !data) return null;
-  return paraAssinatura(data as LinhaAssinatura);
-};
-
 export const cadastrarAssinatura = async (imagem: string): Promise<{ sucesso: boolean; erro?: string }> => {
   if (!usandoNuvem() || !supabase) {
     return { sucesso: false, erro: 'Disponível apenas com o banco da rede ligado.' };
@@ -136,6 +128,9 @@ const MOTIVOS: Record<string, string> = {
   sem_assinatura: 'Cadastre a sua assinatura antes de assinar.',
   holerite: 'Este holerite não é seu.',
   mes_aberto: 'Este mês ainda não fechou: o espelho é assinado a partir do dia 1 do mês seguinte.',
+  sem_permissao: 'Só quem cuida de pessoas assina como responsável.',
+  vazio: 'Nenhum documento para assinar.',
+  lote: 'Lote grande demais. Assine um mês de cada vez.',
   arquivo: 'Não foi possível conferir o arquivo. Feche e abra o holerite de novo.',
   sessao: 'Sua sessão expirou. Entre de novo no sistema.',
 };
@@ -318,16 +313,16 @@ export const assinaturasDoEspelho = async (
   resumos?: ResumoPontoColaborador[]
 ): Promise<Map<string, AssinaturaNoEspelho>> => {
   const resultado = new Map<string, AssinaturaNoEspelho>();
-  const assinados = await listarEspelhosAssinados({ colaboradorIds, mes });
-  if (assinados.size === 0 || !supabase) return resultado;
+  const [assinados, doResponsavel] = await Promise.all([
+    listarEspelhosAssinados({ colaboradorIds, mes }),
+    listarAssinaturasDoResponsavel({ documento: 'espelho', mes }),
+  ]);
+  if (assinados.size === 0) return resultado;
 
-  const ids = [...new Set([...assinados.values()].map((e) => e.assinaturaId))];
-  const { data, error } = await supabase.from('assinaturas').select('*').in('id', ids);
-  if (error) {
-    console.error('Falha ao ler as assinaturas do espelho:', error.message);
-    return resultado;
-  }
-  const imagens = new Map(((data || []) as LinhaAssinatura[]).map((l) => [l.id, l.imagem]));
+  const imagens = await imagensDasAssinaturas([
+    ...[...assinados.values()].map((e) => e.assinaturaId),
+    ...[...doResponsavel.values()].map((r) => r.assinaturaId),
+  ]);
   // O mês da rede é calculado uma vez, não uma por pessoa assinada
   const { inicio, fim } = periodoDoMes(mes);
   const doMes = resumos || servicoPonto.obterResumoDoPeriodo(inicio, fim);
@@ -336,12 +331,155 @@ export const assinaturasDoEspelho = async (
     const imagem = imagens.get(e.assinaturaId);
     if (!imagem) continue;
     const agora = await codigoDoEspelho(e.colaboradorId, mes, doMes);
+    const responsavel = doResponsavel.get(chaveDoResponsavel('espelho', chaveDoEspelho(e.colaboradorId, mes)));
+    const imagemDoResponsavel = responsavel && imagens.get(responsavel.assinaturaId);
     resultado.set(e.colaboradorId, {
       imagem,
       assinadoEm: e.assinadoEm,
       conteudoHash: e.conteudoHash,
       confere: agora === e.conteudoHash,
+      responsavel:
+        responsavel && imagemDoResponsavel
+          ? { imagem: imagemDoResponsavel, nome: responsavel.responsavelNome, assinadoEm: responsavel.assinadoEm }
+          : undefined,
     });
   }
   return resultado;
+};
+
+/** As imagens de várias assinaturas, por id, num pedido só. */
+export const imagensDasAssinaturas = async (ids: string[]): Promise<Map<string, string>> => {
+  const unicos = [...new Set(ids)];
+  if (unicos.length === 0 || !supabase) return new Map();
+  const { data, error } = await supabase.from('assinaturas').select('*').in('id', unicos);
+  if (error) {
+    console.error('Falha ao ler as assinaturas:', error.message);
+    return new Map();
+  }
+  return new Map(((data || []) as LinhaAssinatura[]).map((l) => [l.id, l.imagem]));
+};
+
+// ============================================================
+// A ASSINATURA DO RESPONSÁVEL
+//
+// O RH assina, de uma vez, os holerites e espelhos que os colaboradores
+// já assinaram (`assinar_como_responsavel`, em
+// `supabase/assinatura-holerite.sql`). O banco escolhe o que entra: só o
+// que o colaborador assinou, e nunca o documento de quem assina.
+// ============================================================
+
+export type DocumentoAssinavel = 'holerite' | 'espelho';
+
+export interface AssinaturaDoResponsavel {
+  documento: DocumentoAssinavel;
+  /** holerite: o id dele; espelho: `chaveDoEspelho`. */
+  referencia: string;
+  colaboradorId: string;
+  mes: string;
+  responsavelId: string;
+  responsavelNome: string;
+  assinaturaId: string;
+  assinadoEm: string;
+}
+
+interface LinhaDoResponsavel {
+  documento: DocumentoAssinavel;
+  referencia: string;
+  colaborador_id: string;
+  mes: string;
+  responsavel_id: string;
+  responsavel_nome: string;
+  assinatura_id: string;
+  assinado_em: string;
+}
+
+export const chaveDoResponsavel = (documento: DocumentoAssinavel, referencia: string): string =>
+  `${documento}#${referencia}`;
+
+/** As assinaturas do responsável: de um mês, de um tipo de documento, ou de alguns holerites. */
+export const listarAssinaturasDoResponsavel = async (filtro: {
+  documento?: DocumentoAssinavel;
+  mes?: string;
+  referencias?: string[];
+}): Promise<Map<string, AssinaturaDoResponsavel>> => {
+  const mapa = new Map<string, AssinaturaDoResponsavel>();
+  if (!usandoNuvem() || !supabase) return mapa;
+  if (filtro.referencias && filtro.referencias.length === 0) return mapa;
+
+  let consulta = supabase.from('assinaturas_do_responsavel').select('*');
+  if (filtro.documento) consulta = consulta.eq('documento', filtro.documento);
+  if (filtro.mes) consulta = consulta.eq('mes', filtro.mes);
+  if (filtro.referencias) consulta = consulta.in('referencia', filtro.referencias);
+
+  const { data, error } = await consulta;
+  if (error) {
+    if (!semTabela(error)) console.error('Falha ao ler as assinaturas do responsável:', error.message);
+    return mapa;
+  }
+  for (const l of (data || []) as LinhaDoResponsavel[]) {
+    mapa.set(chaveDoResponsavel(l.documento, l.referencia), {
+      documento: l.documento,
+      referencia: l.referencia,
+      colaboradorId: l.colaborador_id,
+      mes: l.mes,
+      responsavelId: l.responsavel_id,
+      responsavelNome: l.responsavel_nome,
+      assinaturaId: l.assinatura_id,
+      assinadoEm: l.assinado_em,
+    });
+  }
+  return mapa;
+};
+
+/** ASSINA COMO RESPONSÁVEL, de uma vez, os documentos do lote. */
+export const assinarComoResponsavel = async (
+  senha: string,
+  lote: { holerites: string[]; espelhos: string[] }
+): Promise<{ sucesso: boolean; holerites?: number; espelhos?: number; erro?: string }> => {
+  if (!usandoNuvem() || !supabase) {
+    return { sucesso: false, erro: 'Disponível apenas com o banco da rede ligado.' };
+  }
+  if (!senha) return { sucesso: false, erro: 'Digite a sua senha.' };
+
+  const { data, error } = await supabase.rpc('assinar_como_responsavel', {
+    p_senha: senha,
+    p_holerites: lote.holerites,
+    p_espelhos: lote.espelhos,
+  });
+  if (error) {
+    console.error('Falha ao assinar como responsável:', error.message);
+    return {
+      sucesso: false,
+      erro:
+        error.code === 'PGRST202' ? 'A assinatura do responsável ainda não foi ligada no banco. Avise o TI.' : error.message,
+    };
+  }
+  const resposta = (data || {}) as { ok?: boolean; motivo?: string; holerites?: number; espelhos?: number };
+  if (!resposta.ok) {
+    return { sucesso: false, erro: MOTIVOS[resposta.motivo || ''] || 'A assinatura não foi registrada.' };
+  }
+  return { sucesso: true, holerites: resposta.holerites || 0, espelhos: resposta.espelhos || 0 };
+};
+
+/**
+ * QUANTOS DOCUMENTOS ESPERAM O RESPONSÁVEL, na rede inteira — o aviso do
+ * painel do RH. Conta o que o colaborador assinou e o RH ainda não, menos
+ * o documento de quem pergunta. Não confere espelho alterado (isso pede as
+ * batidas do mês): a tela das Assinaturas mostra cada um com o motivo.
+ */
+export const contarParaOResponsavel = async (eu: string): Promise<number> => {
+  const [recebimentos, espelhos, feitas] = await Promise.all([
+    listarRecebimentos({}),
+    listarEspelhosAssinados({}),
+    listarAssinaturasDoResponsavel({}),
+  ]);
+  const holerites = [...recebimentos.values()].filter(
+    (r) => r.colaboradorId !== eu && !feitas.has(chaveDoResponsavel('holerite', r.holeriteId))
+  );
+  const espelhosPendentes = [...espelhos.values()].filter(
+    (e) =>
+      e.colaboradorId !== eu &&
+      !feitas.has(chaveDoResponsavel('espelho', chaveDoEspelho(e.colaboradorId, e.mes)))
+  );
+  return holerites.length + espelhosPendentes.length;
 };

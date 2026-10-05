@@ -183,6 +183,7 @@ operacoes (tabela, comando) as (values
   ('colaboradores', 'SELECT'),
   ('colaboradores', 'UPDATE'),
   ('assinaturas', 'SELECT'),
+  ('assinaturas_do_responsavel', 'SELECT'),
   ('compensacao_sabado', 'SELECT'),
   ('configuracoes', 'SELECT'),
   ('configuracoes', 'UPDATE'),

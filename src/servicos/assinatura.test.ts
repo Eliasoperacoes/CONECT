@@ -8,7 +8,11 @@
  */
 import { test, expect } from 'bun:test';
 
-const sql = await Bun.file(new URL('../../supabase/assinatura-holerite.sql', import.meta.url)).text();
+/** O arquivo SQL, com o fim de linha do Git (o checkout no Windows pode trazer CRLF). */
+const lerSql = async (nome: string): Promise<string> =>
+  (await Bun.file(new URL(`../../supabase/${nome}`, import.meta.url)).text()).replace(/\r\n/g, '\n');
+
+const sql = await lerSql('assinatura-holerite.sql');
 
 /** O corpo de uma função do arquivo, entre os dois $$. */
 const corpoDe = (nome: string): string => {
@@ -19,7 +23,13 @@ const corpoDe = (nome: string): string => {
 };
 
 test('ninguém escreve nas tabelas da assinatura pela API: só as funções gravam', () => {
-  for (const tabela of ['assinaturas', 'recebimentos_holerite', 'tentativas_de_assinatura', 'espelhos_assinados']) {
+  for (const tabela of [
+    'assinaturas',
+    'recebimentos_holerite',
+    'tentativas_de_assinatura',
+    'espelhos_assinados',
+    'assinaturas_do_responsavel',
+  ]) {
     expect(sql).toContain(`alter table public.${tabela}`);
     // Nenhuma regra de inserir, atualizar ou apagar nestas tabelas
     const regras = [...sql.matchAll(new RegExp(`create policy \\w+ on public\\.${tabela}\\s+for (\\w+)`, 'g'))].map((m) => m[1]);
@@ -74,7 +84,7 @@ test('ESPELHO: só o da própria pessoa, só de mês fechado, uma vez por mês',
 });
 
 test('O DELTA É CÓPIA FIEL DA FONTE: as funções saem iguais nos dois arquivos', async () => {
-  const delta = await Bun.file(new URL('../../supabase/assinatura-espelho.sql', import.meta.url)).text();
+  const delta = await lerSql('assinatura-espelho.sql');
   const corpoNo = (texto: string, nome: string): string => {
     const inicio = texto.indexOf(`create or replace function public.${nome}`);
     expect(inicio).toBeGreaterThan(-1);
@@ -105,4 +115,55 @@ test('holerite assinado não muda pelo sistema; pelo SQL Editor (sem usuário) p
 test('quem não entrou no sistema não chama as funções', () => {
   expect(sql).toContain('revoke all on function public.cadastrar_assinatura(text, text) from public, anon;');
   expect(sql).toContain('revoke all on function public.assinar_holerite(text, text, text, text) from public, anon;');
+});
+
+test('RESPONSÁVEL: só quem cuida de pessoas, com a senha, e antes de gravar qualquer coisa', () => {
+  const assinar = corpoDe('assinar_como_responsavel');
+  expect(assinar).toContain('if not public.cuido_de_pessoas() then');
+  expect(assinar).toContain('public.conferir_senha_de_quem_assina(eu, p_senha)');
+  expect(assinar).not.toContain('crypt(');
+  const primeiraGravacao = assinar.indexOf('insert into');
+  expect(assinar.indexOf('cuido_de_pessoas')).toBeLessThan(primeiraGravacao);
+  expect(assinar.indexOf('conferir_senha_de_quem_assina')).toBeLessThan(primeiraGravacao);
+  expect(sql).toContain(
+    'revoke all on function public.assinar_como_responsavel(text, text[], text[]) from public, anon;'
+  );
+});
+
+test('RESPONSÁVEL: só o que o colaborador JÁ assinou, nunca o próprio, e o código vem do banco', () => {
+  const assinar = corpoDe('assinar_como_responsavel');
+  // Os documentos saem das tabelas do que o colaborador assinou
+  expect(assinar).toContain('from public.recebimentos_holerite r');
+  expect(assinar).toContain('from public.espelhos_assinados e');
+  // Ninguém assina como responsável o próprio documento
+  expect(assinar).toContain('and r.colaborador_id <> eu');
+  expect(assinar).toContain('and e.colaborador_id <> eu');
+  // O código é o que o colaborador assinou — o aparelho não manda código
+  expect(assinar).toContain('r.arquivo_hash');
+  expect(assinar).toContain('e.conteudo_hash');
+  expect(assinar).not.toContain('p_hash');
+  // Assinar de novo não troca quem assinou primeiro
+  expect(assinar.match(/on conflict \(documento, referencia\) do nothing/g)).toHaveLength(2);
+});
+
+test('o colaborador lê a assinatura do responsável SÓ no próprio documento', () => {
+  const regra = sql.slice(sql.indexOf('create policy assinaturas_leitura'));
+  expect(regra.slice(0, 500)).toContain('r.assinatura_id = assinaturas.id');
+  expect(regra.slice(0, 500)).toContain('r.colaborador_id = public.meu_colaborador_id()');
+  // Uma regra só: a leitura de `assinaturas` não está escrita duas vezes
+  expect(sql.match(/create policy assinaturas_leitura/g)).toHaveLength(1);
+});
+
+test('O DELTA DO RESPONSÁVEL É CÓPIA FIEL DA FONTE', async () => {
+  const delta = await lerSql('assinatura-responsavel.sql');
+  const trecho = (texto: string, inicio: string, fim: string) =>
+    texto.slice(texto.indexOf(inicio), texto.indexOf(fim, texto.indexOf(inicio)));
+  for (const [inicio, fim] of [
+    ['create table if not exists public.assinaturas_do_responsavel', ');'],
+    ['create policy assinaturas_leitura', ');\n'],
+    ['create or replace function public.assinar_como_responsavel', '$$;'],
+  ]) {
+    expect(delta).toContain(inicio);
+    expect(trecho(delta, inicio, fim)).toBe(trecho(sql, inicio, fim));
+  }
 });

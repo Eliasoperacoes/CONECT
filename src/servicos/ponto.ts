@@ -83,7 +83,7 @@ import {
 import { situacaoDoDia } from './justificativasCache';
 import { feriadoEm } from './feriadosCache';
 import { montarDocumento } from './documento';
-import { codigoDeVerificacao, dataHoraDeBrasilia } from './comprovanteDeHolerite';
+import { codigoDeVerificacao, dataHoraDeBrasilia, ResponsavelNoDocumento } from './comprovanteDeHolerite';
 import { nuvem } from './nuvem';
 import { fecharCompensacao, mesAnterior, CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { usandoNuvem } from './supabase';
@@ -495,7 +495,18 @@ export interface AssinaturaNoEspelho {
   conteudoHash: string;
   /** O conteúdo de hoje é o mesmo que a pessoa assinou? */
   confere: boolean;
+  /** O RH, quando já assinou como responsável (`assinaturas_do_responsavel`). */
+  responsavel?: ResponsavelNoDocumento;
 }
+
+/** A linha do responsável: em branco, ou assinada pelo RH. */
+const assinaturaDoResponsavel = (responsavel?: ResponsavelNoDocumento): string => {
+  if (!responsavel) return '<span class="linha"></span>Responsável / RH';
+  return `<img class="rubrica" src="${responsavel.imagem.replace(/"/g, '')}" alt="Assinatura do responsável">
+    <span class="linha"></span>Responsável / RH — ${responsavel.nome.replace(/</g, '&lt;')}
+    <span class="carimbo">Assinado eletronicamente em ${dataHoraDeBrasilia(responsavel.assinadoEm)}
+      (horário de Brasília), com senha pessoal</span>`;
+};
 
 /**
  * O LUGAR DO COLABORADOR NO PÉ DO ESPELHO: a linha em branco, ou a
@@ -3374,7 +3385,7 @@ class ServicoPonto {
 
           <div class="assinaturas">
             <div>${assinaturaDoColaborador(assinaturas?.get(c.id))}</div>
-            <div><span class="linha"></span>Responsável / RH</div>
+            <div>${assinaturaDoResponsavel(assinaturas?.get(c.id)?.responsavel)}</div>
           </div>
         </section>`;
       })
