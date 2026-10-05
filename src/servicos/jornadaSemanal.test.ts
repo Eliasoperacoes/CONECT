@@ -54,8 +54,9 @@ test('a semana do colaborador é a da CLT: 8h por dia útil e 4h de sábado', ()
 test('cada turno fecha a SUA semana, e não um numero do setor', () => {
   // A pausa de 15 min NÃO desconta (decisão do Elias); o almoço de 1h30 sim
   expect(cargaSemanalDe({ setor: "Estágio", turno: "E1" })).toBe(5 * 360); // 6h × 5
-  expect(cargaSemanalDe({ setor: 'Estágio', turno: 'E2' })).toBe(5 * 300); // 5h00 × 5
-  expect(cargaSemanalDe({ setor: "Estágio", turno: "E3" })).toBe(5 * 300); // 5h × 5
+  // O de 5h completa a semana no sábado: 5h × 5 + 4h
+  expect(cargaSemanalDe({ setor: 'Estágio', turno: 'E2' })).toBe(5 * 300 + MINUTOS_SABADO);
+  expect(cargaSemanalDe({ setor: "Estágio", turno: "E3" })).toBe(5 * 300 + MINUTOS_SABADO);
 
   // O integral não mudou: 8h10 × 5 mais as 4h de sábado
   expect(cargaSemanalDe({ setor: 'Balcão', turno: 'A' })).toBe(MINUTOS_SEMANA_PADRAO);
@@ -67,12 +68,9 @@ test('quem vem ao SÁBADO soma as 4h dele', () => {
    * e completa no sábado. Antes os dois davam 30h fixos, e o sábado dele
    * não entrava em lugar nenhum.
    */
-  const semSabado = cargaSemanalDe({ setor: 'Estágio', turno: 'E2' });
-  const comSabado = cargaSemanalDe({
-    setor: 'Estágio',
-    turno: 'E2',
-    trabalhaSabado: true,
-  });
+  // A ficha que diz "não vem" tira o sábado do turno; a que não diz nada, vale o turno
+  const semSabado = cargaSemanalDe({ setor: 'Estágio', turno: 'E2', trabalhaSabado: false });
+  const comSabado = cargaSemanalDe({ setor: 'Estágio', turno: 'E2' });
 
   expect(comSabado - semSabado).toBe(MINUTOS_SABADO);
 });
@@ -99,6 +97,18 @@ test('a carga da FICHA vence o turno', () => {
   expect(
     cargaSemanalDe({ setor: 'Estágio', turno: 'E1', cargaSemanalMinutos: 1200 })
   ).toBe(1200);
+});
+
+test('O ESTÁGIO DE 5H VEM AO SÁBADO pelo turno; o de 6h, não', () => {
+  /*
+    Os estagiários de 5h sem nada na ficha tinham o sábado previsto em
+    zero, e as 4h trabalhadas viravam hora extra (Elias, 05/10/2026: "o
+    mesmo caso da Lyvia"). O sábado é o que fecha a semana deles.
+  */
+  expect(trabalhaNoSabado({ setor: 'Estágio', turno: 'E2' })).toBe(true);
+  expect(trabalhaNoSabado({ setor: 'Estágio', turno: 'E3' })).toBe(true);
+  expect(trabalhaNoSabado({ setor: 'Estágio', turno: 'E1' })).toBe(false);
+  expect(trabalhaNoSabado({ setor: 'Estágio', turno: 'E0' })).toBe(false);
 });
 
 test('o padrao do estagio e NAO vir ao sabado, e o do colaborador e vir', () => {

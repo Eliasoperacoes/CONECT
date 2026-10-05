@@ -4013,6 +4013,32 @@ test('A LYVIA NO SÁBADO: 08:00 às 12:00 fecha com saldo 0h00, e não −0h45',
   expect(servicoPonto.obterJornadaDoDia(LYVIA.id, '2026-09-05').saldoMinutos).toBe(-15);
 });
 
+test('O SÁBADO DO ESTÁGIO DE 5H não vira hora extra, mesmo sem nada na ficha', async () => {
+  /**
+   * "Contou como hora extra… o mesmo caso da Lyvia" (Elias, 05/10/2026).
+   * A Lyvia tinha "vem ao sábado" marcado na ficha; os outros estagiários
+   * de 5h não, e o turno dizia que não vinham: sábado previsto em zero, e
+   * as 4h trabalhadas entravam como 4h de extra. O turno de 5h vem ao
+   * sábado — a ficha não precisa dizer nada.
+   */
+  for (const turno of ['E2', 'E3']) {
+    const ESTAGIARIO = {
+      ...ELIAS, id: `est-${turno}`, nome: 'Estagiário', login: `est-${turno}`, nivel: 1,
+      setor: 'Estágio', cargo: 'Estagiário', turno, cargaHorariaDiariaMinutos: undefined,
+    };
+    equipe = [ELIAS, ESTAGIARIO];
+    colaboradorLogado = ESTAGIARIO;
+
+    await baterSabado(ESTAGIARIO, '2026-10-03', '08:00', '12:00');
+    const sabado = servicoPonto.obterJornadaDoDia(ESTAGIARIO.id, '2026-10-03');
+    expect({ turno, previsto: sabado.minutosPrevistos, saldo: sabado.saldoMinutos }).toEqual({
+      turno,
+      previsto: 240,
+      saldo: 0,
+    });
+  }
+});
+
 test('O ESPELHO TRAZ TODOS OS DIAS: domingo escrito, feriado pelo nome', async () => {
   /**
    * Pedido do Elias: a semana inteira no espelho. Só entravam dias com

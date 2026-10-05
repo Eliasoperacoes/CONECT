@@ -52,7 +52,7 @@ var TURNOS = [
     entrada: "07:30",
     saida: "12:30",
     perfil: "estagio",
-    sabado: false
+    sabado: true
   },
   {
     chave: "E3",
@@ -61,7 +61,7 @@ var TURNOS = [
     saida: "18:00",
     intervalo: { saida: "15:30", retorno: "15:45", desconta: false },
     perfil: "estagio",
-    sabado: false
+    sabado: true
   }
 ];
 var TURNO_SABADO = { entrada: "08:00", saida: "12:00" };

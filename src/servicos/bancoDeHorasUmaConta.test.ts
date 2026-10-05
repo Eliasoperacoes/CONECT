@@ -113,7 +113,7 @@ mock.module('./bancoDados', () => ({
 }));
 
 const { servicoPonto, listarDatasDoPeriodo, semanaDe, formatarSaldo } = await import('./ponto');
-const { minutosDeDiaUtilDe, cargaSemanalDe, minutosDoTurno, turnoDe } = await import('../tipos');
+const { minutosDeDiaUtilDe, cargaSemanalDe, minutosDoTurno, turnoDe, MINUTOS_SABADO } = await import('../tipos');
 const { montarFicha } = await import('./fichaColaborador');
 
 const CHAVE = 'conecta_v4_registros_ponto';
@@ -300,10 +300,14 @@ test('O PREVISTO DA SEMANA É A CARGA CONTRATADA, para os cinco contratos', () =
 
 test('o sábado do estágio é a SOBRA, e nunca negativo', () => {
   /**
-   * Quem cumpre a semana de segunda a sexta tem sábado previsto ZERO —
-   * se vier, é hora extra, e não um dia que ele "devia".
+   * Quem NÃO vem ao sábado tem sábado previsto ZERO — se vier, é hora
+   * extra, e não um dia que ele "devia". O E3 vem pelo turno (05/10/2026);
+   * quem foge dele diz na ficha.
    */
-  const semSabado = servicoPonto.obterJornadaDoDia('lyvia', SABADO);
+  const naoVem = { ...LYVIA, id: 'lyvia-nao-vem', trabalhaSabado: false };
+  equipe = [...equipe, naoVem];
+  const semSabado = servicoPonto.obterJornadaDoDia(naoVem.id, SABADO);
+  equipe = equipe.filter((c) => c.id !== naoVem.id);
   expect(semSabado.minutosPrevistos).toBe(0);
 
   // Quem vem ao sábado tem nele o que falta para fechar o contrato
@@ -395,7 +399,8 @@ test('jornada e carga vindas do banco como NULL não viram zero', () => {
 
   // Cai para o turno, e não para zero
   expect(minutosDeDiaUtilDe(comNulos)).toBe(minutosDoTurno(turnoDe(comNulos)));
-  expect(cargaSemanalDe(comNulos)).toBe(minutosDoTurno(turnoDe(comNulos)) * 5);
+  // O E3 vem ao sábado pelo turno: a semana é o dia útil × 5 mais o sábado
+  expect(cargaSemanalDe(comNulos)).toBe(minutosDoTurno(turnoDe(comNulos)) * 5 + MINUTOS_SABADO);
 
   const jornada = servicoPonto.obterJornadaDoDia('nulos', UTEIS[0]);
   expect(jornada.minutosPrevistos).toBeGreaterThan(0);

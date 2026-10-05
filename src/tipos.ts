@@ -404,7 +404,13 @@ export const TURNOS: Turno[] = [
     saida: '12:30',
     // Sai direto para a escola: duas batidas, sem intervalo
     perfil: 'estagio',
-    sabado: false,
+    /**
+     * O ESTÁGIO DE 5H VEM AO SÁBADO — é o sábado que fecha a semana dele
+     * (25h úteis + 4h = 29h). Era `false`, e cada ficha tinha de dizer o
+     * contrário; a que não dizia via o sábado inteiro virar hora extra
+     * (Elias, 05/10/2026: "contou como hora extra… o mesmo caso da Lyvia").
+     */
+    sabado: true,
   },
   {
     chave: 'E3',
@@ -413,7 +419,8 @@ export const TURNOS: Turno[] = [
     saida: '18:00',
     intervalo: { saida: '15:30', retorno: '15:45', desconta: false },
     perfil: 'estagio',
-    sabado: false,
+    // Como o E2: os 5h da semana se completam no sábado
+    sabado: true,
   },
 ];
 
@@ -706,16 +713,17 @@ export const minutosDeDiaUtilDe = (colaborador?: {
  *   A / B  8h10 × 5 + 4h de sábado  = 44h50
  *   E0     6h00 × 5                 = 30h00
  *   E1     6h00 × 5                 = 30h00   (a pausa de 15min fica DENTRO)
- *   E2     5h00 × 5                 = 25h00
- *   E3     5h00 × 5                 = 25h00   (a pausa de 15min fica DENTRO)
+ *   E2     5h00 × 5 + 4h de sábado  = 29h00
+ *   E3     5h00 × 5 + 4h de sábado  = 29h00   (a pausa de 15min fica DENTRO)
  *
  * A tabela aqui dizia E1 5h45, E2 5h00 e E3 4h45 — os números de ANTES
  * de o Elias decidir que a pausa do estágio é paga. O texto de
  * `minutosDoTurno` já explicava a decisão, e esta tabela ficou para trás
  * contando a versão velha. Comentário errado engana quem vem depois.
  *
- * Quem faz E2 ou E3 e vem ao sábado soma as 4h dele — é o caso que o
- * Elias descreveu, de quem compensa no sábado o que não fecha na semana.
+ * O E2 e o E3 vêm ao sábado pelo próprio turno: é o caso que o Elias
+ * descreveu, de quem completa no sábado o que não fecha na semana. A
+ * ficha só precisa dizer algo quando a pessoa foge do turno.
  *
  * O DIA ÚTIL VEM DE `minutosDeDiaUtilDe`, e não do turno direto: quem
  * tem jornada própria na ficha tem de ter a semana somada com ELA, senão
@@ -743,8 +751,9 @@ export const cargaSemanalDe = (colaborador?: {
 /**
  * Esta pessoa trabalha aos sábados?
  *
- * O padrão do estágio é NÃO: quem cumpre as 6h de segunda a sexta já fechou
- * a semana. Quem vem ao sábado é exceção e está marcado na ficha.
+ * QUEM RESPONDE É O TURNO: o de 6h (E0, E1) não vem — já fechou a semana
+ * de segunda a sexta; o de 5h (E2, E3) vem, e o sábado completa as 29h.
+ * A ficha só vence o turno quando diz algo de propósito.
  */
 export const trabalhaNoSabado = (colaborador?: {
   trabalhaSabado?: boolean;
