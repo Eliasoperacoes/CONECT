@@ -247,6 +247,26 @@ export const marcacoesEsperadas = (
 };
 
 /**
+ * A ordem das batidas de um dia TRABALHADO, previsto ou não.
+ *
+ * `marcacoesEsperadas` responde o que o dia cobra; isto responde o que vem
+ * depois de cada batida. São iguais no dia de jornada. No dia que não
+ * cobra nada — sábado do estagiário, domingo, feriado — a pessoa ainda
+ * pode estar lá, e a ordem caía nas quatro batidas: a saída do sábado do
+ * estagiário entrava como "saída para almoço", o dia não fechava e as
+ * horas trabalhadas não contavam.
+ *
+ * Sábado não tem intervalo para ninguém, e quem não tem intervalo não tem
+ * em dia nenhum. O resto (feriado de quem tem almoço) segue as quatro.
+ */
+export const sequenciaDoDia = (data: string, colaborador?: Colaborador): TipoMarcacao[] => {
+  const esperadas = marcacoesEsperadas(data, colaborador);
+  if (esperadas.length > 0) return esperadas;
+  if (ehSabado(data) || (colaborador && !temIntervaloNoDia(colaborador))) return ['entrada', 'saida'];
+  return ORDEM_MARCACOES;
+};
+
+/**
  * Quanto o dia prevê para esta pessoa.
  *
  * Domingo não prevê nada; sábado prevê as 4 horas da escala; dia útil

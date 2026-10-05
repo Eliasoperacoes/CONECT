@@ -2075,6 +2075,33 @@ test('ESTAGIÁRIA BATE DUAS VEZES, NÃO QUATRO', async () => {
   expect(servicoPonto.obterProximaMarcacao(LYVIA.id)).toBeNull();
 });
 
+test('SÁBADO DO ESTAGIÁRIO: a segunda batida é a saída, e as horas contam', () => {
+  /**
+   * Relato do Elias (05/10/2026): estagiários vieram no sábado 03/10 e o
+   * espelho pôs o meio-dia em "Saída alm.", com trabalhado 0h00.
+   *
+   * O sábado não é dia de estágio, então não espera batida nenhuma — e a
+   * ordem caía nas quatro do dia comum. Sábado não tem intervalo para
+   * ninguém.
+   */
+  const ESTAGIARIO = {
+    ...ELIAS, id: 'colab-estagiario', nome: 'Estagiário', login: 'estagiario',
+    nivel: 1, setor: 'Estágio', cargo: 'Estagiário',
+  };
+  equipe = [ELIAS, ESTAGIARIO];
+
+  baterParcial(ESTAGIARIO, '2026-10-03', { entrada: '08:00' });
+  expect(servicoPonto.obterProximaMarcacao(ESTAGIARIO.id, '2026-10-03')).toBe('saida');
+
+  baterParcial(ESTAGIARIO, '2026-10-03', { saida: '12:00' });
+  expect(servicoPonto.obterProximaMarcacao(ESTAGIARIO.id, '2026-10-03')).toBeNull();
+  expect(servicoPonto.obterJornadaDoDia(ESTAGIARIO.id, '2026-10-03').minutosTrabalhados).toBe(240);
+
+  // Quem tem almoço, num sábado fora da escala, também não bate almoço
+  baterParcial(ANA, '2026-10-03', { entrada: '08:00' });
+  expect(servicoPonto.obterProximaMarcacao(ANA.id, '2026-10-03')).toBe('saida');
+});
+
 test('quem tem intervalo continua batendo as quatro', async () => {
   // O outro lado: a correção acima não pode ter tirado o almoço de todo mundo
   equipe = [ELIAS, ANA];

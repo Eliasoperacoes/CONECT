@@ -109,6 +109,7 @@ import {
   compensacaoEsperadaDoDia,
   situacaoEfetiva,
   folgouNoSabado,
+  sequenciaDoDia,
 } from './apuracaoDoDia';
 export { paraDataLocal, deDataLocal, ehDiaDeFolga, ehSabado, marcacoesEsperadas, listarDatasDoPeriodo };
 
@@ -889,7 +890,6 @@ class ServicoPonto {
      * para almoço que ela não tem, e o dia dela nunca fechava.
      */
     const colaborador = bancoDados.obterColaboradorPorId(colaboradorId);
-    const esperadas = marcacoesEsperadas(data, colaborador);
 
     /**
      * DIA QUE NÃO ESPERA NADA AINDA PODE SER TRABALHADO.
@@ -897,12 +897,9 @@ class ServicoPonto {
      * Domingo, feriado, sábado de quem não vem no sábado: o contrato não
      * prevê jornada, mas a pessoa pode estar ali — e isso se chama hora
      * extra. Sem esta saída, quem foi trabalhar no feriado não conseguia
-     * nem registrar que esteve lá.
-     *
-     * A sequência completa, porque um dia desses pode ter almoço como
-     * qualquer outro.
+     * nem registrar que esteve lá. A ordem desse dia é `sequenciaDoDia`.
      */
-    const sequencia = esperadas.length > 0 ? esperadas : ORDEM_MARCACOES;
+    const sequencia = sequenciaDoDia(data, colaborador);
 
     return sequencia.find((tipo) => !registradas.includes(tipo)) || null;
   }
