@@ -10,7 +10,18 @@
  * vira um pedido à agência a cada meia hora por área, e não um por pessoa.
  * Sem dado pessoal aqui: entra o setor, sai notícia pública.
  */
-import { FEEDS_DA_AGENCIA_BRASIL, lerFeed, escolherNoticias, areaDoSetor, AREAS_DE_NOTICIA } from '../src/servicos/noticias';
+/*
+  COM A EXTENSÃO `.js`: o projeto é ESM, e o Node da Vercel não acha import
+  relativo sem extensão — a primeira publicação caiu em 500
+  (FUNCTION_INVOCATION_FAILED). O TypeScript resolve o `.js` para o `.ts`.
+*/
+import {
+  FEEDS_DA_AGENCIA_BRASIL,
+  lerFeed,
+  escolherNoticias,
+  areaDoSetor,
+  AREAS_DE_NOTICIA,
+} from '../src/servicos/noticias.js';
 
 export async function GET(request: Request): Promise<Response> {
   const setor = new URL(request.url).searchParams.get('setor') || '';

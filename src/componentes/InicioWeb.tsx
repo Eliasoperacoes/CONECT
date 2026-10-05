@@ -246,6 +246,19 @@ export const InicioWeb: React.FC<{
       </section>
 
       {/*
+        Para o RH: o que espera uma decisão dele, com o atalho para onde se
+        resolve. ANTES de "Hoje": o que pede decisão vem antes do que é só
+        leitura — lá embaixo, o RH rolava por tempo e notícia até achar.
+      */}
+      {visiveis.has('painel_rh') && (
+        <PainelRH
+          colaboradorAtual={eu}
+          secaoFixa="painel"
+          aoAbrirSecao={(secao) => aoIrPara(TELA_DA_SECAO_DO_RH[secao] || 'inicio')}
+        />
+      )}
+
+      {/*
         HOJE — o que é do dia, além do trabalho (Elias: "tempo, notícias…"):
         a previsão na cidade da loja, os comunicados da empresa e as
         notícias da área da pessoa, cada um no seu cartão.
@@ -385,14 +398,6 @@ export const InicioWeb: React.FC<{
         </div>
       </section>
 
-      {/* Para o RH: o que espera uma decisão dele, com o atalho para onde se resolve */}
-      {visiveis.has('painel_rh') && (
-        <PainelRH
-          colaboradorAtual={eu}
-          secaoFixa="painel"
-          aoAbrirSecao={(secao) => aoIrPara(TELA_DA_SECAO_DO_RH[secao] || 'inicio')}
-        />
-      )}
     </div>
   );
 };

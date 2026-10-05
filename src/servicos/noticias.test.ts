@@ -55,3 +55,19 @@ test('cada área recebe as suas; sem nenhuma, as mais novas, ditas gerais', () =
 test('todo setor da casa tem a sua área de notícia', () => {
   for (const setor of SETORES) expect(AREA_DO_SETOR[setor]).toBeDefined();
 });
+
+test('AS FUNÇÕES DA VERCEL importam com extensão: o Node em ESM não acha "../src/x" sem ".js"', async () => {
+  /*
+    A primeira publicação de api/noticias.ts caiu em 500
+    (FUNCTION_INVOCATION_FAILED): reproduzido com o Node, o import sem
+    extensão dá ERR_MODULE_NOT_FOUND. O Bun e o Vite aceitam — por isso
+    só aparecia em produção.
+  */
+  const { readdirSync } = await import('node:fs');
+  for (const arquivo of readdirSync('api').filter((f) => f.endsWith('.ts'))) {
+    const fonte = await Bun.file(`api/${arquivo}`).text();
+    for (const [, caminho] of fonte.matchAll(/from\s+'(\.[^']+)'/g)) {
+      expect({ arquivo, caminho, comExtensao: caminho.endsWith('.js') }).toEqual({ arquivo, caminho, comExtensao: true });
+    }
+  }
+});

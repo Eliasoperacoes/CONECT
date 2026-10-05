@@ -258,7 +258,7 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
   ];
 
   return (
-    <div className={`${margemDaTela(embutida)} flex flex-col gap-4 w-full max-w-3xl`}>
+    <div className={`${margemDaTela(embutida)} flex flex-col gap-4 w-full ${embutida ? '' : 'max-w-3xl'}`}>
       {/* 1. O mês */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className={embutida ? 'hidden' : 'min-w-0'}>
