@@ -274,8 +274,10 @@ test('a folga do sabado JA VEM DESCONTADA do previsto do ciclo', async () => {
   // batida, o previsto é a jornada normal e o saldo não desce de zero
   // A regra do previsto mora em `apuracaoDoDia` (01/10/2026), lida pela fonte
   const regras = await Bun.file(new URL('./apuracaoDoDia.ts', import.meta.url)).text();
+  // ...e o DESCANSO (folga, férias) zera mesmo com batida: o que se trabalha
+  // nele é crédito (05/10/2026, o sábado de folga trabalhado da Fernanda)
   expect(regras.replace(/\s+/g, ' ')).toContain(
-    "fonte.situacaoDoDia(colaborador.id, data) !== 'normal' && fonte.marcacoesDoDia(colaborador.id, data).length === 0 ) { return 0; }"
+    "situacao !== 'normal' && (ehDescanso(situacao) || fonte.marcacoesDoDia(colaborador.id, data).length === 0) ) { return 0; }"
   );
 
   const inicio = codigo.indexOf('relacaoSemanalDaEquipe');

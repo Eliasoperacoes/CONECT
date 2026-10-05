@@ -37,6 +37,7 @@ import {
   TipoMarcacao,
   cargaSemanalDe,
   compensacaoDoSabadoDe,
+  ehDescanso,
   minutosComSinal,
   minutosDeDiaUtilDe,
   minutosPausaDoTurno,
@@ -245,13 +246,21 @@ export const cargaPrevistaEmMinutos = (colaborador: Colaborador | undefined, dat
    * não transforma em extra o que foi trabalhado. Com batida no dia, o
    * previsto é a jornada normal, e `obterJornadaDoDia` impede o saldo
    * de ficar negativo — a falta daquele dia continua perdoada.
+   *
+   * ISSO É DO ABONO, NÃO DO DESCANSO. Folga e férias não são falta
+   * perdoada: o dia não era de trabalho. A mesma Fernanda trabalhou o
+   * sábado de folga de 26/09, combinado com o RH para acumular, e com a
+   * regra do abono o sábado previu 4h e fechou em zero (05/10/2026).
+   * Descanso prevê zero sempre, e o que se trabalha nele é crédito.
    */
-  if (
-    colaborador &&
-    fonte.situacaoDoDia(colaborador.id, data) !== 'normal' &&
-    fonte.marcacoesDoDia(colaborador.id, data).length === 0
-  ) {
-    return 0;
+  if (colaborador) {
+    const situacao = fonte.situacaoDoDia(colaborador.id, data);
+    if (
+      situacao !== 'normal' &&
+      (ehDescanso(situacao) || fonte.marcacoesDoDia(colaborador.id, data).length === 0)
+    ) {
+      return 0;
+    }
   }
 
   /**
@@ -672,7 +681,9 @@ export const jornadaDoDia = (colaboradorId: string, data: string): JornadaDia =>
    * O que faltou está perdoado: o saldo não desce de zero. O que passou
    * da jornada normal continua sendo extra, como em qualquer dia.
    */
-  const abonado = fonte.situacaoDoDia(colaboradorId, data) !== 'normal';
+  // Só o ABONO segura o saldo em zero; no descanso o previsto já é zero
+  const situacaoDoDia = fonte.situacaoDoDia(colaboradorId, data);
+  const abonado = situacaoDoDia !== 'normal' && !ehDescanso(situacaoDoDia);
   let saldoMinutos = abonado ? Math.max(0, tolerancia.saldoApurado) : tolerancia.saldoApurado;
   let saldoBrutoDoDia = saldoBrutoMinutos;
 

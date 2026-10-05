@@ -128,6 +128,8 @@ var SITUACAO_POR_TIPO = {
   ferias: "ferias",
   outro: "abonado_outro"
 };
+var SITUACOES_DE_DESCANSO = ["folga", "ferias"];
+var ehDescanso = (situacao) => SITUACOES_DE_DESCANSO.includes(situacao);
 var minutosComSinal = (ajuste) => {
   if (ajuste.tipo === "dia_incompleto")
     return 0;
@@ -298,8 +300,11 @@ var marcacoesEsperadas = (data, colaborador) => {
 var cargaPrevistaEmMinutos = (colaborador, data) => {
   if (ehDiaDeFolga(data))
     return 0;
-  if (colaborador && fonte.situacaoDoDia(colaborador.id, data) !== "normal" && fonte.marcacoesDoDia(colaborador.id, data).length === 0) {
-    return 0;
+  if (colaborador) {
+    const situacao = fonte.situacaoDoDia(colaborador.id, data);
+    if (situacao !== "normal" && (ehDescanso(situacao) || fonte.marcacoesDoDia(colaborador.id, data).length === 0)) {
+      return 0;
+    }
   }
   const feriado = fonte.feriadoEm(data, colaborador?.loja);
   if (feriado)
@@ -397,7 +402,8 @@ var jornadaDoDia = (colaboradorId, data) => {
       intervalo: TOLERANCIA_INTERVALO_PADRAO_MINUTOS
     }
   });
-  const abonado = fonte.situacaoDoDia(colaboradorId, data) !== "normal";
+  const situacaoDoDia = fonte.situacaoDoDia(colaboradorId, data);
+  const abonado = situacaoDoDia !== "normal" && !ehDescanso(situacaoDoDia);
   let saldoMinutos = abonado ? Math.max(0, tolerancia.saldoApurado) : tolerancia.saldoApurado;
   let saldoBrutoDoDia = saldoBrutoMinutos;
   const falta = ehFalta(colaborador, data, registros.length, minutosPrevistos);

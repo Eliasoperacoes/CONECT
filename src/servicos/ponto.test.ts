@@ -4396,6 +4396,53 @@ test('o que passa da jornada normal continua sendo extra, com ou sem abono', () 
   armazenamento.removeItem('conecta_v4_justificativas_ausencia');
 });
 
+// ============================================================
+// DESCANSO NÃO É ABONO — o sábado de folga TRABALHADO é crédito
+//
+// A Fernanda trabalhou o sábado de folga de 26/09 (08:02–11:57), combinado
+// com o RH para acumular e folgar outro sábado. A regra do abono, acima,
+// valia para a folga também: o sábado previu 4h e fechou em zero
+// (Elias, 05/10/2026). Folga e férias não são falta perdoada — o dia não
+// era de trabalho, e o que se trabalha nele vai para o banco.
+// ============================================================
+
+test('sábado de folga aprovado e TRABALHADO: prevê zero, e as horas são crédito', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  comAusenciaAprovada(DO_TURNO_A, '2026-09-26', 'folga_sabado');
+  baterParcial(DO_TURNO_A, '2026-09-26', { entrada: '08:02', saida: '11:57' });
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-26');
+  expect(dia.minutosPrevistos).toBe(0);
+  expect(dia.minutosTrabalhados).toBe(235);
+  expect(dia.saldoMinutos).toBe(235);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('férias com batida também: o dia não era de trabalho', () => {
+  // Num sábado, para não misturar a compensação dos 10 minutos do dia útil
+  equipe = [GESTOR, DO_TURNO_A];
+  comAusenciaAprovada(DO_TURNO_A, '2026-09-26', 'ferias');
+  baterParcial(DO_TURNO_A, '2026-09-26', { entrada: '08:00', saida: '10:00' });
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-26');
+  expect(dia.minutosPrevistos).toBe(0);
+  expect(dia.saldoMinutos).toBe(120);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
+test('sábado de folga aprovado e NÃO trabalhado: zero, sem débito e sem crédito', () => {
+  equipe = [GESTOR, DO_TURNO_A];
+  comAusenciaAprovada(DO_TURNO_A, '2026-09-26', 'folga_sabado');
+
+  const dia = servicoPonto.obterJornadaDoDia(DO_TURNO_A.id, '2026-09-26');
+  expect(dia.minutosPrevistos).toBe(0);
+  expect(dia.saldoMinutos).toBe(0);
+
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
+});
+
 test('ausência aprovada SEM batida continua prevendo zero, sem débito', () => {
   equipe = [GESTOR, DO_TURNO_A];
   comAusenciaAprovada(DO_TURNO_A, '2026-09-25', 'atestado');

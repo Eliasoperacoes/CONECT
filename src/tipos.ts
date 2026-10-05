@@ -1612,6 +1612,24 @@ export const SITUACAO_POR_TIPO: Record<TipoAusencia, SituacaoDoDia> = {
 };
 
 /**
+ * DESCANSO x ABONO — as duas famílias de ausência aprovada.
+ *
+ * DESCANSO (folga, férias): o dia NÃO ERA DE TRABALHO. Prevê zero, e o
+ * que se trabalhar nele é crédito, como em qualquer dia de folga.
+ *
+ * ABONO (atestado, comparecimento, falta justificada, outro): o dia ERA de
+ * trabalho, e a falta foi perdoada. Com batida, prevê a jornada normal e
+ * o saldo não fica negativo — perdoa, mas não paga o trabalho em dobro.
+ *
+ * Misturar as duas custou: em 30/09 a regra do abono (feita para o
+ * atestado da Fernanda em 25/09) passou a valer também para a folga, e o
+ * sábado de folga que ela TRABALHOU em 26/09, combinado com o RH para
+ * acumular, fechou em zero (Elias, 05/10/2026).
+ */
+export const SITUACOES_DE_DESCANSO: readonly SituacaoDoDia[] = ['folga', 'ferias'];
+export const ehDescanso = (situacao: SituacaoDoDia): boolean => SITUACOES_DE_DESCANSO.includes(situacao);
+
+/**
  * FOLGA DE SABADO: um direito mensal, nao uma compensacao.
  *
  * Cada colaborador tem uma por mes. O sabado aprovado passa a prever ZERO —
