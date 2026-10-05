@@ -226,15 +226,21 @@ test('arrastar leva a SELECAO inteira, e nao so o item', async () => {
   expect(quadro).toContain('[...selecionados]');
 });
 
-test('o rascunho guarda UMA folga por pessoa', async () => {
+test('o rascunho guarda as folgas de cada pessoa ATÉ O DIREITO DELA, e com ele cheio move', async () => {
   /**
-   * `aAdicionar` é colaborador → sábado, e não sábado → lista. A pessoa
-   * tem uma folga por mês; com ela como chave, duplicar fica impossível
-   * por construção, e arrastar quem já está em outro dia MOVE.
+   * Era colaborador → UM sábado: a escala não conseguia pôr a Fernanda na
+   * folga trocada (03/10) e na dela (31/10) — Elias, 05/10/2026. Agora é
+   * colaborador → sábados, e quantos cabem é `folgasPermitidasNoMes`
+   * (uma, ou mais uma por folga trabalhada no mês anterior). Com o direito
+   * cheio, arrastar continua MOVENDO, como sempre foi.
    */
   const quadro = await lerQuadro();
 
-  expect(quadro).toContain('useState<Map<string, string>>(new Map())');
+  expect(quadro).toContain('useState<Map<string, string[]>>(new Map())');
+  expect(quadro).toContain('folgasPermitidasNoMes(colaboradorId, sabados[0])');
+  expect(quadro).toContain('if (atuais.length >= capacidade(id)) {');
+  // Cada "x" tira AQUELE sábado, e não a pessoa do mês inteiro
+  expect(quadro).toContain('tirar(colaborador.id, sabado)');
 });
 
 test('o pedido PENDENTE continua tendo como ser aprovado', async () => {

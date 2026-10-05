@@ -98,15 +98,24 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
   /**
    * O RASCUNHO, em duas metades.
    *
-   * `aAdicionar` é colaborador → sábado, e não sábado → lista: a pessoa
-   * tem UMA folga por mês, e um mapa com ela como chave torna isso
-   * impossível de violar por engano. Arrastar alguém que já está em
-   * outro dia move, em vez de duplicar.
+   * `aAdicionar` é colaborador → os sábados novos dele. Era colaborador →
+   * UM sábado, porque a folga era uma por mês — e a escala não conseguia
+   * pôr a Fernanda em 03/10 e 31/10, a folga trocada e a dela (Elias,
+   * 05/10/2026). Quantas cabem é `folgasPermitidasNoMes`: uma, ou mais
+   * uma para cada folga trabalhada no mês anterior. Com o direito cheio,
+   * arrastar MOVE, como sempre foi.
    */
-  const [aAdicionar, setAAdicionar] = useState<Map<string, string>>(new Map());
+  const [aAdicionar, setAAdicionar] = useState<Map<string, string[]>>(new Map());
   const [aRemover, setARemover] = useState<Set<string>>(new Set());
+  /** Quem não coube no sábado pedido, para a tela dizer por quê. */
+  const [aviso, setAviso] = useState<string | null>(null);
 
-  const temRascunho = aAdicionar.size > 0 || aRemover.size > 0;
+  const totalAAdicionar = [...aAdicionar.values()].reduce((t, l) => t + l.length, 0);
+  const temRascunho = totalAAdicionar > 0 || aRemover.size > 0;
+
+  /** Quantas folgas cada pessoa pode ter no mês desta escala. */
+  const capacidade = (colaboradorId: string): number =>
+    sabados.length > 0 ? folgasPermitidasNoMes(colaboradorId, sabados[0]) : 1;
 
   /** As lojas que aparecem no filtro: só as que a equipe de fato tem. */
   const lojas = useMemo(
@@ -121,20 +130,22 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
    * sábado" e "esta pessoa já tem folga" —, senão as duas divergem e a
    * lista mostra alguém como livre enquanto a coluna já o tem.
    */
-  const folgaDaPessoa = useMemo(() => {
+  const folgasDaPessoa = useMemo(() => {
     const mapa = new Map<
       string,
-      { sabado: string; justificativa?: JustificativaAusencia; novo: boolean }
+      Array<{ sabado: string; justificativa?: JustificativaAusencia; novo: boolean }>
     >();
+    const juntar = (id: string, f: { sabado: string; justificativa?: JustificativaAusencia; novo: boolean }) =>
+      mapa.set(id, [...(mapa.get(id) || []), f].sort((a, b) => a.sabado.localeCompare(b.sabado)));
 
     for (const [sabado, lista] of porSabado) {
       for (const j of lista) {
         if (aRemover.has(j.id)) continue;
-        mapa.set(j.colaboradorId, { sabado, justificativa: j, novo: false });
+        juntar(j.colaboradorId, { sabado, justificativa: j, novo: false });
       }
     }
-    for (const [colaboradorId, sabado] of aAdicionar) {
-      mapa.set(colaboradorId, { sabado, novo: true });
+    for (const [colaboradorId, novos] of aAdicionar) {
+      for (const sabado of novos) juntar(colaboradorId, { sabado, novo: true });
     }
     return mapa;
   }, [porSabado, aAdicionar, aRemover]);
@@ -186,62 +197,72 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
       .filter(Boolean);
     if (ids.length === 0) return;
 
-    setAAdicionar((atual) => {
-      const nova = new Map(atual);
-      for (const id of ids) {
-        /**
-         * Já está NESTE sábado e gravado: não há o que fazer. Sem esta
-         * saída, arrastar alguém de volta para onde ele já está criaria
-         * uma remoção e uma adição do mesmo dia — trabalho para o banco
-         * e uma recusa no histórico, por nada.
-         */
-        const onde = folgaDaPessoa.get(id);
-        if (onde && onde.sabado === sabado) continue;
+    const adicionar = new Map([...aAdicionar].map(([id, l]) => [id, [...l]]));
+    const remover = new Set(aRemover);
+    const naoCouberam: string[] = [];
 
-        nova.set(id, sabado);
-      }
-      return nova;
-    });
+    for (const id of ids) {
+      const atuais = folgasDaPessoa.get(id) || [];
+      /**
+       * Já está NESTE sábado: não há o que fazer. Sem esta saída, arrastar
+       * alguém de volta para onde ele já está criaria uma remoção e uma
+       * adição do mesmo dia — trabalho para o banco e uma recusa no
+       * histórico, por nada.
+       */
+      if (atuais.some((f) => f.sabado === sabado)) continue;
 
-    /**
-     * Mover quem JÁ estava gravado em outro sábado pede a retirada do
-     * antigo. `salvarEscalaDeFolgas` remove antes de adicionar, senão o
-     * limite de uma folga por mês recusaria a própria troca.
-     */
-    setARemover((atual) => {
-      const nova = new Set(atual);
-      for (const id of ids) {
-        const onde = folgaDaPessoa.get(id);
-        /*
-          A FOLGA TROCADA SOMA, não move. Quem trabalhou uma folga aprovada
-          no mês anterior pode ter uma a mais neste (`folgasPermitidasNoMes`):
-          arrastá-la para outro sábado acrescenta, e a folga que já estava
-          fica (a Fernanda: 31/10 e a trocada de 03/10, 05/10/2026).
-        */
-        if (folgasPermitidasNoMes(id, sabado) > 1 && onde?.justificativa) continue;
-        if (onde?.justificativa && onde.sabado !== sabado) {
-          nova.add(onde.justificativa.id);
+      /*
+        CABE MAIS UMA: acrescenta. É a folga trocada — a Fernanda em 03/10
+        além da de 31/10. Não cabe: MOVE, como sempre foi — a que está no
+        rascunho primeiro; a gravada só quando o direito é de uma folga
+        (aí não há dúvida de qual mover). Com duas gravadas e o direito
+        cheio, o gestor tira a que quer antes: adivinhar seria tirar a
+        errada.
+
+        Mover a gravada é uma retirada e uma adição: `salvarEscalaDeFolgas`
+        remove antes de adicionar, senão o limite recusaria a própria troca.
+      */
+      if (atuais.length >= capacidade(id)) {
+        const doRascunho = atuais.filter((f) => f.novo);
+        const gravadas = atuais.filter((f) => !f.novo && f.justificativa);
+        if (doRascunho.length > 0) {
+          const ultimo = doRascunho[doRascunho.length - 1].sabado;
+          adicionar.set(id, (adicionar.get(id) || []).filter((s) => s !== ultimo));
+        } else if (capacidade(id) === 1 && gravadas.length > 0) {
+          remover.add(gravadas[0].justificativa!.id);
+        } else {
+          naoCouberam.push(equipe.find((c) => c.id === id)?.nome.split(' ')[0] || 'Alguém');
+          continue;
         }
       }
-      return nova;
-    });
+      adicionar.set(id, [...(adicionar.get(id) || []), sabado]);
+    }
 
+    setAAdicionar(new Map([...adicionar].filter(([, l]) => l.length > 0)));
+    setARemover(remover);
+    setAviso(
+      naoCouberam.length > 0
+        ? `${naoCouberam.join(', ')} já ${naoCouberam.length === 1 ? 'tem' : 'têm'} todas as folgas do mês. Tire uma antes de pôr em outro sábado.`
+        : null
+    );
     setSelecionados(new Set());
   };
 
-  /** Tira alguém do sábado: some do rascunho, ou entra na fila de retirada. */
-  const tirar = (colaboradorId: string) => {
-    const onde = folgaDaPessoa.get(colaboradorId);
-    if (!onde) return;
+  /** Tira alguém DESTE sábado: some do rascunho, ou entra na fila de retirada. */
+  const tirar = (colaboradorId: string, sabado: string) => {
+    const folga = (folgasDaPessoa.get(colaboradorId) || []).find((f) => f.sabado === sabado);
+    if (!folga) return;
 
-    setAAdicionar((atual) => {
-      const nova = new Map(atual);
-      nova.delete(colaboradorId);
-      return nova;
-    });
-
-    if (onde.justificativa) {
-      setARemover((atual) => new Set(atual).add(onde.justificativa!.id));
+    if (folga.novo) {
+      setAAdicionar((atual) => {
+        const nova = new Map(atual);
+        const resto = (nova.get(colaboradorId) || []).filter((s) => s !== sabado);
+        if (resto.length > 0) nova.set(colaboradorId, resto);
+        else nova.delete(colaboradorId);
+        return nova;
+      });
+    } else if (folga.justificativa) {
+      setARemover((atual) => new Set(atual).add(folga.justificativa!.id));
     }
   };
 
@@ -249,14 +270,14 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
     setAAdicionar(new Map());
     setARemover(new Set());
     setSelecionados(new Set());
+    setAviso(null);
   };
 
   const salvar = async () => {
     await aoSalvar({
-      adicionar: [...aAdicionar].map(([colaboradorId, sabado]) => ({
-        colaboradorId,
-        sabado,
-      })),
+      adicionar: [...aAdicionar].flatMap(([colaboradorId, novos]) =>
+        novos.map((sabado) => ({ colaboradorId, sabado }))
+      ),
       remover: [...aRemover].map((justificativaId) => ({ justificativaId })),
     });
     desfazer();
@@ -274,19 +295,29 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
   /** Quem está num sábado, com o que veio do banco e o que é rascunho. */
   const doSabado = (sabado: string) =>
     equipe
-      .filter((c) => folgaDaPessoa.get(c.id)?.sabado === sabado)
-      .map((c) => ({ colaborador: c, ...folgaDaPessoa.get(c.id)! }))
+      .map((c) => ({ c, folga: (folgasDaPessoa.get(c.id) || []).find((f) => f.sabado === sabado) }))
+      .filter(({ folga }) => !!folga)
+      .map(({ c, folga }) => ({ colaborador: c, ...folga! }))
       .sort((a, b) => a.colaborador.nome.localeCompare(b.colaborador.nome));
 
   return (
     <div className="flex flex-col gap-3">
       {/* A barra do rascunho: só aparece quando há o que salvar */}
+      {aviso && (
+        <div role="status" className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs font-semibold text-amber-700 dark:text-amber-300 flex items-center gap-2">
+          <span className="flex-1">{aviso}</span>
+          <button type="button" onClick={() => setAviso(null)} className="text-[11px] font-bold underline">
+            Entendi
+          </button>
+        </div>
+      )}
+
       {temRascunho && (
         <div className="p-3 rounded-xl bg-[var(--c-acento-suave)] border border-[var(--c-acento)]/30 flex flex-wrap items-center gap-2">
           <Clock className="w-4 h-4 text-[var(--c-acento)] flex-shrink-0" />
           <span className="flex-1 min-w-0 text-xs font-semibold text-[var(--c-texto)]">
-            {aAdicionar.size > 0 && `${aAdicionar.size} folga(s) a marcar`}
-            {aAdicionar.size > 0 && aRemover.size > 0 && ' · '}
+            {totalAAdicionar > 0 && `${totalAAdicionar} folga(s) a marcar`}
+            {totalAAdicionar > 0 && aRemover.size > 0 && ' · '}
             {aRemover.size > 0 && `${aRemover.size} a retirar`}
             <span className="font-normal text-[var(--c-texto-3)]">
               {' '}
@@ -362,7 +393,8 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
 
           <div className="flex flex-col gap-1 max-h-[520px] overflow-y-auto">
             {daBusca.map((c) => {
-              const onde = folgaDaPessoa.get(c.id);
+              const folgas = folgasDaPessoa.get(c.id) || [];
+              const direito = capacidade(c.id);
               const marcado = selecionados.has(c.id);
 
               return (
@@ -396,16 +428,35 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
                       {c.nome}
                     </span>
                     <span className="block text-[10px] text-[var(--c-texto-3)] truncate">
-                      {onde ? (
+                      {folgas.length > 0 ? (
                         <span className="text-[var(--c-ok)] font-semibold">
-                          folga {formatarDataBR(onde.sabado).slice(0, 5)}
-                          {onde.novo ? ' · a salvar' : ''}
+                          folga {folgas.map((f) => formatarDataBR(f.sabado).slice(0, 5)).join(' e ')}
+                          {folgas.some((f) => f.novo) ? ' · a salvar' : ''}
                         </span>
                       ) : (
                         c.setor
                       )}
                     </span>
                   </div>
+
+                  {/*
+                    A FOLGA TROCADA À VISTA: quem trabalhou a folga do mês
+                    anterior tem direito a mais uma, e o gestor precisa
+                    saber disso antes de arrastar — senão parece erro a
+                    pessoa aceitar dois sábados.
+                  */}
+                  {direito > 1 && (
+                    <span
+                      title={`Direito a ${direito} folgas neste mês: trabalhou a folga do mês anterior`}
+                      className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold flex-shrink-0 ${
+                        folgas.length < direito
+                          ? 'bg-[var(--c-acento-suave)] text-[var(--c-acento)]'
+                          : 'bg-[var(--c-canvas)] text-[var(--c-texto-3)]'
+                      }`}
+                    >
+                      {folgas.length}/{direito}
+                    </span>
+                  )}
 
                   <GripVertical className="w-3.5 h-3.5 text-[var(--c-texto-3)] flex-shrink-0" />
                 </div>
@@ -429,6 +480,7 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
             return (
               <div
                 key={sabado}
+                data-sabado={sabado}
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.dataTransfer.dropEffect = 'move';
@@ -551,7 +603,7 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
                         onClick={() =>
                           justificativa?.estado === 'pendente'
                             ? aoRecusar(justificativa)
-                            : tirar(colaborador.id)
+                            : tirar(colaborador.id, sabado)
                         }
                         aria-label={
                           justificativa?.estado === 'pendente'

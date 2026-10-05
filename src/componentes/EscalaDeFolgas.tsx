@@ -336,7 +336,8 @@ export const EscalaDeFolgas: React.FC<Props> = ({ colaboradorAtual }) => {
             Escala de folgas
           </h2>
           <p className="text-xs text-[var(--c-texto-3)]">
-            Cada pessoa tem uma folga de sábado por mês. Veja o mês inteiro antes
+            Cada pessoa tem uma folga de sábado por mês — e mais uma quem trabalhou
+            a folga do mês anterior (o selo 1/2 na lista). Veja o mês inteiro antes
             de autorizar mais uma no mesmo dia.
           </p>
         </div>
