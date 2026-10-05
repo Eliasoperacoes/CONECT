@@ -222,9 +222,15 @@ export const motivoSemMarcacao = (
    * o rótulo de cada um.
    */
   if (colaborador) {
-    // A efetiva: folga trabalhada é sábado comum, e não "Folga" no espelho
     const situacao = situacaoEfetiva(colaborador.id, data);
     if (situacao !== 'normal') return ROTULO_SITUACAO[situacao];
+    /*
+      A FOLGA TRABALHADA SE DIZ. Conta como sábado comum (não foi gozada:
+      a compensação fica para a folga trocada), mas escrever só "Sábado"
+      deixava o RH sem entender por que a folga aprovada não aparecia —
+      a escala dizia "folga" e o espelho, "sábado" (Elias, 05/10/2026).
+    */
+    if (situacaoDoDia(colaborador.id, data) === 'folga') return 'Folga trabalhada';
   }
 
   const feriado = feriadoEm(data, colaborador?.loja);

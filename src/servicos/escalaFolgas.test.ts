@@ -49,7 +49,8 @@ test('cada sabado diz quantos FICAM, e nao so quantos saem', async () => {
    * limite de vagas por sábado em lugar nenhum, e inventar um seria
    * criar regra de negócio por conta própria.
    */
-  expect(quadro).toContain('Math.max(equipe.length - gente.length, 0)');
+  // Quem trabalhou a folga não está fora da loja (05/10/2026)
+  expect(quadro).toContain('Math.max(equipe.length - folgando, 0)');
   expect(quadro).toContain('na loja');
 
   // E a proporção, para ler de relance
@@ -309,4 +310,17 @@ test('o catalogo de ferramentas NAO ganhou porta nova', async () => {
    */
   const ferramentas = await Bun.file('src/servicos/ferramentas.ts').text();
   expect(ferramentas).not.toContain("chave: 'escala_ferias'");
+});
+
+test('a folga aprovada e TRABALHADA aparece como tal, e não conta como gente fora da loja', async () => {
+  /*
+    A escala de setembro mostrava a Fernanda de folga em 26/09, e o
+    espelho dizia sábado comum — ela trabalhou a folga, combinado com o RH
+    (Elias, 05/10/2026). O número não muda: muda o que a tela diz.
+  */
+  const quadro = await lerQuadro();
+  expect(quadro).toContain('!folgouNoSabado(c.id, sabado)');
+  expect(quadro).toContain('const folgando = gente.filter((g) => !g.trabalhou).length;');
+  expect(quadro).toContain('{Math.max(equipe.length - folgando, 0)} na loja');
+  expect(quadro).toContain('trabalhou · folga não gozada');
 });

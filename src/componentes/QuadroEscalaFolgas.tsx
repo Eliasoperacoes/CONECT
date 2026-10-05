@@ -44,6 +44,7 @@ import {
 import { Colaborador, JustificativaAusencia, Loja } from '../tipos';
 import { formatarDataBR } from '../servicos/ponto';
 import { folgasPermitidasNoMes } from '../servicos/justificativas';
+import { folgouNoSabado } from '../servicos/apuracaoDoDia';
 import { FotoPresenca } from './FotoPresenca';
 
 interface Props {
@@ -297,7 +298,19 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
     equipe
       .map((c) => ({ c, folga: (folgasDaPessoa.get(c.id) || []).find((f) => f.sabado === sabado) }))
       .filter(({ folga }) => !!folga)
-      .map(({ c, folga }) => ({ colaborador: c, ...folga! }))
+      .map(({ c, folga }) => ({
+        colaborador: c,
+        ...folga!,
+        /*
+          FOLGA APROVADA E TRABALHADA: não foi gozada. Aparece, porque o
+          RH lançou e precisa achá-la, mas diz que a pessoa veio e não conta
+          como gente fora da loja (Elias, 05/10/2026).
+        */
+        trabalhou:
+          !folga!.novo &&
+          folga!.justificativa?.estado === 'aprovada' &&
+          !folgouNoSabado(c.id, sabado),
+      }))
       .sort((a, b) => a.colaborador.nome.localeCompare(b.colaborador.nome));
 
   return (
@@ -430,7 +443,16 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
                     <span className="block text-[10px] text-[var(--c-texto-3)] truncate">
                       {folgas.length > 0 ? (
                         <span className="text-[var(--c-ok)] font-semibold">
-                          folga {folgas.map((f) => formatarDataBR(f.sabado).slice(0, 5)).join(' e ')}
+                          folga{' '}
+                          {folgas
+                            .map(
+                              (f) =>
+                                formatarDataBR(f.sabado).slice(0, 5) +
+                                (!f.novo && f.justificativa?.estado === 'aprovada' && !folgouNoSabado(c.id, f.sabado)
+                                  ? ' (trabalhou)'
+                                  : '')
+                            )
+                            .join(' e ')}
                           {folgas.some((f) => f.novo) ? ' · a salvar' : ''}
                         </span>
                       ) : (
@@ -475,6 +497,8 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
         <div className="flex-1 grid gap-3 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
           {sabados.map((sabado) => {
             const gente = doSabado(sabado);
+            // Quem trabalhou a folga não está fora da loja
+            const folgando = gente.filter((g) => !g.trabalhou).length;
             const recebendo = sabadoAlvo === sabado;
 
             return (
@@ -504,12 +528,12 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
                   </span>
                   <span
                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      gente.length === 0
+                      folgando === 0
                         ? 'bg-[var(--c-canvas)] text-[var(--c-texto-3)]'
                         : 'bg-[var(--c-ok)]/10 text-[var(--c-ok)]'
                     }`}
                   >
-                    {gente.length} {gente.length === 1 ? 'folga' : 'folgas'}
+                    {folgando} {folgando === 1 ? 'folga' : 'folgas'}
                   </span>
                 </div>
 
@@ -530,22 +554,24 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
                   <div className="flex-1 h-1 rounded-full bg-[var(--c-canvas)] overflow-hidden">
                     <div
                       className="h-full bg-[var(--c-acento)] rounded-full"
-                      style={{ width: `${proporcaoFora(gente.length)}%` }}
+                      style={{ width: `${proporcaoFora(folgando)}%` }}
                     />
                   </div>
                   <span className="text-[10px] text-[var(--c-texto-3)] whitespace-nowrap">
-                    {Math.max(equipe.length - gente.length, 0)} na loja
+                    {Math.max(equipe.length - folgando, 0)} na loja
                   </span>
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  {gente.map(({ colaborador, justificativa, novo }) => (
+                  {gente.map(({ colaborador, justificativa, novo, trabalhou }) => (
                     <div
                       key={colaborador.id}
                       className={`px-2 py-1.5 rounded-xl border flex items-center gap-2 ${
                         novo
                           ? 'bg-[var(--c-acento-suave)] border-dashed border-[var(--c-acento)]/50'
-                          : justificativa?.estado === 'pendente'
+                          : trabalhou
+                            ? 'bg-[var(--c-canvas)] border-dashed border-[var(--c-borda-forte)] opacity-70'
+                            : justificativa?.estado === 'pendente'
                             ? 'bg-amber-500/5 border-amber-500/30'
                             : 'bg-[var(--c-canvas)] border-[var(--c-borda)]'
                       }`}
@@ -565,6 +591,10 @@ export const QuadroEscalaFolgas: React.FC<Props> = ({
                           {novo ? (
                             <span className="text-[var(--c-acento)] font-semibold">
                               a salvar
+                            </span>
+                          ) : trabalhou ? (
+                            <span className="text-[var(--c-texto-2)] font-semibold" title="A folga foi aprovada, mas a pessoa trabalhou o sábado: conta como dia normal, e a compensação fica para a folga trocada">
+                              trabalhou · folga não gozada
                             </span>
                           ) : justificativa?.estado === 'pendente' ? (
                             <span className="text-amber-600 font-semibold">

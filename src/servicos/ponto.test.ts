@@ -4430,8 +4430,12 @@ test('a folga trabalhada NÃO consome a compensação; a gozada consome', async 
 
   baterParcial(DO_TURNO_A, '2026-09-26', { entrada: '08:02', saida: '11:57' });
   expect(folgouNoSabado(DO_TURNO_A.id, '2026-09-26')).toBe(false);
-  // E o espelho não chama de folga o sábado em que ela trabalhou
+  // E o espelho diz o que houve: a folga aprovada foi trabalhada — nem
+  // "Folga" (não foi gozada) nem só "Sábado" (o RH não entendia o porquê)
   const { motivoSemMarcacao } = await import('./ponto');
+  expect(motivoSemMarcacao('2026-09-26', 'saida_almoco', DO_TURNO_A as any)).toBe('Folga trabalhada');
+  // Sábado comum, sem folga nenhuma, continua "Sábado"
+  armazenamento.removeItem('conecta_v4_justificativas_ausencia');
   expect(motivoSemMarcacao('2026-09-26', 'saida_almoco', DO_TURNO_A as any)).toBe('Sábado');
 
   armazenamento.removeItem('conecta_v4_justificativas_ausencia');
