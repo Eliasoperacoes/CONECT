@@ -135,6 +135,8 @@ export const VisorDeDocumento: React.FC = () => {
           />
         </div>
       </div>
+
+      {documento.rodape && <div className="flex-shrink-0">{documento.rodape}</div>}
     </div>
   );
 };

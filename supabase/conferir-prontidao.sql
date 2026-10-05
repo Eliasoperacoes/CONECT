@@ -190,6 +190,7 @@ operacoes (tabela, comando) as (values
   ('conversas', 'INSERT'),
   ('conversas', 'SELECT'),
   ('conversas', 'UPDATE'),
+  ('espelhos_assinados', 'SELECT'),
   ('feriados', 'DELETE'),
   ('feriados', 'INSERT'),
   ('feriados', 'SELECT'),

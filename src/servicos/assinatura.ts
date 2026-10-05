@@ -9,17 +9,19 @@
  */
 import { supabase, usandoNuvem } from './supabase';
 import { bancoDados } from './bancoDados';
-import { Assinatura, Holerite, RecebimentoHolerite } from '../tipos';
+import { Assinatura, Holerite, RecebimentoHolerite, ResumoPontoColaborador } from '../tipos';
 import { codigoDoArquivo } from './comprovanteDeHolerite';
+import { servicoPonto, conteudoDoEspelho, AssinaturaNoEspelho } from './ponto';
+import { periodoDoMes } from './meuRH';
 
 /**
  * O TERMO DE ADESÃO. Mudou o texto? Mude a versão: o banco guarda qual
  * versão cada pessoa aceitou ao desenhar a assinatura.
  */
-export const TERMO_VERSAO = '2026-10';
+export const TERMO_VERSAO = '2026-10-05';
 export const TEXTO_DO_TERMO = [
-  'Concordo em receber meus holerites e demais documentos de trabalho pelo CONECTA, em formato eletrônico, no lugar da via em papel.',
-  'Reconheço como minha a assinatura que desenho abaixo. Ela será aplicada aos documentos que eu confirmar, sempre com a minha senha pessoal.',
+  'Concordo em receber meus holerites, espelhos de ponto e demais documentos de trabalho pelo CONECTA, em formato eletrônico, no lugar da via em papel.',
+  'Reconheço como minha a assinatura que escolho ou desenho abaixo. Ela será aplicada aos documentos que eu confirmar, sempre com a minha senha pessoal.',
   'Sei que cada confirmação registra a data e a hora do servidor e um código do documento, e que o documento assinado não pode ser alterado depois.',
   'Minha senha é pessoal e intransferível. Se alguém souber dela, devo trocá-la e avisar o RH.',
 ];
@@ -133,6 +135,7 @@ const MOTIVOS: Record<string, string> = {
   bloqueado: 'Muitas tentativas com a senha errada. Espere 15 minutos e tente de novo.',
   sem_assinatura: 'Cadastre a sua assinatura antes de assinar.',
   holerite: 'Este holerite não é seu.',
+  mes_aberto: 'Este mês ainda não fechou: o espelho é assinado a partir do dia 1 do mês seguinte.',
   arquivo: 'Não foi possível conferir o arquivo. Feche e abra o holerite de novo.',
   sessao: 'Sua sessão expirou. Entre de novo no sistema.',
 };
@@ -187,4 +190,158 @@ export const assinarHolerite = async (
     return { sucesso: false, erro: MOTIVOS[resposta.motivo || ''] || 'A assinatura não foi registrada.' };
   }
   return { sucesso: true, assinadoEm: resposta.assinado_em };
+};
+
+// ============================================================
+// O ESPELHO DE PONTO ASSINADO
+//
+// Pedido do Elias (05/10/2026): do mesmo jeito que o holerite — a mesma
+// assinatura, a mesma senha, conferida no banco (`assinar_espelho`, em
+// `supabase/assinatura-holerite.sql`). Um por pessoa e mês fechado.
+// ============================================================
+
+export interface EspelhoAssinado {
+  colaboradorId: string;
+  /** "2026-09" */
+  mes: string;
+  assinaturaId: string;
+  conteudoHash: string;
+  assinadoEm: string;
+}
+
+interface LinhaEspelhoAssinado {
+  colaborador_id: string;
+  mes: string;
+  assinatura_id: string;
+  conteudo_hash: string;
+  assinado_em: string;
+}
+
+/** A chave de um espelho assinado: a pessoa e o mês. */
+export const chaveDoEspelho = (colaboradorId: string, mes: string): string => `${colaboradorId}|${mes}`;
+
+/** Os espelhos assinados: de uma pessoa, ou (para o RH) de várias num mês. */
+export const listarEspelhosAssinados = async (filtro: {
+  colaboradorId?: string;
+  colaboradorIds?: string[];
+  mes?: string;
+}): Promise<Map<string, EspelhoAssinado>> => {
+  const mapa = new Map<string, EspelhoAssinado>();
+  if (!usandoNuvem() || !supabase) return mapa;
+  if (filtro.colaboradorIds && filtro.colaboradorIds.length === 0) return mapa;
+
+  let consulta = supabase.from('espelhos_assinados').select('*');
+  if (filtro.colaboradorId) consulta = consulta.eq('colaborador_id', filtro.colaboradorId);
+  if (filtro.colaboradorIds) consulta = consulta.in('colaborador_id', filtro.colaboradorIds);
+  if (filtro.mes) consulta = consulta.eq('mes', filtro.mes);
+
+  const { data, error } = await consulta;
+  if (error) {
+    if (!semTabela(error)) console.error('Falha ao ler os espelhos assinados:', error.message);
+    return mapa;
+  }
+  for (const l of (data || []) as LinhaEspelhoAssinado[]) {
+    mapa.set(chaveDoEspelho(l.colaborador_id, l.mes), {
+      colaboradorId: l.colaborador_id,
+      mes: l.mes,
+      assinaturaId: l.assinatura_id,
+      conteudoHash: l.conteudo_hash,
+      assinadoEm: l.assinado_em,
+    });
+  }
+  return mapa;
+};
+
+/**
+ * O código do espelho como está AGORA — o mesmo conteúdo que a tela mostra
+ * (`conteudoDoEspelho`). As batidas do mês precisam estar no aparelho: o
+ * Meu RH as traz antes de abrir (`prepararMeuEspelho`), e a tela do RH ao
+ * escolher o mês.
+ */
+export const codigoDoEspelho = async (
+  colaboradorId: string,
+  mes: string,
+  /** O resumo do mês já calculado (a tela do RH tem o da rede inteira). */
+  resumos?: ResumoPontoColaborador[]
+): Promise<string | null> => {
+  const { inicio, fim } = periodoDoMes(mes);
+  const resumo = (resumos || servicoPonto.obterResumoDoPeriodo(inicio, fim)).find(
+    (r) => r.colaborador.id === colaboradorId
+  );
+  if (!resumo) return null;
+  const bytes = new TextEncoder().encode(conteudoDoEspelho(resumo, inicio, fim));
+  return codigoDoArquivo(bytes.buffer as ArrayBuffer);
+};
+
+/** ASSINA O ESPELHO do mês fechado de quem está usando. */
+export const assinarEspelho = async (
+  mes: string,
+  senha: string
+): Promise<{ sucesso: boolean; assinadoEm?: string; erro?: string }> => {
+  if (!usandoNuvem() || !supabase) {
+    return { sucesso: false, erro: 'Disponível apenas com o banco da rede ligado.' };
+  }
+  if (!senha) return { sucesso: false, erro: 'Digite a sua senha.' };
+
+  const eu = bancoDados.obterColaboradorAtual();
+  const codigo = await codigoDoEspelho(eu.id, mes);
+  if (!codigo) return { sucesso: false, erro: MOTIVOS.arquivo };
+
+  const { data, error } = await supabase.rpc('assinar_espelho', {
+    p_mes: mes,
+    p_senha: senha,
+    p_hash: codigo,
+    p_aparelho: descreverAparelho(),
+  });
+  if (error) {
+    console.error('Falha ao assinar o espelho:', error.message);
+    return {
+      sucesso: false,
+      erro: error.code === 'PGRST202' ? 'A assinatura do espelho ainda não foi ligada no banco. Avise o TI.' : error.message,
+    };
+  }
+
+  const resposta = (data || {}) as { ok?: boolean; motivo?: string; assinado_em?: string };
+  if (!resposta.ok) {
+    return { sucesso: false, erro: MOTIVOS[resposta.motivo || ''] || 'A assinatura não foi registrada.' };
+  }
+  return { sucesso: true, assinadoEm: resposta.assinado_em };
+};
+
+/**
+ * AS ASSINATURAS QUE ENTRAM NO PAPEL do mês, por pessoa: o desenho usado,
+ * quando, e se o espelho de hoje ainda é o que foi assinado.
+ */
+export const assinaturasDoEspelho = async (
+  colaboradorIds: string[],
+  mes: string,
+  resumos?: ResumoPontoColaborador[]
+): Promise<Map<string, AssinaturaNoEspelho>> => {
+  const resultado = new Map<string, AssinaturaNoEspelho>();
+  const assinados = await listarEspelhosAssinados({ colaboradorIds, mes });
+  if (assinados.size === 0 || !supabase) return resultado;
+
+  const ids = [...new Set([...assinados.values()].map((e) => e.assinaturaId))];
+  const { data, error } = await supabase.from('assinaturas').select('*').in('id', ids);
+  if (error) {
+    console.error('Falha ao ler as assinaturas do espelho:', error.message);
+    return resultado;
+  }
+  const imagens = new Map(((data || []) as LinhaAssinatura[]).map((l) => [l.id, l.imagem]));
+  // O mês da rede é calculado uma vez, não uma por pessoa assinada
+  const { inicio, fim } = periodoDoMes(mes);
+  const doMes = resumos || servicoPonto.obterResumoDoPeriodo(inicio, fim);
+
+  for (const e of assinados.values()) {
+    const imagem = imagens.get(e.assinaturaId);
+    if (!imagem) continue;
+    const agora = await codigoDoEspelho(e.colaboradorId, mes, doMes);
+    resultado.set(e.colaboradorId, {
+      imagem,
+      assinadoEm: e.assinadoEm,
+      conteudoHash: e.conteudoHash,
+      confere: agora === e.conteudoHash,
+    });
+  }
+  return resultado;
 };

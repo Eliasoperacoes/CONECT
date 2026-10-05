@@ -1,106 +1,15 @@
 -- ============================================================
--- ASSINATURA DO HOLERITE — CONECTA / Malachias Autopeças
+-- DELTA: O ESPELHO DE PONTO ASSINADO — CONECTA
 --
--- O papel tinha duas vias: a do colaborador e a que ele assinava e o RH
--- guardava. No sistema, a via assinada vira um REGISTRO:
+-- Pedido do Elias (05/10/2026): assinar o espelho de ponto do mesmo jeito
+-- que o holerite, com a mesma assinatura e a mesma senha.
 --
---   - a ASSINATURA de cada pessoa é desenhada uma vez, junto com o aceite
---     do termo de adesão, e reaproveitada (decisão do Elias, 02/10/2026).
---     Nunca é alterada nem apagada: trocar é desenhar uma nova, e a antiga
---     continua valendo para o que assinou;
---   - cada holerite é assinado com a SENHA digitada de novo, conferida
---     AQUI, no banco. Conferir no aparelho não provaria nada: o banco só
---     veria "alguém disse que digitou";
---   - o RECEBIMENTO guarda quem, quando (hora do banco), com qual
---     assinatura, e o código (SHA-256) do PDF que a pessoa tinha na tela.
---     Holerite assinado não é mais alterado nem removido pelo sistema.
---   - o ESPELHO DE PONTO do mês fechado é assinado do mesmo jeito, com a
---     mesma assinatura e a mesma senha (05/10/2026; seção no fim).
+-- Só o que mudou desde `assinatura-holerite.sql` (que continua sendo a
+-- fonte, com tudo): a conferência da senha virou uma função só, usada
+-- pelo holerite e pelo espelho; e a tabela e a função do espelho.
 --
--- Rode depois de `rh-holerite-advertencia.sql`. Pode rodar mais de uma vez.
+-- Rode depois de `assinatura-holerite.sql`. Pode rodar mais de uma vez.
 -- ============================================================
-
-create table if not exists public.assinaturas (
-  id              uuid primary key default gen_random_uuid(),
-  colaborador_id  text not null references public.colaboradores(id) on delete cascade,
-  -- O desenho: PNG em data URL, fundo transparente. Fica na tabela, e não
-  -- no armazenamento de arquivos: são uns 10 KB por pessoa, e assim a
-  -- leitura segue a mesma regra de quem lê o recebimento
-  imagem          text not null,
-  -- Qual texto do termo de adesão a pessoa aceitou ao desenhar
-  termo_versao    text not null,
-  criada_em       timestamptz not null default now()
-);
-
-create index if not exists assinaturas_por_colaborador
-  on public.assinaturas (colaborador_id, criada_em desc);
-
-create table if not exists public.recebimentos_holerite (
-  -- Um recebimento por holerite. O cascade só age pelo SQL Editor: pelo
-  -- sistema, o gatilho abaixo não deixa apagar holerite assinado
-  holerite_id     text primary key references public.holerites(id) on delete cascade,
-  colaborador_id  text not null references public.colaboradores(id) on delete cascade,
-  assinatura_id   uuid not null references public.assinaturas(id),
-  arquivo_hash    text not null,
-  aparelho        text,
-  assinado_em     timestamptz not null default now()
-);
-
--- Senha errada na hora de assinar. Sem limite, a função de assinar viraria
--- uma porta para testar senhas
-create table if not exists public.tentativas_de_assinatura (
-  id              bigserial primary key,
-  colaborador_id  text not null,
-  em              timestamptz not null default now()
-);
-
-alter table public.assinaturas              enable row level security;
-alter table public.recebimentos_holerite    enable row level security;
-alter table public.tentativas_de_assinatura enable row level security;
-
--- Leitura: a própria pessoa e quem cuida de pessoas, como o holerite.
--- NENHUMA regra de escrita: só as funções abaixo gravam, com a hora do banco
-drop policy if exists assinaturas_leitura on public.assinaturas;
-create policy assinaturas_leitura on public.assinaturas
-  for select to authenticated
-  using (colaborador_id = public.meu_colaborador_id() or public.cuido_de_pessoas());
-
-drop policy if exists recebimentos_leitura on public.recebimentos_holerite;
-create policy recebimentos_leitura on public.recebimentos_holerite
-  for select to authenticated
-  using (colaborador_id = public.meu_colaborador_id() or public.cuido_de_pessoas());
-
--- (tentativas_de_assinatura: sem regra nenhuma — ninguém lê pela API)
-
--- ------------------------------------------------------------
--- CADASTRAR A ASSINATURA (e aceitar o termo)
--- ------------------------------------------------------------
-create or replace function public.cadastrar_assinatura(p_imagem text, p_termo_versao text)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  eu   text := public.meu_colaborador_id();
-  nova uuid;
-begin
-  if eu is null then
-    raise exception 'Sessão sem colaborador.';
-  end if;
-  if p_imagem is null or p_imagem not like 'data:image/png;base64,%' or length(p_imagem) > 300000 then
-    raise exception 'Assinatura inválida.';
-  end if;
-  if coalesce(trim(p_termo_versao), '') = '' then
-    raise exception 'O termo de adesão não foi aceito.';
-  end if;
-
-  insert into public.assinaturas (colaborador_id, imagem, termo_versao)
-  values (eu, p_imagem, p_termo_versao)
-  returning id into nova;
-  return nova;
-end;
-$$;
 
 -- ------------------------------------------------------------
 -- A SENHA DE QUEM ASSINA — uma conferência só, para holerite e espelho
@@ -203,36 +112,8 @@ begin
 end;
 $$;
 
-revoke all on function public.cadastrar_assinatura(text, text) from public, anon;
 revoke all on function public.assinar_holerite(text, text, text, text) from public, anon;
-grant execute on function public.cadastrar_assinatura(text, text) to authenticated;
 grant execute on function public.assinar_holerite(text, text, text, text) to authenticated;
-
--- ------------------------------------------------------------
--- HOLERITE ASSINADO NÃO MUDA
---
--- Nem substituir (o upsert do reenvio), nem remover, nem a limpeza do mês.
--- Pelo SQL Editor (sem usuário) passa: é a saída de emergência do TI.
--- ------------------------------------------------------------
-create or replace function public.holerite_assinado_nao_muda()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  if auth.uid() is not null
-     and exists (select 1 from public.recebimentos_holerite where holerite_id = old.id) then
-    raise exception 'Holerite já assinado pelo colaborador: não pode ser alterado nem removido.';
-  end if;
-  return case when tg_op = 'DELETE' then old else new end;
-end;
-$$;
-
-drop trigger if exists holerites_assinado_nao_muda on public.holerites;
-create trigger holerites_assinado_nao_muda
-  before update or delete on public.holerites
-  for each row execute function public.holerite_assinado_nao_muda();
 
 -- ============================================================
 -- O ESPELHO DE PONTO ASSINADO
@@ -325,16 +206,12 @@ grant execute on function public.assinar_espelho(text, text, text, text) to auth
 
 notify pgrst, 'reload schema';
 
--- CONFERÊNCIA: as quatro tabelas, as quatro funções, o gatilho, e a
--- conferência de senha funcionando (a última coluna precisa sair "true")
+-- CONFERÊNCIA: a tabela nova, as três funções, e o holerite já usando a
+-- conferência única (as três colunas precisam sair 1, 3 e true)
 select
   (select count(*) from information_schema.tables
-    where table_schema = 'public'
-      and table_name in ('assinaturas', 'recebimentos_holerite', 'tentativas_de_assinatura',
-                         'espelhos_assinados')) as tabelas_4,
+    where table_schema = 'public' and table_name = 'espelhos_assinados') as tabela_1,
   (select count(*) from pg_proc
-    where proname in ('cadastrar_assinatura', 'assinar_holerite', 'conferir_senha_de_quem_assina',
-                      'assinar_espelho')) as funcoes_4,
-  (select count(*) from pg_trigger where tgname = 'holerites_assinado_nao_muda') as gatilho_1,
-  (select extensions.crypt('teste', h) = h
-     from (select extensions.crypt('teste', extensions.gen_salt('bf')) as h) as gerado) as crypt_ok;
+    where proname in ('assinar_holerite', 'conferir_senha_de_quem_assina', 'assinar_espelho')) as funcoes_3,
+  (select prosrc like '%conferir_senha_de_quem_assina%'
+     from pg_proc where proname = 'assinar_holerite') as holerite_usa_a_mesma_senha;

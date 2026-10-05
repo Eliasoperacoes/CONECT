@@ -83,6 +83,7 @@ import {
 import { situacaoDoDia } from './justificativasCache';
 import { feriadoEm } from './feriadosCache';
 import { montarDocumento } from './documento';
+import { codigoDeVerificacao, dataHoraDeBrasilia } from './comprovanteDeHolerite';
 import { nuvem } from './nuvem';
 import { fecharCompensacao, mesAnterior, CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { usandoNuvem } from './supabase';
@@ -455,6 +456,60 @@ export const totaisDoEspelho = (resumo: ResumoPontoColaborador): TotaisDoEspelho
       .reduce((s, j) => s + j.minutosPrevistosEfetivos, 0),
     diasSemFechar: resumo.diasComPendencia,
   };
+};
+
+/**
+ * O CONTEÚDO DO ESPELHO, em texto estável — é ELE que a assinatura assina.
+ *
+ * Não é o papel: o papel traz a data de emissão, e o mesmo espelho
+ * emitido amanhã teria outro código. São as marcações de cada dia, a conta
+ * do dia e os totais do mês — o que a pessoa confere antes de assinar.
+ *
+ * O SALDO ACUMULADO FICA FORA: ele soma os meses seguintes, e todo espelho
+ * assinado "mudaria" no fechamento do mês que vem sem nada dele ter mudado.
+ */
+export const conteudoDoEspelho = (resumo: ResumoPontoColaborador, dataInicio: string, dataFim: string): string => {
+  const { saldoAcumulado: _foraDoMes, ...totais } = totaisDoEspelho(resumo);
+  const dias = resumo.jornadas.map((j) => {
+    const l = linhaDoEspelho(j, resumo.colaborador);
+    return [
+      l.data,
+      l.celulas.map((c) =>
+        c.registro ? `${c.registro.horaFormatada}${ehMarcacaoCorrigida(c.registro.metodo) ? '*' : ''}` : c.motivo || ''
+      ),
+      l.previsto,
+      l.trabalhado,
+      l.relogio,
+      l.saldo,
+      l.falta,
+    ];
+  });
+  return JSON.stringify({ colaboradorId: resumo.colaborador.id, dataInicio, dataFim, dias, totais });
+};
+
+/** O espelho assinado, como entra no papel. */
+export interface AssinaturaNoEspelho {
+  /** A assinatura usada (data URL de PNG). */
+  imagem: string;
+  assinadoEm: string;
+  conteudoHash: string;
+  /** O conteúdo de hoje é o mesmo que a pessoa assinou? */
+  confere: boolean;
+}
+
+/**
+ * O LUGAR DO COLABORADOR NO PÉ DO ESPELHO: a linha em branco, ou a
+ * assinatura pousada nela com o carimbo de quando e o código. Se o mês foi
+ * corrigido depois, o papel diz — assinou um, o de hoje é outro.
+ */
+const assinaturaDoColaborador = (assinada?: AssinaturaNoEspelho): string => {
+  if (!assinada) return '<span class="linha"></span>Assinatura do colaborador';
+  return `<img class="rubrica" src="${assinada.imagem.replace(/"/g, '')}" alt="Assinatura">
+    <span class="linha"></span>Assinatura do colaborador
+    <span class="carimbo">Assinado eletronicamente em ${dataHoraDeBrasilia(assinada.assinadoEm)}
+      (horário de Brasília), com senha pessoal · código ${codigoDeVerificacao(assinada.conteudoHash)}${
+        assinada.confere ? '' : '<br><span class="mudou">O espelho foi alterado depois desta assinatura.</span>'
+      }</span>`;
 };
 
 export interface LinhaDoRodape {
@@ -3090,7 +3145,13 @@ class ServicoPonto {
    * Traz a jornada dia a dia, a origem de cada marcação, os totais do período
    * e as linhas de assinatura do colaborador e do responsável.
    */
-  gerarHtmlEspelho(dataInicio: string, dataFim: string, colaboradorIds?: string[]): string {
+  gerarHtmlEspelho(
+    dataInicio: string,
+    dataFim: string,
+    colaboradorIds?: string[],
+    /** O espelho do mês assinado pela pessoa, por id (`assinaturasDoEspelho`). */
+    assinaturas?: Map<string, AssinaturaNoEspelho>
+  ): string {
     const todos = this.obterResumoDoPeriodo(dataInicio, dataFim);
     const selecionados = colaboradorIds
       ? todos.filter((r) => colaboradorIds.includes(r.colaborador.id))
@@ -3312,7 +3373,7 @@ class ServicoPonto {
           */ ''}
 
           <div class="assinaturas">
-            <div><span class="linha"></span>Assinatura do colaborador</div>
+            <div>${assinaturaDoColaborador(assinaturas?.get(c.id))}</div>
             <div><span class="linha"></span>Responsável / RH</div>
           </div>
         </section>`;
@@ -3379,6 +3440,10 @@ class ServicoPonto {
   .totais .destaque td { font-weight: 700; background: #f2f2f2; }
   /* O espelho incompleto não sai no papel como se estivesse certo */
   .totais .alerta td { background: #fff4dc; color: #8a4b00; font-weight: 600; }
+  /* A assinatura eletrônica pousa sobre a linha, como a caneta no papel */
+  .assinaturas .rubrica { display: block; height: 40px; max-width: 85%; margin: -42px auto 2px; object-fit: contain; }
+  .assinaturas .carimbo { display: block; margin-top: 3px; font-size: 7.5px; color: #333; line-height: 1.3; }
+  .assinaturas .mudou { color: #b00020; font-weight: 700; }
       `,
       corpo: folhas || '<p>Nenhum colaborador no período selecionado.</p>',
     });

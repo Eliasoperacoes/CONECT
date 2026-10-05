@@ -84,7 +84,7 @@ import {
   reexibirConversa,
 } from './servicos/preferenciasConversa';
 import { assinarJustificativas } from './servicos/justificativas';
-import { servicoPonto } from './servicos/ponto';
+import { servicoPonto, batePonto, dataDeHoje } from './servicos/ponto';
 import { vigiarRelogio } from './servicos/relogio';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
@@ -97,8 +97,8 @@ import {
 } from './servicos/aplicativo';
 import { montarPreviaDaMensagem } from './servicos/nuvemComunicacao';
 import { listarHolerites, listarAdvertencias } from './servicos/rh';
-import { listarRecebimentos } from './servicos/assinatura';
-import { pendenciasDoMeuRH } from './servicos/meuRH';
+import { listarRecebimentos, listarEspelhosAssinados } from './servicos/assinatura';
+import { pendenciasDoMeuRH, espelhosParaAssinar } from './servicos/meuRH';
 import {
   atualizarTituloDaAba,
   janelaEstaVisivel,
@@ -567,7 +567,7 @@ export default function App() {
   }, [autenticado, colaboradorAtual.id, conversasIndividuais, versaoPreferencias]);
 
   /**
-   * O SELO DA ABA EU: holerite para assinar e advertência sem ciência.
+   * O SELO DA ABA EU: holerite e espelho para assinar, advertência sem ciência.
    *
    * O cartão do Meu RH dizia "1 para assinar", mas só para quem já estava
    * na aba (S10 do Fabio, 02/10/2026). A conta é a do cartão
@@ -586,8 +586,12 @@ export default function App() {
       listarHolerites(colaboradorAtual.id),
       listarRecebimentos({ colaboradorId: colaboradorAtual.id }),
       listarAdvertencias(colaboradorAtual.id),
-    ]).then(([h, r, a]) => {
-      if (!cancelado) setPendenciasDoMeuRHAgora(pendenciasDoMeuRH(h, r, a).total);
+      listarEspelhosAssinados({ colaboradorId: colaboradorAtual.id }),
+    ]).then(([h, r, a, e]) => {
+      if (cancelado) return;
+      const assinados = new Set([...e.values()].map((x) => x.mes));
+      const espelhos = espelhosParaAssinar(colaboradorAtual, batePonto(colaboradorAtual), dataDeHoje(), assinados);
+      setPendenciasDoMeuRHAgora(pendenciasDoMeuRH(h, r, a, espelhos).total);
     });
     return () => {
       cancelado = true;

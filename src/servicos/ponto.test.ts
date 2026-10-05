@@ -4913,3 +4913,66 @@ test('o estágio de 2 batidas, com as 2 feitas, não está incompleto', async ()
   baterParcial(ESTAGIARIA, diasAtras(3), { entrada: '13:00', saida: '18:00' });
   expect(await servicoPonto.buscarPontosIncompletos(diasAtras(10), diasAtras(1))).toHaveLength(0);
 });
+
+// ============================================================
+// O ESPELHO ASSINADO (05/10/2026)
+// ============================================================
+
+test('O CONTEÚDO ASSINADO: estável, muda com a batida, e não leva o saldo acumulado', async () => {
+  /**
+   * A assinatura guarda o código do CONTEÚDO do espelho, e não do papel:
+   * o papel traz a data de emissão, e o mesmo mês emitido amanhã teria
+   * outro código. E o saldo acumulado soma os meses seguintes — com ele,
+   * todo espelho assinado "mudaria" no fechamento do mês que vem.
+   */
+  const { conteudoDoEspelho } = await import('./ponto');
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = DO_TURNO_A;
+  await baterDia(DO_TURNO_A, '2026-09-14', ['07:30', '12:30', '14:00', '17:10']);
+
+  const doMes = () =>
+    servicoPonto.obterResumoDoPeriodo('2026-09-01', '2026-09-30').find((r) => r.colaborador.id === DO_TURNO_A.id)!;
+  const antes = conteudoDoEspelho(doMes(), '2026-09-01', '2026-09-30');
+  expect(conteudoDoEspelho(doMes(), '2026-09-01', '2026-09-30')).toBe(antes);
+  expect(antes).toContain('17:10');
+  expect(antes).not.toContain('saldoAcumulado');
+
+  // O RH corrige uma batida do mês: o conteúdo é outro
+  await baterDia(DO_TURNO_A, '2026-09-15', ['07:30', '12:30', '14:00', '17:10']);
+  expect(conteudoDoEspelho(doMes(), '2026-09-01', '2026-09-30')).not.toBe(antes);
+});
+
+test('O PAPEL ASSINADO: a assinatura sobre a linha, o carimbo, e o aviso se mudou depois', () => {
+  equipe = [ELIAS, DO_TURNO_A];
+  colaboradorLogado = ELIAS;
+  const assinada = {
+    imagem: 'data:image/png;base64,AAAA',
+    assinadoEm: '2026-10-05T17:32:00Z',
+    conteudoHash: 'ab12cd34ef56ab78' + '0'.repeat(48),
+    confere: true,
+  };
+
+  const sem = servicoPonto.gerarHtmlEspelho('2026-09-01', '2026-09-30', [DO_TURNO_A.id]);
+  expect(sem).not.toContain('class="rubrica"');
+  expect(sem).toContain('<span class="linha"></span>Assinatura do colaborador');
+
+  const com = servicoPonto.gerarHtmlEspelho(
+    '2026-09-01', '2026-09-30', [DO_TURNO_A.id], new Map([[DO_TURNO_A.id, assinada]])
+  );
+  expect(com).toContain('<img class="rubrica" src="data:image/png;base64,AAAA"');
+  // A hora é a de Brasília, e o código é o de conferir
+  expect(com).toContain('Assinado eletronicamente em 05/10/2026 às 14:32');
+  expect(com).toContain('código AB12-CD34-EF56-AB78');
+  expect(com).not.toContain('alterado depois');
+
+  const mudou = servicoPonto.gerarHtmlEspelho(
+    '2026-09-01', '2026-09-30', [DO_TURNO_A.id], new Map([[DO_TURNO_A.id, { ...assinada, confere: false }]])
+  );
+  expect(mudou).toContain('O espelho foi alterado depois desta assinatura.');
+
+  // A assinatura de uma pessoa não vai para a folha de outra
+  const outro = servicoPonto.gerarHtmlEspelho(
+    '2026-09-01', '2026-09-30', [ELIAS.id], new Map([[DO_TURNO_A.id, assinada]])
+  );
+  expect(outro).not.toContain('class="rubrica"');
+});

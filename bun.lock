@@ -12,6 +12,9 @@
         "@capacitor/filesystem": "^8",
         "@capacitor/push-notifications": "^8.1.2",
         "@capacitor/share": "^8",
+        "@fontsource/dancing-script": "^5.3.0",
+        "@fontsource/great-vibes": "^5.3.0",
+        "@fontsource/homemade-apple": "^5.3.0",
         "@supabase/supabase-js": "^2.116.0",
         "@tailwindcss/vite": "^4.1.14",
         "@vitejs/plugin-react": "^5.0.4",
@@ -147,6 +150,12 @@
     "@esbuild/win32-ia32": ["@esbuild/win32-ia32@0.25.12", "", { "os": "win32", "cpu": "ia32" }, "sha512-HkqnmmBoCbCwxUKKNPBixiWDGCpQGVsrQfJoVGYLPT41XWF8lHuE5N6WhVia2n4o5QK5M4tYr21827fNhi4byQ=="],
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
+
+    "@fontsource/dancing-script": ["@fontsource/dancing-script@5.3.0", "", {}, "sha512-/FFbz4ZCNN+eG2a6phkZB41iKmyCC6rq2blA/kG9OFeI3/tpzLNazND1bBdEnogLhpfg7o4NfauTbEEYSpSUGg=="],
+
+    "@fontsource/great-vibes": ["@fontsource/great-vibes@5.3.0", "", {}, "sha512-1w60cXzXnC9V4y943po8044O1mqRQBiTTK75h7OpZE+1VQtx+KlAAzoIyEE5KNzu05gUpxaCQg7cbL7ITSwegQ=="],
+
+    "@fontsource/homemade-apple": ["@fontsource/homemade-apple@5.3.0", "", {}, "sha512-awJSYTbSY3SroC8nirEhDauHvERVvm0LI3FpUHsPZXl9Tht1xrqhiI8ro4yf3ROcvQ7CfFJ/2+DLcOHBOXhJKw=="],
 
     "@ionic/cli-framework-output": ["@ionic/cli-framework-output@2.2.8", "", { "dependencies": { "@ionic/utils-terminal": "2.3.5", "debug": "^4.0.0", "tslib": "^2.0.1" } }, "sha512-TshtaFQsovB4NWRBydbNFawql6yul7d5bMiW1WYYf17hd99V6xdDdk3vtF51bw6sLkxON3bDQpWsnUc9/hVo3g=="],
 

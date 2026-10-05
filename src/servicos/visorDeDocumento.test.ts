@@ -61,7 +61,9 @@ test('nenhuma tela escreve documento numa janela vazia por conta própria', () =
     RH, espelho de Equipe e ponto, férias e escala. Quem precisa abrir um
     documento chama `mostrarDocumento` — que decide entre janela e visor.
     O Meu RH ainda abre a janela antes do `await` no computador (o
-    navegador só deixa abrir no toque), mas só quando NÃO usa o visor.
+    navegador só deixa abrir no toque), para o ANEXO, que é arquivo de
+    fora. O espelho do Meu RH passou ao visor em todo aparelho
+    (05/10/2026): é lá que fica a barra de assinar.
   */
   const pasta = join(import.meta.dir, '../componentes');
   const comJanelaVazia = readdirSync(pasta)
@@ -70,8 +72,12 @@ test('nenhuma tela escreve documento numa janela vazia por conta própria', () =
   expect(comJanelaVazia).toEqual(['MeuRH.tsx']);
 
   const meuRH = readFileSync(join(pasta, 'MeuRH.tsx'), 'utf8');
-  expect(meuRH).toContain('const janela = noVisor ? null : abrirJanelaParaDepois();');
   expect(meuRH).toContain('const janela = rodandoNoAplicativo() ? null : abrirJanelaParaDepois();');
+  // O espelho abre no visor, com a barra de assinar, e não numa janela
+  const espelho = meuRH.slice(meuRH.indexOf('const abrirEspelho'), meuRH.indexOf('const darCiencia'));
+  expect(espelho).toContain('mostrarParaAssinar(');
+  expect(espelho).toContain('<AssinarEspelho');
+  expect(espelho).not.toContain('abrirJanelaParaDepois');
 });
 
 test('o visor tem Voltar no alto e fecha pelo voltar do Android', () => {

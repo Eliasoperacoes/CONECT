@@ -31,9 +31,15 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Colaborador, Holerite, Advertencia, ROTULO_ADVERTENCIA, RecebimentoHolerite } from '../tipos';
-import { listarRecebimentos } from '../servicos/assinatura';
+import {
+  listarRecebimentos,
+  listarEspelhosAssinados,
+  assinaturasDoEspelho,
+  EspelhoAssinado,
+} from '../servicos/assinatura';
 import { dataHoraDeBrasilia } from '../servicos/comprovanteDeHolerite';
 import { AssinarHolerite } from './AssinarHolerite';
+import { AssinarEspelho } from './AssinarEspelho';
 import { ouvirFolhaPedida, tomarFolhaPedida } from '../servicos/folhaPedida';
 import { listarHolerites, listarAdvertencias, abrirDocumento, darCienciaNaAdvertencia } from '../servicos/rh';
 import { lerJustificativas, assinarJustificativas } from '../servicos/justificativasCache';
@@ -46,10 +52,12 @@ import {
   situacaoDasFerias,
   prepararMeuEspelho,
   pendenciasDoMeuRH,
+  espelhosParaAssinar,
+  ESPELHO_ASSINADO_DESDE,
 } from '../servicos/meuRH';
 import { FolhaInferior } from './FolhaInferior';
 import { CartaoSolicitacao } from './AbaJustificar';
-import { mostrarDocumento, mostrarPdf, usaVisor } from '../servicos/visorDeDocumento';
+import { mostrarParaAssinar, mostrarPdf } from '../servicos/visorDeDocumento';
 import { rodandoNoAplicativo } from '../servicos/aplicativo';
 
 interface Props {
@@ -156,6 +164,8 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
   const [holerites, setHolerites] = useState<Holerite[]>([]);
   const [advertencias, setAdvertencias] = useState<Advertencia[]>([]);
   const [recebimentos, setRecebimentos] = useState<Map<string, RecebimentoHolerite>>(new Map());
+  // Os espelhos assinados, pelo mês ("2026-09")
+  const [espelhosAssinados, setEspelhosAssinados] = useState<Map<string, EspelhoAssinado>>(new Map());
   const [versao, setVersao] = useState(0);
   const [versaoAusencias, setVersaoAusencias] = useState(0);
   const [folha, setFolha] = useState<Folha | null>(null);
@@ -169,11 +179,13 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
       listarHolerites(eu.id),
       listarAdvertencias(eu.id),
       listarRecebimentos({ colaboradorId: eu.id }),
-    ]).then(([h, a, r]) => {
+      listarEspelhosAssinados({ colaboradorId: eu.id }),
+    ]).then(([h, a, r, e]) => {
       if (cancelado) return;
       setHolerites(h);
       setAdvertencias(a);
       setRecebimentos(r);
+      setEspelhosAssinados(new Map([...e.values()].map((x) => [x.mes, x])));
     });
     return () => {
       cancelado = true;
@@ -190,7 +202,12 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
 
   const ferias = situacaoDasFerias(ausencias.ferias, hoje);
   const meses = mesesFechados(hoje, eu.dataAdmissao);
-  const { semCiencia, holeritesParaAssinar } = pendenciasDoMeuRH(holerites, recebimentos, advertencias);
+  const { semCiencia, holeritesParaAssinar, espelhosParaAssinar: espelhosPendentes } = pendenciasDoMeuRH(
+    holerites,
+    recebimentos,
+    advertencias,
+    espelhosParaAssinar(eu, batePonto(eu), hoje, espelhosAssinados)
+  );
   const documentosEmAnalise = ausencias.documentos.filter((j) => j.estado === 'pendente');
   /**
    * A folga que interessa: a deste mês, ou a próxima que vem. "Nenhuma
@@ -212,7 +229,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
    * banco para isso não seria.
    */
   const abrirFolha = (qual: Folha) => {
-    if (qual === 'holerites' || qual === 'advertencias') setVersao((v) => v + 1);
+    if (qual === 'holerites' || qual === 'advertencias' || qual === 'espelho') setVersao((v) => v + 1);
     setFolha(qual);
   };
 
@@ -264,29 +281,29 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
     ));
   };
 
+  /*
+    O ESPELHO ABRE NO VISOR, em qualquer aparelho, como o holerite — é lá
+    que fica a barra de assinar (05/10/2026). A janela à parte do
+    computador não tinha onde pô-la. Imprimir e salvar em PDF continuam,
+    pelo botão do visor.
+  */
   const abrirEspelho = async (mes: string) => {
-    /*
-      NO CELULAR, O VISOR — e nenhuma janela aberta antes. No aplicativo
-      Android a "janela" é a própria página: o "Carregando…" e depois o
-      espelho eram escritos por cima do sistema, e não havia como voltar.
-    */
-    const noVisor = usaVisor();
-    const janela = noVisor ? null : abrirJanelaParaDepois();
     setAbrindo(mes);
-    const res = await prepararMeuEspelho(eu.id, mes, hoje);
+    const res = await prepararMeuEspelho(eu.id, mes, hoje, () => assinaturasDoEspelho([eu.id], mes));
     setAbrindo(null);
-    if (!res.html) {
-      janela?.close();
-      return mostrarAviso(res.erro || 'Não foi possível montar o espelho.');
-    }
-    if (noVisor) {
-      mostrarDocumento(res.html);
-      return;
-    }
-    if (!janela) return mostrarAviso('O navegador bloqueou a janela. Permita pop-ups para o CONECTA.');
-    janela.document.open();
-    janela.document.write(res.html);
-    janela.document.close();
+    if (!res.html) return mostrarAviso(res.erro || 'Não foi possível montar o espelho.');
+    mostrarParaAssinar(
+      res.html,
+      <AssinarEspelho
+        colaboradorId={eu.id}
+        mes={mes}
+        aoAssinar={() => {
+          setVersao((v) => v + 1);
+          // De novo, agora com a assinatura no papel
+          abrirEspelho(mes);
+        }}
+      />
+    );
   };
 
   const darCiencia = async (a: Advertencia) => {
@@ -344,7 +361,14 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
           <Cartao
             id="meu-rh-espelho"
             titulo="Espelho de ponto"
-            resumo={meses.length ? `Último fechado: ${rotuloDoMes(meses[0])}` : 'O primeiro sai no fim do mês'}
+            resumo={
+              espelhosPendentes.length
+                ? `${espelhosPendentes.length} para assinar`
+                : meses.length
+                  ? `Último fechado: ${rotuloDoMes(meses[0])}`
+                  : 'O primeiro sai no fim do mês'
+            }
+            alerta={espelhosPendentes.length > 0}
             icone={<FileClock className="w-5 h-5" />}
             cor="text-blue-600 bg-blue-500/10"
             aoAbrir={() => abrirFolha('espelho')}
@@ -443,7 +467,13 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
                   key={mes}
                   id={`espelho-${mes}`}
                   titulo={rotuloDoMes(mes)}
-                  detalhe="Marcações, jornada e saldo do mês"
+                  detalhe={
+                    espelhosAssinados.has(mes)
+                      ? `Assinado em ${dataHoraDeBrasilia(espelhosAssinados.get(mes)!.assinadoEm)}`
+                      : mes >= ESPELHO_ASSINADO_DESDE
+                        ? 'Falta assinar'
+                        : 'Marcações, jornada e saldo do mês'
+                  }
                   icone={<FileClock className="w-5 h-5" />}
                   acao={<ChevronRight className="w-4 h-4" />}
                   ocupado={abrindo === mes}

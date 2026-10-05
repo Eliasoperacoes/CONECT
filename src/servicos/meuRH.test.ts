@@ -179,8 +179,29 @@ test('o selo da aba Eu e o cartao contam a mesma coisa: holerite sem assinar e a
   expect(r.total).toBe(2);
 
   const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
-  expect(app).toContain('setPendenciasDoMeuRHAgora(pendenciasDoMeuRH(h, r, a).total)');
+  expect(app).toContain('setPendenciasDoMeuRHAgora(pendenciasDoMeuRH(h, r, a, espelhos).total)');
+  expect(app).toContain('espelhosParaAssinar(colaboradorAtual, batePonto(colaboradorAtual), dataDeHoje(), assinados)');
   expect(app).toMatch(/alvo: 'eu',\s*contador: pendenciasDoMeuRHAgora,/);
   const tela = await Bun.file(new URL('../componentes/MeuRH.tsx', import.meta.url)).text();
-  expect(tela).toContain('pendenciasDoMeuRH(holerites, recebimentos, advertencias)');
+  expect(tela).toMatch(/pendenciasDoMeuRH\(\s*holerites,\s*recebimentos,\s*advertencias,\s*espelhosParaAssinar\(eu, batePonto\(eu\), hoje, espelhosAssinados\)/);
+});
+
+test('ESPELHO PARA ASSINAR: mês fechado desde setembro/2026, não assinado, de quem bate ponto', async () => {
+  const { espelhosParaAssinar, pendenciasDoMeuRH, ESPELHO_ASSINADO_DESDE } = await import('./meuRH');
+  expect(ESPELHO_ASSINADO_DESDE).toBe('2026-09');
+  const hoje = '2026-12-10';
+
+  // Setembro, outubro e novembro fecharam; dezembro está aberto; agosto é de antes da cobrança
+  expect(espelhosParaAssinar({}, true, hoje, new Set())).toEqual(['2026-11', '2026-10', '2026-09']);
+  // O assinado sai da lista
+  expect(espelhosParaAssinar({}, true, hoje, new Set(['2026-10']))).toEqual(['2026-11', '2026-09']);
+  // Admitido em outubro: setembro não é dele
+  expect(espelhosParaAssinar({ dataAdmissao: '2026-10-15' }, true, hoje, new Set())).toEqual(['2026-11', '2026-10']);
+  // Quem não bate ponto não tem espelho
+  expect(espelhosParaAssinar({}, false, hoje, new Set())).toEqual([]);
+
+  // E conta no selo, junto com holerite e advertência
+  const r = pendenciasDoMeuRH([], new Set(), [], ['2026-11', '2026-10']);
+  expect(r.total).toBe(2);
+  expect(r.espelhosParaAssinar).toEqual(['2026-11', '2026-10']);
 });

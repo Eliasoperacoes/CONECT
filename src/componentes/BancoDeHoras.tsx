@@ -74,7 +74,11 @@ import {
   primeiroDiaDoMes,
   descreverBatidasQueFaltam,
   EspelhoIncompleto,
+  AssinaturaNoEspelho,
 } from '../servicos/ponto';
+import { assinaturasDoEspelho } from '../servicos/assinatura';
+import { periodoDoMes } from '../servicos/meuRH';
+import { dataHoraDeBrasilia } from '../servicos/comprovanteDeHolerite';
 import { podeUsar } from '../servicos/permissoes';
 import { nuvem } from '../servicos/nuvem';
 import { usandoNuvem } from '../servicos/supabase';
@@ -96,6 +100,20 @@ interface PropsBancoDeHoras {
 }
 
 type AbaRH = 'banco_horas' | 'qrcodes';
+
+/** Se a pessoa assinou o espelho do mês — e se ele mudou depois. */
+const AssinaturaDoMes: React.FC<{ assinada?: AssinaturaNoEspelho }> = ({ assinada }) =>
+  !assinada ? (
+    <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">Colaborador ainda não assinou</span>
+  ) : assinada.confere ? (
+    <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+      Assinado pelo colaborador em {dataHoraDeBrasilia(assinada.assinadoEm)}
+    </span>
+  ) : (
+    <span className="text-[11px] font-semibold text-red-600">
+      Assinado em {dataHoraDeBrasilia(assinada.assinadoEm)} · alterado depois da assinatura
+    </span>
+  );
 
 export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
   colaboradorAtual,
@@ -373,6 +391,36 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
     return servicoPonto.obterResumoDoPeriodo(dataInicio, dataFim);
   }, [dataInicio, dataFim, versaoDados, temAcesso]);
 
+  /**
+   * QUEM JÁ ASSINOU O ESPELHO DO MÊS (05/10/2026). Só existe para o mês
+   * fechado e inteiro — é o que a pessoa assina. Vem antes de imprimir:
+   * a janela de impressão precisa abrir no toque, sem esperar o banco.
+   */
+  const mesAssinavel = useMemo(() => {
+    const mes = dataInicio.slice(0, 7);
+    const inteiro = periodoDoMes(mes);
+    return inteiro.inicio === dataInicio && inteiro.fim === dataFim && mes < dataDeHoje().slice(0, 7)
+      ? mes
+      : null;
+  }, [dataInicio, dataFim]);
+  const [assinaturasDoMes, setAssinaturasDoMes] = useState<Map<string, AssinaturaNoEspelho>>(new Map());
+
+  useEffect(() => {
+    if (!mesAssinavel || resumos.length === 0) {
+      setAssinaturasDoMes(new Map());
+      return;
+    }
+    let vivo = true;
+    assinaturasDoEspelho(
+      resumos.map((r) => r.colaborador.id),
+      mesAssinavel,
+      resumos
+    ).then((mapa) => vivo && setAssinaturasDoMes(mapa));
+    return () => {
+      vivo = false;
+    };
+  }, [mesAssinavel, resumos]);
+
   const termoBusca = busca.trim().toLowerCase();
 
   /** Busca atravessa as lojas: quem procura um nome não quer navegar até ele. */
@@ -526,7 +574,11 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
     }
 
     // No celular, o visor (com Voltar); no computador, a janela de impressão
-    if (!mostrarDocumento(servicoPonto.gerarHtmlEspelho(dataInicio, dataFim, alvos), { imprimir: true })) {
+    if (
+      !mostrarDocumento(servicoPonto.gerarHtmlEspelho(dataInicio, dataFim, alvos, assinaturasDoMes), {
+        imprimir: true,
+      })
+    ) {
       exibirToast('Permita as janelas pop-up para imprimir o espelho.', true);
     }
   };
@@ -1293,8 +1345,13 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
             {/* Espelho do período */}
             <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] overflow-hidden">
               <div className="px-3.5 py-2.5 border-b border-[var(--c-borda)] flex items-center justify-between">
-                <span className="text-xs font-bold text-[var(--c-texto)] uppercase tracking-wider">
-                  Espelho de {formatarDataBR(dataInicio)} a {formatarDataBR(dataFim)}
+                <span className="flex flex-col gap-0.5 min-w-0">
+                  <span className="text-xs font-bold text-[var(--c-texto)] uppercase tracking-wider">
+                    Espelho de {formatarDataBR(dataInicio)} a {formatarDataBR(dataFim)}
+                  </span>
+                  {mesAssinavel && (
+                    <AssinaturaDoMes assinada={assinaturasDoMes.get(detalhe.colaborador.id)} />
+                  )}
                 </span>
                 <span
                   className={`text-xs font-black tabular-nums ${

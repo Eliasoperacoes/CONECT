@@ -20,7 +20,7 @@ import { rodandoNoAplicativo } from './aplicativo';
 
 /** Um documento gerado aqui (`html`) ou um PDF guardado no banco (`pdf`, o endereço dele). */
 export type DocumentoNoVisor =
-  | { html: string; titulo: string }
+  | { html: string; titulo: string; rodape?: ReactNode }
   | { pdf: string; titulo: string; arquivoNome: string; rodape?: RodapeDoPdf };
 
 /**
@@ -89,6 +89,16 @@ export const mostrarDocumento = (html: string, opcoes: { imprimir?: boolean } = 
   // Espera o layout fechar antes de chamar a impressão
   if (opcoes.imprimir) setTimeout(() => janela.print(), 250);
   return true;
+};
+
+/**
+ * UM DOCUMENTO PARA ASSINAR, no visor em qualquer aparelho — o espelho de
+ * ponto do Meu RH. A janela à parte do computador não tem onde pôr a
+ * barra de assinar; o visor tem, como no holerite.
+ */
+export const mostrarParaAssinar = (html: string, rodape: ReactNode): void => {
+  aberto = { html, titulo: tituloDe(html), rodape };
+  avisar();
 };
 
 /**

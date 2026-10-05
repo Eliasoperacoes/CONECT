@@ -17,7 +17,7 @@
  */
 import { JustificativaAusencia, SE_COMPROVA_COM_DOCUMENTO } from '../tipos';
 import { diasCorridos } from './justificativas';
-import { servicoPonto } from './ponto';
+import { servicoPonto, AssinaturaNoEspelho } from './ponto';
 import { nuvem } from './nuvem';
 import { usandoNuvem } from './supabase';
 
@@ -30,15 +30,45 @@ import { usandoNuvem } from './supabase';
 export const pendenciasDoMeuRH = (
   holerites: { id: string }[],
   recebimentos: { has: (holeriteId: string) => boolean },
-  advertencias: { cienciaEm?: string | null }[]
+  advertencias: { cienciaEm?: string | null }[],
+  /** Os meses de espelho por assinar (`espelhosParaAssinar`). */
+  espelhos: string[] = []
 ) => {
   const holeritesParaAssinar = holerites.filter((h) => !recebimentos.has(h.id));
   const semCiencia = advertencias.filter((a) => !a.cienciaEm);
-  return { holeritesParaAssinar, semCiencia, total: holeritesParaAssinar.length + semCiencia.length };
+  return {
+    holeritesParaAssinar,
+    semCiencia,
+    espelhosParaAssinar: espelhos,
+    total: holeritesParaAssinar.length + semCiencia.length + espelhos.length,
+  };
 };
 
 /** Quantos meses fechados a pessoa alcança na própria tela. */
 export const MESES_DO_ESPELHO = 12;
+
+/**
+ * O PRIMEIRO MÊS QUE SE COBRA ASSINAR. A assinatura do espelho chegou em
+ * outubro de 2026; setembro é o primeiro mês inteiro apurado com as regras
+ * de hoje. Os meses de antes continuam abrindo e podem ser assinados — só
+ * não viram pendência, para ninguém ganhar uma fila de meses de uma vez.
+ */
+export const ESPELHO_ASSINADO_DESDE = '2026-09';
+
+/**
+ * OS ESPELHOS QUE ESPERAM A ASSINATURA DA PESSOA: os meses fechados desde
+ * `ESPELHO_ASSINADO_DESDE` que ela ainda não assinou. Quem não bate ponto
+ * não tem espelho.
+ */
+export const espelhosParaAssinar = (
+  colaborador: { dataAdmissao?: string },
+  bateOPonto: boolean,
+  hoje: string,
+  assinados: { has: (mes: string) => boolean }
+): string[] =>
+  bateOPonto
+    ? mesesFechados(hoje, colaborador.dataAdmissao).filter((m) => m >= ESPELHO_ASSINADO_DESDE && !assinados.has(m))
+    : [];
 
 const NOMES_DOS_MESES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -167,7 +197,12 @@ export const situacaoDasFerias = (
 export const prepararMeuEspelho = async (
   colaboradorId: string,
   mes: string,
-  hoje: string
+  hoje: string,
+  /**
+   * A assinatura do mês, se houver (`assinaturasDoEspelho`). Vem DEPOIS das
+   * batidas: é com elas que se confere se o espelho ainda é o assinado.
+   */
+  assinaturas?: () => Promise<Map<string, AssinaturaNoEspelho>>
 ): Promise<{ html?: string; erro?: string }> => {
   if (!mesesFechados(hoje, undefined, MESES_DO_ESPELHO).includes(mes)) {
     return { erro: 'Este mês ainda não fechou. O espelho sai no dia 1 do mês seguinte.' };
@@ -183,5 +218,12 @@ export const prepararMeuEspelho = async (
     }
   }
 
-  return { html: servicoPonto.gerarHtmlEspelho(periodo.inicio, periodo.fim, [colaboradorId]) };
+  return {
+    html: servicoPonto.gerarHtmlEspelho(
+      periodo.inicio,
+      periodo.fim,
+      [colaboradorId],
+      assinaturas ? await assinaturas() : undefined
+    ),
+  };
 };
