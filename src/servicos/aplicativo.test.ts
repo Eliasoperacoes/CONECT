@@ -421,3 +421,45 @@ test('no aplicativo a página fica entre as barras DESDE o primeiro desenho', as
   const aplicativo = await Bun.file('src/servicos/aplicativo.ts').text();
   expect(aplicativo).not.toContain("replace('viewport-fit=cover'");
 });
+
+test('O QR QUE ABRIU O APLICATIVO BATE O PONTO UMA VEZ: recarregar a página não bate de novo', async () => {
+  /**
+   * O QR do cartaz abre o aplicativo pelo endereço (App Links, 05/10/2026),
+   * e abrir com o código já registra a batida. O Android devolve o mesmo
+   * endereço de abertura a cada carga da página enquanto o processo vive —
+   * sem a trava, a recarga de versão bateria a próxima marcação sozinha.
+   */
+  const dados = new Map<string, string>();
+  (globalThis as any).sessionStorage = {
+    getItem: (k: string) => dados.get(k) ?? null,
+    setItem: (k: string, v: string) => dados.set(k, v),
+  };
+  const recebidos: string[] = [];
+  enderecoDeLancamento = 'https://conectamalachias.vercel.app/?ponto=CONECTA-PONTO%3ALoja%3AABC';
+
+  // A primeira carga entrega; a recarga (mesmo processo, mesma sessão) não
+  ouvirEnderecosDoAplicativo((e) => recebidos.push(e.searchParams.get('ponto') || ''));
+  await Bun.sleep(1);
+  ouvirEnderecosDoAplicativo((e) => recebidos.push(e.searchParams.get('ponto') || ''));
+  await Bun.sleep(1);
+  expect(recebidos).toEqual(['CONECTA-PONTO:Loja:ABC']);
+
+  // Ler o cartaz de novo com o aplicativo aberto é batida nova: entrega sempre
+  ouvintes['appUrlOpen']({ url: 'https://conectamalachias.vercel.app/?ponto=CONECTA-PONTO%3ALoja%3AABC' });
+  expect(recebidos).toHaveLength(2);
+
+  delete (globalThis as any).sessionStorage;
+});
+
+test('o Android entrega o endereço do CONECTA ao aplicativo, e o site prova que o aplicativo é dele', async () => {
+  const manifesto = await Bun.file('android/app/src/main/AndroidManifest.xml').text();
+  expect(manifesto).toMatch(
+    /<intent-filter android:autoVerify="true">[\s\S]*?android:scheme="https" android:host="conectamalachias\.vercel\.app"/
+  );
+  const vinculo = JSON.parse(await Bun.file('public/.well-known/assetlinks.json').text());
+  expect(vinculo[0].target.package_name).toBe('br.com.malachiasautopecas.conecta');
+  // O pacote é o do aplicativo, e a digital não é mais o texto provisório do PWABuilder
+  const config = await Bun.file('capacitor.config.ts').text();
+  expect(config).toContain(`appId: '${vinculo[0].target.package_name}'`);
+  expect(vinculo[0].target.sha256_cert_fingerprints[0]).toMatch(/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+});

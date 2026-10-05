@@ -167,6 +167,19 @@ export const ligarBotaoVoltar = (recuar: () => boolean): (() => void) => {
  * Quem interpreta o `?atalho=` é o mesmo trecho do App que já lia o
  * atalho do PWA. Esta função só entrega o endereço.
  */
+const CHAVE_ABERTURA = 'conecta:endereco-de-abertura';
+
+/** Já foi entregue nesta sessão? Marca na primeira vez. Sem armazenamento, entrega. */
+export const enderecoDeAberturaJaUsado = (url: string): boolean => {
+  try {
+    if (sessionStorage.getItem(CHAVE_ABERTURA) === url) return true;
+    sessionStorage.setItem(CHAVE_ABERTURA, url);
+  } catch {
+    /* sem armazenamento: entrega, como antes */
+  }
+  return false;
+};
+
 export const ouvirEnderecosDoAplicativo = (aoAbrir: (endereco: URL) => void): (() => void) => {
   if (!rodandoNoAplicativo()) return () => {};
 
@@ -179,8 +192,22 @@ export const ouvirEnderecosDoAplicativo = (aoAbrir: (endereco: URL) => void): ((
     }
   };
 
+  /*
+    O ENDEREÇO DE ABERTURA VALE UMA VEZ.
+
+    O Android guarda com que endereço o aplicativo foi aberto enquanto o
+    processo viver, e `getLaunchUrl` o devolve a cada carga da página. Com
+    o QR do ponto (05/10/2026), recarregar a página — a atualização de
+    versão recarrega sozinha — bateria o ponto DE NOVO: a próxima marcação,
+    sem a pessoa ter lido cartaz nenhum. A sessão da página sobrevive à
+    recarga e morre com o processo, que é exatamente o tempo em que o
+    endereço de abertura se repete.
+  */
   void AplicativoNativo.getLaunchUrl()
-    .then((r) => entregar(r?.url))
+    .then((r) => {
+      if (!r?.url || enderecoDeAberturaJaUsado(r.url)) return;
+      entregar(r.url);
+    })
     .catch(() => {});
   const ouvinte = AplicativoNativo.addListener('appUrlOpen', (e) => entregar(e.url));
 

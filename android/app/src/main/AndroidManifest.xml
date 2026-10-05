@@ -34,6 +34,23 @@
                 <data android:scheme="conecta" android:host="abrir" />
             </intent-filter>
 
+            <!--
+              O ENDEREÇO DO CONECTA ABRE O APLICATIVO, e não o navegador.
+
+              O QR do cartaz de ponto é https://conectamalachias.vercel.app/?ponto=...
+              A câmera abria o navegador, onde a sessão é outra: a pessoa tinha
+              de entrar de novo a cada batida (Elias, 05/10/2026). Com o
+              autoVerify, o Android confere `/.well-known/assetlinks.json` no
+              site e passa a entregar o endereço direto ao aplicativo. Quem lê
+              o `?ponto=` é o mesmo trecho da barra de endereços (App.tsx).
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="conectamalachias.vercel.app" />
+            </intent-filter>
+
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
