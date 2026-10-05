@@ -227,3 +227,23 @@ export const prepararMeuEspelho = async (
     ),
   };
 };
+
+/**
+ * A PRÓXIMA AUSÊNCIA DA PESSOA — folga de sábado ou férias, de hoje em
+ * diante, a mais próxima. Recusada não conta: não vai acontecer. É o que o
+ * Início do computador mostra em "Meu dia" (Elias, 05/10/2026).
+ */
+export const proximaAusenciaDe = (
+  todas: JustificativaAusencia[],
+  colaboradorId: string,
+  hoje: string
+): JustificativaAusencia | null =>
+  todas
+    .filter(
+      (j) =>
+        j.colaboradorId === colaboradorId &&
+        (j.tipo === 'folga_sabado' || j.tipo === 'ferias') &&
+        j.estado !== 'recusada' &&
+        j.dataFim >= hoje
+    )
+    .sort((a, b) => a.dataInicio.localeCompare(b.dataInicio))[0] || null;

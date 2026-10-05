@@ -60,6 +60,12 @@ interface PropsAbaPonto {
   pedidoDeBater?: boolean;
   /** Avisa que o pedido foi atendido, para a outra instância não abrir junto. */
   aoAtenderPedido?: () => void;
+  /**
+   * SÓ O PONTO, sem o seletor "Justificar ausência". No computador, pedir
+   * ausência mora em "Folgas e férias", junto do resto do assunto
+   * (telasPorAssunto.ts); aqui o seletor seria uma segunda porta.
+   */
+  soOPonto?: boolean;
 }
 
 /**
@@ -102,6 +108,7 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
   aoConsumirCodigo,
   pedidoDeBater,
   aoAtenderPedido,
+  soOPonto,
 }) => {
   const [secao, setSecao] = useState<'bater' | 'justificar'>('bater');
   const [modalAberto, setModalAberto] = useState(false);
@@ -235,7 +242,7 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
         comparecimento. Fica aqui, junto do ponto, porque é onde a pessoa
         procura quando o assunto é jornada; numa aba distante ninguém acharia.
       */}
-      <div className="px-4 pt-4">
+      <div className={soOPonto ? 'hidden' : 'px-4 pt-4'}>
         <div className="flex items-center bg-[var(--c-canvas)] border border-[var(--c-borda)] p-1 rounded-xl gap-1 lg:max-w-sm">
           <button
             type="button"

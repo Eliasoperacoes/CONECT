@@ -83,10 +83,21 @@ const SECOES = [
   'espelhos',
 ] as const;
 
-type Secao = (typeof SECOES)[number];
+export type Secao = (typeof SECOES)[number];
 
 interface Props {
   colaboradorAtual: Colaborador;
+  /**
+   * UMA SEÇÃO SÓ, sem a barra de seções. No computador o painel do RH mora
+   * no Início, e as outras seções são abas dos assuntos da barra lateral
+   * (telasPorAssunto.ts).
+   */
+  secaoFixa?: Secao;
+  /**
+   * Para onde levam os atalhos do painel ("Assinar →", "Ver quem →") quando
+   * a seção é fixa: a tela do assunto, e não uma seção daqui de dentro.
+   */
+  aoAbrirSecao?: (secao: Secao) => void;
 }
 
 /** Um número do painel, com o que ele quer dizer e para onde ele leva. */
@@ -125,15 +136,18 @@ const Indicador: React.FC<{
   </button>
 );
 
-export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
+export const PainelRH: React.FC<Props> = ({ colaboradorAtual, secaoFixa, aoAbrirSecao }) => {
   /** Volta para a seção onde a pessoa parou, e não para o painel. */
-  const [secao, setSecao] = useState<Secao>(() =>
+  const [secaoEscolhida, setSecaoEscolhida] = useState<Secao>(() =>
     ondeParei(colaboradorAtual.id, 'rh', SECOES, 'painel')
   );
+  const secao = secaoFixa ?? secaoEscolhida;
+  /** Ir a uma seção: aqui dentro, ou — com a seção fixa — pela tela de fora. */
+  const setSecao = (s: Secao) => (secaoFixa && aoAbrirSecao ? aoAbrirSecao(s) : setSecaoEscolhida(s));
 
   useEffect(() => {
-    lembrarOndeParei(colaboradorAtual.id, 'rh', secao);
-  }, [colaboradorAtual.id, secao]);
+    if (!secaoFixa) lembrarOndeParei(colaboradorAtual.id, 'rh', secaoEscolhida);
+  }, [colaboradorAtual.id, secaoEscolhida, secaoFixa]);
   const [versao, setVersao] = useState(0);
 
   useEffect(() => {
@@ -356,18 +370,20 @@ export const PainelRH: React.FC<Props> = ({ colaboradorAtual }) => {
   return (
     <div className="w-full flex flex-col">
       {/* A barra das seções: uma linha só, que desliza (AbasRolaveis) */}
-      <AbasRolaveis
-        className="pt-4 pb-1 flex-shrink-0 md:px-6"
-        ativa={secao}
-        aoEscolher={setSecao}
-        abas={abas.map((aba) => ({
-          id: aba.id,
-          rotulo: aba.rotulo,
-          icone: aba.icone,
-          contador: aba.contador,
-          domId: `aba-rh-${aba.id}`,
-        }))}
-      />
+      {!secaoFixa && (
+        <AbasRolaveis
+          className="pt-4 pb-1 flex-shrink-0 md:px-6"
+          ativa={secao}
+          aoEscolher={setSecao}
+          abas={abas.map((aba) => ({
+            id: aba.id,
+            rotulo: aba.rotulo,
+            icone: aba.icone,
+            contador: aba.contador,
+            domId: `aba-rh-${aba.id}`,
+          }))}
+        />
+      )}
 
       {secao === 'painel' && (
         <div className="p-4 sm:p-6 flex flex-col gap-6">

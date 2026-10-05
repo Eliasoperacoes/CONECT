@@ -892,19 +892,27 @@ test('o topo do sistema nao existe no celular, e no computador fica sem o sino',
     await Bun.file(new URL('../App.tsx', import.meta.url)).text()
   );
 
-  const topo = app.indexOf('<header');
-  expect(topo).toBeGreaterThan(-1);
-  const abertura = app.slice(topo, app.indexOf('>', topo));
-  expect(abertura).toContain('className="hidden md:flex');
+  /*
+    Desde a organização por assunto (05/10/2026), o topo do computador é o
+    da área principal (`TopoWeb`, em ConteudoWeb) — e a área principal só
+    aparece no computador, ou no celular com uma conversa aberta (aí é o
+    chat, e não o topo). O App não tem mais cabeçalho próprio.
+  */
+  expect(app).not.toContain('<header');
+  expect(app).toContain("conversaAtiva ? 'flex' : 'hidden md:flex'");
+  const web = await Bun.file(new URL('../componentes/ConteudoWeb.tsx', import.meta.url)).text();
+  expect(web).toContain('<TopoWeb');
   expect(app).not.toContain('SinoNotificacoes');
 
   // O que a barra tinha e o celular não pode perder: o modo local, na aba Eu
   const eu = await Bun.file(new URL('../componentes/AbaEu.tsx', import.meta.url)).text();
   expect(eu).toContain('<IndicadorNuvem />');
 
-  // O número que o sino mostrava agora está na aba Gerenciar, pela mesma conta
+  // O número que o sino mostrava agora está na aba Gerenciar (celular) e em
+  // Ponto (computador), pela mesma conta
   const gerenciar = app.slice(app.indexOf("id: 'painel'"), app.indexOf("id: 'admin'"));
   expect(gerenciar).toContain('contador: pendenciasParaMim');
+  expect(app).toContain('ponto: pendenciasParaMim,');
   expect(app).toContain('const ids = idsDasPendenciasParaMim();');
   expect(app).toContain('setPendenciasParaMim(ids.length);');
 });

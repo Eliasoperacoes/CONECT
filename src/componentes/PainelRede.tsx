@@ -54,6 +54,12 @@ interface PropsPainelRede {
    */
   secaoAlvo?: SecaoDestino | null;
   aoConsumirSecao?: () => void;
+  /**
+   * UMA SUB-ABA SÓ, sem título nem barra. No computador, "Unidades" e
+   * "Organograma" são abas de "Pessoas e lojas" (telasPorAssunto.ts), e o
+   * cabeçalho daqui seria um segundo título sobre o primeiro.
+   */
+  subAbaFixa?: 'visao_geral' | 'organograma';
 }
 
 /**
@@ -95,6 +101,7 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
   aoAlternarParaGestor,
   secaoAlvo,
   aoConsumirSecao,
+  subAbaFixa,
 }) => {
   /** Volta para a sub-aba onde a pessoa parou, e não para a visão geral. */
   const [subAbaEscolhida, setSubAbaAtiva] = useState<SubAbaPainel>(() =>
@@ -224,7 +231,8 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    * antigo, nem por permissão retirada com a tela aberta.
    */
   const subAbaAtiva: SubAbaPainel =
-    abasPermitidas.includes(subAbaEscolhida) ? subAbaEscolhida : abasPermitidas[0];
+    subAbaFixa ??
+    (abasPermitidas.includes(subAbaEscolhida) ? subAbaEscolhida : abasPermitidas[0]);
 
   /**
    * Guarda a que VALE, não a que foi escolhida.
@@ -233,8 +241,8 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
    * faria cair no desvio a cada recarga, para sempre.
    */
   useEffect(() => {
-    if (subAbaAtiva) lembrarOndeParei(colaboradorAtual.id, 'rede', subAbaAtiva);
-  }, [colaboradorAtual.id, subAbaAtiva]);
+    if (subAbaAtiva && !subAbaFixa) lembrarOndeParei(colaboradorAtual.id, 'rede', subAbaAtiva);
+  }, [colaboradorAtual.id, subAbaAtiva, subAbaFixa]);
 
   /**
    * Leva o alvo do sino até "Equipe & Ponto".
@@ -316,22 +324,26 @@ export const PainelRede: React.FC<PropsPainelRede> = ({
         eram como uma aba aparecia sem estar liberada e "caía fora" no
         clique seguinte.
       */}
-      <header className="bg-[var(--c-superficie)] flex-shrink-0">
-        <div className="px-4 pt-4 pb-1 md:px-6 md:pt-6 max-w-7xl mx-auto w-full">
-          <TituloDaPagina titulo={tituloDoPainel} subtitulo={subtituloDoPainel} />
-        </div>
-      </header>
-      <div className="sticky top-0 z-20 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] flex-shrink-0">
-        <div className="max-w-7xl mx-auto w-full">
-          <AbasRolaveis
-            className="md:px-3"
-            variante="sublinhado"
-            ativa={subAbaAtiva}
-            aoEscolher={setSubAbaAtiva}
-            abas={abasPermitidas.map((id) => ROTULO_SUBABA[id](pendenciasParaDecidir))}
-          />
-        </div>
-      </div>
+      {!subAbaFixa && (
+        <>
+          <header className="bg-[var(--c-superficie)] flex-shrink-0">
+            <div className="px-4 pt-4 pb-1 md:px-6 md:pt-6 max-w-7xl mx-auto w-full">
+              <TituloDaPagina titulo={tituloDoPainel} subtitulo={subtituloDoPainel} />
+            </div>
+          </header>
+          <div className="sticky top-0 z-20 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] flex-shrink-0">
+            <div className="max-w-7xl mx-auto w-full">
+              <AbasRolaveis
+                className="md:px-3"
+                variante="sublinhado"
+                ativa={subAbaAtiva}
+                aoEscolher={setSubAbaAtiva}
+                abas={abasPermitidas.map((id) => ROTULO_SUBABA[id](pendenciasParaDecidir))}
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Conteúdo Principal do Painel */}
       <main className="flex-1 max-w-7xl w-full mx-auto">

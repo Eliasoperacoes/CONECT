@@ -242,6 +242,8 @@ test('cada tela guarda numa chave propria', async () => {
     }
   }
 
-  expect(chaves.length).toBe(5);
-  expect(new Set(chaves).size).toBe(5);
+  // A sexta é a tela do computador ('tela-web'), separada da aba do celular
+  expect(chaves).toContain('tela-web');
+  expect(chaves.length).toBe(6);
+  expect(new Set(chaves).size).toBe(6);
 });

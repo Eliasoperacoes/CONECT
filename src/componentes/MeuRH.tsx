@@ -68,9 +68,18 @@ import { rodandoNoAplicativo } from '../servicos/aplicativo';
 
 interface Props {
   colaboradorAtual: Colaborador;
+  /**
+   * SÓ ESTES CARTÕES. No computador o Meu RH se divide pelos assuntos da
+   * barra lateral (telasPorAssunto.ts): o espelho em Ponto; folgas, férias e
+   * documentos entregues em "Folgas e férias"; holerite e advertência em
+   * "Documentos". Sem a lista, todos — como no celular.
+   */
+  cartoes?: Folha[];
+  /** Sem o título "Meu RH": a tela de fora já diz onde a pessoa está. */
+  semTitulo?: boolean;
 }
 
-type Folha = 'espelho' | 'holerites' | 'ferias' | 'folgas' | 'documentos' | 'advertencias';
+export type Folha = 'espelho' | 'holerites' | 'ferias' | 'folgas' | 'documentos' | 'advertencias';
 
 /**
  * ABRE A JANELA NO TOQUE, e só depois busca o conteúdo.
@@ -163,7 +172,9 @@ const Linha: React.FC<{
   </li>
 );
 
-export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
+export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo }) => {
+  /** Este cartão entra? Sem lista, todos. */
+  const mostra = (folha: Folha) => !cartoes || cartoes.includes(folha);
   const eu = colaboradorAtual;
   const hoje = dataDeHoje();
 
@@ -380,14 +391,14 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
 
   return (
     <section id="meu-rh" className="px-4 pt-5 pb-1 lg:px-0 lg:pt-0">
-      <div className="flex items-baseline justify-between mb-3">
+      <div className={semTitulo ? 'hidden' : 'flex items-baseline justify-between mb-3'}>
         <h2 className="text-base font-bold text-[var(--c-texto)]">Meu RH</h2>
         <span className="text-xs text-[var(--c-texto-3)]">Só você vê</span>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {/* Espelho e folga de sábado são do ponto: quem não bate não tem */}
-        {batePonto(eu) && (
+        {batePonto(eu) && mostra('espelho') && (
           <Cartao
             id="meu-rh-espelho"
             titulo="Espelho de ponto"
@@ -404,6 +415,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
             aoAbrir={() => abrirFolha('espelho')}
           />
         )}
+        {mostra('holerites') && (
         <Cartao
           id="meu-rh-holerites"
           titulo="Holerites"
@@ -419,6 +431,8 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
           cor="text-emerald-600 bg-emerald-500/10"
           aoAbrir={() => abrirFolha('holerites')}
         />
+        )}
+        {mostra('ferias') && (
         <Cartao
           id="meu-rh-ferias"
           titulo="Férias"
@@ -427,7 +441,8 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
           cor="text-teal-600 bg-teal-500/10"
           aoAbrir={() => abrirFolha('ferias')}
         />
-        {batePonto(eu) && (
+        )}
+        {batePonto(eu) && mostra('folgas') && (
           <Cartao
             id="meu-rh-folgas"
             titulo="Folgas"
@@ -445,6 +460,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
             aoAbrir={() => abrirFolha('folgas')}
           />
         )}
+        {mostra('documentos') && (
         <Cartao
           id="meu-rh-documentos"
           titulo="Documentos"
@@ -459,6 +475,8 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
           cor="text-violet-600 bg-violet-500/10"
           aoAbrir={() => abrirFolha('documentos')}
         />
+        )}
+        {mostra('advertencias') && (
         <Cartao
           id="meu-rh-advertencias"
           titulo="Advertências"
@@ -474,6 +492,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual }) => {
           alerta={semCiencia.length > 0}
           aoAbrir={() => abrirFolha('advertencias')}
         />
+        )}
       </div>
 
       {/* Com a folha aberta o aviso vai para dentro dela: atrás, ninguém o veria */}

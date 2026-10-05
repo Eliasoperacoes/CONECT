@@ -515,9 +515,12 @@ test('a Central é desenhada nas DUAS larguras', async () => {
   const app = await Bun.file('src/App.tsx').text();
 
   expect(app).toContain("{abaAtiva === 'central' && (");
-  expect(app).toContain("abaDesktop === 'central' ?");
-  /* Uma para o celular, outra para o computador */
-  expect((app.match(/<CentralAvisos/g) || []).length).toBe(2);
+  /* Uma para o celular (App), outra para o computador (ConteudoWeb, pelo assunto) */
+  const web = await Bun.file('src/componentes/ConteudoWeb.tsx').text();
+  expect(web).toContain("case 'central':");
+  expect((app.match(/<CentralAvisos/g) || []).length).toBe(1);
+  expect((web.match(/<CentralAvisos/g) || []).length).toBe(1);
+  expect(app).toContain('<ConteudoWeb');
 });
 
 test('O RECADO DO CHAT TEM BOTÃO, e ele abre A publicação', async () => {

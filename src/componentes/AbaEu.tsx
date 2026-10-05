@@ -48,6 +48,12 @@ interface PropsAbaEu {
   aoTrocarColaborador: (id: string) => void;
   aoSair?: () => void;
   aoAbrirAdmin?: () => void;
+  /**
+   * Sem o Meu RH. No computador ele se divide pelos assuntos da barra
+   * lateral (Ponto, Folgas e férias, Documentos); repeti-lo no perfil seria
+   * uma segunda porta para as mesmas folhas.
+   */
+  semMeuRH?: boolean;
 }
 
 export const AbaEu: React.FC<PropsAbaEu> = ({
@@ -55,6 +61,7 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
   aoTrocarColaborador,
   aoSair,
   aoAbrirAdmin,
+  semMeuRH,
 }) => {
   const [somAtivo, setSomAtivo] = useState(true);
   const [temaEscolhido, setTemaEscolhido] = useState<PreferenciaTema>(obterTemaSalvo);
@@ -183,9 +190,11 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
         preferências são ajuste de aparelho, que se mexe uma vez e se
         esquece — ficam embaixo.
       */}
-      <div className="lg:col-start-2 lg:row-start-1 lg:row-span-2">
-        <MeuRH colaboradorAtual={colaboradorAtual} />
-      </div>
+      {!semMeuRH && (
+        <div className="lg:col-start-2 lg:row-start-1 lg:row-span-2">
+          <MeuRH colaboradorAtual={colaboradorAtual} />
+        </div>
+      )}
 
       {/* A coluna estreita do computador: ficha, presença, preferências, sair */}
       <div className="lg:col-start-1 lg:row-start-2 lg:rounded-2xl lg:border lg:border-[var(--c-borda)] lg:overflow-hidden lg:bg-[var(--c-superficie)] lg:pb-4">

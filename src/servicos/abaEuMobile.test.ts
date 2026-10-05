@@ -169,8 +169,9 @@ test('quem não bate ponto não tem espelho nem folga de sábado no Meu RH', asy
   const tela = semComentarios(await lerDocumentos());
   const espelho = tela.indexOf('id="meu-rh-espelho"');
   const folgas = tela.indexOf('id="meu-rh-folgas"');
-  expect(tela.lastIndexOf('{batePonto(eu) && (', espelho)).toBeGreaterThan(tela.lastIndexOf('/>', espelho));
-  expect(tela.lastIndexOf('{batePonto(eu) && (', folgas)).toBeGreaterThan(tela.lastIndexOf('/>', folgas));
+  // (`mostra(...)` é a divisão por assunto do computador; a guarda continua sendo `batePonto`)
+  expect(tela.lastIndexOf("{batePonto(eu) && mostra('espelho') && (", espelho)).toBeGreaterThan(tela.lastIndexOf('/>', espelho));
+  expect(tela.lastIndexOf("{batePonto(eu) && mostra('folgas') && (", folgas)).toBeGreaterThan(tela.lastIndexOf('/>', folgas));
   // Holerite e férias continuam de todo mundo
   const holerites = tela.indexOf('id="meu-rh-holerites"');
   expect(tela.lastIndexOf('batePonto', holerites)).toBeLessThan(tela.lastIndexOf('/>', holerites));

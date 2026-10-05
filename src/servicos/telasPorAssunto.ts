@@ -125,12 +125,19 @@ export const acessoDe = (c: Colaborador, ctx: ContextoDoAcesso) => {
 /** As telas que a pessoa alcança, sem ordem. */
 export const telasQueVejo = (c: Colaborador, ctx: ContextoDoAcesso): Set<TelaId> => {
   const a = acessoDe(c, ctx);
-  const telas = new Set<TelaId>(['inicio', 'central', 'meus_documentos', 'minhas_ausencias']);
+  const telas = new Set<TelaId>(['inicio', 'central', 'meus_documentos']);
   const se = (condicao: boolean, ...ids: TelaId[]) => condicao && ids.forEach((id) => telas.add(id));
 
   se(ctx.pode('conversas'), 'conversas');
   // Bater e justificar moram na mesma tela de hoje (AbaPonto)
   se(ctx.pode('ponto'), 'meu_ponto', 'pedir_ausencia');
+  /*
+    UMA ABA PARA AS PRÓPRIAS AUSÊNCIAS. Quem pede pelo ponto acompanha os
+    pedidos na mesma tela (`AbaJustificar` lista folga, férias e atestado);
+    os cartões do Meu RH ali repetiriam a lista. Ficam para quem não pede
+    pelo ponto — o gerente, que ainda tem férias e documentos para ver.
+  */
+  se(!ctx.pode('ponto'), 'minhas_ausencias');
   // O próprio espelho: só de quem bate ponto (MeuRH)
   se(ctx.batePonto, 'meu_espelho');
   se(a.equipe, 'equipe_banco', 'equipe_pendencias');
@@ -190,8 +197,8 @@ export const ASSUNTOS: Assunto[] = [
     rotulo: 'Folgas e férias',
     grupo: 'gestao',
     telas: [
-      { id: 'pedir_ausencia', rotulo: 'Pedir' },
-      { id: 'minhas_ausencias', rotulo: 'Minhas folgas e férias' },
+      { id: 'pedir_ausencia', rotulo: 'Minhas solicitações' },
+      { id: 'minhas_ausencias', rotulo: 'Minhas férias e documentos' },
       { id: 'escala_folgas', rotulo: 'Escala de folgas' },
       { id: 'ferias_planejamento', rotulo: 'Férias da equipe' },
       { id: 'atestados', rotulo: 'Atestados' },
@@ -234,4 +241,51 @@ export const assuntosDe = (c: Colaborador, ctx: ContextoDoAcesso): Assunto[] => 
   return ASSUNTOS.map((a) => ({ ...a, telas: a.telas.filter((t) => telas.has(t.id)) })).filter(
     (a) => a.telas.length > 0
   );
+};
+
+// ============================================================
+// PARA ONDE CADA CAMINHO LEVA, no computador
+// ============================================================
+
+/** As telas do computador: as da barra, mais o perfil (pelo menu da foto). */
+export type TelaWeb = TelaId | 'perfil';
+
+/** Em que assunto a tela mora — para a barra marcar o item certo. */
+export const assuntoDaTela = (tela: TelaWeb): AssuntoId | null =>
+  ASSUNTOS.find((a) => a.telas.some((t) => t.id === tela))?.id ?? null;
+
+/**
+ * O AVISO, O SINO E O LEMBRETE abrem a tela do assunto. É a tradução das
+ * seções que já existem (`SECOES_DESTINO`, destinoDoAviso.ts) — nenhum
+ * aviso novo, nenhum caminho novo.
+ */
+export const TELA_DO_DESTINO: Record<string, TelaId> = {
+  aprovar_jornadas: 'equipe_pendencias',
+  escala_folgas: 'escala_folgas',
+  meu_ponto: 'meu_ponto',
+  meus_holerites: 'meus_documentos',
+  minhas_advertencias: 'meus_documentos',
+};
+
+/** Os atalhos do painel do RH ("Assinar →", "Ver quem →"), pela seção de lá. */
+export const TELA_DA_SECAO_DO_RH: Record<string, TelaId> = {
+  painel: 'inicio',
+  assinaturas: 'assinaturas',
+  holerites: 'holerites',
+  atestados: 'atestados',
+  advertencias: 'advertencias',
+  escala: 'escala_folgas',
+  ferias: 'ferias_planejamento',
+  espelhos: 'ponto_rede',
+};
+
+/**
+ * A TELA QUE ABRE DE FATO: a pedida, se a pessoa a alcança; senão o Início.
+ * Um aviso antigo, ou uma permissão retirada com o aviso já no aparelho, não
+ * pode abrir uma tela que a pessoa não tem — nem uma tela em branco.
+ */
+export const telaQueAbre = (pedida: TelaWeb | null | undefined, visiveis: Set<TelaId>): TelaWeb => {
+  if (pedida === 'perfil') return 'perfil';
+  if (pedida && visiveis.has(pedida)) return pedida;
+  return 'inicio';
 };

@@ -81,6 +81,12 @@ interface Props {
   secaoAlvo?: SecaoDestino | null;
   /** Avisa quem mandou que o destino já foi alcançado. */
   aoConsumirSecao?: () => void;
+  /**
+   * UMA VISTA SÓ, sem a barra de vistas. No computador cada vista é uma aba
+   * do assunto "Ponto" (telasPorAssunto.ts), e a barra daqui seria uma
+   * segunda barra empilhada sobre a primeira.
+   */
+  abaFixa?: 'equipe' | 'pendencias';
 }
 
 /**
@@ -128,6 +134,7 @@ export const PainelGestao: React.FC<Props> = ({
   temEquipe,
   secaoAlvo,
   aoConsumirSecao,
+  abaFixa,
 }) => {
   /**
    * ESCALA E REDE MUDARAM DE LUGAR PARA QUEM CUIDA DE PESSOAS.
@@ -209,6 +216,7 @@ export const PainelGestao: React.FC<Props> = ({
    * a permissão depois de ter estado lá — ou editar o `localStorage`.
    */
   const aba: Aba = (() => {
+    if (abaFixa) return abaFixa;
     if ((abaEscolhida === 'folgas' || abaEscolhida === 'ferias') && !veEscala) return abaInicial;
     if (abaEscolhida === 'rede' && !veRede) return abaInicial;
     if (abaEscolhida === 'qr' && !veQr) return abaInicial;
@@ -426,7 +434,7 @@ export const PainelGestao: React.FC<Props> = ({
             de sábado é quem responde pela loja. "Rede" é a tela do RH —
             todas as lojas, correção e exportação —; o nome diz o alcance.
           */}
-          <AbasRolaveis
+          {!abaFixa && <AbasRolaveis
             className="-mx-4 sm:mx-0 sm:px-0"
             ativa={aba}
             aoEscolher={setAba}
@@ -461,7 +469,7 @@ export const PainelGestao: React.FC<Props> = ({
               ...(veRede ? [{ id: 'rede' as Aba, rotulo: veEspelhoDaRede ? 'Rede' : 'Espelho de ponto' }] : []),
               ...(veQr ? [{ id: 'qr' as Aba, rotulo: 'QR do ponto' }] : []),
             ]}
-          />
+          />}
 
           {/* O resumo da equipe: só na vista da equipe, abaixo das abas */}
           {aba === 'equipe' && (

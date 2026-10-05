@@ -30,6 +30,12 @@ import { ABAS_PRINCIPAIS, AbaPrincipal, Colaborador, Conversa, Mensagem } from '
  */
 /** Onde a primeira janela começa: depois do painel de contatos. */
 const INICIO_DAS_JANELAS = 372;
+
+/** As telas que a barra do computador conhece, para `ondeParei` conferir a lembrada. */
+const TELAS_WEB: TelaWeb[] = [...ASSUNTOS.flatMap((a) => a.telas.map((t) => t.id)), 'perfil'];
+
+/** O atalho do ícone (`?atalho=`) também abre a tela certa no computador. */
+const TELA_DO_ATALHO: Record<string, TelaWeb> = { ponto: 'meu_ponto', central: 'central', eu: 'perfil' };
 const LARGURA_JANELA_ABERTA = 420;
 const ESPACO_ENTRE_JANELAS = 12;
 
@@ -53,7 +59,6 @@ import { FaixaAvisoDirecao } from './componentes/FaixaAvisoDirecao';
 import { TelaConversa } from './componentes/TelaConversa';
 import { ConviteAvisos } from './componentes/ConviteAvisos';
 import { VisorDeDocumento } from './componentes/VisorDeDocumento';
-import { TituloDaPagina } from './componentes/TituloDaPagina';
 import { AbaEu } from './componentes/AbaEu';
 import { PainelRede } from './componentes/PainelRede';
 import { CentralAvisos } from './componentes/CentralAvisos';
@@ -87,6 +92,18 @@ import {
 } from './servicos/preferenciasConversa';
 import { assinarJustificativas } from './servicos/justificativas';
 import { servicoPonto, batePonto, dataDeHoje } from './servicos/ponto';
+import {
+  ASSUNTOS,
+  assuntosDe,
+  assuntoDaTela,
+  telasQueVejo,
+  telaQueAbre,
+  TELA_DO_DESTINO,
+  type AssuntoId,
+  type TelaWeb,
+} from './servicos/telasPorAssunto';
+import { BarraLateralWeb } from './componentes/BarraLateralWeb';
+import { ConteudoWeb } from './componentes/ConteudoWeb';
 import { vigiarRelogio } from './servicos/relogio';
 import { usandoNuvem } from './servicos/supabase';
 import { nuvem } from './servicos/nuvem';
@@ -201,10 +218,20 @@ export default function App() {
    */
   const [publicacaoAAbrir, setPublicacaoAAbrir] = useState<string | null>(null);
 
+  /**
+   * A TELA DO COMPUTADOR, pela barra lateral por assunto (telasPorAssunto.ts).
+   * Independe da aba do celular: lá a navegação é a barra de baixo, e cada
+   * caminho que muda uma (aviso, publicação, QR) diz também a outra.
+   */
+  const [telaWeb, setTelaWeb] = useState<TelaWeb>(() =>
+    ondeParei(bancoDados.obterColaboradorAtual().id, 'tela-web', TELAS_WEB, 'inicio')
+  );
+
   /** Troca para a Central e manda abrir a publicação. */
   const abrirPublicacao = useCallback((publicacaoId: string) => {
     setPublicacaoAAbrir(publicacaoId);
     setAbaAtiva('central');
+    setTelaWeb('central');
     setConversaAtivaId(null);
   }, []);
   const [colaboradorAtual, setColaboradorAtual] = useState<Colaborador>(
@@ -442,6 +469,7 @@ export default function App() {
         tirar('ponto');
         setCodigoDoCartaz(doCartaz);
         setAbaAtiva('ponto');
+        setTelaWeb('meu_ponto');
         abaPedidaNaEntrada.current = 'ponto';
       }
 
@@ -460,6 +488,8 @@ export default function App() {
       if (atalho && (ABAS_PRINCIPAIS as readonly string[]).includes(atalho)) {
         tirar('atalho');
         setAbaAtiva(atalho as AbaPrincipal);
+        const telaDoAtalho = TELA_DO_ATALHO[atalho];
+        if (telaDoAtalho) setTelaWeb(telaDoAtalho);
         abaPedidaNaEntrada.current = atalho as AbaPrincipal;
         /* "Bater ponto" abre a batida com a câmera pronta, e não só a
            aba: quem segura o ícone e escolhe o atalho quer bater */
@@ -1110,10 +1140,33 @@ export default function App() {
     lembrarOndeParei(colaboradorAtual.id, 'aba-principal', abaAtiva);
   }, [autenticado, colaboradorAtual.id, abaAtiva]);
 
+  useEffect(() => {
+    if (!autenticado || !colaboradorAtual.id) return;
+    lembrarOndeParei(colaboradorAtual.id, 'tela-web', telaWeb);
+  }, [autenticado, colaboradorAtual.id, telaWeb]);
+
   /* Sessão conferida: a tela de espera do index.html sai de cima */
   useEffect(() => {
     if (!verificandoSessao) encerrarEspera();
   }, [verificandoSessao]);
+
+  /**
+   * O QUE A BARRA DO COMPUTADOR MOSTRA A ESTA PESSOA — a mesma resposta de
+   * quem vê o quê no celular (`telasQueVejo`). Antes dos `return` de baixo:
+   * hook depois de `return` condicional derruba a aplicação.
+   */
+  const acessoWeb = useMemo(() => {
+    const contexto = {
+      pode: (chave: string) => podeUsar(chave, colaboradorAtual),
+      temEquipe: autenticado && servicoPonto.obterColaboradoresVisiveis().length > 1,
+      batePonto: batePonto(colaboradorAtual),
+    };
+    return {
+      temEquipe: contexto.temEquipe,
+      visiveis: telasQueVejo(colaboradorAtual, contexto),
+      assuntos: assuntosDe(colaboradorAtual, contexto),
+    };
+  }, [colaboradorAtual, autenticado]);
 
   // Enquanto a sessão do banco não é conferida, não dá para saber se mostra
   // o login ou o sistema. Piscar uma tela e trocar pela outra é pior. Quem
@@ -1258,6 +1311,10 @@ export default function App() {
       return;
     }
 
+    // No computador, a tela do assunto (a tradução mora em telasPorAssunto.ts)
+    setTelaWeb(TELA_DO_DESTINO[destino.secao] ?? 'inicio');
+    setChatExpandido(false);
+
     // O aviso da decisão leva ao ponto de quem pediu, onde ela aparece
     if (destino.secao === 'meu_ponto') {
       setConversaAtivaId(null);
@@ -1356,18 +1413,42 @@ export default function App() {
 
 
   /**
-   * Aba mostrada na área principal do computador.
-   *
-   * Lá, Conversas e Grupos não são tela — são lista que abre por cima. Então
-   * quando a escolha é uma delas, a área principal mostra o painel da rede,
-   * que é informação útil, em vez do aviso vazio de "escolha uma conversa".
+   * A TELA DO COMPUTADOR que abre de fato: a escolhida, se a pessoa a
+   * alcança; senão o Início (`telaQueAbre`). E o assunto dela, para a barra
+   * marcar — Conversas quando o chat está em tela cheia.
    */
-  const abaDesktop: AbaPrincipal =
-    abaAtiva === 'conversas'
-      ? podeVerRede
-        ? 'painel'
-        : 'ponto'
-      : abaAtiva;
+  const telaMostrada = telaQueAbre(telaWeb, acessoWeb.visiveis);
+  const assuntoMostrado = chatExpandido ? 'conversas' : assuntoDaTela(telaMostrada);
+  const contadoresWeb: Partial<Record<AssuntoId, number>> = {
+    conversas: totalNaoLidas,
+    central: publicacoesNaoLidas,
+    ponto: pendenciasParaMim,
+    documentos: pendenciasDoMeuRHAgora,
+  };
+
+  /** Escolher um item da barra: Conversas e Administração abrem por cima; o resto troca a tela. */
+  const escolherAssunto = (assuntoId: AssuntoId, primeiraTela: TelaWeb) => {
+    // O mesmo item abre e fecha o chat em tela cheia, como o botão do topo fazia
+    if (assuntoId === 'conversas') {
+      if (chatExpandido) minimizarChat();
+      else expandirChat();
+      return;
+    }
+    if (assuntoId === 'administracao') {
+      setPainelAdminAberto(true);
+      return;
+    }
+    setChatExpandido(false);
+    setConversaAtivaId(null);
+    setTelaWeb(primeiraTela);
+  };
+
+  /** Ir a uma tela (aba do assunto, atalho do Início, menu do perfil). */
+  const irParaTelaWeb = (tela: TelaWeb) => {
+    setChatExpandido(false);
+    setConversaAtivaId(null);
+    setTelaWeb(tela);
+  };
 
   // Determina visibilidade do botão flutuante '+'
   // Conversas: liberado para todos iniciarem bate-papo privado com colega
@@ -1414,202 +1495,7 @@ export default function App() {
         />
       )}
 
-      {/*
-        Topo Geral da Aplicação — SÓ NO COMPUTADOR.
-
-        No celular ele saiu de vez, pedido do Elias: tudo o que tinha já
-        mora na aba Eu (perfil, Painel ADM, sair, o modo local) e na barra
-        de baixo (a navegação). Sobrava uma faixa de 60px repetindo o nome
-        do sistema em cima de cada tela.
-
-        No computador ele É a navegação — lá não há barra de baixo nem aba
-        Eu na lateral —, então fica.
-
-        O SINO SAIU DOS DOIS. Os avisos são os do sistema (Android e
-        navegador), e cada pendência já tem o número na própria aba.
-      */}
-      <header className="hidden md:flex px-4 py-2.5 bg-[var(--c-superficie)] border-b border-[var(--c-borda)] items-center justify-between flex-shrink-0 z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 flex items-center justify-center text-white shadow-xs">
-            <MessageSquare className="w-4 h-4" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-black text-sm tracking-tight text-[var(--c-texto)]">
-                CONECTA
-              </span>
-              <span className="text-[10px] text-[var(--c-texto-3)] font-semibold hidden sm:inline">
-                · Malachias Autopeças
-              </span>
-              <IndicadorNuvem />
-            </div>
-            <span className="text-[11px] text-[var(--c-texto-3)] font-medium block -mt-0.5">
-              {colaboradorAtual.loja} · {colaboradorAtual.cargo}
-            </span>
-          </div>
-        </div>
-
-        {/* Navegação do computador. No celular ela continua na barra de baixo,
-            que é onde o polegar alcança. */}
-        <nav className="hidden md:flex items-center gap-1 ml-4">
-          {abasNavegacao
-            /**
-             * No computador, Conversas e Grupos não são tela nem item de
-             * menu: vivem no botão do canto inferior direito, junto do chat,
-             * que é de onde eles já abriam por cima. Ter os dois no topo era
-             * um caminho a mais para a mesma janela.
-             *
-             * No celular nada muda — lá eles continuam na barra de baixo,
-             * que é onde o polegar alcança.
-             */
-            .filter((aba) => aba.id !== 'admin')
-            .filter((aba) => aba.id !== 'conversas' && aba.id !== 'grupos')
-            .map((aba) => {
-              const ehLista = aba.id === 'conversas' || aba.id === 'grupos';
-              /*
-                Compara com a tela MOSTRADA (`abaDesktop`), e não com a
-                escolhida: a sessão nasce em "conversas", que no computador
-                não é tela e vira o painel — e o menu não marcava nada.
-              */
-              const ativa = ehLista
-                ? secaoListaAberta === (aba.id === 'grupos' ? 'grupos' : 'individuais')
-                : !chatExpandido && abaDesktop === aba.alvo;
-
-              return (
-                <button
-                  key={aba.id}
-                  type="button"
-                  id={`aba-topo-${aba.id}`}
-                  onClick={() => {
-                    if (ehLista) {
-                      const alvo = aba.id === 'grupos' ? 'grupos' : 'individuais';
-                      setSecaoListaAberta(secaoListaAberta === alvo ? null : alvo);
-                      return;
-                    }
-                    setSecaoListaAberta(null);
-                    // Outra tela do topo sai do chat em tela cheia
-                    setChatExpandido(false);
-                    setConversaAtivaId(null);
-                    if (aba.alvo) setAbaAtiva(aba.alvo);
-                  }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    ativa
-                      ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
-                      : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)]'
-                  }`}
-                >
-                  <aba.icone className="w-3.5 h-3.5" />
-                  {/* Entre 768 e 1024px o topo fica apertado com logo, abas e
-                      perfil: ali ficam só os ícones. */}
-                  <span className="hidden lg:inline">{aba.rotulo}</span>
-                  {aba.id === 'conversas' && totalNaoLidas > 0 && (
-                    <span className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                      {totalNaoLidas}
-                    </span>
-                  )}
-
-                  {/* O mesmo número da barra do celular. Sem ele, no
-                      computador a publicação chega e nada avisa. */}
-                  {!!aba.contador && aba.contador > 0 && (
-                    <span className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                      {aba.contador > 9 ? '9+' : aba.contador}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-        </nav>
-
-        <div className="flex-1" />
-
-        {/* Ações Rápidas do Topo: Conversas, Painel ADM e Perfil */}
-        <div className="flex items-center gap-2">
-          {/*
-            CONVERSAS NO CABEÇALHO, e não num botão flutuando por cima da
-            tela. O flutuante cobria o fim de toda lista — na Equipe e
-            ponto, o saldo das últimas pessoas ficava embaixo dele. Aqui ele
-            está sempre à vista, com as não lidas, e não esconde nada.
-          */}
-          <button
-            type="button"
-            id="botao-abrir-conversas"
-            onClick={() => (chatExpandido ? minimizarChat() : expandirChat())}
-            aria-pressed={chatExpandido}
-            title={chatExpandido ? 'Minimizar as conversas' : 'Conversas e grupos em tela cheia'}
-            className={`relative px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-              chatExpandido
-                ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
-                : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)] hover:bg-[var(--c-superficie-2)]'
-            }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" />
-            <span className="hidden lg:inline">Conversas</span>
-            {totalNaoLidas > 0 && (
-              <span className="min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-                {totalNaoLidas > 99 ? '99+' : totalNaoLidas}
-              </span>
-            )}
-          </button>
-
-          {ehAdmin && (
-            <button
-              type="button"
-              id="botao-topo-painel-adm"
-              onClick={() => setPainelAdminAberto(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
-              title="Abrir Painel Administrativo de TI"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Painel ADM</span>
-            </button>
-          )}
-
-          <div className="flex items-center gap-2 pl-2 border-l border-[var(--c-borda)]">
-            <button
-              type="button"
-              id="botao-topo-perfil-eu"
-              onClick={() => {
-                setAbaAtiva('eu');
-                setChatExpandido(false);
-                setConversaAtivaId(null);
-              }}
-              className="flex items-center gap-1.5 py-1 px-2 rounded-lg hover:bg-[var(--c-superficie-2)] transition-colors text-xs"
-              title="Meu Perfil"
-            >
-              <div className="w-6 h-6 rounded-full overflow-hidden bg-[var(--c-canvas)] border border-[var(--c-borda)] flex items-center justify-center font-bold text-[10px]">
-                {colaboradorAtual.foto ? (
-                  <img
-                    src={colaboradorAtual.foto}
-                    alt={colaboradorAtual.nome}
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  colaboradorAtual.nome.charAt(0)
-                )}
-              </div>
-              <span className="font-semibold text-[var(--c-texto)] hidden sm:inline max-w-[120px] truncate">
-                {colaboradorAtual.nome}
-              </span>
-              {ehAdmin && (
-                <span className="text-[9px] font-black uppercase bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-500/30">
-                  ADM
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              id="botao-topo-sair"
-              onClick={lidarDeslogar}
-              className="p-1.5 rounded-lg text-[var(--c-texto-3)] hover:text-red-600 hover:bg-red-500/10 transition-colors"
-              title="Sair do Sistema"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* O topo do computador mora em ConteudoWeb, e a navegação na BarraLateralWeb (por assunto) */}
 
       {/* Só no computador, só enquanto dá para pedir: ver `deveConvidarParaAvisos` */}
       <ConviteAvisos />
@@ -1623,6 +1509,14 @@ export default function App() {
           - No PC (>= 768px): DUAS colunas (lista de 340px à esquerda + conversa à direita)
       */}
       <div className="flex-1 flex w-full h-full overflow-hidden">
+        {/* A NAVEGAÇÃO DO COMPUTADOR, por assunto (só md+; o celular tem a barra de baixo) */}
+        <BarraLateralWeb
+          assuntos={acessoWeb.assuntos}
+          ativo={assuntoMostrado}
+          contadores={contadoresWeb}
+          aoEscolher={(assunto) => escolherAssunto(assunto.id, assunto.telas[0].id)}
+        />
+
         {/* COLUNA ÚNICA DO CELULAR: navegação e listas.
             No computador ela não existe mais. Com a conversa abrindo por cima,
             ela virava um terço da tela ocupado por uma lista consultada só na
@@ -1937,87 +1831,34 @@ export default function App() {
                 )}
               </div>
             </div>
-          ) : abaDesktop === 'painel' ? (
-            <div className="w-full h-full flex flex-col bg-[var(--c-canvas)] overflow-hidden">
-              <PainelRede
-                colaboradorAtual={colaboradorAtual}
-                aoAbrirConversa={(id) => abrirJanela(id)}
-                aoAlternarParaGestor={() => setPainelAdminAberto(true)}
-                secaoAlvo={secaoAlvo}
-                aoConsumirSecao={consumirSecaoAlvo}
-              />
-            </div>
-          ) : abaDesktop === 'central' ? (
-            <div className="w-full h-full flex flex-col bg-[var(--c-canvas)] overflow-y-auto">
-              <CentralAvisos
-                  colaboradorAtual={colaboradorAtual}
-                  publicacaoAAbrir={publicacaoAAbrir}
-                  aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}
-                />
-            </div>
-          ) : abaDesktop === 'ponto' ? (
-            /*
-              A MESMA LARGURA DAS OUTRAS TELAS, e o mesmo título.
-              Eram 900px no meio da tela, sem título: trocar de Gerenciar
-              para Ponto parecia trocar de sistema.
-            */
-            <div className="w-full h-full bg-[var(--c-canvas)] overflow-y-auto">
-              <div className="w-full max-w-7xl mx-auto">
-              <TituloDaPagina
-                className="px-6 pt-6"
-                titulo="Meu ponto"
-                subtitulo="Suas batidas de hoje, o seu banco de horas e as suas justificativas"
-              />
-              <div className="px-2">
-              <AbaPonto
-                  colaboradorAtual={colaboradorAtual}
-                  codigoDoEndereco={codigoDoCartaz}
-                  aoConsumirCodigo={() => setCodigoDoCartaz(null)}
-                  pedidoDeBater={pedidoDeBater}
-                  aoAtenderPedido={() => setPedidoDeBater(false)}
-                />
-              </div>
-              </div>
-            </div>
-          ) : abaDesktop === 'eu' ? (
-            <div className="w-full h-full bg-[var(--c-canvas)] overflow-y-auto">
-              <div className="w-full max-w-7xl mx-auto">
-              <TituloDaPagina
-                className="px-6 pt-6"
-                titulo="Meu perfil"
-                subtitulo="Seus documentos da empresa, seus dados e as preferências deste aparelho"
-              />
-              <AbaEu
-                colaboradorAtual={colaboradorAtual}
-                aoTrocarColaborador={lidarTrocarColaborador}
-                aoSair={lidarDeslogar}
-                aoAbrirAdmin={() => setPainelAdminAberto(true)}
-              />
-              </div>
-            </div>
           ) : (
-            <div className="w-full max-w-[760px] h-full flex flex-col items-center justify-center text-center p-8 text-[var(--c-texto-3)]">
-              <div className="w-20 h-20 rounded-full bg-[var(--c-superficie-2)] border border-[var(--c-borda)] flex items-center justify-center mb-4 text-[var(--c-acento)]">
-                <MessageSquare className="w-10 h-10" />
-              </div>
-              <h2 className="text-lg font-bold text-[var(--c-texto)] mb-1">
-                CONECTA Malachias
-              </h2>
-              <p className="text-sm max-w-sm mb-4">
-                Comunicação em tempo real e gestão integrada das 5 filiais da rede.
-              </p>
-              {ehAdmin && (
-                <button
-                  type="button"
-                  id="botao-abrir-adm-banner"
-                  onClick={() => setPainelAdminAberto(true)}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs flex items-center gap-2 hover:bg-indigo-700 transition-all shadow-sm"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Acessar Painel Administrativo</span>
-                </button>
-              )}
-            </div>
+            /*
+              O COMPUTADOR, POR ASSUNTO (Elias, 05/10/2026): o topo, as abas do
+              assunto e a tela — a mesma de antes, pela porta nova. Quem vê o
+              quê é `telasQueVejo`, a mesma resposta do celular.
+            */
+            <ConteudoWeb
+              tela={telaMostrada}
+              assunto={acessoWeb.assuntos.find((a) => a.id === assuntoDaTela(telaMostrada)) ?? null}
+              aoIrPara={irParaTelaWeb}
+              colaboradorAtual={colaboradorAtual}
+              ehAdmin={ehAdmin}
+              temEquipe={acessoWeb.temEquipe}
+              visiveis={acessoWeb.visiveis}
+              pendenciasDoMeuRH={pendenciasDoMeuRHAgora}
+              aoAbrirConversa={(id) => abrirJanela(id)}
+              aoAbrirAdmin={() => setPainelAdminAberto(true)}
+              aoTrocarColaborador={lidarTrocarColaborador}
+              aoSair={lidarDeslogar}
+              codigoDoCartaz={codigoDoCartaz}
+              aoConsumirCodigo={() => setCodigoDoCartaz(null)}
+              pedidoDeBater={pedidoDeBater}
+              aoAtenderPedido={() => setPedidoDeBater(false)}
+              publicacaoAAbrir={publicacaoAAbrir}
+              aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}
+              secaoAlvo={secaoAlvo}
+              aoConsumirSecao={consumirSecaoAlvo}
+            />
           )}
         </main>
       </div>

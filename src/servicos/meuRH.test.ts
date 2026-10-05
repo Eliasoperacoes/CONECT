@@ -205,3 +205,21 @@ test('ESPELHO PARA ASSINAR: mês fechado desde setembro/2026, não assinado, de 
   expect(r.total).toBe(2);
   expect(r.espelhosParaAssinar).toEqual(['2026-11', '2026-10']);
 });
+
+test('A PRÓXIMA AUSÊNCIA: folga ou férias, a mais próxima de hoje em diante, sem as recusadas', async () => {
+  const { proximaAusenciaDe } = await import('./meuRH');
+  const j = (id: string, tipo: string, inicio: string, fim: string, estado = 'aprovada', colaboradorId = 'ana') =>
+    ({ id, tipo, dataInicio: inicio, dataFim: fim, estado, colaboradorId }) as any;
+  const lista = [
+    j('passada', 'folga_sabado', '2026-09-26', '2026-09-26'),
+    j('recusada', 'folga_sabado', '2026-10-10', '2026-10-10', 'recusada'),
+    j('ferias', 'ferias', '2026-12-01', '2026-12-20'),
+    j('folga', 'folga_sabado', '2026-10-31', '2026-10-31', 'pendente'),
+    j('atestado', 'atestado', '2026-10-07', '2026-10-07'),
+    j('de-outra', 'folga_sabado', '2026-10-10', '2026-10-10', 'aprovada', 'bia'),
+  ];
+  expect(proximaAusenciaDe(lista, 'ana', '2026-10-05')?.id).toBe('folga');
+  // Férias em curso contam: a pessoa está nelas
+  expect(proximaAusenciaDe(lista, 'ana', '2026-12-10')?.id).toBe('ferias');
+  expect(proximaAusenciaDe(lista, 'ana', '2027-01-01')).toBeNull();
+});

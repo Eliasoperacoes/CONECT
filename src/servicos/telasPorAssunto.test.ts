@@ -17,7 +17,7 @@ const ver = (nivel: number, setor: string, temEquipe: boolean, batePonto: boolea
   return [...telasQueVejo(c, { pode: (k) => podeUsarComMapa(k, c, mapa), temEquipe, batePonto })].sort();
 };
 
-const DE_TODOS: TelaId[] = ['central', 'conversas', 'inicio', 'meus_documentos', 'minhas_ausencias'];
+const DE_TODOS: TelaId[] = ['central', 'conversas', 'inicio', 'meus_documentos'];
 const QUEM_BATE: TelaId[] = ['meu_espelho', 'meu_ponto', 'pedir_ausencia'];
 const ordenar = (lista: TelaId[]) => [...lista].sort();
 
@@ -68,6 +68,15 @@ test('RH: o trabalho do RH, sem a tela de equipe nem as lojas', () => {
   );
 });
 
+test('AS PRÓPRIAS AUSÊNCIAS NUMA ABA SÓ: quem pede pelo ponto acompanha ali; o gerente vê os cartões', () => {
+  const colaborador = ver(1, 'Balcão', false, true);
+  expect(colaborador).toContain('pedir_ausencia');
+  expect(colaborador).not.toContain('minhas_ausencias');
+  const gerente = ver(3, 'Gerência', true, false);
+  expect(gerente).not.toContain('pedir_ausencia');
+  expect(gerente).toContain('minhas_ausencias');
+});
+
 test('ADMINISTRAÇÃO só para o TI', () => {
   expect(ver(5, 'TI', true, false)).toContain('administracao');
   expect(ver(4, 'Diretoria', true, false)).not.toContain('administracao');
@@ -87,4 +96,24 @@ test('assunto sem tela não aparece: o colaborador não vê "Pessoas e lojas" va
   expect(assuntos.map((a) => a.id)).toEqual(['inicio', 'conversas', 'central', 'ponto', 'ausencias', 'documentos']);
   // E dentro de Ponto, só o dele
   expect(assuntos.find((a) => a.id === 'ponto')!.telas.map((t) => t.id)).toEqual(['meu_ponto', 'meu_espelho']);
+});
+
+test('CADA CAMINHO DE HOJE LEVA A UMA TELA DA BARRA, e a tela que a pessoa não tem não abre', async () => {
+  const { TELA_DO_DESTINO, TELA_DA_SECAO_DO_RH, telaQueAbre, assuntoDaTela } = await import('./telasPorAssunto');
+  const { SECOES_DESTINO } = await import('./destinoDoAviso');
+
+  // Todo destino de aviso que existe tem tela — aviso novo sem tela quebra aqui
+  for (const secao of SECOES_DESTINO) expect(TELA_DO_DESTINO[secao]).toBeDefined();
+  // E toda tela de destino mora num assunto (ou é o Início)
+  for (const tela of [...Object.values(TELA_DO_DESTINO), ...Object.values(TELA_DA_SECAO_DO_RH)]) {
+    expect(assuntoDaTela(tela)).not.toBeNull();
+  }
+
+  // O colaborador recebe um aviso de aprovação (antigo, de quando liderava): cai no Início
+  const c = { id: 'x', nome: 'Teste', nivel: 1, setor: 'Balcão' } as any;
+  const visiveis = telasQueVejo(c, { pode: (k) => podeUsarComMapa(k, c, mapa), temEquipe: false, batePonto: true });
+  expect(telaQueAbre('equipe_pendencias', visiveis)).toBe('inicio');
+  expect(telaQueAbre('meu_ponto', visiveis)).toBe('meu_ponto');
+  expect(telaQueAbre('perfil', visiveis)).toBe('perfil');
+  expect(telaQueAbre(null, visiveis)).toBe('inicio');
 });
