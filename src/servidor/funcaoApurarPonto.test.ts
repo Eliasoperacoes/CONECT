@@ -27,6 +27,7 @@ test('o segredo e o endereço do projeto não entram no repositório', () => {
   expect(preparar).toContain("'COLE_O_SEGREDO'");
   expect(preparar).toContain("'URL_DO_PROJETO/functions/v1/apurar-ponto?simular=1'");
   expect(readFileSync('supabase/apuracao-3-agendar.sql', 'utf8')).toContain("'URL_DO_PROJETO/functions/v1/apurar-ponto'");
+  expect(readFileSync('supabase/apuracao-rodar-agora.sql', 'utf8')).toContain("'URL_DO_PROJETO/functions/v1/apurar-ponto'");
   expect(preparar + readFileSync('supabase/apuracao-3-agendar.sql', 'utf8')).not.toMatch(/supabase\.co/);
 });
 
