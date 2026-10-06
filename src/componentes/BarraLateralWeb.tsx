@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import type { Assunto, AssuntoId } from '../servicos/telasPorAssunto';
 import { IndicadorNuvem } from './IndicadorNuvem';
+import { MarcaConecta } from './MarcaConecta';
 
 export const ICONE_DO_ASSUNTO: Record<AssuntoId, LucideIcon> = {
   inicio: Home,
@@ -43,24 +44,6 @@ const TITULO_DO_GRUPO: Record<Assunto['grupo'], string | null> = {
   gestao: 'Trabalho',
   rodape: null,
 };
-
-/**
- * A MARCA do CONECTA no computador, a do desenho: o quadrado azul com as
- * três faixas. O verde com o balão de chat dizia "app de mensagem" — e o
- * sistema é de gestão de pessoas.
- */
-const MarcaConecta: React.FC = () => (
-  <span
-    aria-hidden
-    className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-[var(--c-acento)] shadow-lg shadow-[var(--c-acento)]/20 mx-auto lg:mx-0"
-  >
-    <span className="relative block h-6 w-6 -rotate-45">
-      <span className="absolute left-0 top-0 h-1.5 w-6 rounded-full bg-white" />
-      <span className="absolute left-0 top-2.5 h-1.5 w-6 rounded-full bg-[#3b393a]" />
-      <span className="absolute bottom-0 left-0 h-1.5 w-4 rounded-full bg-white" />
-    </span>
-  </span>
-);
 
 const Contador: React.FC<{ valor: number; recolhido?: boolean }> = ({ valor, recolhido }) => (
   <span
@@ -88,7 +71,7 @@ export const BarraLateralWeb: React.FC<{
     >
       {/* A marca: o que é o sistema e se ele está ligado à rede */}
       <div className="h-20 flex items-center gap-3 px-3 lg:px-5 border-b border-[var(--c-borda)] flex-shrink-0">
-        <MarcaConecta />
+        <MarcaConecta className="mx-auto lg:mx-0" />
         <div className="hidden lg:block min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="font-extrabold text-base tracking-tight text-[var(--c-texto)]">CONECTA</span>
