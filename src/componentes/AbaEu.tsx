@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useVoltar } from '../servicos/voltar';
 import { IndicadorNuvem } from './IndicadorNuvem';
 import { NIVEL_TI } from '../tipos';
@@ -17,7 +17,9 @@ import {
   Building2,
   Phone,
   Camera,
+  Fingerprint,
 } from 'lucide-react';
+import { biometriaDisponivel, confirmarIdentidade, gravarPreferencia, lerPreferencia } from '../servicos/desbloqueio';
 import { Colaborador, EstadoPresenca, ROTULO_PRESENCA } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA } from '../servicos/bancoDados';
 import {
@@ -67,6 +69,16 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
   const [temaEscolhido, setTemaEscolhido] = useState<PreferenciaTema>(obterTemaSalvo);
   const [permissao, setPermissao] = useState<PermissaoAviso>(permissaoDeAviso);
   const [comSom, setComSom] = useState<boolean>(somLigado);
+  // A digital: a linha só aparece onde funciona
+  const [temBiometria, setTemBiometria] = useState(false);
+  const [biometriaLigada, setBiometriaLigada] = useState(() => lerPreferencia() === 'ligada');
+  useEffect(() => {
+    let vivo = true;
+    biometriaDisponivel().then((tem) => vivo && setTemBiometria(tem));
+    return () => {
+      vivo = false;
+    };
+  }, []);
   const [resultadoTeste, setResultadoTeste] = useState<string | null>(null);
   const [modalTrocaAberto, setModalTrocaAberto] = useState(false);
   const [modalFotoAberto, setModalFotoAberto] = useState(false);
@@ -341,6 +353,36 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
             className="w-5 h-5 accent-[var(--c-acento)] cursor-pointer"
           />
         </div>
+
+        {/* A digital: só onde funciona — o app Android, com digital cadastrada (desbloqueio.ts) */}
+        {temBiometria && (
+          <div className="px-4 py-3 flex items-center justify-between min-h-[52px] border-t border-[var(--c-borda)]">
+            <div className="flex items-center gap-3">
+              <Fingerprint className="w-5 h-5 text-[var(--c-texto-2)]" />
+              <div>
+                <p className="text-sm font-medium text-[var(--c-texto)]">Desbloquear com a digital</p>
+                <p className="text-xs text-[var(--c-texto-3)]">Ao abrir o app e ao voltar depois de 1 minuto</p>
+              </div>
+            </div>
+            <input
+              id="chave-biometria"
+              type="checkbox"
+              checked={biometriaLigada}
+              onChange={async (e) => {
+                if (!e.target.checked) {
+                  gravarPreferencia('desligada');
+                  return setBiometriaLigada(false);
+                }
+                // Ligar confirma a digital antes: quem liga vê na hora que funciona
+                if (await confirmarIdentidade('Ativar o desbloqueio pela digital')) {
+                  gravarPreferencia('ligada');
+                  setBiometriaLigada(true);
+                }
+              }}
+              className="w-5 h-5 accent-[var(--c-acento)] cursor-pointer"
+            />
+          </div>
+        )}
 
         <div className="px-4 pt-3 text-[10px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
           Tema

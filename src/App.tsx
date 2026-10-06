@@ -50,6 +50,9 @@ const MAXIMO_JANELAS_ABERTAS = 3;
 import { bancoDados } from './servicos/bancoDados';
 import { manterSeIgual } from './servicos/igualdade';
 import { ehTelaDeCelular } from './servicos/tela';
+import { lerPreferencia, deveBloquear, biometriaDisponivel, ouvirEstadoDoAplicativo } from './servicos/desbloqueio';
+import { TelaDeBloqueio } from './componentes/TelaDeBloqueio';
+import { OfertaDeBiometria } from './componentes/OfertaDeBiometria';
 import { caminhoDaTela, telaDoCaminho } from './servicos/enderecoDaTela';
 import {
   ondeParei,
@@ -117,6 +120,7 @@ import {
   acompanharTemaNasBarras,
   ligarBotaoVoltar,
   ouvirEnderecosDoAplicativo,
+  rodandoNoAplicativo,
 } from './servicos/aplicativo';
 import { montarPreviaDaMensagem } from './servicos/nuvemComunicacao';
 import { listarHolerites, listarAdvertencias } from './servicos/rh';
@@ -161,6 +165,14 @@ export default function App() {
    * (sem rede, SQL não rodado), ninguém fica barrado.
    */
   const [situacaoDoCpf, setSituacaoDoCpf] = useState<'conferindo' | 'tem' | 'falta'>('conferindo');
+  /**
+   * A TRANCA DA BIOMETRIA (desbloqueio.ts), só no app Android. Abre
+   * bloqueado quando a pessoa a ligou; quem acabou de entrar com a senha
+   * não é bloqueado em seguida (`aoAutenticar` destranca).
+   */
+  const [bloqueado, setBloqueado] = useState(() => rodandoNoAplicativo() && lerPreferencia() === 'ligada');
+  const [ofertaBiometria, setOfertaBiometria] = useState(false);
+  const saiuDoAppEm = useRef<number | null>(null);
   /** Saiu publicação nova enquanto esta aba estava aberta. */
   const [saiuVersaoNova, setSaiuVersaoNova] = useState(false);
   const [painelAdminAberto, setPainelAdminAberto] = useState<boolean>(false);
@@ -1253,6 +1265,31 @@ export default function App() {
     };
   }, [colaboradorAtual, autenticado]);
 
+  /* Voltou ao app depois do intervalo: pede a digital de novo */
+  useEffect(
+    () =>
+      ouvirEstadoDoAplicativo((ativo) => {
+        if (!ativo) {
+          saiuDoAppEm.current = Date.now();
+          return;
+        }
+        if (deveBloquear({ ligada: lerPreferencia() === 'ligada', saiuEm: saiuDoAppEm.current ?? Date.now(), agora: Date.now() })) {
+          setBloqueado(true);
+        }
+      }),
+    []
+  );
+
+  /* A pergunta "usar a digital?": uma vez por aparelho, depois do primeiro acesso resolvido */
+  useEffect(() => {
+    if (!autenticado || precisaTrocarSenha || situacaoDoCpf !== 'tem' || lerPreferencia() !== 'nao_perguntada') return;
+    let vivo = true;
+    biometriaDisponivel().then((tem) => vivo && tem && setOfertaBiometria(true));
+    return () => {
+      vivo = false;
+    };
+  }, [autenticado, precisaTrocarSenha, situacaoDoCpf]);
+
   /* Quem entrou tem CPF? Conferido a cada pessoa que entra */
   useEffect(() => {
     if (!autenticado || !usandoNuvem()) {
@@ -1310,6 +1347,8 @@ export default function App() {
     return (
       <TelaLogin
         aoAutenticar={(colab, trocarSenha) => {
+          // Acabou de provar quem é com a senha: não pede a digital em seguida
+          setBloqueado(false);
           setColaboradorAtual(colab);
           setPrecisaTrocarSenha(!!trocarSenha);
           setAutenticado(true);
@@ -2026,6 +2065,19 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* A tranca da biometria: por cima, com o app montado embaixo */}
+      {bloqueado && (
+        <TelaDeBloqueio
+          nome={colaboradorAtual.nome}
+          aoDesbloquear={() => setBloqueado(false)}
+          aoEntrarComSenha={() => {
+            setBloqueado(false);
+            lidarDeslogar();
+          }}
+        />
+      )}
+      <OfertaDeBiometria aberta={ofertaBiometria && !bloqueado} aoResponder={() => setOfertaBiometria(false)} />
 
       {/* Modais do Botão '+' */}
       <ModalNovaConversa
