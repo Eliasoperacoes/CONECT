@@ -52,6 +52,8 @@ import {
 } from '../tipos';
 import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
 import { SeletorDeMes, periodoDoMesNaLista } from './SeletorDeMes';
+import { useTelaEmbutida } from './TelaEmbutida';
+import { CartaoNumero, classeDoBotao, type TomDoNumero } from './PadraoWeb';
 import { periodoDosPontosIncompletos } from './PontosIncompletos';
 import { EspelhosIncompletos } from './EspelhosIncompletos';
 import { mostrarDocumento } from '../servicos/visorDeDocumento';
@@ -119,6 +121,8 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
   colaboradorAtual,
   abaFixa,
 }) => {
+  /** No computador: o período numa linha, as ações junto da busca e os números no cartão padrão. */
+  const embutida = useTelaEmbutida();
   const [abaAtiva, setAbaAtiva] = useState<AbaRH>('banco_horas');
   const [dataInicio, setDataInicio] = useState(primeiroDiaDoMes());
   const [dataFim, setDataFim] = useState(dataDeHoje());
@@ -685,8 +689,18 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
             />
 
             {/* Período e filtros */}
-            <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-3.5 flex flex-col gap-3">
-              <div className="flex items-center gap-2 text-xs font-bold text-[var(--c-texto-3)] uppercase tracking-wider">
+            <div
+              className={
+                embutida
+                  ? 'rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-4 shadow-[var(--s-1)] grid gap-3 lg:grid-cols-3 lg:items-end'
+                  : 'rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-3.5 flex flex-col gap-3'
+              }
+            >
+              <div
+                className={`flex items-center gap-2 text-xs font-bold text-[var(--c-texto-3)] uppercase tracking-wider ${
+                  embutida ? 'lg:col-span-3' : ''
+                }`}
+              >
                 <CalendarRange className="w-3.5 h-3.5" />
                 Período apurado
               </div>
@@ -700,7 +714,11 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                 num documento de ponto isso é pior do que esperar.
               */}
               {carregandoPeriodo && (
-                <p className="text-[11px] text-[var(--c-texto-3)] mb-1.5 flex items-center gap-1.5">
+                <p
+                  className={`text-[11px] text-[var(--c-texto-3)] mb-1.5 flex items-center gap-1.5 ${
+                    embutida ? 'lg:col-span-3' : ''
+                  }`}
+                >
                   <Loader2 className="w-3 h-3 animate-spin" />
                   Buscando as marcações deste período...
                 </p>
@@ -709,7 +727,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
               {/* O mês primeiro: as datas ficam para o período fora do mês cheio */}
               <SeletorDeMes
                 id="rh-mes-do-espelho"
-                className="mb-2.5"
+                className={embutida ? '' : 'mb-2.5'}
                 dataInicio={dataInicio}
                 dataFim={dataFim}
                 aoEscolher={(inicio, fim) => {
@@ -718,7 +736,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                 }}
               />
 
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className={`grid grid-cols-2 gap-2.5 ${embutida ? 'lg:col-span-2' : ''}`}>
                 <div>
                   <label htmlFor="rh-data-inicio" className="text-[11px] font-semibold text-[var(--c-texto-3)] block mb-1">
                     De
@@ -747,9 +765,11 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                 </div>
               </div>
 
+              {/* No computador, a busca e as duas ações dividem uma linha; no celular, empilham como sempre */}
+              <div className={embutida ? 'lg:col-span-3 flex flex-col sm:flex-row gap-2' : 'contents'}>
               {/* A busca atravessa as lojas: quem procura um nome específico
                   não deveria ter que adivinhar em qual unidade a pessoa está. */}
-              <div className="relative">
+              <div className={embutida ? 'relative flex-1' : 'relative'}>
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--c-texto-3)] pointer-events-none" />
                 <input
                   type="text"
@@ -774,7 +794,11 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                 type="button"
                 id="botao-exportar-ponto"
                 onClick={baixarCsv}
-                className="w-full py-2.5 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto)] hover:border-[var(--c-acento)] flex items-center justify-center gap-1.5 transition-all"
+                className={
+                  embutida
+                    ? classeDoBotao.secundario
+                    : 'w-full py-2.5 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto)] hover:border-[var(--c-acento)] flex items-center justify-center gap-1.5 transition-all'
+                }
               >
                 <Download className="w-3.5 h-3.5" />
                 {nivelVisao === 'unidades'
@@ -788,7 +812,11 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                 type="button"
                 id="botao-imprimir-espelho"
                 onClick={() => imprimirEspelho()}
-                className="w-full py-2.5 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto)] hover:border-[var(--c-acento)] flex items-center justify-center gap-1.5 transition-all"
+                className={
+                  embutida
+                    ? classeDoBotao.principal
+                    : 'w-full py-2.5 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto)] hover:border-[var(--c-acento)] flex items-center justify-center gap-1.5 transition-all'
+                }
               >
                 <Printer className="w-3.5 h-3.5" />
                 {nivelVisao === 'unidades'
@@ -797,6 +825,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                   ? 'Imprimir espelhos do resultado'
                   : `Imprimir espelhos de ${lojaSelecionada}`}
               </button>
+              </div>
             </div>
 
             {/* Indicadores: da rede no nível das lojas, da equipe ao entrar */}
@@ -804,20 +833,35 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
               {(() => {
                 const t = nivelVisao === 'unidades' ? totaisRede : totaisEquipe;
                 return [
-                  { rotulo: 'Colaboradores', valor: String(t.pessoas), cor: 'text-[var(--c-texto)]' },
-                  { rotulo: 'Bateram hoje', valor: String(t.presentesHoje), cor: 'text-emerald-600' },
+                  {
+                    rotulo: 'Colaboradores',
+                    valor: String(t.pessoas),
+                    cor: 'text-[var(--c-texto)]',
+                    tom: 'neutro' as TomDoNumero,
+                  },
+                  {
+                    rotulo: 'Bateram hoje',
+                    valor: String(t.presentesHoje),
+                    cor: 'text-emerald-600',
+                    tom: (t.presentesHoje > 0 ? 'ok' : 'neutro') as TomDoNumero,
+                  },
                   {
                     rotulo: 'Dias sem fechar',
                     valor: String(t.pendencias),
                     cor: t.pendencias > 0 ? 'text-amber-600' : 'text-[var(--c-texto)]',
+                    tom: (t.pendencias > 0 ? 'atencao' : 'neutro') as TomDoNumero,
                   },
                   {
                     rotulo: 'Saldo do período',
                     valor: formatarSaldo(t.saldo),
                     cor: t.saldo >= 0 ? 'text-emerald-600' : 'text-red-600',
+                    tom: (t.saldo > 0 ? 'ok' : t.saldo < 0 ? 'erro' : 'neutro') as TomDoNumero,
                   },
                 ];
-              })().map((ind) => (
+              })().map((ind) =>
+                embutida ? (
+                  <CartaoNumero key={ind.rotulo} rotulo={ind.rotulo} valor={ind.valor} tom={ind.tom} />
+                ) : (
                 <div
                   key={ind.rotulo}
                   className="rounded-xl border border-[var(--c-borda)] bg-[var(--c-superficie)] p-3"
@@ -827,7 +871,8 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                   </span>
                   <span className={`text-lg font-black tabular-nums ${ind.cor}`}>{ind.valor}</span>
                 </div>
-              ))}
+                )
+              )}
             </div>
 
             {/* NÍVEL 1: cartões por unidade */}

@@ -42,6 +42,7 @@ import {
 } from '../servicos/ponto';
 import { ModalBaterPonto } from './ModalBaterPonto';
 import { AbaJustificar } from './AbaJustificar';
+import { useTelaEmbutida } from './TelaEmbutida';
 
 interface PropsAbaPonto {
   colaboradorAtual: Colaborador;
@@ -110,6 +111,12 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
   aoAtenderPedido,
   soOPonto,
 }) => {
+  /**
+   * No computador, as partes daqui já trazem os 16px delas: somados aos 8px
+   * da área, ficavam 8px fora da linha do título (que está a 32px) — o
+   * cartão do dia começava antes do título e o saldo passava da borda.
+   */
+  const embutida = useTelaEmbutida();
   const [secao, setSecao] = useState<'bater' | 'justificar'>('bater');
   const [modalAberto, setModalAberto] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -234,7 +241,7 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
   const ehDomingo = !aceitaMarcacaoNoDia(hoje);
 
   return (
-    <div className="pb-24">
+    <div className={embutida ? 'px-2 pb-6' : 'pb-24'}>
       {/*
         Seletor entre bater ponto e justificar ausência.
 
