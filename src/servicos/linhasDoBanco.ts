@@ -121,6 +121,11 @@ export interface LinhaRegistroPonto {
   ajustado_por_nome: string | null;
   justificativa: string | null;
   criado_em: string;
+  // O carimbo do comprovante (cpf-e-comprovante.sql): ausente antes do SQL rodar
+  nsr?: number | string | null;
+  registrado_em?: string | null;
+  cnpj_empregador?: string | null;
+  codigo_verificacao?: string | null;
 }
 
 export const paraRegistroPonto = (linha: LinhaRegistroPonto): RegistroPonto => ({
@@ -136,8 +141,16 @@ export const paraRegistroPonto = (linha: LinhaRegistroPonto): RegistroPonto => (
   ajustadoPorId: linha.ajustado_por_id || undefined,
   ajustadoPorNome: linha.ajustado_por_nome || undefined,
   justificativa: linha.justificativa || undefined,
+  nsr: linha.nsr != null ? Number(linha.nsr) : undefined,
+  registradoEm: linha.registrado_em || undefined,
+  cnpjEmpregador: linha.cnpj_empregador || undefined,
+  codigoVerificacao: linha.codigo_verificacao || undefined,
 });
 
+/*
+  O carimbo NÃO vai de volta ao banco: quem o escreve é o gatilho
+  `carimbar_batida`, e numa alteração ele devolve o original de qualquer jeito.
+*/
 export const paraLinhaPonto = (r: RegistroPonto) => ({
   id: r.id,
   colaborador_id: r.colaboradorId,

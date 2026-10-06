@@ -154,6 +154,13 @@ export default function App() {
   );
   const [verificandoSessao, setVerificandoSessao] = useState<boolean>(usandoNuvem());
   const [precisaTrocarSenha, setPrecisaTrocarSenha] = useState(false);
+  /**
+   * O CPF É OBRIGATÓRIO (Elias, 06/10/2026): quem entrou e ainda não tem
+   * passa pela tela do primeiro acesso, só com o CPF. 'conferindo' segura a
+   * tela do sistema para ela não piscar antes; sem resposta do banco
+   * (sem rede, SQL não rodado), ninguém fica barrado.
+   */
+  const [situacaoDoCpf, setSituacaoDoCpf] = useState<'conferindo' | 'tem' | 'falta'>('conferindo');
   /** Saiu publicação nova enquanto esta aba estava aberta. */
   const [saiuVersaoNova, setSaiuVersaoNova] = useState(false);
   const [painelAdminAberto, setPainelAdminAberto] = useState<boolean>(false);
@@ -1246,6 +1253,21 @@ export default function App() {
     };
   }, [colaboradorAtual, autenticado]);
 
+  /* Quem entrou tem CPF? Conferido a cada pessoa que entra */
+  useEffect(() => {
+    if (!autenticado || !usandoNuvem()) {
+      setSituacaoDoCpf(usandoNuvem() ? 'conferindo' : 'tem');
+      return;
+    }
+    let vivo = true;
+    nuvem.obterMeuCpf(colaboradorAtual.id).then(({ cpf, indisponivel }) => {
+      if (vivo) setSituacaoDoCpf(cpf || indisponivel ? 'tem' : 'falta');
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [autenticado, colaboradorAtual.id]);
+
   /**
    * O ENDEREÇO ACOMPANHA A TELA DO COMPUTADOR (enderecoDaTela.ts). Escreve
    * a tela que aparece de fato (`telaQueAbre`): o endereço nunca mostra uma
@@ -1282,6 +1304,7 @@ export default function App() {
   // o login ou o sistema. Piscar uma tela e trocar pela outra é pior. Quem
   // cobre este intervalo é a tela de espera do index.html, com o losango.
   if (verificandoSessao) return null;
+  if (autenticado && usandoNuvem() && situacaoDoCpf === 'conferindo') return null;
 
   if (!autenticado) {
     return (
@@ -1296,11 +1319,16 @@ export default function App() {
   }
 
   // Quem entrou com a senha padrão não passa daqui sem definir a própria
-  if (precisaTrocarSenha) {
+  if (precisaTrocarSenha || situacaoDoCpf === 'falta') {
     return (
       <TelaDefinirSenha
         colaborador={colaboradorAtual}
-        aoConcluir={() => setPrecisaTrocarSenha(false)}
+        pedeSenha={precisaTrocarSenha}
+        pedeCpf={situacaoDoCpf === 'falta'}
+        aoConcluir={() => {
+          setPrecisaTrocarSenha(false);
+          setSituacaoDoCpf('tem');
+        }}
       />
     );
   }

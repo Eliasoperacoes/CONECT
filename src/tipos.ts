@@ -1276,6 +1276,18 @@ export interface RegistroPonto {
   ajustadoPorId?: string;
   ajustadoPorNome?: string;
   justificativa?: string;
+  /**
+   * O COMPROVANTE DA BATIDA — carimbado pelo banco na hora da batida
+   * (cpf-e-comprovante.sql) e nunca mais alterado, nem por correção.
+   * Ausentes no modo local e nas batidas de antes do carimbo chegar.
+   */
+  nsr?: number;
+  /** O instante registrado na batida; `horario` pode ter sido corrigido depois. */
+  registradoEm?: string;
+  /** O CNPJ do empregador na hora da batida, só dígitos. */
+  cnpjEmpregador?: string;
+  /** SHA-256 de "NSR|CNPJ|data|hora registrada (UTC)|colaborador". */
+  codigoVerificacao?: string;
 }
 
 /** Jornada consolidada de um dia para um colaborador. */

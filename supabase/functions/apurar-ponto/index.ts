@@ -1103,7 +1103,11 @@ var paraRegistroPonto = (linha) => ({
   criadoEm: linha.criado_em,
   ajustadoPorId: linha.ajustado_por_id || undefined,
   ajustadoPorNome: linha.ajustado_por_nome || undefined,
-  justificativa: linha.justificativa || undefined
+  justificativa: linha.justificativa || undefined,
+  nsr: linha.nsr != null ? Number(linha.nsr) : undefined,
+  registradoEm: linha.registrado_em || undefined,
+  cnpjEmpregador: linha.cnpj_empregador || undefined,
+  codigoVerificacao: linha.codigo_verificacao || undefined
 });
 var paraAjuste = (linha) => ({
   id: linha.id,

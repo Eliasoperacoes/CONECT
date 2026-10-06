@@ -43,6 +43,8 @@ import {
 import { ModalBaterPonto } from './ModalBaterPonto';
 import { AbaJustificar } from './AbaJustificar';
 import { useTelaEmbutida } from './TelaEmbutida';
+import { ComprovanteDaBatida } from './ComprovanteDaBatida';
+import { temComprovante } from '../servicos/comprovanteDeBatida';
 
 interface PropsAbaPonto {
   colaboradorAtual: Colaborador;
@@ -117,6 +119,8 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
    * cartão do dia começava antes do título e o saldo passava da borda.
    */
   const embutida = useTelaEmbutida();
+  /** A batida cujo comprovante está aberto (Portaria 671/2021). */
+  const [comprovanteAberto, setComprovanteAberto] = useState<RegistroPonto | null>(null);
   const [secao, setSecao] = useState<'bater' | 'justificar'>('bater');
   const [modalAberto, setModalAberto] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -306,13 +310,22 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
               const ehProxima = proximaMarcacao === tipo;
               const Icone = ICONE_MARCACAO[tipo];
 
+              // A batida feita pela pessoa abre o comprovante dela
+              const comComprovante = !!registro && temComprovante(registro);
               return (
                 <div
                   key={tipo}
                   id={`marcacao-hoje-${tipo}`}
+                  role={comComprovante ? 'button' : undefined}
+                  tabIndex={comComprovante ? 0 : undefined}
+                  aria-label={comComprovante ? `Ver o comprovante da ${ROTULO_MARCACAO[tipo].toLowerCase()}` : undefined}
+                  onClick={comComprovante ? () => setComprovanteAberto(registro) : undefined}
+                  onKeyDown={
+                    comComprovante ? (e) => (e.key === 'Enter' || e.key === ' ') && setComprovanteAberto(registro) : undefined
+                  }
                   className={`p-2.5 flex flex-col items-center gap-1 text-center transition-colors ${
                     ehProxima ? 'bg-[var(--c-acento-suave)]' : ''
-                  }`}
+                  } ${comComprovante ? 'cursor-pointer hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-superficie-2)]' : ''}`}
                 >
                   <Icone
                     className={`w-4 h-4 ${
@@ -630,6 +643,16 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
         rotuloProximaMarcacao={proximaMarcacao ? ROTULO_MARCACAO[proximaMarcacao] : null}
         aoFechar={() => setModalAberto(false)}
         aoRegistrar={aoRegistrar}
+        aoVerComprovante={(registro) => {
+          setModalAberto(false);
+          setComprovanteAberto(registro);
+        }}
+      />
+
+      <ComprovanteDaBatida
+        registro={comprovanteAberto}
+        colaborador={colaboradorAtual}
+        aoFechar={() => setComprovanteAberto(null)}
       />
 
       {toast && (

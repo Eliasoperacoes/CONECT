@@ -10,6 +10,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import {
+  ReceiptText,
   X,
   QrCode,
   Keyboard,
@@ -18,6 +19,7 @@ import {
   CameraOff,
   Loader2,
 } from 'lucide-react';
+import { temComprovante } from '../servicos/comprovanteDeBatida';
 import { RegistroPonto, ROTULO_MARCACAO, precisaEscolherTurno } from '../tipos';
 import { servicoPonto, dataDeHoje } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
@@ -40,6 +42,8 @@ interface PropsModalBaterPonto {
   codigoInicial?: string;
   rotuloProximaMarcacao: string | null;
   aoFechar: () => void;
+  /** Abre o comprovante da batida que acabou de ser registrada. */
+  aoVerComprovante?: (registro: RegistroPonto) => void;
   aoRegistrar: (registro: RegistroPonto) => void;
 }
 
@@ -51,6 +55,7 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
   rotuloProximaMarcacao,
   aoFechar,
   aoRegistrar,
+  aoVerComprovante,
 }) => {
   useVoltar(aberto, aoFechar);
   const [estado, setEstado] = useState<EstadoLeitura>('iniciando');
@@ -358,10 +363,22 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
                   {registroFeito.metodo === 'qrcode' ? 'QR lido' : 'código digitado'}
                 </p>
               </div>
+              {/* O comprovante da batida, logo depois de bater (Portaria 671/2021) */}
+              {aoVerComprovante && temComprovante(registroFeito) && (
+                <button
+                  type="button"
+                  id="botao-ver-comprovante"
+                  onClick={() => aoVerComprovante(registroFeito)}
+                  className="mt-2 w-full py-3 rounded-xl border border-[var(--c-borda)] bg-[var(--c-superficie)] text-[var(--c-texto)] font-bold text-sm flex items-center justify-center gap-2 hover:bg-[var(--c-superficie-2)] transition-all"
+                >
+                  <ReceiptText className="w-4 h-4" />
+                  Ver comprovante · NSR {String(registroFeito.nsr).padStart(9, '0')}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={aoFechar}
-                className="mt-2 w-full py-3 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-sm hover:brightness-110 active:scale-[0.99] transition-all"
+                className="w-full py-3 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-sm hover:brightness-110 active:scale-[0.99] transition-all"
               >
                 Concluir
               </button>

@@ -469,6 +469,32 @@ class PonteNuvem {
     return !!data?.precisa_trocar_senha;
   }
 
+  /**
+   * O CPF da própria pessoa, ou nulo se ainda não informou. Só ela e quem
+   * cuida de pessoas leem (RLS de `cpf_colaborador`).
+   *
+   * `indisponivel`: a tabela ainda não existe no banco (o SQL não rodou) —
+   * aí ninguém é barrado por um cadastro que não tem onde ser gravado.
+   */
+  async obterMeuCpf(colaboradorId: string): Promise<{ cpf: string | null; indisponivel?: boolean }> {
+    if (!supabase) return { cpf: null, indisponivel: true };
+    const { data, error } = await supabase
+      .from('cpf_colaborador')
+      .select('cpf')
+      .eq('colaborador_id', colaboradorId)
+      .maybeSingle();
+    if (error) return { cpf: null, indisponivel: true };
+    return { cpf: data?.cpf ?? null };
+  }
+
+  /** Registra o próprio CPF — uma vez; o banco confere os dígitos. */
+  async registrarMeuCpf(cpf: string): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
+    const { error } = await supabase.rpc('registrar_meu_cpf', { p_cpf: cpf });
+    if (error) return { sucesso: false, erro: error.code === 'P0001' ? error.message : 'Não foi possível salvar o CPF.' };
+    return { sucesso: true };
+  }
+
   /** Define a senha própria e encerra a obrigação de trocá-la. */
   async definirNovaSenha(novaSenha: string): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
