@@ -126,6 +126,7 @@ import {
   atualizarTituloDaAba,
   janelaEstaVisivel,
   mostrarAvisoDeMensagem,
+  limparAvisosDoSistema,
   prepararAvisos,
   prepararSom,
   tocarAvisoDeMensagem,
@@ -1019,28 +1020,56 @@ export default function App() {
     novas.forEach((m) => jaAvisadas.current!.add(m.id));
     if (novas.length === 0) return;
 
-    // Quem está com a conversa aberta na frente já está vendo chegar
-    const ultima = novas[novas.length - 1];
-    const olhandoEsta =
-      janelaEstaVisivel() &&
-      (conversaAtivaId === ultima.conversaId || conversaFlutuanteId === ultima.conversaId);
-    if (olhandoEsta) return;
+    /*
+      UM AVISO POR CONVERSA, COM QUANTAS CHEGARAM — e não um por mensagem,
+      só da última (Elias, 06/10/2026: "engarrafa"). Quem está com a
+      conversa aberta na frente já está vendo chegar. Três conversas no
+      máximo de uma vez: mais que isso a pessoa vê no CONECTA.
+    */
+    const porConversa = new Map<string, typeof novas>();
+    for (const m of novas) porConversa.set(m.conversaId, [...(porConversa.get(m.conversaId) || []), m]);
+    const aAvisar = [...porConversa.entries()]
+      .filter(
+        ([id]) => !(janelaEstaVisivel() && (conversaAtivaId === id || conversaFlutuanteId === id))
+      )
+      .slice(-3);
+    if (aAvisar.length === 0) return;
 
     tocarAvisoDeMensagem();
 
-    const conversa = bancoDados.obterConversaPorId(ultima.conversaId);
-    const remetente = bancoDados.obterColaboradorPorId(ultima.remetenteId);
-    const ehGrupo = conversa?.tipo === 'grupo';
+    for (const [id, daConversa] of aAvisar) {
+      const ultima = daConversa[daConversa.length - 1];
+      const conversa = bancoDados.obterConversaPorId(id);
+      const remetente = bancoDados.obterColaboradorPorId(ultima.remetenteId);
+      const ehGrupo = conversa?.tipo === 'grupo';
 
-    mostrarAvisoDeMensagem({
-      titulo: ehGrupo ? `${conversa?.nome}` : remetente?.nome || 'Nova mensagem',
-      corpo: ehGrupo
-        ? `${remetente?.nome || 'Alguém'}: ${montarPreviaDaMensagem(ultima)}`
-        : montarPreviaDaMensagem(ultima),
-      conversaId: ultima.conversaId,
-      aoClicar: () => abrirJanela(ultima.conversaId),
-    });
+      mostrarAvisoDeMensagem({
+        titulo: ehGrupo ? `${conversa?.nome}` : remetente?.nome || 'Nova mensagem',
+        corpo: ehGrupo
+          ? `${remetente?.nome || 'Alguém'}: ${montarPreviaDaMensagem(ultima)}`
+          : montarPreviaDaMensagem(ultima),
+        conversaId: id,
+        quantidade: daConversa.length,
+        aoClicar: () => abrirJanela(id),
+      });
+    }
   }, [conversasIndividuais, grupos, conversaAtivaId, conversaFlutuanteId, autenticado, colaboradorAtual.id, versaoPreferencias]);
+
+  /*
+    VOLTOU AO CONECTA: os avisos dele saem da central do Windows, e a conta
+    de "N novas" recomeça. Ficavam lá avisos de mensagem já lida.
+  */
+  useEffect(() => {
+    const aoVoltar = () => {
+      if (janelaEstaVisivel()) void limparAvisosDoSistema();
+    };
+    window.addEventListener('focus', aoVoltar);
+    document.addEventListener('visibilitychange', aoVoltar);
+    return () => {
+      window.removeEventListener('focus', aoVoltar);
+      document.removeEventListener('visibilitychange', aoVoltar);
+    };
+  }, []);
 
   // Recupera a sessão do banco antes de decidir o que mostrar
   useEffect(() => {

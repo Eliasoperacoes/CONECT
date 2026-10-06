@@ -237,11 +237,62 @@ export const atualizarTituloDaAba = (naoLidas: number): void => {
  * anterior da mesma conversa em vez de empilhar: dez mensagens seguidas de
  * uma pessoa viram um aviso atualizado, não dez pilhas na tela.
  */
+/**
+ * ===============================================================
+ * O AVISO QUE ENGARRAFAVA (Elias, 06/10/2026: "bugada, engarrafa e
+ * visualmente feia")
+ * ===============================================================
+ *
+ * O Windows mostra os avisos do Chrome UM DE CADA VEZ, em fila, cerca de
+ * cinco segundos cada. Cada mensagem fazia o aviso da conversa saltar de
+ * novo (`renotify`): dez mensagens seguidas eram quase um minuto de avisos
+ * enfileirados, todos da mesma conversa, e cada um dizendo só a última.
+ *
+ * Agora, por conversa: o aviso diz QUANTAS chegaram desde a última vez que
+ * a pessoa olhou ("3 novas · …"), e só volta a saltar na tela depois de
+ * `INTERVALO_DO_ALERTA_MS`. Entre um e outro, o mesmo aviso é atualizado
+ * calado. Ao voltar ao CONECTA, os avisos dele saem da central do Windows
+ * (`limparAvisosDoSistema`) — ficavam lá avisos de coisa já lida.
+ */
+export const INTERVALO_DO_ALERTA_MS = 20_000;
+const chegadasPorConversa = new Map<string, number>();
+const ultimoAlertaPorConversa = new Map<string, number>();
+
+/**
+ * Quantas chegaram nesta conversa desde a última olhada, e se o aviso deve
+ * saltar na tela agora. Separado para o teste medir sem navegador.
+ */
+export const contarChegada = (conversaId: string, quantidade: number, agora: number): { total: number; alertar: boolean } => {
+  const total = (chegadasPorConversa.get(conversaId) || 0) + quantidade;
+  chegadasPorConversa.set(conversaId, total);
+  const alertar = agora - (ultimoAlertaPorConversa.get(conversaId) ?? -Infinity) >= INTERVALO_DO_ALERTA_MS;
+  if (alertar) ultimoAlertaPorConversa.set(conversaId, agora);
+  return { total, alertar };
+};
+
+/**
+ * A PESSOA VOLTOU AO CONECTA: fecha os avisos dele que ainda estão no
+ * Windows e recomeça a conta. O que ela vai ler está na tela.
+ */
+export const limparAvisosDoSistema = async (): Promise<void> => {
+  chegadasPorConversa.clear();
+  ultimoAlertaPorConversa.clear();
+  try {
+    const pronto = registro || (await navigator.serviceWorker?.getRegistration());
+    const abertos = (await pronto?.getNotifications()) || [];
+    for (const aviso of abertos) if (aviso.tag?.startsWith('conecta-')) aviso.close();
+  } catch {
+    /* Sem trabalhador: não há aviso dele para fechar */
+  }
+};
+
 export const mostrarAvisoDeMensagem = async (dados: {
   titulo: string;
   corpo: string;
   conversaId: string;
   aoClicar?: () => void;
+  /** Quantas mensagens desta conversa chegaram de uma vez (padrão: uma). */
+  quantidade?: number;
 }): Promise<void> => {
   /**
    * ===============================================================
@@ -283,7 +334,15 @@ export const mostrarAvisoDeMensagem = async (dados: {
    */
   if (janelaEstaVisivel()) return;
 
-  const opcoes = opcoesDoAviso(dados, somLigado() && ehComputador());
+  const { total, alertar: depoisDoIntervalo } = contarChegada(dados.conversaId, dados.quantidade ?? 1, Date.now());
+  /*
+    O INTERVALO É SÓ DO COMPUTADOR: a fila é do Windows. No celular cada
+    mensagem continua vibrando — sem isso, quem largou o celular na
+    bancada não sentia da segunda mensagem em diante.
+  */
+  const alertar = ehComputador() ? depoisDoIntervalo : true;
+  const corpo = total > 1 ? `${total} novas · ${dados.corpo}` : dados.corpo;
+  const opcoes = opcoesDoAviso({ ...dados, corpo }, somLigado() && ehComputador(), alertar);
 
   // Caminho do trabalhador primeiro: é o único que o Android aceita, e no
   // computador funciona igual.
@@ -321,12 +380,19 @@ export const mostrarAvisoDeMensagem = async (dados: {
  */
 export const opcoesDoAviso = (
   dados: { corpo: string; conversaId: string },
-  silencioso: boolean
+  silencioso: boolean,
+  /** Saltar na tela de novo (`renotify`)? Falso: atualiza o aviso calado. */
+  alertar = true
 ): NotificationOptions =>
   ({
-    body: dados.corpo,
+    // Uma linha e meia no Windows: o resto se lê no CONECTA
+    body: dados.corpo.length > 140 ? `${dados.corpo.slice(0, 137).trimEnd()}…` : dados.corpo,
     tag: `conecta-${dados.conversaId}`,
-    icon: '/logo-malachias.svg',
+    /*
+      PNG, e não o SVG da logo: o Windows não desenha SVG no aviso do
+      Chrome, e no lugar ficava o quadrado genérico — "visualmente feia".
+    */
+    icon: '/icone-192.png',
     // O "badge" é só a silhueta: o Android pinta de uma cor só, e a logo colorida virava um borrão
     badge: '/icone-aviso-96.png',
 
@@ -341,7 +407,7 @@ export const opcoesDoAviso = (
      *
      * `renotify` mantém a substituição E volta a chamar a atenção.
      */
-    renotify: true,
+    renotify: alertar,
 
     /**
      * NO COMPUTADOR, SÓ O SOM DO CONECTA.

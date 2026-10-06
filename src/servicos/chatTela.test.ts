@@ -127,8 +127,14 @@ test('o aviso volta a chamar atencao a cada mensagem da mesma conversa', async (
    * padrão: da segunda mensagem em diante o texto trocava sem vibrar e sem
    * tocar, e quem largou o celular na bancada não ficava sabendo.
    */
-  expect(avisos).toContain('renotify: true');
+  expect(avisos).toContain('renotify: alertar');
   expect(avisos).toContain('tag: `conecta-${dados.conversaId}`');
+  /*
+    No computador o aviso só volta a saltar depois do intervalo — o Windows
+    os enfileira, e dez mensagens viravam um minuto de avisos (06/10/2026).
+    No celular, a cada mensagem, como sempre.
+  */
+  expect(avisos).toContain('const alertar = ehComputador() ? depoisDoIntervalo : true;');
 
   // Na loja, com barulho de oficina, a vibração é o que realmente avisa
   expect(avisos).toContain('vibrate:');

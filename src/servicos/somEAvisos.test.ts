@@ -141,8 +141,44 @@ test('o canal do Android tem o som, e o manifesto aponta para ele', () => {
 
 test('no computador o aviso do sistema é silencioso: toca só o som do CONECTA', () => {
   expect(ler('src/servicos/notificacoes.ts')).toContain(
-    'const opcoes = opcoesDoAviso(dados, somLigado() && ehComputador());'
+    'const opcoes = opcoesDoAviso({ ...dados, corpo }, somLigado() && ehComputador(), alertar);'
   );
+});
+
+test('O AVISO NÃO ENGARRAFA: conta as chegadas por conversa e só salta de novo depois do intervalo', async () => {
+  /*
+    O Windows mostra os avisos do Chrome em fila, um de cada vez. Cada
+    mensagem fazia o aviso saltar (renotify): dez mensagens eram quase um
+    minuto de avisos da mesma conversa (Elias, 06/10/2026).
+  */
+  const { contarChegada, INTERVALO_DO_ALERTA_MS } = await import('./notificacoes');
+  const t0 = 1_000_000;
+  expect(contarChegada('conv-a', 1, t0)).toEqual({ total: 1, alertar: true });
+  // Logo depois, da mesma conversa: soma, e atualiza calado
+  expect(contarChegada('conv-a', 2, t0 + 3_000)).toEqual({ total: 3, alertar: false });
+  // Outra conversa tem a sua conta e o seu alerta
+  expect(contarChegada('conv-b', 1, t0 + 3_000)).toEqual({ total: 1, alertar: true });
+  // Passado o intervalo, a mesma conversa volta a saltar
+  expect(contarChegada('conv-a', 1, t0 + INTERVALO_DO_ALERTA_MS)).toEqual({ total: 4, alertar: true });
+});
+
+test('o aviso calado não salta, o ícone é PNG e o texto cabe no Windows', async () => {
+  const { opcoesDoAviso } = await import('./notificacoes');
+  const longo = 'x'.repeat(300);
+  const calado = opcoesDoAviso({ corpo: longo, conversaId: 'c' }, true, false) as NotificationOptions & { renotify?: boolean };
+  expect(calado.renotify).toBe(false);
+  // SVG o Windows não desenha: ficava o quadrado genérico
+  expect(calado.icon).toBe('/icone-192.png');
+  expect((calado.body || '').length).toBeLessThanOrEqual(140);
+  const alerta = opcoesDoAviso({ corpo: 'oi', conversaId: 'c' }, true) as NotificationOptions & { renotify?: boolean };
+  expect(alerta.renotify).toBe(true);
+});
+
+test('voltar ao CONECTA tira os avisos dele do Windows', () => {
+  const app = ler('src/App.tsx');
+  expect(app).toContain('if (janelaEstaVisivel()) void limparAvisosDoSistema();');
+  const notificacoes = ler('src/servicos/notificacoes.ts');
+  expect(notificacoes).toContain("for (const aviso of abertos) if (aviso.tag?.startsWith('conecta-')) aviso.close();");
 });
 
 test('aviso silencioso nunca leva vibracao: o Chrome recusa o aviso inteiro', async () => {
