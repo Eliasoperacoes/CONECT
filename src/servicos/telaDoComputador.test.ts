@@ -171,3 +171,23 @@ test('O ENDEREÇO ACOMPANHA A TELA NO COMPUTADOR, e o celular fica de fora (Elia
     expect({ caminho, usa: corpo.includes('navegarNaWeb(') }).toEqual({ caminho, usa: true });
   }
 });
+
+test('A BUSCA DO TOPO e a ficha rápida usam as regras de acesso que já existem (Elias, 06/10/2026)', () => {
+  // A busca mora no topo de toda tela do computador
+  const conteudo = ler('componentes/ConteudoWeb.tsx');
+  expect(conteudo).toContain('busca={\n          <BuscaWeb');
+  // As ferramentas são só as telas da pessoa
+  expect(ler('componentes/BuscaWeb.tsx')).toContain('const ferramentas = useMemo(() => ferramentasDe(visiveis), [visiveis]);');
+  /*
+    Cada atalho da ficha rápida pela regra de sempre — nenhuma regra nova:
+    o espelho e o saldo de quem a pessoa enxerga no ponto, a folha de quem
+    tem a tela Holerites, a ficha de quem gerencia pessoas.
+  */
+  const ficha = ler('componentes/FichaRapida.tsx');
+  expect(ficha).toContain('servicoPonto.obterColaboradoresVisiveis().some((c) => c.id === pessoa.id)');
+  expect(ficha).toContain("const veFolha = visiveis.has('holerites');");
+  expect(ficha).toContain('const editaFicha = bancoDados.podeGerenciarPessoas(colaboradorAtual);');
+  expect(ficha).toContain('{vePonto && (');
+  expect(ficha).toContain('{veFolha && (');
+  expect(ficha).toContain('{editaFicha && (');
+});

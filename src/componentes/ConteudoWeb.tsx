@@ -7,35 +7,15 @@
  * a pessoa tem é `assuntosDe` (telasPorAssunto.ts).
  */
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  ChevronDown,
-  ChevronRight,
-  LogOut,
-  User,
-  Clock,
-  FileText,
-  Users,
-  ListChecks,
-  Network,
-  QrCode,
-  Send,
-  CalendarDays,
-  CalendarRange,
-  Plane,
-  Stethoscope,
-  FolderOpen,
-  PenLine,
-  Receipt,
-  TriangleAlert,
-  Store,
-  type LucideIcon,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, LogOut, User } from 'lucide-react';
+import { ICONE_DA_TELA } from './iconesDasTelas';
 import { Colaborador } from '../tipos';
 import type { Assunto, TelaId, TelaWeb } from '../servicos/telasPorAssunto';
 import { DESCRICAO_DA_TELA, DESCRICAO_DO_ASSUNTO, DE_QUEM_E_A_TELA } from '../servicos/telasPorAssunto';
 import { bancoDados } from '../servicos/bancoDados';
 import { contarParaOResponsavel } from '../servicos/assinatura';
 import { InicioWeb } from './InicioWeb';
+import { BuscaWeb } from './BuscaWeb';
 import { ContextoTelaEmbutida, ContextoAcaoDaTela } from './TelaEmbutida';
 import { CabecalhoDeSecao } from './PadraoWeb';
 import { AbasRolaveis } from './AbasRolaveis';
@@ -55,25 +35,6 @@ import { PainelRede } from './PainelRede';
 import { AbaEu } from './AbaEu';
 import type { SecaoDestino } from '../servicos/destinoDoAviso';
 
-/** O ícone de cada aba — o desenho reconhece a aba antes de ler o nome. */
-const ICONE_DA_TELA: Partial<Record<TelaId, LucideIcon>> = {
-  meu_ponto: Clock,
-  equipe_banco: Users,
-  equipe_pendencias: ListChecks,
-  ponto_rede: Network,
-  qr_ponto: QrCode,
-  pedir_ausencia: Send,
-  minhas_ausencias: CalendarDays,
-  escala_folgas: CalendarRange,
-  ferias_planejamento: Plane,
-  atestados: Stethoscope,
-  meus_documentos: FolderOpen,
-  assinaturas: PenLine,
-  holerites: Receipt,
-  advertencias: TriangleAlert,
-  unidades: Store,
-  organograma: Network,
-};
 
 /** O topo da área: o assunto à esquerda, a pessoa à direita. */
 const TopoWeb: React.FC<{
@@ -85,7 +46,9 @@ const TopoWeb: React.FC<{
   aoSair: () => void;
   /** O que fica ao lado da pessoa (o sino). */
   acoes?: React.ReactNode;
-}> = ({ caminho, colaboradorAtual, ehAdmin, aoAbrirPerfil, aoSair, acoes }) => {
+  /** A busca de pessoas e ferramentas, no meio do topo. */
+  busca?: React.ReactNode;
+}> = ({ caminho, colaboradorAtual, ehAdmin, aoAbrirPerfil, aoSair, acoes, busca }) => {
   const [menuAberto, setMenuAberto] = useState(false);
   const menu = useRef<HTMLDivElement>(null);
 
@@ -115,7 +78,7 @@ const TopoWeb: React.FC<{
           </React.Fragment>
         ))}
       </nav>
-      <div className="flex-1" />
+      <div className="flex-1 flex justify-center px-4">{busca}</div>
       {acoes}
       <div ref={menu} className="relative">
         <button
@@ -358,6 +321,15 @@ export const ConteudoWeb: React.FC<{
         aoAbrirPerfil={() => p.aoIrPara('perfil')}
         aoSair={p.aoSair}
         acoes={p.acoesDoTopo}
+        busca={
+          <BuscaWeb
+            colaboradorAtual={colaboradorAtual}
+            visiveis={p.visiveis}
+            aoIrPara={p.aoIrPara}
+            aoAbrirAdmin={p.aoAbrirAdmin}
+            aoConversar={conversarCom}
+          />
+        }
       />
       <div id="conteudo-web" className="flex-1 overflow-y-auto">
         {/*

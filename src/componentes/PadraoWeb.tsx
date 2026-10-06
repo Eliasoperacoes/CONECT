@@ -178,12 +178,13 @@ export const iniciaisDe = (nome: string): string => {
  * empresa (a foto de quem não pôs nenhuma) repetido em cada linha não
  * distingue ninguém.
  */
-export const AvatarSuave: React.FC<{ nome: string; foto?: string }> = ({ nome, foto }) => {
+export const AvatarSuave: React.FC<{ nome: string; foto?: string; grande?: boolean }> = ({ nome, foto, grande }) => {
+  const medida = grande ? 'h-12 w-12 text-sm' : 'h-8 w-8 text-[10px]';
   const tom = TONS_DO_AVATAR[[...nome].reduce((s, c) => s + c.charCodeAt(0), 0) % TONS_DO_AVATAR.length];
   return foto && foto !== FOTO_PADRAO_LOGO_EMPRESA ? (
-    <img src={foto} alt="" className="h-8 w-8 flex-shrink-0 rounded-full object-cover" referrerPolicy="no-referrer" />
+    <img src={foto} alt="" className={`${medida} flex-shrink-0 rounded-full object-cover`} referrerPolicy="no-referrer" />
   ) : (
-    <span className={`inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${tom}`}>
+    <span className={`inline-flex ${medida} flex-shrink-0 items-center justify-center rounded-full font-bold ${tom}`}>
       {iniciaisDe(nome)}
     </span>
   );
