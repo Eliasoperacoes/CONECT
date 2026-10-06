@@ -133,3 +133,21 @@ test('TELA EMBUTIDA: o título próprio some, a ação fica, e a margem é a pad
   // ...e a vaga existe: o cabeçalho a entrega a toda tela, menos o Início
   expect(ler('componentes/ConteudoWeb.tsx')).toContain("<ContextoAcaoDaTela.Provider value={tela === 'inicio' ? null : vagaDaAcao}>");
 });
+
+test('O QUE O SELO DE DOCUMENTOS CONTA ESTÁ EM "MEUS DOCUMENTOS" (Elias, 06/10/2026)', () => {
+  /*
+    Testando com uma colaboradora: o selo de Documentos acusava o espelho para
+    assinar, e o espelho morava em Ponto. O selo é `pendenciasDoMeuRH`, que
+    soma holerite, advertência sem ciência e espelho — os três têm de estar
+    na tela para onde ele leva.
+  */
+  const meuRH = ler('servicos/meuRH.ts');
+  expect(meuRH).toContain('total: holeritesParaAssinar.length + semCiencia.length + espelhos.length');
+  const conteudo = ler('componentes/ConteudoWeb.tsx');
+  const caso = conteudo.slice(conteudo.indexOf("case 'meus_documentos':"), conteudo.indexOf("case 'assinaturas':"));
+  for (const cartao of ["'espelho'", "'holerites'", "'advertencias'"]) {
+    expect({ cartao, emMeusDocumentos: caso.includes(cartao) }).toEqual({ cartao, emMeusDocumentos: true });
+  }
+  // E o espelho não tem uma segunda porta em Ponto
+  expect(ler('servicos/telasPorAssunto.ts')).not.toContain("'meu_espelho'");
+});

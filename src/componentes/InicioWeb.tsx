@@ -498,7 +498,7 @@ export const InicioWeb: React.FC<{
               }
               detalhe={dia.saldo >= 0 ? 'Horas a seu favor' : 'Horas a compensar'}
               acao="Ver o espelho"
-              aoAbrir={() => aoIrPara(visiveis.has('meu_espelho') ? 'meu_espelho' : 'meu_ponto')}
+              aoAbrir={() => aoIrPara('meus_documentos')}
             />
           )}
           <CartaoDoDia

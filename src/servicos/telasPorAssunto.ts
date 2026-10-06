@@ -32,7 +32,6 @@ export type TelaId =
   | 'central'
   // Ponto
   | 'meu_ponto'
-  | 'meu_espelho'
   | 'equipe_banco'
   | 'equipe_pendencias'
   | 'ponto_rede'
@@ -138,8 +137,6 @@ export const telasQueVejo = (c: Colaborador, ctx: ContextoDoAcesso): Set<TelaId>
     pelo ponto — o gerente, que ainda tem férias e documentos para ver.
   */
   se(!ctx.pode('ponto'), 'minhas_ausencias');
-  // O próprio espelho: só de quem bate ponto (MeuRH)
-  se(ctx.batePonto, 'meu_espelho');
   se(a.equipe, 'equipe_banco', 'equipe_pendencias');
   se(a.espelhosDaRede, 'ponto_rede');
   se(a.qr, 'qr_ponto');
@@ -183,7 +180,6 @@ export const DESCRICAO_DA_TELA: Record<TelaWeb, string> = {
   conversas: 'As conversas e os grupos da rede.',
   central: 'Comunicados, documentos e tutoriais da direção para a rede.',
   meu_ponto: 'Suas batidas de hoje, a próxima marcação e o histórico dos dias.',
-  meu_espelho: 'O espelho de cada mês fechado, para conferir e assinar.',
   equipe_banco: 'O saldo de cada pessoa da sua equipe, ciclo a ciclo.',
   equipe_pendencias: 'Quem não bateu, os dias que não fecharam e as horas que esperam a sua decisão.',
   ponto_rede: 'O espelho de todas as pessoas, com correção de marcação, impressão e exportação.',
@@ -196,7 +192,7 @@ export const DESCRICAO_DA_TELA: Record<TelaWeb, string> = {
     'O ano de férias da equipe, num calendário só. Selecione uma ou mais pessoas para lançar o mesmo período.',
   atestados:
     'Atestados, declarações de comparecimento e faltas justificadas: quem entregou, de quando e o documento — para aceitar, recusar e manter o arquivo em dia.',
-  meus_documentos: 'Os seus holerites e os documentos do RH que pedem a sua ciência.',
+  meus_documentos: 'Os seus documentos num lugar só: o espelho de ponto e o holerite para assinar, e o que o RH pede a sua ciência.',
   assinaturas:
     'Os espelhos que os colaboradores assinaram e esperam a assinatura do responsável — todos de uma vez. O holerite leva só a assinatura do colaborador.',
   holerites:
@@ -223,7 +219,6 @@ export const DE_QUEM_E_A_TELA: Record<TelaWeb, string> = {
   conversas: 'Para você',
   central: 'Toda a rede',
   meu_ponto: 'Para você',
-  meu_espelho: 'Para você',
   equipe_banco: 'Sua equipe',
   equipe_pendencias: 'Sua equipe',
   ponto_rede: 'Gestão de pessoas',
@@ -271,7 +266,6 @@ export const ASSUNTOS: Assunto[] = [
     grupo: 'gestao',
     telas: [
       { id: 'meu_ponto', rotulo: 'Meu ponto' },
-      { id: 'meu_espelho', rotulo: 'Meu espelho' },
       { id: 'equipe_banco', rotulo: 'Banco de horas da equipe' },
       { id: 'equipe_pendencias', rotulo: 'Pendências da equipe' },
       { id: 'ponto_rede', rotulo: 'Espelhos de ponto' },

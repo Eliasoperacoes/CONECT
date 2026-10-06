@@ -58,7 +58,6 @@ import type { SecaoDestino } from '../servicos/destinoDoAviso';
 /** O ícone de cada aba — o desenho reconhece a aba antes de ler o nome. */
 const ICONE_DA_TELA: Partial<Record<TelaId, LucideIcon>> = {
   meu_ponto: Clock,
-  meu_espelho: FileText,
   equipe_banco: Users,
   equipe_pendencias: ListChecks,
   ponto_rede: Network,
@@ -285,8 +284,6 @@ export const ConteudoWeb: React.FC<{
             soOPonto
           />
         );
-      case 'meu_espelho':
-        return <MeuRH colaboradorAtual={colaboradorAtual} cartoes={['espelho']} semTitulo />;
       case 'equipe_banco':
       case 'equipe_pendencias':
         return (
@@ -314,7 +311,13 @@ export const ConteudoWeb: React.FC<{
       case 'atestados':
         return <AbaAtestados colaboradorAtual={colaboradorAtual} />;
       case 'meus_documentos':
-        return <MeuRH colaboradorAtual={colaboradorAtual} cartoes={['holerites', 'advertencias']} semTitulo />;
+        /*
+          TODOS OS DOCUMENTOS DA PESSOA NUM LUGAR SÓ (Elias, 06/10/2026): o
+          espelho morava em Ponto, e o selo de Documentos — que conta o
+          espelho a assinar — levava a uma tela sem ele. O espelho só
+          aparece para quem bate ponto (MeuRH).
+        */
+        return <MeuRH colaboradorAtual={colaboradorAtual} cartoes={['espelho', 'holerites', 'advertencias']} semTitulo />;
       case 'assinaturas':
         return <AbaAssinaturas colaboradorAtual={colaboradorAtual} />;
       case 'holerites':

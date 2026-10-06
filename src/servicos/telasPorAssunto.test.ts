@@ -18,7 +18,7 @@ const ver = (nivel: number, setor: string, temEquipe: boolean, batePonto: boolea
 };
 
 const DE_TODOS: TelaId[] = ['central', 'conversas', 'inicio', 'meus_documentos'];
-const QUEM_BATE: TelaId[] = ['meu_espelho', 'meu_ponto', 'pedir_ausencia'];
+const QUEM_BATE: TelaId[] = ['meu_ponto', 'pedir_ausencia'];
 const ordenar = (lista: TelaId[]) => [...lista].sort();
 
 test('COLABORADOR: só o que é dele — nada de equipe, rede ou RH', () => {
@@ -47,7 +47,6 @@ test('GERENTE: a equipe e o QR; não bate ponto, então não tem o próprio pont
   expect(gerente).toContain('qr_ponto');
   expect(gerente).toContain('equipe_pendencias');
   expect(gerente).not.toContain('meu_ponto');
-  expect(gerente).not.toContain('meu_espelho');
   expect(gerente).not.toContain('holerites');
 });
 
@@ -95,7 +94,7 @@ test('assunto sem tela não aparece: o colaborador não vê "Pessoas e lojas" va
   const assuntos = assuntosDe(c, { pode: (k) => podeUsarComMapa(k, c, mapa), temEquipe: false, batePonto: true });
   expect(assuntos.map((a) => a.id)).toEqual(['inicio', 'conversas', 'central', 'ponto', 'ausencias', 'documentos']);
   // E dentro de Ponto, só o dele
-  expect(assuntos.find((a) => a.id === 'ponto')!.telas.map((t) => t.id)).toEqual(['meu_ponto', 'meu_espelho']);
+  expect(assuntos.find((a) => a.id === 'ponto')!.telas.map((t) => t.id)).toEqual(['meu_ponto']);
 });
 
 test('CADA CAMINHO DE HOJE LEVA A UMA TELA DA BARRA, e a tela que a pessoa não tem não abre', async () => {
