@@ -14,6 +14,8 @@ export interface NoticiasDaArea {
   daArea: boolean;
   noticias: Noticia[];
   fonte: string;
+  /** Quando o servidor buscou os feeds (ISO) — o Início diz "Atualizado às…". */
+  atualizadaEm?: string;
 }
 
 const VALIDADE_MS = 30 * 60 * 1000;

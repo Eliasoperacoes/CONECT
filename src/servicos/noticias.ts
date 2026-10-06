@@ -132,40 +132,64 @@ export const lerFeed = (xml: string): Noticia[] =>
 const simplificar = (texto: string) =>
   texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
+/** O dia de Brasília de um instante ISO, em AAAA-MM-DD. */
+export const diaDeBrasilia = (iso: string | number | Date): string =>
+  new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+
+/** Quantos dias de calendário separam dois AAAA-MM-DD. */
+const diasEntre = (de: string, ate: string): number =>
+  Math.round((Date.parse(`${ate}T12:00:00Z`) - Date.parse(`${de}T12:00:00Z`)) / 86400000);
+
 /**
- * AS NOTÍCIAS DA ÁREA: as que falam dela, das mais novas para as mais
- * velhas, sem repetir. A palavra conta pelo COMEÇO ("veículo" acha
- * "veículos", mas "dados" não acha "candidatos").
+ * Até quantos dias atrás uma matéria ainda entra. Logo cedo a agência quase
+ * não publicou (06/10/2026, 9h39: nenhuma de economia, seis no total, de
+ * cultura e ciência) — as de ontem completam; as de semana passada, não.
+ */
+export const DIAS_DE_VALIDADE = 2;
+
+/**
+ * AS NOTÍCIAS DO DIA, DA ÁREA DA PESSOA. A palavra conta pelo COMEÇO
+ * ("veículo" acha "veículos", mas "dados" não acha "candidatos").
  *
- * Faltou para o limite (ou nenhuma da área)? Completam as mais novas DE
- * ECONOMIA, marcadas como fora da área (`daSuaArea: false`). A reserva
- * vinha de "últimas notícias" e trouxe política e futebol para a tela de
- * abertura da empresa (05/10/2026).
+ * A ORDEM É O DIA, DEPOIS A ÁREA (Elias, 06/10/2026: "que se atualizem
+ * todos os dias com as matérias do dia atual"). A área vinha antes da
+ * data, e uma matéria da área de três dias atrás passava na frente de
+ * uma de hoje. Agora: as de hoje — da área, depois as de economia —;
+ * faltando, as dos dias anteriores na mesma ordem; nada mais velho que
+ * `DIAS_DE_VALIDADE`. Cada uma diz se é da área (`daSuaArea`).
+ *
+ * Só economia completa: a reserva vinha de "últimas notícias" e trouxe
+ * política e futebol para a tela de abertura da empresa (05/10/2026).
  */
 export const escolherNoticias = (
   todas: Noticia[],
   area: AreaDeNoticia,
-  limite = 4
+  limite = 4,
+  hoje = diaDeBrasilia(Date.now())
 ): { daArea: boolean; noticias: Noticia[] } => {
   const vistas = new Set<string>();
   const unicas = todas
     .filter((n) => !vistas.has(n.link) && vistas.add(n.link))
+    .filter((n) => {
+      const atras = diasEntre(diaDeBrasilia(n.publicadaEm), hoje);
+      return atras >= 0 && atras <= DIAS_DE_VALIDADE;
+    })
     .sort((a, b) => b.publicadaEm.localeCompare(a.publicadaEm));
   const palavras = AREAS_DE_NOTICIA[area].palavras.map(simplificar);
-  const daArea = unicas.filter((n) => {
+  const ehDaArea = (n: Noticia) => {
     const texto = ` ${simplificar(`${n.titulo} ${n.resumo}`).replace(/[^a-z0-9]+/g, ' ')}`;
     return palavras.some((p) => texto.includes(` ${p}`));
-  });
-  /*
-    A ÁREA PRIMEIRO, E O RESTO COMPLETA. O Início mostra a notícia em
-    cartão, com imagem (Elias, 06/10/2026), e um dia com uma notícia só da
-    área deixava um cartão sozinho na tela. O que faltar para o limite vem
-    das mais novas de economia — cada uma dizendo se é da área ou não.
-  */
-  const escolhidas = daArea.slice(0, limite).map((n) => ({ ...n, daSuaArea: true }));
-  const completam = unicas
-    .filter((n) => n.editoria === 'economia' && !escolhidas.some((e) => e.link === n.link))
-    .slice(0, limite - escolhidas.length)
-    .map((n) => ({ ...n, daSuaArea: false }));
-  return { daArea: escolhidas.length > 0, noticias: [...escolhidas, ...completam] };
+  };
+  const candidatas = unicas
+    .map((n) => ({ ...n, daSuaArea: ehDaArea(n) }))
+    .filter((n) => n.daSuaArea || n.editoria === 'economia');
+  // O dia primeiro (o mais novo antes); no mesmo dia, a da área antes; depois, a mais recente
+  const ordenadas = candidatas.sort(
+    (a, b) =>
+      diaDeBrasilia(b.publicadaEm).localeCompare(diaDeBrasilia(a.publicadaEm)) ||
+      Number(b.daSuaArea) - Number(a.daSuaArea) ||
+      b.publicadaEm.localeCompare(a.publicadaEm)
+  );
+  const noticias = ordenadas.slice(0, limite);
+  return { daArea: noticias.some((n) => n.daSuaArea), noticias };
 };

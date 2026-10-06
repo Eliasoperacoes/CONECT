@@ -15,6 +15,9 @@ const item = (titulo: string, link: string, data: string, texto = 'Texto da mat�
     <pubDate>${data}</pubDate>
   </item>`;
 
+/** O dia das matérias do exemplo: a escolha conta a validade a partir dele. */
+const DIA = '2026-10-05';
+
 const XML = `<rss><channel>
 ${item('Venda de veículos cresce em setembro', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/veiculos', 'Mon, 05 Oct 2026 12:00:00 -0300')}
 ${item('Prazo do FGTS termina na sexta', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/fgts', 'Mon, 05 Oct 2026 09:00:00 -0300')}
@@ -38,28 +41,28 @@ test('o feed vira notícia em TEXTO PURO, e só com link da própria fonte', () 
 
 test('cada área recebe as suas PRIMEIRO; a economia completa, dita de fora da área', () => {
   const noticias = lerFeed(XML);
-  const balcao = escolherNoticias(noticias, areaDoSetor('Balcão'));
+  const balcao = escolherNoticias(noticias, areaDoSetor('Balcão'), 4, DIA);
   expect(balcao.daArea).toBe(true);
   // A de veículos é do balcão; a do FGTS (economia) só completa — e diz que completa
   expect(balcao.noticias.map((n) => [n.titulo, n.daSuaArea])).toEqual([
     ['Venda de veículos cresce em setembro', true],
     ['Prazo do FGTS termina na sexta', false],
   ]);
-  const rh = escolherNoticias(noticias, areaDoSetor('RH'));
+  const rh = escolherNoticias(noticias, areaDoSetor('RH'), 4, DIA);
   expect(rh.noticias.map((n) => [n.titulo, n.daSuaArea])).toEqual([
     ['Prazo do FGTS termina na sexta', true],
     ['Venda de veículos cresce em setembro', false],
   ]);
   // O limite vale para a soma: a área não é cortada para a economia caber
-  expect(escolherNoticias(noticias, areaDoSetor('Balcão'), 1).noticias.map((n) => n.daSuaArea)).toEqual([true]);
+  expect(escolherNoticias(noticias, areaDoSetor('Balcão'), 1, DIA).noticias.map((n) => n.daSuaArea)).toEqual([true]);
   // TI: nada de tecnologia no dia — vêm as mais novas, e o bloco sabe que são gerais
-  const ti = escolherNoticias(noticias, areaDoSetor('TI'));
+  const ti = escolherNoticias(noticias, areaDoSetor('TI'), 4, DIA);
   expect(ti.daArea).toBe(false);
   expect(ti.noticias[0].titulo).toBe('Venda de veículos cresce em setembro');
   // ...e só de economia: a de "geral" (Mega-Sena) não vai para a tela da empresa
   expect(ti.noticias.map((n) => n.editoria)).toEqual(['economia', 'economia']);
   // O mesmo link em dois feeds aparece uma vez só
-  const dobradas = escolherNoticias([...noticias, ...noticias], 'automotivo').noticias.map((n) => n.link);
+  const dobradas = escolherNoticias([...noticias, ...noticias], 'automotivo', 4, DIA).noticias.map((n) => n.link);
   expect(dobradas).toEqual([...new Set(dobradas)]);
 });
 
@@ -81,4 +84,31 @@ test('AS FUNÇÕES DA VERCEL importam com extensão: o Node em ESM não acha "..
       expect({ arquivo, caminho, comExtensao: caminho.endsWith('.js') }).toEqual({ arquivo, caminho, comExtensao: true });
     }
   }
+});
+
+test('O DIA VEM PRIMEIRO: hoje antes de ontem, a área antes dentro do dia, e nada velho', () => {
+  /*
+    "Que se atualizem todos os dias com as matérias do dia atual" (Elias,
+    06/10/2026). A área vinha antes da data: uma matéria da área de dias
+    atrás passava na frente das de hoje, e o feed ainda trazia as de 02/10.
+  */
+  const feed = `<rss><channel>
+${item('Inflação de setembro surpreende', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/inflacao', 'Tue, 06 Oct 2026 10:00:00 -0300')}
+${item('Juros do crédito sobem', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/juros', 'Tue, 06 Oct 2026 08:00:00 -0300')}
+${item('Montadoras ampliam produção de veículos', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/montadoras', 'Tue, 06 Oct 2026 07:00:00 -0300')}
+${item('Venda de veículos cresce em setembro', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/veiculos', 'Mon, 05 Oct 2026 12:00:00 -0300')}
+${item('Veículos elétricos ganham espaço', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/eletricos', 'Fri, 02 Oct 2026 12:00:00 -0300')}
+</channel></rss>`;
+  const { noticias } = escolherNoticias(lerFeed(feed), 'automotivo', 4, '2026-10-06');
+  expect(noticias.map((n) => [n.titulo, n.daSuaArea])).toEqual([
+    // Hoje: a da área primeiro, mesmo sendo a mais cedo do dia; depois as de economia, da mais nova
+    ['Montadoras ampliam produção de veículos', true],
+    ['Inflação de setembro surpreende', false],
+    ['Juros do crédito sobem', false],
+    // Ontem completa — e a de 02/10, da área, não volta: passou da validade
+    ['Venda de veículos cresce em setembro', true],
+  ]);
+  // A matéria "do futuro" (relógio do feed adiantado) também não entra
+  const amanha = escolherNoticias(lerFeed(feed), 'automotivo', 4, '2026-10-05').noticias.map((n) => n.titulo);
+  expect(amanha).not.toContain('Inflação de setembro surpreende');
 });

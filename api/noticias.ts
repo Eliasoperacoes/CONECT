@@ -40,7 +40,7 @@ export async function GET(request: Request): Promise<Response> {
   const { daArea, noticias } = escolherNoticias(feeds.flat(), area);
 
   return Response.json(
-    { area: AREAS_DE_NOTICIA[area].rotulo, daArea, noticias, fonte: 'Agência Brasil' },
+    { area: AREAS_DE_NOTICIA[area].rotulo, daArea, noticias, fonte: 'Agência Brasil', atualizadaEm: new Date().toISOString() },
     {
       headers: {
         // Meia hora na borda; enquanto renova, serve a anterior

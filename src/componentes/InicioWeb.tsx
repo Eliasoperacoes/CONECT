@@ -316,7 +316,10 @@ export const InicioWeb: React.FC<{
           rodape={
             deFora && deFora !== 'carregando' && noticias.length > 0 ? (
               <span className="text-[10px] text-[var(--c-texto-3)]">
-                Fonte: {deFora.fonte} · as matérias abrem no site da agência
+                Fonte: {deFora.fonte}
+                {deFora.atualizadaEm &&
+                  ` · atualizado às ${new Date(deFora.atualizadaEm).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}`}
+                {' · as matérias abrem no site da agência'}
               </span>
             ) : undefined
           }
