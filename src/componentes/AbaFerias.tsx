@@ -61,7 +61,8 @@ import {
   emitidoHoje,
 } from '../servicos/documento';
 import { imprimirDocumento } from '../servicos/visorDeDocumento';
-import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
+import { useTelaEmbutida, margemDaTela, AcaoNoCabecalho } from './TelaEmbutida';
+import { classeDoBotao } from './PadraoWeb';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -353,8 +354,20 @@ export const AbaFerias: React.FC<Props> = ({ colaboradorAtual }) => {
 
   return (
     <div className={`${margemDaTela(embutida)} flex flex-col gap-4`}>
-      <div className={`flex flex-wrap items-start gap-3 ${embutida ? 'justify-end' : 'justify-between'}`}>
-        <div className={embutida ? 'hidden' : ''}>
+      {/* No computador, as ações moram no título da tela (o desenho do Figma) */}
+      <AcaoNoCabecalho>
+        <button type="button" onClick={exportarCsv} className={classeDoBotao.secundario}>
+          <Download className="w-4 h-4" />
+          Exportar {ano}
+        </button>
+        <button type="button" onClick={() => imprimir(null)} className={classeDoBotao.principal}>
+          <Printer className="w-4 h-4" />
+          Imprimir ano
+        </button>
+      </AcaoNoCabecalho>
+
+      <div className={embutida ? 'hidden' : 'flex flex-wrap items-start gap-3 justify-between'}>
+        <div>
           <h2 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-1.5">
             <Palmtree className="w-4 h-4 text-emerald-600" />
             Férias
@@ -398,7 +411,7 @@ export const AbaFerias: React.FC<Props> = ({ colaboradorAtual }) => {
       )}
 
       {/* ---------- CALENDÁRIO ---------- */}
-      <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] overflow-hidden">
+      <div className={`rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] overflow-hidden ${embutida ? 'shadow-[var(--s-1)]' : ''}`}>
         <div className="px-3 py-2.5 flex flex-wrap items-center gap-2 border-b border-[var(--c-borda)]">
           <button
             type="button"
@@ -559,7 +572,7 @@ export const AbaFerias: React.FC<Props> = ({ colaboradorAtual }) => {
 
       {/* ---------- LANÇAR ---------- */}
       <div className="flex flex-col lg:flex-row gap-3">
-        <div className="lg:w-64 flex-shrink-0 flex flex-col gap-2 p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)]">
+        <div className={`lg:w-64 flex-shrink-0 flex flex-col gap-2 p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] ${embutida ? 'shadow-[var(--s-1)]' : ''}`}>
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--c-texto-3)]" />
             <input
@@ -632,7 +645,7 @@ export const AbaFerias: React.FC<Props> = ({ colaboradorAtual }) => {
           </div>
         </div>
 
-        <div className="flex-1 p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex flex-col gap-3">
+        <div className={`flex-1 p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex flex-col gap-3 ${embutida ? 'shadow-[var(--s-1)]' : ''}`}>
           <span className="text-sm font-bold text-[var(--c-texto)]">
             Período das férias
           </span>

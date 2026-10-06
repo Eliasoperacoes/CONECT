@@ -115,7 +115,21 @@ test('TELA EMBUTIDA: o título próprio some, a ação fica, e a margem é a pad
     expect({ tela, usa: fonte.includes('useTelaEmbutida()') }).toEqual({ tela, usa: true });
     expect({ tela, margem: fonte.includes('margemDaTela(embutida') }).toEqual({ tela, margem: true });
   }
-  // As ações continuam: Registrar (advertência) e Imprimir (escala) não moram no título escondido
-  const adv = ler('componentes/AbaAdvertencias.tsx');
-  expect(adv).toContain("${embutida ? 'justify-end' : 'justify-between'}");
+  /*
+    AS AÇÕES CONTINUAM, no título da tela (o desenho do Figma): Registrar
+    (advertência), Imprimir (escala, férias) e Assinar todos não moram no
+    título escondido — vão para a vaga do cabeçalho, que o ConteudoWeb dá.
+  */
+  const acaoNoCabecalho = (tela: string, trecho: string) => {
+    const fonte = ler(`componentes/${tela}.tsx`);
+    const vaga = fonte.slice(fonte.indexOf('<AcaoNoCabecalho>'), fonte.indexOf('</AcaoNoCabecalho>'));
+    expect({ tela, trecho, naVaga: vaga.includes(trecho) }).toEqual({ tela, trecho, naVaga: true });
+  };
+  acaoNoCabecalho('AbaAdvertencias', 'id="botao-nova-advertencia"');
+  acaoNoCabecalho('EscalaDeFolgas', 'onClick={imprimir}');
+  acaoNoCabecalho('AbaFerias', 'onClick={() => imprimir(null)}');
+  acaoNoCabecalho('AbaAssinaturas', 'id="assinar-lote"');
+  acaoNoCabecalho('AbaHolerites', 'id="rh-competencia"');
+  // ...e a vaga existe: o cabeçalho a entrega a toda tela, menos o Início
+  expect(ler('componentes/ConteudoWeb.tsx')).toContain("<ContextoAcaoDaTela.Provider value={tela === 'inicio' ? null : vagaDaAcao}>");
 });

@@ -41,7 +41,8 @@ import { dataHoraDeBrasilia } from '../servicos/comprovanteDeHolerite';
 import { baixarArquivo } from '../servicos/compartilharArquivo';
 import { FotoPresenca } from './FotoPresenca';
 import { CargaDeHolerites } from './CargaDeHolerites';
-import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
+import { useTelaEmbutida, margemDaTela, AcaoNoCabecalho } from './TelaEmbutida';
+import { CartaoNumero, CartaoLista, EstadoVazio, BuscaDaLista, classeDoBotao } from './PadraoWeb';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -281,6 +282,388 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
     setVersao((v) => v + 1);
   };
 
+  /** O PDF do escritório escolhido ou arrastado na área de carga (computador). */
+  const [arquivoDaCarga, setArquivoDaCarga] = useState<File | null>(null);
+  const [arrastando, setArrastando] = useState(false);
+  const abrirCargaCom = (arquivo: File | undefined) => {
+    if (!arquivo) return;
+    setArquivoDaCarga(arquivo);
+    setCargaAberta(true);
+  };
+
+  const carga = (
+    <CargaDeHolerites
+      aberto={cargaAberta}
+      aoFechar={() => {
+        setCargaAberta(false);
+        setArquivoDaCarga(null);
+      }}
+      pessoas={ativos}
+      holerites={holerites}
+      competenciaInicial={competencia}
+      aoPublicar={() => setVersao((v) => v + 1)}
+      arquivoInicial={arquivoDaCarga}
+    />
+  );
+
+  const arquivoDeUmaPessoa = (
+    <input ref={refArquivo} type="file" accept="application/pdf,image/*" onChange={aoEscolher} className="hidden" />
+  );
+
+  const baixarAssinadosDoMes = () =>
+    baixarComprovantes(
+      assinadosNoMes
+        .map((h) => ({ holerite: h, recebimento: recebimentos.get(h.id)!, nome: nomeDoColaborador(h.colaboradorId) }))
+        .sort((a, b) => a.nome.localeCompare(b.nome)),
+      'mes',
+      `Holerites assinados ${competencia}.pdf`
+    );
+
+  /** As lojas, recolhidas, e quem em cada uma — no celular solta; no computador, dentro do cartão de lista. */
+  const listaDasLojas = (noCartao: boolean) => (
+    <div className={noCartao ? '' : 'flex flex-col gap-2'}>
+      {porLoja.map(([loja, daLoja]) => {
+        const fechada = !buscando && !abertas.has(loja);
+        const publicados = daLoja.filter((c) => jaTem.has(c.id)).length;
+        const completa = publicados === daLoja.length;
+
+        return (
+          <div
+            key={loja}
+            className={noCartao ? 'border-b border-[var(--c-borda)] last:border-0' : 'flex flex-col gap-1.5'}
+          >
+            {/*
+              O CABEÇALHO DIZ O PROGRESSO SEM PRECISAR ABRIR.
+
+              "3 de 12" é o que o RH quer saber ao passar o olho: qual
+              loja ainda falta. Sem isso, recolher esconderia justamente
+              a informação que faz decidir onde mexer.
+            */}
+            <button
+              type="button"
+              onClick={() => alternarLoja(loja)}
+              disabled={buscando}
+              className={
+                noCartao
+                  ? 'w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-[var(--c-superficie-2)] transition-colors disabled:opacity-60'
+                  : 'px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] flex items-center gap-2 text-left hover:border-[var(--c-borda-forte)] transition-colors disabled:opacity-60'
+              }
+            >
+              {fechada ? (
+                <ChevronRight className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
+              )}
+
+              <span className="flex-1 min-w-0 text-xs font-bold text-[var(--c-texto)] truncate">
+                {loja}
+              </span>
+
+              <span
+                className={`text-[11px] font-bold tabular-nums flex-shrink-0 ${
+                  completa ? 'text-emerald-600' : 'text-[var(--c-texto-3)]'
+                }`}
+              >
+                {completa && <Check className="w-3.5 h-3.5 inline mr-0.5" />}
+                {publicados} de {daLoja.length}
+              </span>
+            </button>
+
+            {!fechada && (
+              <div className={noCartao ? 'flex flex-col gap-1.5 pl-10 pr-4 pb-3' : 'flex flex-col gap-1.5 pl-2'}>
+                {daLoja.map((c) => {
+                  const holerite = jaTem.get(c.id);
+                  const subindo = enviando === c.id;
+                  const recebido = holerite ? recebimentos.get(holerite.id) : undefined;
+
+                  // ASSINADO: mostra quando, e o comprovante. Substituir e
+                  // remover somem — o banco recusaria os dois
+                  if (holerite && recebido) {
+                    return (
+                      <div
+                        key={c.id}
+                        className="px-3 py-2.5 rounded-xl border flex items-center gap-3 bg-emerald-500/5 border-emerald-500/20"
+                      >
+                        <FotoPresenca foto={c.foto} nome={c.nome} presenca={c.presenca} tamanho="w-8 h-8" />
+                        <div className="flex-1 min-w-0">
+                          <span className="block text-xs font-bold text-[var(--c-texto)] truncate">{c.nome}</span>
+                          <span className="block text-[11px] text-emerald-700 dark:text-emerald-400 truncate">
+                            Assinado em {dataHoraDeBrasilia(recebido.assinadoEm)}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={gerando !== null}
+                          onClick={() =>
+                            baixarComprovantes(
+                              [{ holerite, recebimento: recebido, nome: c.nome }],
+                              holerite.id,
+                              `Holerite assinado ${competencia} - ${c.nome}.pdf`
+                            )
+                          }
+                          className="flex-shrink-0 px-2 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-semibold text-[var(--c-texto-2)] hover:text-[var(--c-texto)] flex items-center gap-1 disabled:opacity-50"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          {gerando === holerite.id ? 'Gerando…' : 'Comprovante'}
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+          <div
+            key={c.id}
+            className={`px-3 py-2.5 rounded-xl border flex items-center gap-3 ${
+              holerite
+                ? 'bg-emerald-500/5 border-emerald-500/20'
+                : 'bg-[var(--c-superficie)] border-[var(--c-borda)]'
+            }`}
+          >
+            <FotoPresenca
+              foto={c.foto}
+              nome={c.nome}
+              presenca={c.presenca}
+              tamanho="w-8 h-8"
+            />
+
+            <div className="flex-1 min-w-0">
+              <span className="block text-xs font-bold text-[var(--c-texto)] truncate">
+                {c.nome}
+              </span>
+              <span className="block text-[11px] text-[var(--c-texto-3)] truncate">
+                {c.cargo} · {c.loja}
+                {c.matricula ? ` · mat. ${c.matricula}` : ''}
+              </span>
+            </div>
+
+            {holerite ? (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <span
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400"
+                  title={`Enviado por ${holerite.enviadoPorNome || 'RH'}`}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Publicado
+                </span>
+                <button
+                  type="button"
+                  onClick={() => escolherArquivo(c.id)}
+                  className="px-2 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-semibold text-[var(--c-texto-2)] hover:text-[var(--c-texto)] transition-colors"
+                >
+                  Substituir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => apagar(holerite)}
+                  className="p-1.5 rounded-lg text-[var(--c-texto-3)] hover:text-red-600 hover:bg-red-500/10 transition-colors"
+                  title="Remover este holerite"
+                  aria-label={`Remover o holerite de ${c.nome}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => escolherArquivo(c.id)}
+                disabled={subindo}
+                className="flex-shrink-0 px-2.5 py-1.5 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-[11px] font-bold flex items-center gap-1.5 hover:brightness-110 disabled:opacity-50 transition-all"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {subindo ? 'Enviando…' : 'Enviar'}
+              </button>
+            )}
+          </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {pessoas.length === 0 && (
+        <div className="p-6 text-center text-xs text-[var(--c-texto-3)] flex flex-col items-center gap-2">
+          <FileText className="w-5 h-5" />
+          Ninguém bate com essa busca.
+        </div>
+      )}
+    </div>
+  );
+
+  /*
+    NO COMPUTADOR, o padrão do desenho: o mês no título da tela; a carga do
+    PDF como uma área larga, que aceita o arquivo arrastado; os números do
+    mês nos cartões; as lojas num cartão de lista, com a busca no topo. No
+    celular, nada muda.
+  */
+  if (embutida) {
+    const faltam = Math.max(0, ativos.length - publicados);
+    return (
+      <div className={`${margemDaTela(true)} flex flex-col gap-5`}>
+        <AcaoNoCabecalho>
+          {assinadosNoMes.length > 0 && (
+            <button
+              type="button"
+              id="botao-baixar-assinados-do-mes"
+              disabled={gerando !== null}
+              onClick={baixarAssinadosDoMes}
+              className={classeDoBotao.secundario}
+            >
+              <Download className="w-4 h-4" />
+              {gerando === 'mes' ? 'Gerando…' : `Baixar ${assinadosNoMes.length} assinados`}
+            </button>
+          )}
+          <label className="sr-only" htmlFor="rh-competencia">
+            Competência
+          </label>
+          <input
+            id="rh-competencia"
+            type="month"
+            value={competencia}
+            onChange={(e) => setCompetencia(e.target.value)}
+            className="h-10 px-3 rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto)] shadow-[var(--s-1)]"
+          />
+        </AcaoNoCabecalho>
+
+        {/* A carga: clicar escolhe o PDF; arrastar o arquivo até aqui também serve */}
+        <label
+          id="botao-abrir-carga-holerites"
+          htmlFor="arquivo-pdf-do-escritorio"
+          onDragOver={(e) => {
+            e.preventDefault();
+            setArrastando(true);
+          }}
+          onDragLeave={() => setArrastando(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setArrastando(false);
+            abrirCargaCom(e.dataTransfer.files?.[0]);
+          }}
+          className={`flex flex-col items-center justify-center gap-2 px-6 py-8 rounded-2xl border-2 border-dashed cursor-pointer text-center transition-colors ${
+            arrastando
+              ? 'border-[var(--c-acento)] bg-[var(--c-acento-suave)]'
+              : 'border-[var(--c-acento)]/35 bg-[var(--c-superficie)] hover:bg-[var(--c-acento-suave)]/50'
+          }`}
+        >
+          <span className="w-11 h-11 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] flex items-center justify-center shadow-[var(--s-2)]">
+            <FileUp className="w-5 h-5" />
+          </span>
+          <span className="mt-1 text-sm font-extrabold text-[var(--c-texto)]">Carregar o PDF do escritório</span>
+          <span className="text-xs text-[var(--c-texto-3)]">
+            Um arquivo com o holerite de todos · clique para escolher ou arraste até aqui. Nada é publicado antes de
+            você conferir.
+          </span>
+        </label>
+        <input
+          id="arquivo-pdf-do-escritorio"
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            const arquivo = e.target.files?.[0];
+            e.target.value = '';
+            abrirCargaCom(arquivo);
+          }}
+        />
+        {carga}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <CartaoNumero
+            rotulo="Publicados"
+            valor={publicados}
+            detalhe={`de ${ativos.length} colaboradores em ${porExtenso(competencia)}`}
+            tom={publicados > 0 ? 'acento' : 'neutro'}
+          />
+          <CartaoNumero
+            rotulo="Assinados"
+            valor={assinadosNoMes.length}
+            detalhe="O colaborador confirmou o recebimento"
+            tom={assinadosNoMes.length > 0 ? 'ok' : 'neutro'}
+          />
+          <CartaoNumero
+            rotulo="Sem holerite"
+            valor={faltam}
+            detalhe="Ainda não receberam o do mês"
+            tom={faltam > 0 && publicados > 0 ? 'atencao' : 'neutro'}
+          />
+        </div>
+
+        {aviso && (
+          <div className="px-3 py-2 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-xs text-[var(--c-texto-2)]">
+            {aviso}
+          </div>
+        )}
+        {arquivoDeUmaPessoa}
+
+        <CartaoLista
+          barra={
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                {porLoja.length > 1 && !buscando && (
+                  <button type="button" onClick={alternarTodas} className={`${classeDoBotao.secundario} h-9`}>
+                    {todasRecolhidas ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    {todasRecolhidas ? 'Abrir todas as lojas' : 'Recolher todas'}
+                  </button>
+                )}
+                {publicados > assinadosNoMes.length &&
+                  (confirmandoLimpeza ? (
+                    <span className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-red-700 dark:text-red-400">
+                      Remover os {publicados - assinadosNoMes.length} de {porExtenso(competencia)}?
+                      {assinadosNoMes.length > 0 && ` Os ${assinadosNoMes.length} assinados ficam.`}
+                      <button
+                        type="button"
+                        id="botao-confirmar-limpeza-holerites"
+                        onClick={limparMes}
+                        disabled={limpando}
+                        className="px-2.5 py-1.5 rounded-lg bg-red-600 text-white text-[11px] font-bold disabled:opacity-50"
+                      >
+                        {limpando ? 'Removendo…' : 'Remover todos'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmandoLimpeza(false)}
+                        disabled={limpando}
+                        className="px-2.5 py-1.5 rounded-lg border border-[var(--c-borda)] text-[11px] font-semibold text-[var(--c-texto-2)]"
+                      >
+                        Cancelar
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      id="botao-limpar-holerites-do-mes"
+                      onClick={() => setConfirmandoLimpeza(true)}
+                      className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--c-texto-3)] hover:text-red-600 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Limpar este mês
+                    </button>
+                  ))}
+              </div>
+              <BuscaDaLista
+                id="holerites-busca"
+                valor={busca}
+                aoMudar={setBusca}
+                placeholder="Buscar por nome, matrícula ou loja"
+              />
+            </>
+          }
+        >
+          {pessoas.length === 0 ? (
+            <EstadoVazio
+              icone={<Receipt className="w-6 h-6" />}
+              titulo="Ninguém com esse nome"
+              descricao="Procure pelo nome, pela matrícula ou pela loja."
+            />
+          ) : (
+            listaDasLojas(true)
+          )}
+        </CartaoLista>
+      </div>
+    );
+  }
+
   return (
     <div className={`${margemDaTela(embutida)} flex flex-col gap-4`}>
       <div className={embutida ? 'hidden' : ''}>
@@ -313,14 +696,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
         </span>
       </button>
 
-      <CargaDeHolerites
-        aberto={cargaAberta}
-        aoFechar={() => setCargaAberta(false)}
-        pessoas={ativos}
-        holerites={holerites}
-        competenciaInicial={competencia}
-        aoPublicar={() => setVersao((v) => v + 1)}
-      />
+      {carga}
 
       {/* O mês, e quantos já subiram nele */}
       <div className="flex flex-wrap items-end gap-3 p-3 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)]">
@@ -360,15 +736,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
             type="button"
             id="botao-baixar-assinados-do-mes"
             disabled={gerando !== null}
-            onClick={() =>
-              baixarComprovantes(
-                assinadosNoMes
-                  .map((h) => ({ holerite: h, recebimento: recebimentos.get(h.id)!, nome: nomeDoColaborador(h.colaboradorId) }))
-                  .sort((a, b) => a.nome.localeCompare(b.nome)),
-                'mes',
-                `Holerites assinados ${competencia}.pdf`
-              )
-            }
+            onClick={baixarAssinadosDoMes}
             className="pb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--c-acento)] hover:underline disabled:opacity-50"
           >
             <Download className="w-3.5 h-3.5" />
@@ -432,13 +800,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
         </div>
       )}
 
-      <input
-        ref={refArquivo}
-        type="file"
-        accept="application/pdf,image/*"
-        onChange={aoEscolher}
-        className="hidden"
-      />
+      {arquivoDeUmaPessoa}
 
       {porLoja.length > 1 && !buscando && (
         <button
@@ -455,167 +817,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
         </button>
       )}
 
-      <div className="flex flex-col gap-2">
-        {porLoja.map(([loja, daLoja]) => {
-          const fechada = !buscando && !abertas.has(loja);
-          const publicados = daLoja.filter((c) => jaTem.has(c.id)).length;
-          const completa = publicados === daLoja.length;
-
-          return (
-            <div key={loja} className="flex flex-col gap-1.5">
-              {/*
-                O CABEÇALHO DIZ O PROGRESSO SEM PRECISAR ABRIR.
-
-                "3 de 12" é o que o RH quer saber ao passar o olho: qual
-                loja ainda falta. Sem isso, recolher esconderia justamente
-                a informação que faz decidir onde mexer.
-              */}
-              <button
-                type="button"
-                onClick={() => alternarLoja(loja)}
-                disabled={buscando}
-                className="px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] flex items-center gap-2 text-left hover:border-[var(--c-borda-forte)] transition-colors disabled:opacity-60"
-              >
-                {fechada ? (
-                  <ChevronRight className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
-                ) : (
-                  <ChevronDown className="w-4 h-4 text-[var(--c-texto-3)] flex-shrink-0" />
-                )}
-
-                <span className="flex-1 min-w-0 text-xs font-bold text-[var(--c-texto)] truncate">
-                  {loja}
-                </span>
-
-                <span
-                  className={`text-[11px] font-bold tabular-nums flex-shrink-0 ${
-                    completa ? 'text-emerald-600' : 'text-[var(--c-texto-3)]'
-                  }`}
-                >
-                  {completa && <Check className="w-3.5 h-3.5 inline mr-0.5" />}
-                  {publicados} de {daLoja.length}
-                </span>
-              </button>
-
-              {!fechada && (
-                <div className="flex flex-col gap-1.5 pl-2">
-                  {daLoja.map((c) => {
-                    const holerite = jaTem.get(c.id);
-                    const subindo = enviando === c.id;
-                    const recebido = holerite ? recebimentos.get(holerite.id) : undefined;
-
-                    // ASSINADO: mostra quando, e o comprovante. Substituir e
-                    // remover somem — o banco recusaria os dois
-                    if (holerite && recebido) {
-                      return (
-                        <div
-                          key={c.id}
-                          className="px-3 py-2.5 rounded-xl border flex items-center gap-3 bg-emerald-500/5 border-emerald-500/20"
-                        >
-                          <FotoPresenca foto={c.foto} nome={c.nome} presenca={c.presenca} tamanho="w-8 h-8" />
-                          <div className="flex-1 min-w-0">
-                            <span className="block text-xs font-bold text-[var(--c-texto)] truncate">{c.nome}</span>
-                            <span className="block text-[11px] text-emerald-700 dark:text-emerald-400 truncate">
-                              Assinado em {dataHoraDeBrasilia(recebido.assinadoEm)}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            disabled={gerando !== null}
-                            onClick={() =>
-                              baixarComprovantes(
-                                [{ holerite, recebimento: recebido, nome: c.nome }],
-                                holerite.id,
-                                `Holerite assinado ${competencia} - ${c.nome}.pdf`
-                              )
-                            }
-                            className="flex-shrink-0 px-2 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-semibold text-[var(--c-texto-2)] hover:text-[var(--c-texto)] flex items-center gap-1 disabled:opacity-50"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            {gerando === holerite.id ? 'Gerando…' : 'Comprovante'}
-                          </button>
-                        </div>
-                      );
-                    }
-
-                    return (
-            <div
-              key={c.id}
-              className={`px-3 py-2.5 rounded-xl border flex items-center gap-3 ${
-                holerite
-                  ? 'bg-emerald-500/5 border-emerald-500/20'
-                  : 'bg-[var(--c-superficie)] border-[var(--c-borda)]'
-              }`}
-            >
-              <FotoPresenca
-                foto={c.foto}
-                nome={c.nome}
-                presenca={c.presenca}
-                tamanho="w-8 h-8"
-              />
-
-              <div className="flex-1 min-w-0">
-                <span className="block text-xs font-bold text-[var(--c-texto)] truncate">
-                  {c.nome}
-                </span>
-                <span className="block text-[11px] text-[var(--c-texto-3)] truncate">
-                  {c.cargo} · {c.loja}
-                  {c.matricula ? ` · mat. ${c.matricula}` : ''}
-                </span>
-              </div>
-
-              {holerite ? (
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <span
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 dark:text-emerald-400"
-                    title={`Enviado por ${holerite.enviadoPorNome || 'RH'}`}
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    Publicado
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => escolherArquivo(c.id)}
-                    className="px-2 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-semibold text-[var(--c-texto-2)] hover:text-[var(--c-texto)] transition-colors"
-                  >
-                    Substituir
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => apagar(holerite)}
-                    className="p-1.5 rounded-lg text-[var(--c-texto-3)] hover:text-red-600 hover:bg-red-500/10 transition-colors"
-                    title="Remover este holerite"
-                    aria-label={`Remover o holerite de ${c.nome}`}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => escolherArquivo(c.id)}
-                  disabled={subindo}
-                  className="flex-shrink-0 px-2.5 py-1.5 rounded-lg bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-[11px] font-bold flex items-center gap-1.5 hover:brightness-110 disabled:opacity-50 transition-all"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  {subindo ? 'Enviando…' : 'Enviar'}
-                </button>
-              )}
-            </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {pessoas.length === 0 && (
-          <div className="p-6 text-center text-xs text-[var(--c-texto-3)] flex flex-col items-center gap-2">
-            <FileText className="w-5 h-5" />
-            Ninguém bate com essa busca.
-          </div>
-        )}
-      </div>
+      {listaDasLojas(false)}
     </div>
   );
 };

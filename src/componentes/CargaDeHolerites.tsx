@@ -16,7 +16,7 @@
  * `cargaDeHolerites.ts`; o PDF, em `pdfHolerite.ts`. Aqui só se mostra e
  * se pergunta.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FileUp, Loader2, CheckCircle2, AlertTriangle, UserX, FileWarning } from 'lucide-react';
 import { Colaborador, Holerite } from '../tipos';
 import { FolhaInferior } from './FolhaInferior';
@@ -39,6 +39,11 @@ interface Props {
   holerites: Holerite[];
   competenciaInicial: string;
   aoPublicar: () => void;
+  /**
+   * O PDF já escolhido fora daqui — arrastado para a área de carga do
+   * computador. Chegando, a carga lê direto, sem pedir o arquivo de novo.
+   */
+  arquivoInicial?: File | null;
 }
 
 type Etapa = 'escolher' | 'lendo' | 'revisar' | 'publicando' | 'fim';
@@ -52,6 +57,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
   holerites,
   competenciaInicial,
   aoPublicar,
+  arquivoInicial,
 }) => {
   const [etapa, setEtapa] = useState<Etapa>('escolher');
   const [arquivo, setArquivo] = useState<{ nome: string; dados: ArrayBuffer; cortes: CortesDasVias } | null>(null);
@@ -84,7 +90,15 @@ export const CargaDeHolerites: React.FC<Props> = ({
     const escolhido = e.target.files?.[0];
     e.target.value = '';
     if (!escolhido) return;
+    await lerArquivo(escolhido);
+  };
 
+  // O arquivo que chegou de fora: lido assim que a carga abre com ele
+  useEffect(() => {
+    if (aberto && arquivoInicial) lerArquivo(arquivoInicial);
+  }, [aberto, arquivoInicial]);
+
+  async function lerArquivo(escolhido: File) {
     setErro(null);
     setEtapa('lendo');
     try {
@@ -117,7 +131,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
       setErro('Não foi possível ler este arquivo. Confira se é um PDF que abre normalmente.');
       setEtapa('escolher');
     }
-  };
+  }
 
   const grupos = useMemo(() => paginasPorPessoa(decisoes), [decisoes]);
   const recebem = Object.keys(grupos);

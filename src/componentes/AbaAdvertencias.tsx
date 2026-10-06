@@ -29,7 +29,8 @@ import {
 } from '../servicos/rh';
 import { dataDeHoje } from '../servicos/ponto';
 import { FotoPresenca } from './FotoPresenca';
-import { useTelaEmbutida, margemDaTela } from './TelaEmbutida';
+import { useTelaEmbutida, margemDaTela, AcaoNoCabecalho } from './TelaEmbutida';
+import { CartaoLista, EstadoVazio, classeDoBotao } from './PadraoWeb';
 
 interface Props {
   colaboradorAtual: Colaborador;
@@ -121,31 +122,136 @@ export const AbaAdvertencias: React.FC<Props> = ({ colaboradorAtual }) => {
 
   const semCiencia = lista.filter((a) => !a.cienciaEm).length;
 
-  return (
-    <div className={`${margemDaTela(embutida)} flex flex-col gap-4`}>
-      <div className={`flex items-start gap-3 ${embutida ? 'justify-end' : 'justify-between'}`}>
-        <div className={embutida ? 'hidden' : 'min-w-0'}>
-          <h2 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-1.5">
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
-            Advertências
-          </h2>
-          <p className="text-xs text-[var(--c-texto-3)] leading-relaxed">
-            O registro disciplinar da rede. A pessoa vê a dela na aba{' '}
-            <strong className="text-[var(--c-texto-2)]">Eu</strong> e dá ciência lá — a
-            confirmação é dela, não de quem aplicou.
+  /** Uma advertência: quem, o tipo, o motivo e a ciência — solta no celular, faixa do cartão no computador. */
+  const linhaDaAdvertencia = (a: Advertencia, noCartao: boolean) => {
+    const pessoa = bancoDados.obterColaboradorPorId(a.colaboradorId);
+    return (
+      <div
+        key={a.id}
+        className={
+          noCartao
+            ? 'px-4 py-3 flex gap-3 border-b border-[var(--c-borda)] last:border-0'
+            : 'p-3 rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex gap-3'
+        }
+      >
+        {pessoa && (
+          <FotoPresenca
+            foto={pessoa.foto}
+            nome={pessoa.nome}
+            presenca={pessoa.presenca}
+            tamanho="w-8 h-8"
+          />
+        )}
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-[var(--c-texto)]">
+              {pessoa?.nome || a.colaboradorId}
+            </span>
+            <span
+              className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                COR_DO_TIPO[a.tipo]
+              }`}
+            >
+              {ROTULO_ADVERTENCIA[a.tipo]}
+              {a.tipo === 'suspensao' && a.diasSuspensao
+                ? ` · ${a.diasSuspensao}d`
+                : ''}
+            </span>
+            <span className="text-[11px] text-[var(--c-texto-3)]">
+              {formatarData(a.data)}
+            </span>
+          </div>
+
+          <p className="text-xs text-[var(--c-texto-2)] leading-snug mt-1 break-words">
+            {a.motivo}
           </p>
+
+          <div className="flex items-center gap-2 flex-wrap mt-1.5">
+            {a.cienciaEm ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
+                <Check className="w-3 h-3" />
+                Ciência em {formatarData(a.cienciaEm)}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                <Clock className="w-3 h-3" />
+                Aguardando ciência
+              </span>
+            )}
+
+            {a.aplicadaPorNome && (
+              <span className="text-[11px] text-[var(--c-texto-3)]">
+                por {a.aplicadaPorNome}
+              </span>
+            )}
+
+            {a.arquivoCaminho && (
+              <button
+                type="button"
+                onClick={() => abrirAnexo(a)}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--c-acento)]"
+              >
+                <Paperclip className="w-3 h-3" />
+                Documento
+              </button>
+            )}
+          </div>
         </div>
 
         <button
           type="button"
-          id="botao-nova-advertencia"
-          onClick={() => setFormAberto((v) => !v)}
-          className="flex-shrink-0 px-3 py-2 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center gap-1.5 hover:brightness-110 transition-all"
+          onClick={() => apagar(a)}
+          className="flex-shrink-0 self-start p-1.5 rounded-lg text-[var(--c-texto-3)] hover:text-red-600 hover:bg-red-500/10 transition-colors"
+          title="Remover"
+          aria-label={`Remover a advertência de ${pessoa?.nome || ''}`}
         >
-          <Plus className="w-3.5 h-3.5" />
-          Registrar
+          <Trash2 className="w-3.5 h-3.5" />
         </button>
       </div>
+    );
+  };
+
+  return (
+    <div className={`${margemDaTela(embutida)} flex flex-col gap-4`}>
+      {/* No computador, a ação mora no título da tela (o desenho do Figma) */}
+      <AcaoNoCabecalho>
+        <button
+          type="button"
+          id="botao-nova-advertencia"
+          onClick={() => setFormAberto((v) => !v)}
+          className={classeDoBotao.principal}
+        >
+          <Plus className="w-4 h-4" />
+          Registrar advertência
+        </button>
+      </AcaoNoCabecalho>
+
+      {!embutida && (
+        <div className="flex items-start gap-3 justify-between">
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-[var(--c-texto)] flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+              Advertências
+            </h2>
+            <p className="text-xs text-[var(--c-texto-3)] leading-relaxed">
+              O registro disciplinar da rede. A pessoa vê a dela na aba{' '}
+              <strong className="text-[var(--c-texto-2)]">Eu</strong> e dá ciência lá — a
+              confirmação é dela, não de quem aplicou.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            id="botao-nova-advertencia"
+            onClick={() => setFormAberto((v) => !v)}
+            className="flex-shrink-0 px-3 py-2 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center gap-1.5 hover:brightness-110 transition-all"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Registrar
+          </button>
+        </div>
+      )}
 
       {semCiencia > 0 && (
         <div className="px-3 py-2 rounded-xl bg-amber-500/5 border border-amber-500/25 text-xs text-[var(--c-texto-2)] flex items-center gap-2">
@@ -162,7 +268,11 @@ export const AbaAdvertencias: React.FC<Props> = ({ colaboradorAtual }) => {
       )}
 
       {formAberto && (
-        <div className="p-4 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex flex-col gap-3">
+        <div
+          className={`p-4 rounded-2xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex flex-col gap-3 ${
+            embutida ? 'shadow-[var(--s-1)]' : ''
+          }`}
+        >
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
               <label
@@ -291,99 +401,30 @@ export const AbaAdvertencias: React.FC<Props> = ({ colaboradorAtual }) => {
         </div>
       )}
 
-      <div className="flex flex-col gap-1.5">
-        {lista.length === 0 ? (
-          <div className="p-8 text-center text-xs text-[var(--c-texto-3)] flex flex-col items-center gap-2">
-            <Check className="w-5 h-5 text-emerald-600" />
-            Nenhuma advertência registrada na rede.
-          </div>
-        ) : (
-          lista.map((a) => {
-            const pessoa = bancoDados.obterColaboradorPorId(a.colaboradorId);
-            return (
-              <div
-                key={a.id}
-                className="p-3 rounded-xl bg-[var(--c-superficie)] border border-[var(--c-borda)] flex gap-3"
-              >
-                {pessoa && (
-                  <FotoPresenca
-                    foto={pessoa.foto}
-                    nome={pessoa.nome}
-                    presenca={pessoa.presenca}
-                    tamanho="w-8 h-8"
-                  />
-                )}
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-[var(--c-texto)]">
-                      {pessoa?.nome || a.colaboradorId}
-                    </span>
-                    <span
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
-                        COR_DO_TIPO[a.tipo]
-                      }`}
-                    >
-                      {ROTULO_ADVERTENCIA[a.tipo]}
-                      {a.tipo === 'suspensao' && a.diasSuspensao
-                        ? ` · ${a.diasSuspensao}d`
-                        : ''}
-                    </span>
-                    <span className="text-[11px] text-[var(--c-texto-3)]">
-                      {formatarData(a.data)}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-[var(--c-texto-2)] leading-snug mt-1 break-words">
-                    {a.motivo}
-                  </p>
-
-                  <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                    {a.cienciaEm ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">
-                        <Check className="w-3 h-3" />
-                        Ciência em {formatarData(a.cienciaEm)}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400">
-                        <Clock className="w-3 h-3" />
-                        Aguardando ciência
-                      </span>
-                    )}
-
-                    {a.aplicadaPorNome && (
-                      <span className="text-[11px] text-[var(--c-texto-3)]">
-                        por {a.aplicadaPorNome}
-                      </span>
-                    )}
-
-                    {a.arquivoCaminho && (
-                      <button
-                        type="button"
-                        onClick={() => abrirAnexo(a)}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--c-acento)]"
-                      >
-                        <Paperclip className="w-3 h-3" />
-                        Documento
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => apagar(a)}
-                  className="flex-shrink-0 self-start p-1.5 rounded-lg text-[var(--c-texto-3)] hover:text-red-600 hover:bg-red-500/10 transition-colors"
-                  title="Remover"
-                  aria-label={`Remover a advertência de ${pessoa?.nome || ''}`}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            );
-          })
-        )}
-      </div>
+      {embutida ? (
+        <CartaoLista>
+          {lista.length === 0 ? (
+            <EstadoVazio
+              icone={<Check className="w-6 h-6" />}
+              titulo="Nenhuma advertência registrada"
+              descricao="A rede está sem ocorrências disciplinares. As que forem registradas aparecem aqui, com a ciência de quem recebeu."
+            />
+          ) : (
+            <div>{lista.map((a) => linhaDaAdvertencia(a, true))}</div>
+          )}
+        </CartaoLista>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          {lista.length === 0 ? (
+            <div className="p-8 text-center text-xs text-[var(--c-texto-3)] flex flex-col items-center gap-2">
+              <Check className="w-5 h-5 text-emerald-600" />
+              Nenhuma advertência registrada na rede.
+            </div>
+          ) : (
+            lista.map((a) => linhaDaAdvertencia(a, false))
+          )}
+        </div>
+      )}
     </div>
   );
 };
