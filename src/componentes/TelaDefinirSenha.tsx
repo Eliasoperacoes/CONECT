@@ -15,7 +15,7 @@
  */
 
 import React, { useState } from 'react';
-import { Lock, Eye, EyeOff, AlertCircle, ArrowRight, IdCard } from 'lucide-react';
+import { Lock, Eye, EyeOff, AlertCircle, ArrowRight, IdCard, LogOut } from 'lucide-react';
 import { Colaborador } from '../tipos';
 import { nuvem } from '../servicos/nuvem';
 import { cpfValido, formatarCpf, limparCpf } from '../servicos/cpf';
@@ -29,12 +29,14 @@ interface PropsTelaDefinirSenha {
   /** Ainda não informou o CPF. */
   pedeCpf: boolean;
   aoConcluir: () => void;
+  /** Sair da conta — a tela nunca prende ninguém. */
+  aoSair?: () => void;
 }
 
 /** Mesma exigência mínima da autenticação do Supabase. */
 const TAMANHO_MINIMO = 6;
 
-export const TelaDefinirSenha: React.FC<PropsTelaDefinirSenha> = ({ colaborador, pedeSenha, pedeCpf, aoConcluir }) => {
+export const TelaDefinirSenha: React.FC<PropsTelaDefinirSenha> = ({ colaborador, pedeSenha, pedeCpf, aoConcluir, aoSair }) => {
   const [senha, setSenha] = useState('');
   const [confirmacao, setConfirmacao] = useState('');
   const [cpf, setCpf] = useState('');
@@ -207,6 +209,18 @@ export const TelaDefinirSenha: React.FC<PropsTelaDefinirSenha> = ({ colaborador,
           </button>
         </form>
       </main>
+
+      {aoSair && (
+        <button
+          type="button"
+          id="botao-sair-primeiro-acesso"
+          onClick={aoSair}
+          className="mx-auto mb-2 h-11 px-5 rounded-2xl flex items-center gap-2 text-sm font-semibold text-[var(--c-texto-2)] hover:bg-[var(--c-superficie)]"
+        >
+          <LogOut className="w-4 h-4" />
+          Sair e entrar com outra conta
+        </button>
+      )}
     </div>
   );
 };

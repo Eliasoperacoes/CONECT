@@ -221,8 +221,15 @@ const operacoesNoCodigo = async (): Promise<Set<string>> => {
   for (const arquivo of ARQUIVOS_QUE_ESCREVEM) {
     const fonte = await Bun.file(arquivo).text();
 
-    for (const achado of fonte.matchAll(/from\(['"]([a-z_]+)['"]\)([\s\S]{0,260})/g)) {
-      const [, tabela, depois] = achado;
+    /*
+      O OLHAR À FRENTE NÃO CONSOME, e para na consulta seguinte. Consumindo,
+      duas consultas próximas viravam uma: a de `colaboradores` engolia a de
+      `cpf_colaborador` logo abaixo (obterMeuCpf, 06/10/2026), e a segunda
+      tabela sumia da conta.
+    */
+    for (const achado of fonte.matchAll(/from\(['"]([a-z_]+)['"]\)(?=([\s\S]{0,260}))/g)) {
+      const [, tabela, adiante] = achado;
+      const depois = adiante.split(/\.from\(/)[0];
       const juntar = (...cmds: string[]) => cmds.forEach((c) => pares.add(`${tabela}.${c}`));
 
       if (/\.upsert\(/.test(depois)) {

@@ -33,7 +33,7 @@ export const ComprovanteDaBatida: React.FC<{
   useEffect(() => {
     if (!registro || !usandoNuvem()) return;
     let vivo = true;
-    nuvem.obterMeuCpf(registro.colaboradorId).then(({ cpf: c }) => vivo && setCpf(c));
+    nuvem.obterMeuCpf().then(({ cpf: c }) => vivo && setCpf(c));
     return () => {
       vivo = false;
     };

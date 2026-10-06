@@ -1297,7 +1297,7 @@ export default function App() {
       return;
     }
     let vivo = true;
-    nuvem.obterMeuCpf(colaboradorAtual.id).then(({ cpf, indisponivel }) => {
+    nuvem.obterMeuCpf().then(({ cpf, indisponivel }) => {
       if (vivo) setSituacaoDoCpf(cpf || indisponivel ? 'tem' : 'falta');
     });
     return () => {
@@ -1364,6 +1364,15 @@ export default function App() {
         colaborador={colaboradorAtual}
         pedeSenha={precisaTrocarSenha}
         pedeCpf={situacaoDoCpf === 'falta'}
+        // A saída da tela: ninguém fica preso nela (a de lidarDeslogar é declarada mais abaixo)
+        aoSair={async () => {
+          await desligarAvisoNativo();
+          bancoDados.deslogar();
+          if (usandoNuvem()) nuvem.sair();
+          setPrecisaTrocarSenha(false);
+          setSituacaoDoCpf('conferindo');
+          setAutenticado(false);
+        }}
         aoConcluir={() => {
           setPrecisaTrocarSenha(false);
           setSituacaoDoCpf('tem');

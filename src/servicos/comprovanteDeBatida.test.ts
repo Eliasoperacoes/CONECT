@@ -96,3 +96,19 @@ test('O PRIMEIRO ACESSO PEDE O CPF, e quem já tem senha mas não tem CPF també
   // A correção não apaga o comprovante: o gatilho devolve o carimbo original
   expect(sql).toContain('new.codigo_verificacao := old.codigo_verificacao;');
 });
+
+test('O CPF É PEDIDO UMA VEZ SÓ, no web ou no celular, e a tela nunca prende ninguém (06/10/2026)', async () => {
+  const nuvem = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+  const obter = nuvem.slice(nuvem.indexOf('async obterMeuCpf('), nuvem.indexOf('async registrarMeuCpf('));
+  // Quem é "eu" sai do login, e não do colaborador que a tela tem na mão
+  expect(obter).toContain('await supabase.auth.getUser()');
+  expect(obter).toContain(".eq('auth_user_id', sessao.user.id)");
+  expect(obter).not.toContain('colaboradorId');
+  // "Seu CPF já está cadastrado" é sucesso: a pessoa tem CPF
+  expect(nuvem).toContain("error.message.startsWith('Seu CPF já está cadastrado')) return { sucesso: true };");
+  // E a tela tem saída
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+  expect(app).toContain('aoSair={async () => {');
+  const tela = await Bun.file(new URL('../componentes/TelaDefinirSenha.tsx', import.meta.url)).text();
+  expect(tela).toContain('id="botao-sair-primeiro-acesso"');
+});

@@ -473,24 +473,46 @@ class PonteNuvem {
    * O CPF da própria pessoa, ou nulo se ainda não informou. Só ela e quem
    * cuida de pessoas leem (RLS de `cpf_colaborador`).
    *
-   * `indisponivel`: a tabela ainda não existe no banco (o SQL não rodou) —
-   * aí ninguém é barrado por um cadastro que não tem onde ser gravado.
+   * `indisponivel`: não deu para saber — sem sessão ainda, sem cadastro
+   * ligado à conta, ou a tabela ainda não existe. Aí ninguém é barrado.
+   *
+   * QUEM É "EU" SAI DO LOGIN, e não do colaborador que a tela tem na mão
+   * (06/10/2026). Era pelo id da tela: com a sessão ainda chegando, ou a
+   * tela com o cadastro guardado de antes, a consulta voltava vazia, o
+   * app concluía "falta CPF", pedia de novo — e o banco recusava ("já
+   * cadastrado"), prendendo a pessoa na tela. É a mesma pergunta em
+   * qualquer aparelho: o CPF é pedido uma vez só, no web ou no celular.
    */
-  async obterMeuCpf(colaboradorId: string): Promise<{ cpf: string | null; indisponivel?: boolean }> {
+  async obterMeuCpf(): Promise<{ cpf: string | null; indisponivel?: boolean }> {
     if (!supabase) return { cpf: null, indisponivel: true };
+    const { data: sessao } = await supabase.auth.getUser();
+    if (!sessao.user) return { cpf: null, indisponivel: true };
+    const { data: eu } = await supabase
+      .from('colaboradores')
+      .select('id')
+      .eq('auth_user_id', sessao.user.id)
+      .maybeSingle();
+    if (!eu?.id) return { cpf: null, indisponivel: true };
     const { data, error } = await supabase
       .from('cpf_colaborador')
       .select('cpf')
-      .eq('colaborador_id', colaboradorId)
+      .eq('colaborador_id', eu.id)
       .maybeSingle();
     if (error) return { cpf: null, indisponivel: true };
     return { cpf: data?.cpf ?? null };
   }
 
-  /** Registra o próprio CPF — uma vez; o banco confere os dígitos. */
+  /**
+   * Registra o próprio CPF — uma vez; o banco confere os dígitos.
+   *
+   * "JÁ ESTÁ CADASTRADO" (o próprio) É SUCESSO: a pessoa tem CPF, e é isso
+   * que a tela quer saber. Tratado como erro, prendia quem já tinha
+   * informado. O CPF de OUTRA pessoa continua recusado.
+   */
   async registrarMeuCpf(cpf: string): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
     const { error } = await supabase.rpc('registrar_meu_cpf', { p_cpf: cpf });
+    if (error && error.code === 'P0001' && error.message.startsWith('Seu CPF já está cadastrado')) return { sucesso: true };
     if (error) return { sucesso: false, erro: error.code === 'P0001' ? error.message : 'Não foi possível salvar o CPF.' };
     return { sucesso: true };
   }
