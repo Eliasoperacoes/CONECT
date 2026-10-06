@@ -151,3 +151,23 @@ test('O QUE O SELO DE DOCUMENTOS CONTA ESTÁ EM "MEUS DOCUMENTOS" (Elias, 06/10/
   // E o espelho não tem uma segunda porta em Ponto
   expect(ler('servicos/telasPorAssunto.ts')).not.toContain("'meu_espelho'");
 });
+
+test('O ENDEREÇO ACOMPANHA A TELA NO COMPUTADOR, e o celular fica de fora (Elias, 06/10/2026)', () => {
+  const app = ler('App.tsx');
+  // O endereço escrito é o da tela que aparece de fato, depois da regra de acesso
+  expect(app).toContain('const caminho = caminhoDaTela(telaQueAbre(telaWeb, acessoWeb.visiveis));');
+  // Só a troca da pessoa entra no histórico; a do sistema só corrige o endereço
+  expect(app).toContain('if (daPessoa) window.history.pushState(null');
+  expect(app).toContain("else window.history.replaceState(window.history.state, '', novo);");
+  // O voltar do navegador troca a tela
+  expect(app).toContain("window.addEventListener('popstate', aoNavegar);");
+  // No celular nada disso roda: lá o voltar é a pilha do Android (voltar.ts)
+  expect(app).toContain('if (!autenticado || ehTelaDeCelular()) return;');
+  // A raiz não pede tela: abre onde a pessoa parou, como sempre
+  expect(app).toContain("return doEndereco && doEndereco !== 'inicio'");
+  // Os caminhos da pessoa passam por navegarNaWeb — nenhum troca a tela por fora dele
+  for (const caminho of ['irParaTelaWeb', 'escolherAssunto', 'irParaNotificacao']) {
+    const corpo = app.slice(app.indexOf(`const ${caminho} = `), app.indexOf(`const ${caminho} = `) + 1200);
+    expect({ caminho, usa: corpo.includes('navegarNaWeb(') }).toEqual({ caminho, usa: true });
+  }
+});

@@ -50,6 +50,7 @@ const MAXIMO_JANELAS_ABERTAS = 3;
 import { bancoDados } from './servicos/bancoDados';
 import { manterSeIgual } from './servicos/igualdade';
 import { ehTelaDeCelular } from './servicos/tela';
+import { caminhoDaTela, telaDoCaminho } from './servicos/enderecoDaTela';
 import {
   ondeParei,
   lembrarOndeParei,
@@ -225,17 +226,37 @@ export default function App() {
    * Independe da aba do celular: lá a navegação é a barra de baixo, e cada
    * caminho que muda uma (aviso, publicação, QR) diz também a outra.
    */
-  const [telaWeb, setTelaWeb] = useState<TelaWeb>(() =>
-    ondeParei(bancoDados.obterColaboradorAtual().id, 'tela-web', TELAS_WEB, 'inicio')
-  );
+  const [telaWeb, setTelaWeb] = useState<TelaWeb>(() => {
+    /*
+      O ENDEREÇO VENCE A MEMÓRIA: quem abriu /documentos/assinaturas (um
+      link recebido, um F5, uma aba nova) quer aquela tela. A raiz não
+      pede tela nenhuma — abre onde a pessoa parou, como sempre abriu.
+    */
+    const doEndereco = ehTelaDeCelular() ? null : telaDoCaminho(window.location.pathname);
+    return doEndereco && doEndereco !== 'inicio'
+      ? doEndereco
+      : ondeParei(bancoDados.obterColaboradorAtual().id, 'tela-web', TELAS_WEB, 'inicio');
+  });
+
+  /**
+   * A troca de tela que a PESSOA fez entra no histórico do navegador (o
+   * voltar volta a ela); a que o sistema fez sozinho — a tela sem acesso
+   * que cai no Início, a primeira carga — só corrige o endereço, sem
+   * deixar um passo falso para o voltar.
+   */
+  const trocaPelaPessoa = useRef(false);
+  const navegarNaWeb = useCallback((tela: TelaWeb) => {
+    trocaPelaPessoa.current = true;
+    setTelaWeb(tela);
+  }, []);
 
   /** Troca para a Central e manda abrir a publicação. */
   const abrirPublicacao = useCallback((publicacaoId: string) => {
     setPublicacaoAAbrir(publicacaoId);
     setAbaAtiva('central');
-    setTelaWeb('central');
+    navegarNaWeb('central');
     setConversaAtivaId(null);
-  }, []);
+  }, [navegarNaWeb]);
   const [colaboradorAtual, setColaboradorAtual] = useState<Colaborador>(
     bancoDados.obterColaboradorAtual()
   );
@@ -1170,6 +1191,38 @@ export default function App() {
     };
   }, [colaboradorAtual, autenticado]);
 
+  /**
+   * O ENDEREÇO ACOMPANHA A TELA DO COMPUTADOR (enderecoDaTela.ts). Escreve
+   * a tela que aparece de fato (`telaQueAbre`): o endereço nunca mostra uma
+   * tela que a pessoa não vê. O que vier depois do caminho (?conversa=, ?ponto=)
+   * fica — quem o lê e o limpa é `lerEndereco`.
+   *
+   * No celular nada disto roda: lá o endereço não muda, e o voltar do
+   * Android segue a pilha de `voltar.ts`.
+   */
+  useEffect(() => {
+    if (!autenticado || ehTelaDeCelular()) return;
+    const caminho = caminhoDaTela(telaQueAbre(telaWeb, acessoWeb.visiveis));
+    const daPessoa = trocaPelaPessoa.current;
+    trocaPelaPessoa.current = false;
+    if (window.location.pathname === caminho) return;
+    const novo = `${caminho}${window.location.search}${window.location.hash}`;
+    if (daPessoa) window.history.pushState(null, '', novo);
+    else window.history.replaceState(window.history.state, '', novo);
+  }, [autenticado, telaWeb, acessoWeb.visiveis]);
+
+  /* Voltar e avançar do navegador: a tela do endereço, sem entrar de novo no histórico */
+  useEffect(() => {
+    const aoNavegar = () => {
+      if (ehTelaDeCelular()) return;
+      setChatExpandido(false);
+      setConversaAtivaId(null);
+      setTelaWeb(telaDoCaminho(window.location.pathname) ?? 'inicio');
+    };
+    window.addEventListener('popstate', aoNavegar);
+    return () => window.removeEventListener('popstate', aoNavegar);
+  }, []);
+
   // Enquanto a sessão do banco não é conferida, não dá para saber se mostra
   // o login ou o sistema. Piscar uma tela e trocar pela outra é pior. Quem
   // cobre este intervalo é a tela de espera do index.html, com o losango.
@@ -1314,7 +1367,7 @@ export default function App() {
     }
 
     // No computador, a tela do assunto (a tradução mora em telasPorAssunto.ts)
-    setTelaWeb(TELA_DO_DESTINO[destino.secao] ?? 'inicio');
+    navegarNaWeb(TELA_DO_DESTINO[destino.secao] ?? 'inicio');
     setChatExpandido(false);
 
     // O aviso da decisão leva ao ponto de quem pediu, onde ela aparece
@@ -1442,14 +1495,14 @@ export default function App() {
     }
     setChatExpandido(false);
     setConversaAtivaId(null);
-    setTelaWeb(primeiraTela);
+    navegarNaWeb(primeiraTela);
   };
 
   /** Ir a uma tela (aba do assunto, atalho do Início, menu do perfil). */
   const irParaTelaWeb = (tela: TelaWeb) => {
     setChatExpandido(false);
     setConversaAtivaId(null);
-    setTelaWeb(tela);
+    navegarNaWeb(tela);
   };
 
   // Determina visibilidade do botão flutuante '+'
