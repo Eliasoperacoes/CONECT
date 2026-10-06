@@ -28,6 +28,8 @@ export interface Noticia {
   publicadaEm: string;
   resumo: string;
   imagem?: string;
+  /** Escolhida por falar da área da pessoa (`escolherNoticias`); as outras completam o Início. */
+  daSuaArea?: boolean;
 }
 
 export const FEEDS_DA_AGENCIA_BRASIL = [
@@ -135,7 +137,8 @@ const simplificar = (texto: string) =>
  * velhas, sem repetir. A palavra conta pelo COMEÇO ("veículo" acha
  * "veículos", mas "dados" não acha "candidatos").
  *
- * Nenhuma da área? As mais novas DE ECONOMIA, marcadas gerais. A reserva
+ * Faltou para o limite (ou nenhuma da área)? Completam as mais novas DE
+ * ECONOMIA, marcadas como fora da área (`daSuaArea: false`). A reserva
  * vinha de "últimas notícias" e trouxe política e futebol para a tela de
  * abertura da empresa (05/10/2026).
  */
@@ -153,7 +156,16 @@ export const escolherNoticias = (
     const texto = ` ${simplificar(`${n.titulo} ${n.resumo}`).replace(/[^a-z0-9]+/g, ' ')}`;
     return palavras.some((p) => texto.includes(` ${p}`));
   });
-  return daArea.length > 0
-    ? { daArea: true, noticias: daArea.slice(0, limite) }
-    : { daArea: false, noticias: unicas.filter((n) => n.editoria === 'economia').slice(0, limite) };
+  /*
+    A ÁREA PRIMEIRO, E O RESTO COMPLETA. O Início mostra a notícia em
+    cartão, com imagem (Elias, 06/10/2026), e um dia com uma notícia só da
+    área deixava um cartão sozinho na tela. O que faltar para o limite vem
+    das mais novas de economia — cada uma dizendo se é da área ou não.
+  */
+  const escolhidas = daArea.slice(0, limite).map((n) => ({ ...n, daSuaArea: true }));
+  const completam = unicas
+    .filter((n) => n.editoria === 'economia' && !escolhidas.some((e) => e.link === n.link))
+    .slice(0, limite - escolhidas.length)
+    .map((n) => ({ ...n, daSuaArea: false }));
+  return { daArea: escolhidas.length > 0, noticias: [...escolhidas, ...completam] };
 };

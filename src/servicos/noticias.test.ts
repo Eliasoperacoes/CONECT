@@ -36,12 +36,22 @@ test('o feed vira notícia em TEXTO PURO, e só com link da própria fonte', () 
   expect(textoPuro('&lt;b&gt;A &amp;amp; B&lt;/b&gt;')).toBe('A &amp; B');
 });
 
-test('cada área recebe as suas; sem nenhuma, as mais novas, ditas gerais', () => {
+test('cada área recebe as suas PRIMEIRO; a economia completa, dita de fora da área', () => {
   const noticias = lerFeed(XML);
   const balcao = escolherNoticias(noticias, areaDoSetor('Balcão'));
-  expect(balcao).toEqual({ daArea: true, noticias: [noticias[0]] });
+  expect(balcao.daArea).toBe(true);
+  // A de veículos é do balcão; a do FGTS (economia) só completa — e diz que completa
+  expect(balcao.noticias.map((n) => [n.titulo, n.daSuaArea])).toEqual([
+    ['Venda de veículos cresce em setembro', true],
+    ['Prazo do FGTS termina na sexta', false],
+  ]);
   const rh = escolherNoticias(noticias, areaDoSetor('RH'));
-  expect(rh.noticias.map((n) => n.titulo)).toEqual(['Prazo do FGTS termina na sexta']);
+  expect(rh.noticias.map((n) => [n.titulo, n.daSuaArea])).toEqual([
+    ['Prazo do FGTS termina na sexta', true],
+    ['Venda de veículos cresce em setembro', false],
+  ]);
+  // O limite vale para a soma: a área não é cortada para a economia caber
+  expect(escolherNoticias(noticias, areaDoSetor('Balcão'), 1).noticias.map((n) => n.daSuaArea)).toEqual([true]);
   // TI: nada de tecnologia no dia — vêm as mais novas, e o bloco sabe que são gerais
   const ti = escolherNoticias(noticias, areaDoSetor('TI'));
   expect(ti.daArea).toBe(false);
@@ -49,7 +59,8 @@ test('cada área recebe as suas; sem nenhuma, as mais novas, ditas gerais', () =
   // ...e só de economia: a de "geral" (Mega-Sena) não vai para a tela da empresa
   expect(ti.noticias.map((n) => n.editoria)).toEqual(['economia', 'economia']);
   // O mesmo link em dois feeds aparece uma vez só
-  expect(escolherNoticias([...noticias, ...noticias], 'automotivo').noticias).toHaveLength(1);
+  const dobradas = escolherNoticias([...noticias, ...noticias], 'automotivo').noticias.map((n) => n.link);
+  expect(dobradas).toEqual([...new Set(dobradas)]);
 });
 
 test('todo setor da casa tem a sua área de notícia', () => {
