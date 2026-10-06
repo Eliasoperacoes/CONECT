@@ -17,6 +17,10 @@
   --c-atencao: #B45309;
   --c-erro: #B91C1C;
   --c-info: #1D4ED8;
+  /* A COR DA MARCA — o azul da Malachias. Igual nos dois temas: marca não
+     muda com o tema (o botão principal da entrada ficava azul-pálido no escuro) */
+  --c-marca: #315BAA;
+  --c-sobre-marca: #FFFFFF;
   --fonte: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
   --fonte-num: ui-monospace, "SF Mono", Consolas, "Roboto Mono", monospace;
   --t-xs: 12px;

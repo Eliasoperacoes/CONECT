@@ -4,7 +4,7 @@ import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
 import { Colaborador, INFORMACOES_LOJAS } from '../tipos';
 import { usandoNuvem } from '../servicos/supabase';
 import { nuvem } from '../servicos/nuvem';
-import { MarcaConecta } from './MarcaConecta';
+import { LogoMalachias } from './LogoMalachias';
 
 interface PropsTelaLogin {
   aoAutenticar: (colaborador: Colaborador, precisaTrocarSenha?: boolean) => void;
@@ -137,22 +137,16 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
       className="min-h-[100dvh] w-full flex flex-col bg-[linear-gradient(180deg,var(--c-acento-suave)_0%,var(--c-canvas)_42%)] text-[var(--c-texto)] px-6 pt-[max(env(safe-area-inset-top),1.5rem)] pb-[max(env(safe-area-inset-bottom),1.25rem)]"
     >
       <main className="flex-1 flex flex-col justify-center w-full max-w-sm mx-auto py-6">
-        {/* A marca do sistema */}
-        <div className="flex items-center justify-center gap-2.5">
-          <MarcaConecta />
-          <span className="text-lg font-extrabold tracking-tight">CONECTA</span>
-        </div>
+        {/*
+          UMA MARCA SÓ, A DA EMPRESA (Elias, 06/10/2026). A do CONECTA em
+          cima do logo eram duas marcas disputando o mesmo lugar; o nome do
+          sistema fica na frase, onde se lê sem competir.
+        */}
+        <LogoMalachias tamanho="grande" className="mx-auto" />
 
-        {/* A empresa */}
-        <img
-          src="/logo-malachias.svg"
-          alt="Malachias Autopeças"
-          className="mt-9 mx-auto h-28 w-28 object-contain drop-shadow-sm"
-        />
-
-        <h1 className="mt-7 text-center text-[28px] leading-tight font-extrabold tracking-tight">Acesse sua conta</h1>
-        <p className="mt-2 text-center text-sm text-[var(--c-texto-3)]">
-          Bem-vindo de volta. Informe seus dados para continuar.
+        <h1 className="mt-8 text-center text-[28px] leading-tight font-extrabold tracking-tight">Acesse sua conta</h1>
+        <p className="mt-2 text-center text-sm leading-relaxed text-[var(--c-texto-3)]">
+          Entre no <strong className="font-semibold text-[var(--c-texto-2)]">CONECTA</strong> com o seu usuário.
         </p>
 
         {erro && (
@@ -245,10 +239,10 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
             type="submit"
             id="botao-submeter-login"
             disabled={carregando}
-            className="w-full h-14 rounded-2xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-base flex items-center justify-center gap-2 shadow-lg shadow-[var(--c-acento)]/25 hover:brightness-110 active:scale-[0.99] transition disabled:opacity-60"
+            className="w-full h-14 rounded-2xl bg-[var(--c-marca)] text-[var(--c-sobre-marca)] font-bold text-base flex items-center justify-center gap-2 shadow-lg shadow-[var(--c-marca)]/30 hover:brightness-110 active:scale-[0.99] transition disabled:opacity-60"
           >
             {carregando ? (
-              <span className="w-5 h-5 border-2 border-[var(--c-sobre-acento)] border-t-transparent rounded-full animate-spin" />
+              <span className="w-5 h-5 border-2 border-[var(--c-sobre-marca)] border-t-transparent rounded-full animate-spin" />
             ) : (
               <>
                 Entrar no sistema
@@ -299,15 +293,15 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
         )}
 
         {/* A rede: as lojas, sem bolinha de "online" — o sistema não mede isso */}
-        <div className="mt-9 pt-6 border-t border-[var(--c-borda)]">
-          <span className="block text-center text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--c-texto-3)]">
+        <div className="mt-10">
+          <span className="block text-center text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--c-texto-3)]">
             Rede conectada
           </span>
           <ul className="mt-3 flex flex-wrap justify-center gap-2">
             {lojas.map((loja) => (
               <li
                 key={loja.nome}
-                className="px-3 py-1.5 rounded-full bg-[var(--c-superficie)] border border-[var(--c-borda)] text-xs font-semibold text-[var(--c-texto-2)] shadow-[var(--s-1)]"
+                className="px-2.5 py-1 rounded-full border border-[var(--c-borda)] text-[11px] font-medium text-[var(--c-texto-3)]"
               >
                 {loja.nome}
               </li>

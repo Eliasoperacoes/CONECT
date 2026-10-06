@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import type { Assunto, AssuntoId } from '../servicos/telasPorAssunto';
 import { IndicadorNuvem } from './IndicadorNuvem';
-import { MarcaConecta } from './MarcaConecta';
+import { LogoMalachias } from './LogoMalachias';
 
 export const ICONE_DO_ASSUNTO: Record<AssuntoId, LucideIcon> = {
   inicio: Home,
@@ -69,9 +69,9 @@ export const BarraLateralWeb: React.FC<{
       aria-label="Navegação"
       className="hidden md:flex flex-col w-16 lg:w-60 h-full flex-shrink-0 bg-[var(--c-superficie)] border-r border-[var(--c-borda)]"
     >
-      {/* A marca: o que é o sistema e se ele está ligado à rede */}
+      {/* A marca: a empresa (o logo), o sistema e se ele está ligado à rede */}
       <div className="h-20 flex items-center gap-3 px-3 lg:px-5 border-b border-[var(--c-borda)] flex-shrink-0">
-        <MarcaConecta className="mx-auto lg:mx-0" />
+        <LogoMalachias className="mx-auto lg:mx-0" />
         <div className="hidden lg:block min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="font-extrabold text-base tracking-tight text-[var(--c-texto)]">CONECTA</span>
