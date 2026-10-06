@@ -179,11 +179,14 @@ test('o selo da aba Eu e o cartao contam a mesma coisa: holerite sem assinar e a
   expect(r.total).toBe(2);
 
   const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
-  expect(app).toContain('setPendenciasDoMeuRHAgora(pendenciasDoMeuRH(h, r, a, espelhos).total)');
+  expect(app).toContain('const pendencias = pendenciasDoMeuRH(h, r, a, espelhos);\n      setPendenciasDoMeuRHAgora(pendencias.total);');
   expect(app).toContain('espelhosParaAssinar(colaboradorAtual, batePonto(colaboradorAtual), dataDeHoje(), assinados)');
   expect(app).toMatch(/alvo: 'eu',\s*contador: pendenciasDoMeuRHAgora,/);
   const tela = await Bun.file(new URL('../componentes/MeuRH.tsx', import.meta.url)).text();
-  expect(tela).toMatch(/pendenciasDoMeuRH\(\s*holerites,\s*recebimentos,\s*advertencias,\s*espelhosParaAssinar\(eu, batePonto\(eu\), hoje, espelhosAssinados\)/);
+  // O cartão espera os documentos chegarem (`carregado`), senão a bolinha pisca
+  expect(tela).toMatch(
+    /pendenciasDoMeuRH\(\s*holerites,\s*recebimentos,\s*advertencias,\s*espelhosParaAssinar\(eu, carregado && batePonto\(eu\), hoje, espelhosAssinados\)/
+  );
 });
 
 test('ESPELHO PARA ASSINAR: mês fechado desde setembro/2026, não assinado, de quem bate ponto', async () => {

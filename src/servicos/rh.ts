@@ -17,6 +17,7 @@
  * deixaria o holerite de oitenta pessoas no computador do balcão.
  */
 
+import { avisarQueDocumentosMudaram } from './documentosDaPessoa';
 import { supabase, usandoNuvem } from './supabase';
 import { enviarDocumento, resolverCaminho, apagarAnexos } from './anexos';
 import { bancoDados } from './bancoDados';
@@ -451,6 +452,7 @@ export const darCienciaNaAdvertencia = async (
   if (!data || data.length === 0 || !data[0].ciencia_em) {
     return { sucesso: false, erro: 'A ciência não foi registrada. Tente de novo.' };
   }
+  avisarQueDocumentosMudaram();
   return { sucesso: true };
 };
 

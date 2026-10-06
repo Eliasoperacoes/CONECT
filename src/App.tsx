@@ -105,7 +105,8 @@ import {
 } from './servicos/telasPorAssunto';
 import { BarraLateralWeb } from './componentes/BarraLateralWeb';
 import { BalaoDeConversas } from './componentes/BalaoDeConversas';
-import { SinoWeb } from './componentes/SinoWeb';
+import { SinoWeb, itensDosDocumentos } from './componentes/SinoWeb';
+import { ouvirMudancaDeDocumentos } from './servicos/documentosDaPessoa';
 import { ConteudoWeb } from './componentes/ConteudoWeb';
 import { vigiarRelogio } from './servicos/relogio';
 import { usandoNuvem } from './servicos/supabase';
@@ -630,10 +631,29 @@ export default function App() {
    * entrar e ao SAIR da aba Eu — é lá que se assina.
    */
   const [pendenciasDoMeuRHAgora, setPendenciasDoMeuRHAgora] = useState(0);
+  /**
+   * O QUE É CADA PENDÊNCIA — para o sino dizer "Holerite de setembro para
+   * assinar", e não "1 documento" (Elias, 06/10/2026: "não vi notificação
+   * de holerite para assinar").
+   */
+  const [detalheDoMeuRH, setDetalheDoMeuRH] = useState<{ holerites: string[]; espelhos: string[]; advertencias: number }>({
+    holerites: [],
+    espelhos: [],
+    advertencias: 0,
+  });
   const estouNaAbaEu = abaAtivaEscolhida === 'eu';
+  /*
+    RECONTA quando muda de verdade: ao assinar ou dar ciência (o aviso de
+    documentosDaPessoa.ts), e ao entrar e sair de onde se assina — a aba Eu
+    no celular, Meus documentos no computador.
+  */
+  const [versaoDosDocumentos, setVersaoDosDocumentos] = useState(0);
+  useEffect(() => ouvirMudancaDeDocumentos(() => setVersaoDosDocumentos((v) => v + 1)), []);
+  const estouEmMeusDocumentos = telaWeb === 'meus_documentos';
   useEffect(() => {
     if (!autenticado) {
       setPendenciasDoMeuRHAgora(0);
+      setDetalheDoMeuRH({ holerites: [], espelhos: [], advertencias: 0 });
       return;
     }
     let cancelado = false;
@@ -646,12 +666,18 @@ export default function App() {
       if (cancelado) return;
       const assinados = new Set([...e.values()].map((x) => x.mes));
       const espelhos = espelhosParaAssinar(colaboradorAtual, batePonto(colaboradorAtual), dataDeHoje(), assinados);
-      setPendenciasDoMeuRHAgora(pendenciasDoMeuRH(h, r, a, espelhos).total);
+      const pendencias = pendenciasDoMeuRH(h, r, a, espelhos);
+      setPendenciasDoMeuRHAgora(pendencias.total);
+      setDetalheDoMeuRH({
+        holerites: pendencias.holeritesParaAssinar.map((x) => x.competencia),
+        espelhos: pendencias.espelhosParaAssinar,
+        advertencias: pendencias.semCiencia.length,
+      });
     });
     return () => {
       cancelado = true;
     };
-  }, [autenticado, colaboradorAtual.id, estouNaAbaEu]);
+  }, [autenticado, colaboradorAtual.id, estouNaAbaEu, estouEmMeusDocumentos, versaoDosDocumentos]);
   const [avisoNaoLido, setAvisoNaoLido] = useState<Mensagem | null>(null);
 
   // Modais acionados pelo botão '+'
@@ -1934,13 +1960,8 @@ export default function App() {
                       texto: (n) => (n === 1 ? 'comunicado não lido na Central' : 'comunicados não lidos na Central'),
                       tela: 'central',
                     },
-                    {
-                      id: 'documentos',
-                      tipo: 'documentos',
-                      quantidade: pendenciasDoMeuRHAgora,
-                      texto: (n) => (n === 1 ? 'documento seu para assinar ou dar ciência' : 'documentos seus para assinar ou dar ciência'),
-                      tela: 'meus_documentos',
-                    },
+                    // Cada documento dito pelo nome: o holerite e o espelho com o mês
+                    ...itensDosDocumentos(detalheDoMeuRH),
                   ]}
                 />
               }

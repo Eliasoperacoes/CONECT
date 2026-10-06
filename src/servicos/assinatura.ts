@@ -7,6 +7,7 @@
  * `supabase/assinatura-holerite.sql`), não aqui. O que este arquivo faz é
  * levar e trazer; quem decide se vale é o banco.
  */
+import { avisarQueDocumentosMudaram } from './documentosDaPessoa';
 import { supabase, usandoNuvem } from './supabase';
 import { bancoDados } from './bancoDados';
 import { Assinatura, Holerite, RecebimentoHolerite, ResumoPontoColaborador } from '../tipos';
@@ -184,6 +185,7 @@ export const assinarHolerite = async (
   if (!resposta.ok) {
     return { sucesso: false, erro: MOTIVOS[resposta.motivo || ''] || 'A assinatura não foi registrada.' };
   }
+  avisarQueDocumentosMudaram();
   return { sucesso: true, assinadoEm: resposta.assinado_em };
 };
 
@@ -300,6 +302,7 @@ export const assinarEspelho = async (
   if (!resposta.ok) {
     return { sucesso: false, erro: MOTIVOS[resposta.motivo || ''] || 'A assinatura não foi registrada.' };
   }
+  avisarQueDocumentosMudaram();
   return { sucesso: true, assinadoEm: resposta.assinado_em };
 };
 

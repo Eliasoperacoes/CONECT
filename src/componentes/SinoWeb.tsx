@@ -9,6 +9,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Bell, Clock, Megaphone, FileText, ChevronRight, CheckCircle2 } from 'lucide-react';
 import type { TelaWeb } from '../servicos/telasPorAssunto';
+import { rotuloDoMes } from '../servicos/meuRH';
 
 export interface ItemDoSino {
   id: string;
@@ -20,6 +21,46 @@ export interface ItemDoSino {
 }
 
 const ICONE = { ponto: Clock, central: Megaphone, documentos: FileText } as const;
+
+/** "2026-09" → "setembro de 2026", no meio da frase. */
+const mesNaFrase = (mes: string) => rotuloDoMes(mes).toLowerCase();
+
+/** "setembro" / "agosto e setembro" / "julho, agosto e setembro". */
+const listaDeMeses = (meses: string[]) => {
+  const nomes = [...meses].sort().map(mesNaFrase);
+  return nomes.length <= 1 ? nomes.join('') : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`;
+};
+
+/**
+ * OS DOCUMENTOS DA PESSOA, CADA UM PELO NOME (Elias, 06/10/2026: "não vi
+ * notificação de holerite para assinar"). O sino dizia "1 documento seu
+ * para assinar ou dar ciência" — sem dizer qual. Agora: o holerite e o
+ * espelho com o mês, e a advertência discreta ("documento do RH"), como o
+ * aviso do celular, que não diz o que é para quem estiver do lado.
+ */
+export const itensDosDocumentos = (d: { holerites: string[]; espelhos: string[]; advertencias: number }): ItemDoSino[] => [
+  {
+    id: 'documentos-holerites',
+    tipo: 'documentos',
+    quantidade: d.holerites.length,
+    texto: (n) => `${n === 1 ? 'holerite' : 'holerites'} de ${listaDeMeses(d.holerites)} para assinar`,
+    tela: 'meus_documentos',
+  },
+  {
+    id: 'documentos-espelhos',
+    tipo: 'documentos',
+    quantidade: d.espelhos.length,
+    texto: (n) => `${n === 1 ? 'espelho de ponto' : 'espelhos de ponto'} de ${listaDeMeses(d.espelhos)} para assinar`,
+    tela: 'meus_documentos',
+  },
+  {
+    id: 'documentos-ciencia',
+    tipo: 'documentos',
+    quantidade: d.advertencias,
+    texto: (n) => (n === 1 ? 'documento do RH para dar ciência' : 'documentos do RH para dar ciência'),
+    tela: 'meus_documentos',
+  },
+];
 
 export const SinoWeb: React.FC<{ itens: ItemDoSino[]; aoIrPara: (tela: TelaWeb) => void }> = ({ itens, aoIrPara }) => {
   const [aberto, setAberto] = useState(false);

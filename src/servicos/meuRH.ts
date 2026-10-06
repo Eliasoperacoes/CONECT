@@ -27,8 +27,8 @@ import { usandoNuvem } from './supabase';
  * mesma regra, para os dois nunca discordarem. Sem o selo, o "1 para
  * assinar" do Fabio só aparecia para quem já estava na aba (S10, 02/10/2026).
  */
-export const pendenciasDoMeuRH = (
-  holerites: { id: string }[],
+export const pendenciasDoMeuRH = <H extends { id: string }>(
+  holerites: H[],
   recebimentos: { has: (holeriteId: string) => boolean },
   advertencias: { cienciaEm?: string | null }[],
   /** Os meses de espelho por assinar (`espelhosParaAssinar`). */

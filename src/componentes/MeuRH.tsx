@@ -187,6 +187,13 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
   // Os espelhos assinados, pelo mês ("2026-09")
   const [espelhosAssinados, setEspelhosAssinados] = useState<Map<string, EspelhoAssinado>>(new Map());
   const [versao, setVersao] = useState(0);
+  /**
+   * OS DOCUMENTOS JÁ CHEGARAM? Antes deles, a lista de espelhos assinados
+   * está vazia — e a conta dizia "1 para assinar" com a bolinha, que sumia
+   * meio segundo depois, quando a lista chegava (Elias, 06/10/2026: "fica
+   * variando"). Sem os dados, nada é pendente.
+   */
+  const [carregado, setCarregado] = useState(false);
   const [versaoAusencias, setVersaoAusencias] = useState(0);
   const [folha, setFolha] = useState<Folha | null>(null);
   const [abrindo, setAbrindo] = useState<string | null>(null);
@@ -206,6 +213,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
       setAdvertencias(a);
       setRecebimentos(r);
       setEspelhosAssinados(new Map([...e.values()].map((x) => [x.mes, x])));
+      setCarregado(true);
     });
     return () => {
       cancelado = true;
@@ -226,7 +234,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
     holerites,
     recebimentos,
     advertencias,
-    espelhosParaAssinar(eu, batePonto(eu), hoje, espelhosAssinados)
+    espelhosParaAssinar(eu, carregado && batePonto(eu), hoje, espelhosAssinados)
   );
   const documentosEmAnalise = ausencias.documentos.filter((j) => j.estado === 'pendente');
   /**
@@ -406,7 +414,9 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
             id="meu-rh-espelho"
             titulo="Espelho de ponto"
             resumo={
-              espelhosPendentes.length
+              !carregado
+                ? 'Conferindo…'
+                : espelhosPendentes.length
                 ? `${espelhosPendentes.length} para assinar`
                 : meses.length
                   ? `Último fechado: ${rotuloDoMes(meses[0])}`
@@ -423,7 +433,9 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
           id="meu-rh-holerites"
           titulo="Holerites"
           resumo={
-            holeritesParaAssinar.length
+            !carregado
+              ? 'Conferindo…'
+              : holeritesParaAssinar.length
               ? `${holeritesParaAssinar.length} para assinar`
               : holerites.length
                 ? `Último: ${rotuloDoMes(holerites[0].competencia)}`
