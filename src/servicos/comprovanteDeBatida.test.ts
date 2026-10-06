@@ -112,3 +112,21 @@ test('O CPF É PEDIDO UMA VEZ SÓ, no web ou no celular, e a tela nunca prende n
   const tela = await Bun.file(new URL('../componentes/TelaDefinirSenha.tsx', import.meta.url)).text();
   expect(tela).toContain('id="botao-sair-primeiro-acesso"');
 });
+
+test('SÓ QUEM BATE PONTO PRECISA DE CPF — a conta ADM, a diretoria e a gerência entram sem (06/10/2026)', async () => {
+  /*
+    O Elias tem duas contas: a de uso (bate ponto, tem o CPF) e a ADM. O
+    CPF é único, então a ADM nunca poderia ter o mesmo — e ficava presa
+    na tela do CPF. O CPF existe para o comprovante da batida.
+  */
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+  expect(app).toContain('const quemBatePonto = batePonto(colaboradorAtual);');
+  expect(app).toContain("if (!quemBatePonto) {\n      setSituacaoDoCpf('tem');");
+  // E pelos níveis padrão, quem não bate é o administrador, a diretoria e a gerência
+  const { permissoesPadrao } = await import('./ferramentas');
+  const { podeUsarComMapa } = await import('./permissoes');
+  const mapa = permissoesPadrao();
+  const bate = (nivel: number, setor: string) => podeUsarComMapa('ponto', { id: 'x', nome: 'x', nivel, setor } as any, mapa);
+  expect([bate(5, 'TI'), bate(4, 'Diretoria'), bate(3, 'Gerência')]).toEqual([false, false, false]);
+  expect([bate(2, 'RH'), bate(1, 'Balcão')]).toEqual([true, true]);
+});

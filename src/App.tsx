@@ -1291,9 +1291,20 @@ export default function App() {
   }, [autenticado, precisaTrocarSenha, situacaoDoCpf]);
 
   /* Quem entrou tem CPF? Conferido a cada pessoa que entra */
+  const quemBatePonto = batePonto(colaboradorAtual);
   useEffect(() => {
     if (!autenticado || !usandoNuvem()) {
       setSituacaoDoCpf(usandoNuvem() ? 'conferindo' : 'tem');
+      return;
+    }
+    /*
+      SÓ QUEM BATE PONTO PRECISA DE CPF: ele existe para o comprovante da
+      batida. Administrador, diretoria e gerência não batem e não têm
+      comprovante — e a conta ADM do Elias nem poderia ter CPF, que já é da
+      conta de uso dele (o CPF é único). A regra é a de sempre (\`batePonto\`).
+    */
+    if (!quemBatePonto) {
+      setSituacaoDoCpf('tem');
       return;
     }
     let vivo = true;
@@ -1303,7 +1314,7 @@ export default function App() {
     return () => {
       vivo = false;
     };
-  }, [autenticado, colaboradorAtual.id]);
+  }, [autenticado, colaboradorAtual.id, quemBatePonto]);
 
   /**
    * O ENDEREÇO ACOMPANHA A TELA DO COMPUTADOR (enderecoDaTela.ts). Escreve
