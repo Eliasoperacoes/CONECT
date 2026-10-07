@@ -66,7 +66,14 @@ test('A TRANCA NO APP: abre bloqueado se ligada, destranca quem entrou com a sen
   // Quem acabou de digitar a senha não é bloqueado em seguida
   expect(app).toContain('// Acabou de provar quem é com a senha: não pede a digital em seguida\n          setBloqueado(false);');
   // Voltar ao app passa pela regra do intervalo
-  expect(app).toContain("if (deveBloquear({ ligada: lerPreferencia() === 'ligada'");
+  expect(app).toContain("if (deveBloquear({ ligada: lerPreferencia() === 'ligada', saiuEm: saiuEm ?? Date.now()");
+  /*
+    E CADA SAÍDA VALE UM BLOQUEIO. No S10 (07/10/2026) a digital era aceita
+    e a janela voltava em 0,6 s, sem fim: a janela da digital não gera
+    "saiu", só "voltou", e a saída de mais de um minuto atrás bloqueava de
+    novo a cada volta.
+  */
+  expect(app).toContain('const saiuEm = saiuDoAppEm.current;\n        saiuDoAppEm.current = null;');
   // A tela de bloqueio fica POR CIMA: o que estava embaixo segue montado
   expect(app).toContain('{bloqueado && (\n        <TelaDeBloqueio');
   // A biometria só é oferecida onde existe — e, onde não existe, diz por quê

@@ -1273,7 +1273,15 @@ export default function App() {
           saiuDoAppEm.current = Date.now();
           return;
         }
-        if (deveBloquear({ ligada: lerPreferencia() === 'ligada', saiuEm: saiuDoAppEm.current ?? Date.now(), agora: Date.now() })) {
+        /*
+          Cada saída vale UM bloqueio: a volta a consome. A janela da digital
+          não avisa que o app saiu, mas, ao fechar, avisa que ele voltou — e
+          a saída antiga, de mais de um minuto, bloqueava de novo a cada
+          digital aceita, sem fim (log do S10, 07/10/2026).
+        */
+        const saiuEm = saiuDoAppEm.current;
+        saiuDoAppEm.current = null;
+        if (deveBloquear({ ligada: lerPreferencia() === 'ligada', saiuEm: saiuEm ?? Date.now(), agora: Date.now() })) {
           setBloqueado(true);
         }
       }),
