@@ -121,6 +121,7 @@ esquema.
 | `compensacao-sabado.sql` | **Rode uma vez (01/10/2026).** O saldo de compensação do sábado (os 10 min diários do turno integral, que pagam a folga) passa de um mês ao outro: a apuração da madrugada fecha o mês anterior de cada pessoa nesta tabela, e o espelho mostra o que veio, o que juntou, a folga consumida e o que segue. Sem ele a madrugada segue sem gravar a compensação |
 | `lembretes-1-simular.sql`, `lembretes-2-ver-simulacao.sql`, `lembretes-3-agendar.sql` | **Em ordem, uma vez (02/10/2026)**, depois de publicar `lembrar-pendencias` e de publicar de novo `enviar-aviso` — ver "Os lembretes das 9h" abaixo. O endereço em maiúsculas é trocado na entrega |
 | `marcacao-original.sql` | **Uma vez (07/10/2026)** — etapa 1 da homologação: a marcação original (REP-P), que não se altera nem se apaga; NSR sem buracos; correção sem NSR; o RH grava só correção; e `registrar_marcacao`, a batida que nunca é recusada. Só acrescenta: o app de hoje segue funcionando. Conferência: as cinco colunas `true` e `contador_nsr` = `maior_nsr_dado`. Ver "A marcação original" abaixo |
+| `tratamento-da-marcacao.sql` | **Uma vez (07/10/2026), depois de `marcacao-original.sql`** — a fila "Fora da jornada" em Pendências do ponto: incluir a marcação na jornada (vira correção com a hora da original) ou desconsiderar, com justificativa. A decisão não se altera nem se apaga. Conferência: as quatro colunas `true` e quantas esperam decisão |
 | `alerta-sem-bater-1-simular.sql`, `alerta-sem-bater-2-agendar.sql` | **Em ordem, uma vez (07/10/2026)**, depois de publicar de novo `lembrar-pendencias` e `enviar-aviso` — ver "Não bateu o ponto" abaixo. O endereço em maiúsculas é trocado na entrega |
 | `apuracao-1-preparar.sql`, `apuracao-2-ver-simulacao.sql`, `apuracao-3-agendar.sql` | **Em ordem, uma vez (01/10/2026)**, depois de publicar a função `apurar-ponto` — ver "A apuração da madrugada" abaixo. Os valores em maiúsculas são trocados na entrega |
 | `dias-com-batida.sql` | **Rode uma vez (01/10/2026).** O espelho incompleto passa a contar também os dias de trabalho sem batida nenhuma, perguntando ao banco em que dias cada pessoa bateu (uma linha por pessoa). Sem ele, a conta alarga o cache do aparelho para o período |
@@ -415,6 +416,12 @@ Etapa 1 da homologação (Portaria MTP 671/2021). Duas tabelas, dois papéis:
   dar NSR a correções. Na dúvida, rode `marcacao-original.sql` por último.
 - A prova roda na suíte: `src/servicos/marcacaoOriginal.test.ts` monta um
   Postgres local com o `esquema.sql` inteiro (`scripts/bancoLocal.ts`).
+- **A fila do RH** (`tratamento-da-marcacao.sql`): Gerenciar › Pendências
+  do ponto › **Fora da jornada**. Decide quem a alçada do banco deixa
+  (`posso_decidir_jornada`). Incluir cria a correção com a hora da
+  original e reapura o dia — domingo trabalhado vira hora extra para
+  aprovar. A decisão fica em `tratamento_marcacao`, de onde o AEJ lê.
+  Provas: `src/servicos/tratamentoDaMarcacao.test.ts`.
 
 ### Comprovante de batida e foto no aviso (07/10/2026)
 

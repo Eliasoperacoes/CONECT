@@ -112,3 +112,16 @@ test('o numero da aba Pendencias e so o que pede decisao, sem o "sem bater"', as
   const painel = await Bun.file(new URL('../componentes/PainelGestao.tsx', import.meta.url)).text();
   expect(painel).toContain('contador: contadorDasPendencias(totaisDasPendencias)');
 });
+
+test('A QUARTA PARTE, "Fora da jornada": entra na soma e abre quando é a única com algo', async () => {
+  const { contadorDasPendencias, vistaInicialDasPendencias, VISTAS_DE_PENDENCIA } = await import('../componentes/PendenciasDoPonto');
+  expect(VISTAS_DE_PENDENCIA).toEqual(['sem_bater', 'incompletos', 'aprovar', 'fora']);
+  // A marcação que espera decisão é decisão: conta no número da aba
+  expect(contadorDasPendencias({ sem_bater: 4, incompletos: 1, aprovar: 2, fora: 3 })).toBe(6);
+  expect(vistaInicialDasPendencias({ sem_bater: 0, incompletos: 0, aprovar: 0, fora: 2 })).toBe('fora');
+  // O painel conta as marcações e a parte atualiza o número
+  const painel = await Bun.file(new URL('../componentes/PainelGestao.tsx', import.meta.url)).text();
+  expect(painel).toContain('fora: foraDaJornada,');
+  expect(painel).toContain('aoMudarFora={setForaDaJornada}');
+  expect(painel).toContain('servicoPonto.buscarMarcacoesParaTratar()');
+});

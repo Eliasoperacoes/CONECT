@@ -51,6 +51,10 @@ let baterPontoJaExiste = false;
 let funcaoRegistrarMarcacao = false;
 let nsrDoServidor = 0;
 let originaisForaDaJornada: Array<{ nsr: number; tipo: string | null }> = [];
+/** marcacoes_para_tratar: o que o banco devolve (null = sem a função). */
+let linhasParaTratar: any[] | null = null;
+let decisoesPedidas: any[] = [];
+let recusaDoTratamento: string | null = null;
 /** A recusa escrita pelo banco (P0001), quando há. */
 let baterPontoRecusa: string | null = null;
 /** A última janela de batidas que o serviço pediu ao banco. */
@@ -204,6 +208,12 @@ mock.module('./nuvem', () => ({
       bancoRegistros.push(r);
       return { sucesso: true, registro: r };
     },
+    /* tratamento-da-marcacao.sql: a fila do RH e a decisão */
+    listarMarcacoesParaTratar: async () => linhasParaTratar,
+    tratarMarcacao: async (d: any) => {
+      decisoesPedidas.push(d);
+      return recusaDoTratamento ? { sucesso: false, erro: recusaDoTratamento } : { sucesso: true };
+    },
     salvarRegistroPonto: async (r: any) => {
       const choque = bancoRegistros.some(
         (x) => x.colaboradorId === r.colaboradorId && x.data === r.data && x.tipo === r.tipo
@@ -283,6 +293,9 @@ beforeEach(() => {
   funcaoRegistrarMarcacao = false;
   nsrDoServidor = 0;
   originaisForaDaJornada = [];
+  linhasParaTratar = null;
+  decisoesPedidas = [];
+  recusaDoTratamento = null;
   modoNuvem = true;
   colaboradorLogado = ELIAS;
   equipe = [ELIAS, ANA];
@@ -5127,4 +5140,58 @@ test('o comprovante da fora da jornada diz "Marcação fora da jornada", e não 
   );
   expect(d.marcacao).toBe('Marcação fora da jornada');
   expect(d.nsr).toBe('000000009');
+});
+
+// ============================================================
+// A FILA DO RH: as marcações fora da jornada (tratamento-da-marcacao.sql)
+// ============================================================
+
+/** Uma original fora da jornada, como o banco devolve: 21:05 UTC = 18:05 em Brasília. */
+const foraDaAna = (nsr: number, extra: any = {}) => ({
+  nsr: String(nsr), colaborador_id: 'colab-ana', registrado_em: '2026-09-16T21:05:00+00:00', data: '2026-09-16',
+  loja: 'Pirassununga', metodo: 'qrcode', cnpj_empregador: '', codigo_verificacao: 'x', registro_id: null,
+  tipo_pedido: null, fora_da_jornada: 'jornada_completa', ...extra,
+});
+
+test('A FILA: cada marcação com a pessoa, a hora de Brasília e o motivo — sem a função, vazia', async () => {
+  expect(await servicoPonto.buscarMarcacoesParaTratar()).toEqual([]);
+  linhasParaTratar = [foraDaAna(800), foraDaAna(801, { colaborador_id: 'quem-saiu', fora_da_jornada: 'domingo' })];
+  const fila = await servicoPonto.buscarMarcacoesParaTratar();
+  // Quem não está na equipe visível não entra (a ficha não está no aparelho)
+  expect(fila).toHaveLength(1);
+  expect(fila[0]).toMatchObject({ nsr: 800, data: '2026-09-16', hora: '18:05', motivo: 'jornada_completa', tipoPedido: null });
+  expect(fila[0].colaborador.id).toBe('colab-ana');
+  // No modo local não há registro legal, nem fila
+  modoNuvem = false;
+  expect(await servicoPonto.buscarMarcacoesParaTratar()).toEqual([]);
+});
+
+test('INCLUIR: o banco decide, o aparelho traz a correção e reapura o dia', async () => {
+  linhasParaTratar = [foraDaAna(800)];
+  const [m] = await servicoPonto.buscarMarcacoesParaTratar();
+  const antes = sincronizacoes;
+  const res = await servicoPonto.tratarMarcacao({ marcacao: m, decisao: 'incluida', tipo: 'saida', justificativa: '  ficou no inventário ' });
+  expect(res.sucesso).toBe(true);
+  expect(decisoesPedidas).toEqual([{ nsr: 800, decisao: 'incluida', tipo: 'saida', justificativa: 'ficou no inventário' }]);
+  expect(sincronizacoes).toBeGreaterThan(antes);
+});
+
+test('DESCONSIDERAR vai sem tipo; sem justificativa, nem chega ao banco; a recusa do banco vai como está', async () => {
+  linhasParaTratar = [foraDaAna(800)];
+  const [m] = await servicoPonto.buscarMarcacoesParaTratar();
+  expect((await servicoPonto.tratarMarcacao({ marcacao: m, decisao: 'desconsiderada', tipo: 'saida', justificativa: ' ' })).erro).toBe(
+    'Informe a justificativa.'
+  );
+  expect((await servicoPonto.tratarMarcacao({ marcacao: m, decisao: 'incluida', tipo: null, justificativa: 'x' })).erro).toContain('Escolha');
+  expect(decisoesPedidas).toEqual([]);
+
+  const antes = sincronizacoes;
+  expect((await servicoPonto.tratarMarcacao({ marcacao: m, decisao: 'desconsiderada', tipo: 'saida', justificativa: 'duas vezes' })).sucesso).toBe(true);
+  expect(decisoesPedidas[0]).toEqual({ nsr: 800, decisao: 'desconsiderada', tipo: null, justificativa: 'duas vezes' });
+  // Desconsiderar não muda a jornada: nada a trazer nem a reapurar
+  expect(sincronizacoes).toBe(antes);
+
+  recusaDoTratamento = 'Já existe essa marcação neste dia. Para trocar o horário, corrija a jornada no Banco de horas.';
+  const recusada = await servicoPonto.tratarMarcacao({ marcacao: m, decisao: 'incluida', tipo: 'entrada', justificativa: 'x' });
+  expect(recusada).toEqual({ sucesso: false, erro: recusaDoTratamento });
 });

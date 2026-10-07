@@ -324,6 +324,19 @@ export const PainelGestao: React.FC<Props> = ({
   }, [colaboradorAtual.id]);
 
   /**
+   * As marcações fora da jornada que esperam decisão (marcacao-original.sql),
+   * do mesmo jeito: perguntadas ao banco, e atualizadas pela própria parte.
+   */
+  const [foraDaJornada, setForaDaJornada] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    servicoPonto.buscarMarcacoesParaTratar().then((lista) => vivo && setForaDaJornada(lista.length));
+    return () => {
+      vivo = false;
+    };
+  }, [colaboradorAtual.id]);
+
+  /**
    * Quem não bateu hoje. Sai do mesmo resumo da equipe — não há segunda
    * consulta nem segunda regra: é a mesma lista, filtrada.
    */
@@ -344,6 +357,7 @@ export const PainelGestao: React.FC<Props> = ({
     sem_bater: totais.semBaterHoje,
     incompletos,
     aprovar: pendencias.length,
+    fora: foraDaJornada,
   };
 
   /**
@@ -534,6 +548,7 @@ export const PainelGestao: React.FC<Props> = ({
               totais={totaisDasPendencias}
               semBaterHoje={semBaterHoje.map((r) => r.colaborador)}
               aoMudarIncompletos={setIncompletos}
+              aoMudarFora={setForaDaJornada}
               aoAbrirConversa={aoAbrirConversa}
             />
           ) : aba === 'folgas' ? (

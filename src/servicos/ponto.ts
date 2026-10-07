@@ -283,6 +283,22 @@ export interface PontoIncompleto {
 }
 
 /**
+ * UMA MARCAÇÃO FORA DA JORNADA ESPERANDO DECISÃO (tratamento-da-marcacao.sql):
+ * a original, que não coube nas quatro do dia, e a pessoa dela.
+ */
+export interface MarcacaoParaTratar {
+  nsr: number;
+  colaborador: Colaborador;
+  data: string;
+  /** "18:05", em Brasília. */
+  hora: string;
+  loja: string;
+  motivo: MotivoForaDaJornada;
+  /** A marcação que o aplicativo esperava, quando havia (repetida, fora de ordem). */
+  tipoPedido: TipoMarcacao | null;
+}
+
+/**
  * A PESSOA BATE PONTO?
  *
  * Da gerência para cima não se bate (decisão do Elias). A resposta é a da
@@ -1618,6 +1634,80 @@ class ServicoPonto {
       if (dias) return this.montarPontosIncompletos(dias as DiaComBatidas[]);
     }
     return this.obterPontosIncompletos(dataInicio, dataFim);
+  }
+
+  /**
+   * AS MARCAÇÕES FORA DA JORNADA QUE ESPERAM DECISÃO — perguntadas ao banco,
+   * que filtra pela alçada de quem pergunta (`posso_decidir_jornada`).
+   * Vazia sem o SQL rodado, e no modo local, que não tem registro legal.
+   */
+  async buscarMarcacoesParaTratar(): Promise<MarcacaoParaTratar[]> {
+    if (!usandoNuvem()) return [];
+    const linhas = await nuvem.listarMarcacoesParaTratar();
+    if (!linhas) return [];
+    return linhas.flatMap((o) => {
+      const colaborador = bancoDados.obterColaboradorPorId(o.colaborador_id);
+      if (!colaborador) return [];
+      return [
+        {
+          nsr: Number(o.nsr),
+          colaborador,
+          data: o.data,
+          hora: new Date(o.registrado_em).toLocaleTimeString('pt-BR', {
+            timeZone: 'America/Sao_Paulo',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          loja: o.loja,
+          motivo: (o.fora_da_jornada || 'jornada_completa') as MotivoForaDaJornada,
+          tipoPedido: (o.tipo_pedido as TipoMarcacao | null) || null,
+        },
+      ];
+    });
+  }
+
+  /**
+   * A DECISÃO SOBRE A MARCAÇÃO FORA DA JORNADA. Quem pode decidir e se a
+   * marcação já existe no dia, quem confere é o banco (`tratar_marcacao`).
+   *
+   * Incluída, ela vira correção no tratamento, e o dia é reapurado como na
+   * correção do RH: quem incluiu JÁ DECIDIU — o dia sai em nome dele.
+   */
+  async tratarMarcacao(dados: {
+    marcacao: MarcacaoParaTratar;
+    decisao: 'incluida' | 'desconsiderada';
+    tipo: TipoMarcacao | null;
+    justificativa: string;
+  }): Promise<{ sucesso: boolean; erro?: string }> {
+    const atual = bancoDados.obterColaboradorAtual();
+    if (!dados.justificativa.trim()) return { sucesso: false, erro: 'Informe a justificativa.' };
+    if (dados.decisao === 'incluida' && !dados.tipo) {
+      return { sucesso: false, erro: 'Escolha como a marcação entra na jornada.' };
+    }
+
+    const res = await nuvem.tratarMarcacao({
+      nsr: dados.marcacao.nsr,
+      decisao: dados.decisao,
+      tipo: dados.decisao === 'incluida' ? dados.tipo : null,
+      justificativa: dados.justificativa.trim(),
+    });
+    if (!res.sucesso) return res;
+
+    const { colaborador, data, hora, nsr } = dados.marcacao;
+    if (dados.decisao === 'incluida') {
+      // A correção nasceu no banco: traz para o aparelho e refaz a apuração do dia
+      await nuvem.sincronizarPonto();
+      await this.apurarDia(colaborador.id, data, undefined, atual);
+    }
+    bancoDados.registrarAuditoria(
+      'Tratamento de Ponto',
+      'seguranca',
+      dados.decisao === 'incluida'
+        ? `${atual.nome} incluiu a marcação NSR ${nsr} de ${colaborador.nome} (${formatarDataBR(data)} às ${hora}) como ${ROTULO_MARCACAO[dados.tipo!].toLowerCase()}. Motivo: ${dados.justificativa.trim()}`
+        : `${atual.nome} desconsiderou a marcação NSR ${nsr} de ${colaborador.nome} (${formatarDataBR(data)} às ${hora}). Motivo: ${dados.justificativa.trim()}`
+    );
+    this.notificar();
+    return { sucesso: true };
   }
 
   /**

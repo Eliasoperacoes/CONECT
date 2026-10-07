@@ -14,57 +14,70 @@
  * no topo, cada parte com o seu número. Uma parte por vez: empilhar as três
  * era trocar três abas por uma rolagem enorme. O que cada parte faz não
  * mudou — são as mesmas telas de antes.
+ *
+ * A QUARTA PARTE, "Fora da jornada" (07/10/2026): as marcações que não
+ * couberam na jornada e esperam decisão (marcacao-original.sql). É
+ * opcional nos totais — onde ninguém a mediu, conta zero.
  */
 import React from 'react';
-import { CalendarClock, CheckSquare, UserX } from 'lucide-react';
+import { CalendarClock, CheckSquare, Inbox, UserX } from 'lucide-react';
 import { Colaborador } from '../tipos';
 import { SemBaterHoje } from './SemBaterHoje';
 import { PontosIncompletos } from './PontosIncompletos';
 import { AprovacaoJornada } from './AprovacaoJornada';
+import { MarcacoesForaDaJornada } from './MarcacoesForaDaJornada';
 
-export const VISTAS_DE_PENDENCIA = ['sem_bater', 'incompletos', 'aprovar'] as const;
+export const VISTAS_DE_PENDENCIA = ['sem_bater', 'incompletos', 'aprovar', 'fora'] as const;
 export type VistaDePendencia = (typeof VISTAS_DE_PENDENCIA)[number];
+
+/** O número de cada parte. `fora` é opcional: sem ele, zero. */
+export type TotaisDasPendencias = Record<Exclude<VistaDePendencia, 'fora'>, number> & { fora?: number };
+
+const totalDa = (totais: TotaisDasPendencias, v: VistaDePendencia): number => totais[v] ?? 0;
 
 /**
  * A parte que abre primeiro: a primeira com alguma coisa, na ordem do dia.
  * Tudo zerado, abre em "Aprovar jornadas" — o que diz "nada para decidir".
  */
-export const vistaInicialDasPendencias = (totais: Record<VistaDePendencia, number>): VistaDePendencia =>
-  VISTAS_DE_PENDENCIA.find((v) => totais[v] > 0) ?? 'aprovar';
+export const vistaInicialDasPendencias = (totais: TotaisDasPendencias): VistaDePendencia =>
+  VISTAS_DE_PENDENCIA.find((v) => totalDa(totais, v) > 0) ?? 'aprovar';
 
 /**
  * O número da aba Pendências: só o que pede DECISÃO do gestor. "Sem bater"
  * fica de fora — é informação que muda a manhã inteira, e somada fazia a
  * mesma fila aparecer como 19, 9+ e 38 em três lugares da mesma tela.
  */
-export const contadorDasPendencias = (totais: Record<VistaDePendencia, number>): number =>
-  totais.incompletos + totais.aprovar;
+export const contadorDasPendencias = (totais: TotaisDasPendencias): number =>
+  totais.incompletos + totais.aprovar + (totais.fora ?? 0);
 
 const PARTES: Record<VistaDePendencia, { rotulo: string; curto: string; icone: React.ReactNode }> = {
   sem_bater: { rotulo: 'Sem bater hoje', curto: 'Sem bater', icone: <UserX className="w-4 h-4" /> },
   incompletos: { rotulo: 'Pontos incompletos', curto: 'Incompletos', icone: <CalendarClock className="w-4 h-4" /> },
   aprovar: { rotulo: 'Aprovar jornadas', curto: 'Aprovar', icone: <CheckSquare className="w-4 h-4" /> },
+  fora: { rotulo: 'Fora da jornada', curto: 'Fora', icone: <Inbox className="w-4 h-4" /> },
 };
 
 export const PendenciasDoPonto: React.FC<{
   colaboradorAtual: Colaborador;
   vista: VistaDePendencia;
   aoEscolherVista: (vista: VistaDePendencia) => void;
-  totais: Record<VistaDePendencia, number>;
+  totais: TotaisDasPendencias;
   semBaterHoje: Colaborador[];
   aoMudarIncompletos: (total: number) => void;
+  /** O número da parte "Fora da jornada", contado pela própria parte. */
+  aoMudarFora?: (total: number) => void;
   aoAbrirConversa: (colegaId: string) => void;
-}> = ({ colaboradorAtual, vista, aoEscolherVista, totais, semBaterHoje, aoMudarIncompletos, aoAbrirConversa }) => (
+}> = ({ colaboradorAtual, vista, aoEscolherVista, totais, semBaterHoje, aoMudarIncompletos, aoMudarFora, aoAbrirConversa }) => (
   <div className="flex flex-col gap-4">
     {/*
-      O SELETOR: três partes do mesmo tamanho, cada uma com o seu número.
-      No celular o rótulo encurta ("Sem bater", "Incompletos", "Aprovar")
-      para as três caberem numa linha, sem rolar de lado.
+      O SELETOR: quatro partes do mesmo tamanho, cada uma com o seu número.
+      No celular o rótulo encurta ("Sem bater", "Incompletos", "Aprovar",
+      "Fora") para as quatro caberem numa linha, sem rolar de lado.
     */}
-    <div role="tablist" aria-label="Pendências do ponto" className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-[var(--c-superficie-2)]">
+    <div role="tablist" aria-label="Pendências do ponto" className="grid grid-cols-4 gap-1 p-1 rounded-2xl bg-[var(--c-superficie-2)]">
       {VISTAS_DE_PENDENCIA.map((v) => {
         const ativa = v === vista;
-        const total = totais[v];
+        const total = totalDa(totais, v);
         return (
           <button
             key={v}
@@ -105,6 +118,8 @@ export const PendenciasDoPonto: React.FC<{
         <SemBaterHoje pessoas={semBaterHoje} aoAbrirConversa={aoAbrirConversa} />
       ) : vista === 'incompletos' ? (
         <PontosIncompletos colaboradorAtual={colaboradorAtual} aoMudarTotal={aoMudarIncompletos} />
+      ) : vista === 'fora' ? (
+        <MarcacoesForaDaJornada colaboradorAtual={colaboradorAtual} aoMudarTotal={aoMudarFora} />
       ) : (
         <div className="-m-4 sm:-m-6">
           <AprovacaoJornada colaboradorAtual={colaboradorAtual} />

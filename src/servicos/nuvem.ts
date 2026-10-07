@@ -1110,6 +1110,46 @@ class PonteNuvem {
   }
 
   /**
+   * AS MARCAÇÕES FORA DA JORNADA QUE ESPERAM DECISÃO, das pessoas que quem
+   * chama pode decidir (marcacoes_para_tratar, tratamento-da-marcacao.sql).
+   * `null`: o SQL ainda não rodou, ou o banco não respondeu.
+   */
+  async listarMarcacoesParaTratar(): Promise<LinhaMarcacaoOriginal[] | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc('marcacoes_para_tratar');
+    if (error) {
+      if (error.code !== 'PGRST202' && error.code !== '42883') {
+        console.error('Falha ao ler as marcações fora da jornada:', error.message);
+      }
+      return null;
+    }
+    return (data || []) as LinhaMarcacaoOriginal[];
+  }
+
+  /** A DECISÃO sobre uma marcação fora da jornada (tratar_marcacao). */
+  async tratarMarcacao(dados: {
+    nsr: number;
+    decisao: 'incluida' | 'desconsiderada';
+    tipo: TipoMarcacao | null;
+    justificativa: string;
+  }): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Sem conexão com o banco.' };
+    const { error } = await supabase.rpc('tratar_marcacao', {
+      p_nsr: dados.nsr,
+      p_decisao: dados.decisao,
+      p_tipo: dados.tipo,
+      p_justificativa: dados.justificativa,
+    });
+    if (error) {
+      // A recusa escrita pelo banco ("Já existe essa marcação neste dia...") vai como está
+      if (error.code === 'P0001') return { sucesso: false, erro: error.message };
+      console.error('Falha ao tratar a marcação:', error.message);
+      return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
+    }
+    return { sucesso: true };
+  }
+
+  /**
    * A BATIDA QUE NUNCA É RECUSADA (registrar_marcacao, marcacao-original.sql).
    *
    * A Portaria 671/2021 proíbe restringir a marcação. O banco registra a

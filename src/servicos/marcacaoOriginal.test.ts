@@ -146,7 +146,14 @@ test('A MARCAÇÃO ORIGINAL: nasce com a batida, não se altera, não se apaga, 
     prova('apagar a original: recusado', !!(await erroDe(`delete from public.marcacoes_originais where nsr = 1`))?.includes('não se apaga'));
     prova('alterar a hora: recusado', !!(await erroDe(`update public.marcacoes_originais set registrado_em = registrado_em - interval '1 hour' where nsr = 1`))?.includes('não se altera'));
     prova('alterar o NSR: recusado', !!(await erroDe(`update public.marcacoes_originais set nsr = 99 where nsr = 1`))?.includes('não se altera'));
-    prova('truncate: recusado', !!(await erroDe(`truncate public.marcacoes_originais`))?.includes('não se apaga'));
+    /*
+      Recusado por uma das duas travas: a nossa ("não se apaga") ou, desde
+      que a decisão do tratamento aponta para a original
+      (tratamento-da-marcacao.sql), a chave estrangeira, que o Postgres
+      confere antes. A prova seguinte confere que nada sumiu.
+    */
+    const truncar = await erroDe(`truncate public.marcacoes_originais`);
+    prova('truncate: recusado', !!truncar && /não se apaga|foreign key/i.test(truncar), truncar);
     prova('nada mudou', Number((await um(`select count(*) n from public.marcacoes_originais`)).n) === nsrAntes);
     await como(ANA);
     const anaApaga = await db.query(`delete from public.marcacoes_originais where colaborador_id = 'ana' returning nsr`).then((r) => r.rows.length).catch((e) => (e as Error).message);
