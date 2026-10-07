@@ -120,8 +120,29 @@ export const versaoDoAplicativo = async (): Promise<string | null> => {
   }
 };
 
-/** A janela de biometria do Android. Verdadeiro só com a digital (ou rosto) confirmada. */
-export const confirmarIdentidade = async (titulo = 'Desbloquear o CONECTA'): Promise<boolean> => {
+export interface ResultadoDaDigital {
+  ok: boolean;
+  /** Por que não confirmou — dito na tela, para o próximo teste já trazer a causa. */
+  motivo?: string;
+}
+
+/**
+ * O que a recusa do Android quer dizer. Antes toda falha virava "não
+ * confirmou", e "cancelado pelo sistema" parecia "digital não reconhecida"
+ * (Elias, 07/10/2026: ao voltar do segundo plano "não reconhece").
+ */
+export const motivoDaFalha = (codigo: unknown, mensagem?: string): string => {
+  const n = Number(codigo);
+  if (n === 16) return 'Cancelado.';
+  if (n === 15) return 'O Android interrompeu a leitura. Toque para tentar de novo.';
+  // O plugin usa o código 4 também para as cinco tentativas desta janela
+  // (maxAttempts), com esta frase; o 4 do próprio Android é o bloqueio.
+  if (n === 4 && mensagem === 'Too many failed attempts') return 'A digital não foi reconhecida. Toque para tentar de novo.';
+  return MOTIVO_DO_CODIGO[n] ?? `Não confirmou${mensagem ? ` (${mensagem})` : ''}. Toque para tentar de novo.`;
+};
+
+/** A janela de biometria do Android, com o motivo quando não confirma. */
+export const pedirDigital = async (titulo = 'Desbloquear o CONECTA'): Promise<ResultadoDaDigital> => {
   try {
     await NativeBiometric.verifyIdentity({
       title: titulo,
@@ -129,11 +150,45 @@ export const confirmarIdentidade = async (titulo = 'Desbloquear o CONECTA'): Pro
       negativeButtonText: 'Cancelar',
       maxAttempts: 5,
     });
-    return true;
-  } catch {
-    return false;
+    return { ok: true };
+  } catch (erro) {
+    const e = erro as { code?: unknown; message?: string };
+    return { ok: false, motivo: motivoDaFalha(e?.code, e?.message) };
   }
 };
+
+/** Verdadeiro só com a digital (ou rosto) confirmada. */
+export const confirmarIdentidade = async (titulo?: string): Promise<boolean> => (await pedirDigital(titulo)).ok;
+
+/** Quanto esperar, com o app já na frente, antes de abrir a janela da digital. */
+export const FOLGA_ANTES_DA_DIGITAL_MS = 600;
+
+/** O app está mesmo na frente: página visível e com o foco (não só "retomado"). */
+export const appNaFrente = (d: { visivel: boolean; comFoco: boolean }): boolean => d.visivel && d.comFoco;
+
+/**
+ * ESPERA O APP ESTAR NA FRENTE, e mais um respiro, antes de pedir a digital.
+ *
+ * Ao abrir do zero, a janela da digital só subia segundos depois do app
+ * aparecer — e funcionava. Ao voltar do segundo plano, subia no MESMO
+ * instante em que o Android devolvia o app: ainda na animação e, quando
+ * a pessoa acabara de desbloquear o celular com o dedo, com o leitor
+ * recém-usado pela tela de bloqueio do sistema. Aí "não reconhecia".
+ */
+export const esperarAppNaFrente = (folgaMs = FOLGA_ANTES_DA_DIGITAL_MS): Promise<void> =>
+  new Promise((resolver) => {
+    const conferir = () => {
+      if (!appNaFrente({ visivel: document.visibilityState === 'visible', comFoco: document.hasFocus() })) return false;
+      document.removeEventListener('visibilitychange', tentar);
+      window.removeEventListener('focus', tentar);
+      setTimeout(resolver, folgaMs);
+      return true;
+    };
+    const tentar = () => void conferir();
+    if (conferir()) return;
+    document.addEventListener('visibilitychange', tentar);
+    window.addEventListener('focus', tentar);
+  });
 
 /** Avisa quando o app vai para o segundo plano (false) e volta (true). */
 export const ouvirEstadoDoAplicativo = (aoMudar: (ativo: boolean) => void): (() => void) => {

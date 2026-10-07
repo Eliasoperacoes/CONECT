@@ -3,7 +3,14 @@
  * intervalo — nunca desligada, nunca numa troca rápida de app.
  */
 import { test, expect } from 'bun:test';
-import { deveBloquear, INTERVALO_PARA_BLOQUEAR_MS, lerPreferencia } from './desbloqueio';
+import {
+  appNaFrente,
+  deveBloquear,
+  FOLGA_ANTES_DA_DIGITAL_MS,
+  INTERVALO_PARA_BLOQUEAR_MS,
+  lerPreferencia,
+  motivoDaFalha,
+} from './desbloqueio';
 
 test('ligada: bloqueia ao abrir e ao voltar depois do intervalo', () => {
   const agora = 1_000_000;
@@ -13,6 +20,34 @@ test('ligada: bloqueia ao abrir e ao voltar depois do intervalo', () => {
   expect(deveBloquear({ ligada: true, saiuEm: agora - INTERVALO_PARA_BLOQUEAR_MS, agora })).toBe(true);
   // Trocou de app e voltou em 20 segundos (abriu o WhatsApp para mandar o comprovante): não pede de novo
   expect(deveBloquear({ ligada: true, saiuEm: agora - 20_000, agora })).toBe(false);
+});
+
+test('AO VOLTAR DO SEGUNDO PLANO a digital espera o app na frente, e a falha diz o motivo', async () => {
+  /*
+    Em 07/10/2026: com o app em segundo plano, ao voltar a digital "não
+    reconhecia"; fechando e abrindo, funcionava. Ao abrir do zero a janela
+    sobe segundos depois; ao voltar, subia no instante do retorno.
+  */
+  expect(appNaFrente({ visivel: true, comFoco: true })).toBe(true);
+  expect(appNaFrente({ visivel: true, comFoco: false })).toBe(false);
+  expect(appNaFrente({ visivel: false, comFoco: true })).toBe(false);
+  expect(FOLGA_ANTES_DA_DIGITAL_MS).toBeGreaterThanOrEqual(300);
+
+  // "Interrompido pelo Android" não pode parecer "digital não reconhecida"
+  expect(motivoDaFalha(15)).toContain('interrompeu');
+  expect(motivoDaFalha(4, 'Too many failed attempts')).toContain('não foi reconhecida');
+  expect(motivoDaFalha(4, 'Too many attempts. Try again later.')).toContain('bloqueada por alguns segundos');
+  expect(motivoDaFalha(2)).toContain('PIN');
+  expect(motivoDaFalha(99, 'xyz')).toContain('xyz');
+
+  const tela = await Bun.file(new URL('../componentes/TelaDeBloqueio.tsx', import.meta.url)).text();
+  // O pedido automático passa pela espera, inclusive a cada volta ao app
+  expect(tela).toContain('esperarAppNaFrente().then(() => vivo && void pedir())');
+  expect(tela).toContain("document.addEventListener('visibilitychange', aoMudarVisibilidade)");
+  // A volta causada pela própria janela não reabre a janela
+  expect(tela).toContain('escondidaPelaDigital = pedindo.current;');
+  // E o motivo vai para a tela
+  expect(tela).toContain("motivo ?? 'Toque para desbloquear'");
 });
 
 test('desligada (ou nunca perguntada): nunca bloqueia', () => {

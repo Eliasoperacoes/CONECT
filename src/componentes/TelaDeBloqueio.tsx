@@ -9,7 +9,7 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Fingerprint, KeyRound } from 'lucide-react';
-import { confirmarIdentidade } from '../servicos/desbloqueio';
+import { esperarAppNaFrente, pedirDigital } from '../servicos/desbloqueio';
 import { primeiroNome } from '../servicos/saudacao';
 import { LogoMalachias } from './LogoMalachias';
 
@@ -20,23 +20,46 @@ export const TelaDeBloqueio: React.FC<{
   aoEntrarComSenha: () => void;
 }> = ({ nome, aoDesbloquear, aoEntrarComSenha }) => {
   const [conferindo, setConferindo] = useState(false);
-  const [falhou, setFalhou] = useState(false);
-  const pediuAoAbrir = useRef(false);
+  const [motivo, setMotivo] = useState<string | null>(null);
+  const pedindo = useRef(false);
 
   const pedir = useCallback(async () => {
+    if (pedindo.current) return;
+    pedindo.current = true;
     setConferindo(true);
-    setFalhou(false);
-    const ok = await confirmarIdentidade();
+    setMotivo(null);
+    const r = await pedirDigital();
+    pedindo.current = false;
     setConferindo(false);
-    if (ok) aoDesbloquear();
-    else setFalhou(true);
+    if (r.ok) aoDesbloquear();
+    else setMotivo(r.motivo ?? 'Não confirmou. Toque para tentar de novo.');
   }, [aoDesbloquear]);
 
-  // A janela da digital abre sozinha, uma vez, ao bloquear
+  /*
+    A janela da digital abre sozinha — mas só com o app de fato na frente,
+    e de novo a cada volta ao app enquanto ele seguir bloqueado. Antes ela
+    abria no instante do retorno, ainda na animação, e "não reconhecia".
+  */
   useEffect(() => {
-    if (pediuAoAbrir.current) return;
-    pediuAoAbrir.current = true;
-    void pedir();
+    let vivo = true;
+    const aoVoltar = () => void esperarAppNaFrente().then(() => vivo && void pedir());
+    aoVoltar();
+    // A própria janela da digital pode esconder a página: essa volta não
+    // pede de novo, ou o "Cancelar" reabriria a janela sem fim.
+    let escondidaPelaDigital = false;
+    const aoMudarVisibilidade = () => {
+      if (document.visibilityState === 'hidden') {
+        escondidaPelaDigital = pedindo.current;
+        return;
+      }
+      if (escondidaPelaDigital) escondidaPelaDigital = false;
+      else aoVoltar();
+    };
+    document.addEventListener('visibilitychange', aoMudarVisibilidade);
+    return () => {
+      vivo = false;
+      document.removeEventListener('visibilitychange', aoMudarVisibilidade);
+    };
   }, [pedir]);
 
   return (
@@ -62,8 +85,8 @@ export const TelaDeBloqueio: React.FC<{
         >
           <Fingerprint className={`w-12 h-12 ${conferindo ? 'animate-pulse' : ''}`} strokeWidth={1.5} />
         </button>
-        <p className={`mt-4 text-sm font-semibold ${falhou ? 'text-[var(--c-atencao)]' : 'text-[var(--c-texto-2)]'}`}>
-          {conferindo ? 'Aguardando a digital…' : falhou ? 'Não confirmou. Toque para tentar de novo.' : 'Toque para desbloquear'}
+        <p className={`mt-4 text-sm font-semibold ${motivo ? 'text-[var(--c-atencao)]' : 'text-[var(--c-texto-2)]'}`}>
+          {conferindo ? 'Aguardando a digital…' : motivo ?? 'Toque para desbloquear'}
         </p>
       </main>
 
