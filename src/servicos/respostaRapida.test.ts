@@ -55,6 +55,15 @@ const consulta = (tabela: string) => {
 
 const bancoFalso = {
   from: consulta,
+  // O balde privado: assina o caminho que existir
+  storage: {
+    from: (balde: string) => ({
+      createSignedUrl: async (caminho: string, segundos: number) => ({
+        data: { signedUrl: `https://projeto.supabase.co/storage/v1/object/sign/${balde}/${caminho}?validade=${segundos}` },
+        error: null,
+      }),
+    }),
+  },
   auth: {
     getUser: async (jwt: string) =>
       jwt === 'jwt-da-ana' ? { data: { user: { id: 'auth-ana' } } } : { data: { user: null } },
@@ -417,18 +426,20 @@ test('resposta vazia não grava mensagem em branco', async () => {
 // ===============================================================
 
 test('A FOTO DE QUEM MANDOU vai por endereço assinado: abre com a assinatura, e só com ela', async () => {
-  // Um JPEG de 2 bytes basta: o que importa é o caminho
-  tabelas.colaboradores[0].foto = 'data:image/jpeg;base64,/9g=';
+  // Como a ficha guarda a foto desde 28/09/2026: o CAMINHO no balde
+  tabelas.colaboradores[0].foto = 'perfil/ana/1759850000000.jpg';
   await valeDaBia();
   const endereco: string = entregas[0].data.foto;
   // Vai o endereço, nunca a foto: o aviso do Firebase leva no máximo 4 KB
   expect(endereco).toStartWith('https://projeto.supabase.co/functions/v1/enviar-aviso?foto=ana&ate=');
   expect(endereco).not.toContain('base64');
 
+  // O aparelho é mandado ao balde, com o caminho assinado por 5 minutos
   const foto = await atender(new Request(endereco, { method: 'GET' }));
-  expect(foto.status).toBe(200);
-  expect(foto.headers.get('Content-Type')).toBe('image/jpeg');
-  expect([...new Uint8Array(await foto.arrayBuffer())]).toEqual([0xff, 0xd8]);
+  expect(foto.status).toBe(302);
+  expect(foto.headers.get('Location')).toBe(
+    'https://projeto.supabase.co/storage/v1/object/sign/anexos/perfil/ana/1759850000000.jpg?validade=300'
+  );
 
   // Trocar a pessoa no endereço não passa na assinatura
   const adulterado = endereco.replace('foto=ana', 'foto=bia');
@@ -436,6 +447,16 @@ test('A FOTO DE QUEM MANDOU vai por endereço assinado: abre com a assinatura, e
   // Nem esticar o prazo
   const esticado = endereco.replace(/ate=(\d+)/, (_, n) => `ate=${Number(n) + 1}`);
   expect((await atender(new Request(esticado, { method: 'GET' }))).status).toBe(403);
+});
+
+test('a foto ANTIGA, embutida na ficha, ainda é entregue', async () => {
+  // Um JPEG de 2 bytes basta: o que importa é o caminho
+  tabelas.colaboradores[0].foto = 'data:image/jpeg;base64,/9g=';
+  await valeDaBia();
+  const foto = await atender(new Request(entregas[0].data.foto, { method: 'GET' }));
+  expect(foto.status).toBe(200);
+  expect(foto.headers.get('Content-Type')).toBe('image/jpeg');
+  expect([...new Uint8Array(await foto.arrayBuffer())]).toEqual([0xff, 0xd8]);
 });
 
 test('sem foto na ficha, o aviso sai sem endereço — e a mensagem sai do mesmo jeito', async () => {

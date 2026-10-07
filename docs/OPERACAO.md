@@ -400,8 +400,9 @@ só a chamada que cai nela avisa. Mudou o intervalo do agendamento? Mude
   1.2 ele aparece calado, mesmo com o CONECTA na tela (canal
   "Comprovantes de batida").
 - **Foto de quem mandou**: o aviso de mensagem leva um endereço assinado
-  (`enviar-aviso?foto=`, vence em 48 h), e o APK 1.2 baixa a foto ao
-  desenhar o aviso. O APK antigo ignora o campo. No computador, o aviso
+  (`enviar-aviso?foto=`, vence em 48 h); ele assina o caminho da foto no
+  balde `anexos` (`perfil/<id>/…`) e redireciona, e o APK 1.2 baixa a
+  foto ao desenhar o aviso. O APK antigo ignora o campo. No computador, o aviso
   do navegador usa a foto direto.
 - As duas pedem **publicar de novo a `enviar-aviso`**.
 

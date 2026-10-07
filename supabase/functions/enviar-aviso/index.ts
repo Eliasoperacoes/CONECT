@@ -256,12 +256,13 @@ const lerVale = async (texto: string): Promise<Vale | null> => {
 // ---------------------------------------------------------------
 // A FOTO DE QUEM MANDOU, NO AVISO (Elias, 07/10/2026)
 //
-// O aviso do Firebase leva no máximo 4 KB, e a foto da ficha tem até
-// 60 KB: ela não viaja junto. Vai um ENDEREÇO, e o aparelho a baixa ao
-// desenhar o aviso (ServicoDeAvisos.java). Sem sessão — o aplicativo
-// pode estar fechado —, o endereço é assinado como o vale: de quem é a
-// foto e até quando vale. Vence em 48 horas, e só abre a foto, que todo
-// colaborador já vê no CONECTA.
+// O aviso do Firebase leva no máximo 4 KB: a foto não viaja junto. Vai
+// um ENDEREÇO desta função, e o aparelho a baixa ao desenhar o aviso
+// (ServicoDeAvisos.java). Sem sessão — o aplicativo pode estar fechado
+// —, o endereço é assinado como o vale: de quem é a foto e até quando
+// vale. Vence em 48 horas, e só abre a foto, que todo colaborador já vê
+// no CONECTA. A foto mesmo mora no balde privado; daqui o aparelho é
+// mandado a ela por um endereço assinado de 5 minutos.
 // ---------------------------------------------------------------
 
 const chaveDaFoto = async () =>
@@ -318,8 +319,22 @@ const entregarFoto = async (banco: Banco, parametros: URLSearchParams): Promise<
 
   const { data } = await banco.from('colaboradores').select('foto').eq('id', id).maybeSingle();
   const foto = String(data?.foto || '');
+
+  /*
+    O CASO DE TODO DIA: desde 28/09/2026 a ficha guarda o CAMINHO da foto
+    no balde privado (`perfil/<id>/<hora>.jpg`, anexos.ts), e não a
+    imagem. Assina o caminho por 5 minutos e manda o aparelho para lá.
+  */
+  if (foto.startsWith('perfil/')) {
+    const { data: assinado } = await banco.storage.from('anexos').createSignedUrl(foto, 300);
+    if (!assinado?.signedUrl) return new Response('Sem foto.', { status: 404 });
+    return Response.redirect(assinado.signedUrl, 302);
+  }
+
   // Foto por endereço externo (a opção "colar um link"): o aparelho vai até lá
   if (foto.startsWith('https://')) return Response.redirect(foto, 302);
+
+  // A foto antiga, embutida na ficha antes de 28/09/2026
 
   const partes = foto.match(/^data:(image\/[a-z+.-]+);base64,(.+)/);
   if (!partes) return new Response('Sem foto.', { status: 404 });
