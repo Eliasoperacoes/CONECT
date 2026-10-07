@@ -22,6 +22,7 @@ import {
   JustificativaAusencia,
   Loja,
   MetodoMarcacao,
+  MotivoForaDaJornada,
   NivelHierarquico,
   RegistroPonto,
   Setor,
@@ -146,6 +147,51 @@ export const paraRegistroPonto = (linha: LinhaRegistroPonto): RegistroPonto => (
   cnpjEmpregador: linha.cnpj_empregador || undefined,
   codigoVerificacao: linha.codigo_verificacao || undefined,
 });
+
+/** Linha de `marcacoes_originais` (marcacao-original.sql), como vem do banco. */
+export interface LinhaMarcacaoOriginal {
+  nsr: number | string;
+  colaborador_id: string;
+  registrado_em: string;
+  data: string;
+  loja: string;
+  metodo: string;
+  cnpj_empregador: string;
+  codigo_verificacao: string;
+  registro_id: string | null;
+  tipo_pedido: string | null;
+  fora_da_jornada: string | null;
+}
+
+/**
+ * O COMPROVANTE DE UMA MARCAÇÃO QUE FICOU FORA DA JORNADA, no formato da
+ * batida — é o que o comprovante (`montarComprovante`) e a tela já sabem
+ * ler. Não entra no cache do ponto: não é linha do tratamento.
+ */
+export const comprovanteDaOriginal = (o: LinhaMarcacaoOriginal): RegistroPonto => {
+  const quando = new Date(o.registrado_em);
+  return {
+    id: `original-${o.nsr}`,
+    colaboradorId: o.colaborador_id,
+    data: o.data,
+    // Sem lugar entre as quatro: o rótulo do comprovante vem de `foraDaJornada`
+    tipo: (o.tipo_pedido || 'entrada') as TipoMarcacao,
+    horario: o.registrado_em,
+    horaFormatada: quando.toLocaleTimeString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      hour: '2-digit',
+      minute: '2-digit',
+    }),
+    metodo: o.metodo as MetodoMarcacao,
+    loja: o.loja as Loja,
+    criadoEm: o.registrado_em,
+    nsr: Number(o.nsr),
+    registradoEm: o.registrado_em,
+    cnpjEmpregador: o.cnpj_empregador || undefined,
+    codigoVerificacao: o.codigo_verificacao,
+    foraDaJornada: (o.fora_da_jornada || 'jornada_completa') as MotivoForaDaJornada,
+  };
+};
 
 /*
   O carimbo NÃO vai de volta ao banco: quem o escreve é o gatilho

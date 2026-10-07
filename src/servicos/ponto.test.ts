@@ -47,6 +47,10 @@ let horaDoServidor = '09:00';
 let diaDoServidor = '2026-09-16';
 /** O banco responde que a batida já existe (corrida entre dois aparelhos). */
 let baterPontoJaExiste = false;
+/** A função do banco `registrar_marcacao` existe? (marcacao-original.sql) */
+let funcaoRegistrarMarcacao = false;
+let nsrDoServidor = 0;
+let originaisForaDaJornada: Array<{ nsr: number; tipo: string | null }> = [];
 /** A recusa escrita pelo banco (P0001), quando há. */
 let baterPontoRecusa: string | null = null;
 /** A última janela de batidas que o serviço pediu ao banco. */
@@ -158,6 +162,48 @@ mock.module('./nuvem', () => ({
       bancoRegistros.push(r);
       return { sucesso: true, registro: r };
     },
+    /*
+      A função registrar_marcacao (marcacao-original.sql): a batida que
+      nunca é recusada. DESLIGADA por padrão — responde como o banco sem o
+      script, e os testes de antes seguem provando o caminho de antes.
+      Ligada, carimba como a bater_ponto e, sem lugar na jornada (domingo,
+      quinta batida), devolve só o comprovante da original.
+    */
+    registrarMarcacao: async (d: { codigo: string; loja: string | null; tipo: string | null }) => {
+      if (!funcaoRegistrarMarcacao) return { sucesso: false, semFuncao: true };
+      const oficial = bancoCodigos.find((c) =>
+        d.loja ? c.loja === d.loja && c.codigo.toUpperCase() === d.codigo : c.codigo.toUpperCase() === d.codigo
+      );
+      if (!oficial) return { sucesso: false, erro: 'Código não reconhecido. Use o QR afixado na sua loja.' };
+      nsrDoServidor++;
+      const quando = new Date(`${diaDoServidor}T${horaDoServidor}:00`).toISOString();
+      const domingo = new Date(`${diaDoServidor}T12:00:00`).getDay() === 0;
+      if (domingo || !d.tipo) {
+        originaisForaDaJornada.push({ nsr: nsrDoServidor, tipo: d.tipo });
+        return {
+          sucesso: true,
+          foraDaJornada: domingo ? 'domingo' : 'jornada_completa',
+          comprovante: {
+            id: `original-${nsrDoServidor}`, colaboradorId: colaboradorLogado.id, data: diaDoServidor,
+            tipo: d.tipo || 'entrada', horario: quando, horaFormatada: horaDoServidor,
+            metodo: d.loja ? 'qrcode' : 'codigo_manual', loja: oficial.loja, criadoEm: quando,
+            nsr: nsrDoServidor, registradoEm: quando, codigoVerificacao: 'c0d1g0',
+            foraDaJornada: domingo ? 'domingo' : 'jornada_completa',
+          },
+        };
+      }
+      const r = {
+        id: `ponto-srv-${bancoRegistros.length}`, colaboradorId: colaboradorLogado.id, data: diaDoServidor,
+        tipo: d.tipo, horario: quando, horaFormatada: horaDoServidor,
+        metodo: d.loja ? 'qrcode' : 'codigo_manual', loja: oficial.loja, criadoEm: new Date().toISOString(),
+        nsr: nsrDoServidor, registradoEm: quando, codigoVerificacao: 'c0d1g0',
+      };
+      if (bancoRegistros.some((x) => x.colaboradorId === r.colaboradorId && x.data === r.data && x.tipo === r.tipo)) {
+        return { sucesso: false, duplicado: true };
+      }
+      bancoRegistros.push(r);
+      return { sucesso: true, registro: r };
+    },
     salvarRegistroPonto: async (r: any) => {
       const choque = bancoRegistros.some(
         (x) => x.colaboradorId === r.colaboradorId && x.data === r.data && x.tipo === r.tipo
@@ -234,6 +280,9 @@ beforeEach(() => {
   diaDoServidor = '2026-09-16';
   baterPontoJaExiste = false;
   baterPontoRecusa = null;
+  funcaoRegistrarMarcacao = false;
+  nsrDoServidor = 0;
+  originaisForaDaJornada = [];
   modoNuvem = true;
   colaboradorLogado = ELIAS;
   equipe = [ELIAS, ANA];
@@ -5001,4 +5050,81 @@ test('O PAPEL ASSINADO: a assinatura sobre a linha, o carimbo, e o aviso se mudo
     '2026-09-01', '2026-09-30', [ELIAS.id], new Map([[DO_TURNO_A.id, assinada]])
   );
   expect(outro).not.toContain('class="rubrica"');
+});
+
+// ============================================================
+// A MARCAÇÃO NÃO É RECUSADA (marcacao-original.sql, 07/10/2026)
+//
+// A Portaria 671/2021 proíbe restringir a marcação. No modo rede, com a
+// `registrar_marcacao` no banco, domingo e a quinta batida viram marcação
+// original com comprovante, e vão ao RH; a jornada não muda sozinha.
+// ============================================================
+
+test('com registrar_marcacao, a batida da jornada entra como antes — com o NSR do banco', async () => {
+  const codigo = await publicarCodigos();
+  funcaoRegistrarMarcacao = true;
+  const res = await servicoPonto.registrarMarcacaoPorCodigo(codigo);
+  expect(res.sucesso).toBe(true);
+  expect(res.registro!.tipo).toBe('entrada');
+  expect(res.registro!.nsr).toBe(1);
+  expect(res.comprovante).toBeUndefined();
+  expect(bancoRegistros).toHaveLength(1);
+  expect(servicoPonto.obterMarcacoesDoDia('colab-elias', '2026-09-16')).toHaveLength(1);
+});
+
+test('A QUINTA BATIDA não é recusada: vira original, com comprovante, e vai ao RH', async () => {
+  const codigo = await publicarCodigos();
+  funcaoRegistrarMarcacao = true;
+  for (const hora of ['07:30', '12:00', '13:00', '17:30']) {
+    horaDoServidor = hora;
+    expect((await servicoPonto.registrarMarcacaoPorCodigo(codigo)).sucesso).toBe(true);
+  }
+  horaDoServidor = '18:05';
+  const extra = await servicoPonto.registrarMarcacaoPorCodigo(codigo);
+  expect(extra.sucesso).toBe(true);
+  expect(extra.registro).toBeUndefined();
+  expect(extra.foraDaJornada).toBe('jornada_completa');
+  expect(extra.comprovante).toMatchObject({ nsr: 5, horaFormatada: '18:05', foraDaJornada: 'jornada_completa' });
+  // O aparelho pediu sem tipo: o banco é quem registra a original
+  expect(originaisForaDaJornada).toEqual([{ nsr: 5, tipo: null }]);
+  // A jornada não muda sozinha: continuam as quatro, no banco e no aparelho
+  expect(bancoRegistros).toHaveLength(4);
+  expect(servicoPonto.obterMarcacoesDoDia('colab-elias', '2026-09-16')).toHaveLength(4);
+});
+
+test('NO DOMINGO o aparelho não recusa: o banco registra a original como domingo', async () => {
+  const codigo = await publicarCodigos();
+  funcaoRegistrarMarcacao = true;
+  // 20/09/2026 é domingo, no aparelho e no servidor
+  setSystemTime(new Date(2026, 8, 20, 9, 0, 0));
+  diaDoServidor = '2026-09-20';
+  const res = await servicoPonto.registrarMarcacaoPorCodigo(codigo);
+  expect(res.sucesso).toBe(true);
+  expect(res.foraDaJornada).toBe('domingo');
+  expect(res.comprovante!.nsr).toBe(1);
+  expect(bancoRegistros).toHaveLength(0);
+});
+
+test('SEM a registrar_marcacao no banco (SQL não rodado), valem as recusas de antes', async () => {
+  const codigo = await publicarCodigos();
+  funcaoRegistrarMarcacao = false;
+  setSystemTime(new Date(2026, 8, 20, 9, 0, 0));
+  const res = await servicoPonto.registrarMarcacaoPorCodigo(codigo);
+  expect(res.sucesso).toBe(false);
+  expect(res.erro).toContain('Domingo não tem jornada');
+});
+
+test('o comprovante da fora da jornada diz "Marcação fora da jornada", e não um dos quatro passos', async () => {
+  const { montarComprovante } = await import('./comprovanteDeBatida');
+  const d = montarComprovante(
+    {
+      id: 'original-9', colaboradorId: 'colab-elias', data: '2026-09-20', tipo: 'entrada',
+      horario: '2026-09-20T12:00:00.000Z', horaFormatada: '09:00', metodo: 'qrcode', loja: 'Pirassununga',
+      criadoEm: '2026-09-20T12:00:00.000Z', nsr: 9, registradoEm: '2026-09-20T12:00:00.000Z',
+      codigoVerificacao: 'abc', foraDaJornada: 'domingo',
+    } as any,
+    { nome: 'Elias' }
+  );
+  expect(d.marcacao).toBe('Marcação fora da jornada');
+  expect(d.nsr).toBe('000000009');
 });

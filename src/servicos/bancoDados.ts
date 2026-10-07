@@ -1613,6 +1613,10 @@ class BancoDadosConecta {
       return { sucesso: false, erro: 'Colaborador não encontrado.' };
     }
 
+    // O cache como estava: se o banco recusar, tudo volta, e não só a ficha
+    const conversasAntes = localStorage.getItem(CHAVE_CONVERSAS);
+    const mensagensAntes = localStorage.getItem(CHAVE_MENSAGENS);
+
     const listaFiltrada = colaboradores.filter((c) => c.id !== id);
     localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(listaFiltrada));
 
@@ -1668,9 +1672,13 @@ class BancoDadosConecta {
       const res = await nuvem.removerColaborador(id);
       if (!res.sucesso) {
         // A ficha volta para a lista: o banco ainda a tem, e fingir que não
-        // seria mentir para quem for recadastrar
+        // seria mentir para quem for recadastrar. As conversas dela também
         localStorage.setItem(CHAVE_COLABORADORES, JSON.stringify(colaboradores));
+        if (conversasAntes !== null) localStorage.setItem(CHAVE_CONVERSAS, conversasAntes);
+        if (mensagensAntes !== null) localStorage.setItem(CHAVE_MENSAGENS, mensagensAntes);
         this.notificar();
+        // Quem bateu ponto não se exclui: a orientação vai como está, sem "não foi gravada"
+        if (res.temPonto) return { sucesso: false, erro: res.erro };
         return {
           sucesso: false,
           erro: `A remoção não foi gravada no banco: ${

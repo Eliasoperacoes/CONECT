@@ -1288,7 +1288,27 @@ export interface RegistroPonto {
   cnpjEmpregador?: string;
   /** SHA-256 de "NSR|CNPJ|data|hora registrada (UTC)|colaborador". */
   codigoVerificacao?: string;
+  /**
+   * Só no comprovante de uma marcação que NÃO entrou na jornada
+   * (marcacao-original.sql): ela existe como original, com NSR, e vai
+   * para o RH tratar. Nunca está numa linha de `registros_ponto`.
+   */
+  foraDaJornada?: MotivoForaDaJornada;
 }
+
+/**
+ * POR QUE UMA MARCAÇÃO FICOU FORA DA JORNADA — o mesmo valor de
+ * `marcacoes_originais.fora_da_jornada`. A Portaria proíbe recusar a
+ * marcação; a que não cabe nas quatro do dia é registrada e tratada.
+ */
+export type MotivoForaDaJornada = 'domingo' | 'jornada_completa' | 'fora_de_ordem' | 'repetida';
+
+export const ROTULO_FORA_DA_JORNADA: Record<MotivoForaDaJornada, string> = {
+  domingo: 'Domingo não tem jornada',
+  jornada_completa: 'A jornada de hoje já estava concluída',
+  fora_de_ordem: 'Fora da ordem da jornada',
+  repetida: 'Esta marcação já tinha sido feita hoje',
+};
 
 /** Jornada consolidada de um dia para um colaborador. */
 export interface JornadaDia {

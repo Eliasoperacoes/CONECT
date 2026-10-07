@@ -17,10 +17,11 @@ import {
   CheckCircle2,
   AlertCircle,
   CameraOff,
+  Inbox,
   Loader2,
 } from 'lucide-react';
 import { temComprovante } from '../servicos/comprovanteDeBatida';
-import { RegistroPonto, ROTULO_MARCACAO, precisaEscolherTurno } from '../tipos';
+import { RegistroPonto, ROTULO_MARCACAO, ROTULO_FORA_DA_JORNADA, precisaEscolherTurno } from '../tipos';
 import { servicoPonto, dataDeHoje } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 import { enviarAnexo } from '../servicos/anexos';
@@ -171,6 +172,14 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
         setRegistroFeito(resultado.registro);
         setEstado('sucesso');
         refAoRegistrar.current(resultado.registro);
+        return;
+      }
+
+      // Fora da jornada: registrada (Portaria 671/2021), com comprovante, e vai ao RH
+      if (resultado.sucesso && resultado.comprovante) {
+        encerrarCamera();
+        setRegistroFeito(resultado.comprovante);
+        setEstado('sucesso');
         return;
       }
 
@@ -346,9 +355,15 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
           {/* Confirmação */}
           {estado === 'sucesso' && registroFeito ? (
             <div className="p-6 flex flex-col items-center text-center gap-3">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center">
-                <CheckCircle2 className="w-9 h-9" />
-              </div>
+              {registroFeito.foraDaJornada ? (
+                <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center">
+                  <Inbox className="w-8 h-8" />
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center">
+                  <CheckCircle2 className="w-9 h-9" />
+                </div>
+              )}
               <div>
                 <p className="text-2xl font-black text-[var(--c-texto)] tracking-tight">
                   {registroFeito.horaFormatada}
@@ -356,8 +371,16 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
                 {/* Usa o tipo do próprio registro: a próxima marcação da
                     jornada já mudou assim que este ponto foi gravado. */}
                 <p className="text-sm font-semibold text-[var(--c-texto-2)] mt-0.5">
-                  {ROTULO_MARCACAO[registroFeito.tipo]} registrada
+                  {registroFeito.foraDaJornada
+                    ? 'Marcação registrada e enviada ao RH'
+                    : `${ROTULO_MARCACAO[registroFeito.tipo]} registrada`}
                 </p>
+                {registroFeito.foraDaJornada && (
+                  <p id="motivo-fora-da-jornada" className="text-xs text-[var(--c-texto-3)] mt-1.5 max-w-[17rem] mx-auto leading-relaxed">
+                    {ROTULO_FORA_DA_JORNADA[registroFeito.foraDaJornada]}. Ela fica no seu registro de ponto, e o RH decide
+                    como entra na jornada.
+                  </p>
+                )}
                 <p className="text-xs text-[var(--c-texto-3)] mt-1.5">
                   Loja {registroFeito.loja} ·{' '}
                   {registroFeito.metodo === 'qrcode' ? 'QR lido' : 'código digitado'}

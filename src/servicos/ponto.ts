@@ -36,6 +36,7 @@ import {
   Loja,
   MetodoMarcacao,
   RegistroPonto,
+  MotivoForaDaJornada,
   ResumoPontoColaborador,
   TipoMarcacao,
   ORDEM_MARCACOES,
@@ -1007,7 +1008,14 @@ class ServicoPonto {
      * de adivinhar o motivo depois.
      */
     justificativa?: { motivo?: string; anexoCaminho?: string }
-  ): Promise<{ sucesso: boolean; registro?: RegistroPonto; erro?: string }> {
+  ): Promise<{
+    sucesso: boolean;
+    registro?: RegistroPonto;
+    erro?: string;
+    /** A marcação ficou fora da jornada: existe a original, e este é o comprovante dela. */
+    comprovante?: RegistroPonto;
+    foraDaJornada?: MotivoForaDaJornada;
+  }> {
     const atual = bancoDados.obterColaboradorAtual();
     if (!bancoDados.estaAutenticado()) {
       return { sucesso: false, erro: 'Sessão expirada. Entre novamente para bater o ponto.' };
@@ -1030,13 +1038,23 @@ class ServicoPonto {
     // domingo. A hora gravada, no modo rede, é a do servidor
     const momento = agoraSincronizado();
     const data = paraDataLocal(momento);
-    if (!aceitaMarcacaoNoDia(data)) return { sucesso: false, erro: RECUSA_DE_DOMINGO };
+    // Nula no domingo e com a jornada completa: no modo rede a marcação vai
+    // assim mesmo, e o banco a registra fora da jornada (marcacao-original.sql)
     const proxima = this.obterProximaMarcacao(atual.id, data);
-    if (!proxima) {
-      return {
-        sucesso: false,
-        erro: 'Sua jornada de hoje já está completa. Procure o RH se precisar de ajuste.',
-      };
+    /**
+     * AS RECUSAS DE ANTES, só onde ainda valem: no modo local, e no banco
+     * que ainda não tem `registrar_marcacao`. No modo rede a Portaria
+     * 671/2021 proíbe restringir a marcação — quem decide é o RH, depois.
+     */
+    const recusaDeAntes = (): { sucesso: false; erro: string } | null =>
+      !aceitaMarcacaoNoDia(data)
+        ? { sucesso: false, erro: RECUSA_DE_DOMINGO }
+        : !proxima
+          ? { sucesso: false, erro: 'Sua jornada de hoje já está completa. Procure o RH se precisar de ajuste.' }
+          : null;
+    if (!usandoNuvem()) {
+      const recusada = recusaDeAntes();
+      if (recusada) return recusada;
     }
 
     /**
@@ -1063,20 +1081,43 @@ class ServicoPonto {
     // e do computador.
     const jaRegistrada = async () => {
       await nuvem.sincronizarPonto();
-      return recusa(`${ROTULO_MARCACAO[proxima]} já foi registrada hoje, em outro aparelho.`);
+      return recusa(`${proxima ? ROTULO_MARCACAO[proxima] : 'Esta marcação'} já foi registrada hoje, em outro aparelho.`);
     };
 
     let registro: RegistroPonto | null = null;
     if (usandoNuvem()) {
-      const res = await nuvem.baterPonto({ codigo: lido.codigo, loja: lido.loja, tipo: proxima });
-      if (res.duplicado) return jaRegistrada();
-      if (!res.sucesso && !res.semFuncao) return recusa(res.erro);
-      registro = res.registro ?? null;
+      const nova = await nuvem.registrarMarcacao({ codigo: lido.codigo, loja: lido.loja, tipo: proxima });
+
+      // FORA DA JORNADA: a original existe, com NSR e comprovante; o
+      // tratamento não muda, e o RH decide o que ela é
+      if (nova.sucesso && nova.comprovante) {
+        bancoDados.registrarAuditoria(
+          'Registro de Ponto',
+          'sistema',
+          `${atual.nome} registrou uma marcação fora da jornada (${nova.foraDaJornada}) às ${nova.comprovante.horaFormatada}, NSR ${nova.comprovante.nsr}, na loja ${nova.comprovante.loja}.`
+        );
+        return { sucesso: true, comprovante: nova.comprovante, foraDaJornada: nova.foraDaJornada };
+      }
+      if (nova.duplicado) return jaRegistrada();
+      if (nova.sucesso) registro = nova.registro ?? null;
+      else if (!nova.semFuncao) return recusa(nova.erro);
+      else {
+        // O banco ainda sem `registrar_marcacao`: a batida de antes, com as recusas de antes
+        const recusada = recusaDeAntes();
+        if (recusada) return recusada;
+        const res = await nuvem.baterPonto({ codigo: lido.codigo, loja: lido.loja, tipo: proxima! });
+        if (res.duplicado) return jaRegistrada();
+        if (!res.sucesso && !res.semFuncao) return recusa(res.erro);
+        registro = res.registro ?? null;
+      }
     }
 
     // Modo local, ou o banco ainda sem `bater_ponto` (ponto-pelo-servidor.sql
     // não rodado): o caminho antigo, conferido e carimbado aqui
     if (!registro) {
+      // Só chega aqui com a próxima marcação: no modo local as recusas já
+      // valeram, e no rede sem função nenhuma também
+      if (!proxima) return recusa();
       const resolvido = this.resolverLojaDoCodigo(conteudoLido);
       if (!resolvido) return recusa(recusaDoCodigo);
       registro = {
@@ -1123,14 +1164,15 @@ class ServicoPonto {
     // Fechou a jornada: levanta a diferença e manda para o responsável.
     // É aqui que o caminho começa — sem este passo, hora extra viraria saldo
     // sozinha e ninguém teria decidido nada.
-    if (proxima === 'saida') {
+    // O tipo da batida gravada: é a `proxima`, carimbada pelo banco
+    if (registro.tipo === 'saida') {
       await this.apurarDia(atual.id, registro.data, justificativa);
     }
 
     bancoDados.registrarAuditoria(
       'Registro de Ponto',
       'sistema',
-      `${atual.nome} registrou ${ROTULO_MARCACAO[proxima].toLowerCase()} às ${registro.horaFormatada} na loja ${registro.loja}.`
+      `${atual.nome} registrou ${ROTULO_MARCACAO[registro.tipo].toLowerCase()} às ${registro.horaFormatada} na loja ${registro.loja}.`
     );
     this.notificar();
     return { sucesso: true, registro };

@@ -270,6 +270,13 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
   const jornadaCompleta = proximaMarcacao === null;
   // Domingo não tem próxima batida porque não tem jornada — e não porque acabou
   const ehDomingo = !aceitaMarcacaoNoDia(hoje);
+  /**
+   * A MARCAÇÃO NÃO SE RECUSA (Portaria 671/2021). No modo rede o banco
+   * registra a que não cabe na jornada e a manda ao RH (registrar_marcacao),
+   * então o botão continua ativo. No modo local não há registro legal: fica
+   * como era.
+   */
+  const marcaForaDaJornada = usandoNuvem();
 
   return (
     <div className={embutida ? 'px-2 pb-6' : 'pb-24'}>
@@ -424,14 +431,21 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
           type="button"
           id="botao-bater-ponto"
           onClick={() => setModalAberto(true)}
-          disabled={jornadaCompleta}
-          className={`mt-3 w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all shadow-md ${
-            jornadaCompleta
-              ? 'bg-[var(--c-superficie-2)] text-[var(--c-texto-3)] border border-[var(--c-borda)] cursor-not-allowed shadow-none'
-              : 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] hover:brightness-110 active:scale-[0.99]'
+          disabled={jornadaCompleta && !marcaForaDaJornada}
+          className={`mt-3 w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all ${
+            jornadaCompleta && !marcaForaDaJornada
+              ? 'bg-[var(--c-superficie-2)] text-[var(--c-texto-3)] border border-[var(--c-borda)] cursor-not-allowed'
+              : jornadaCompleta
+                ? 'bg-[var(--c-superficie)] text-[var(--c-texto)] border border-[var(--c-borda)] hover:bg-[var(--c-superficie-2)] active:scale-[0.99]'
+                : 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-md hover:brightness-110 active:scale-[0.99]'
           }`}
         >
-          {ehDomingo ? (
+          {marcaForaDaJornada && jornadaCompleta ? (
+            <>
+              <QrCode className="w-5 h-5" />
+              {ehDomingo ? 'Registrar marcação no domingo' : 'Registrar marcação extra'}
+            </>
+          ) : ehDomingo ? (
             <>Domingo · sem jornada</>
           ) : jornadaCompleta ? (
             <>
@@ -449,6 +463,12 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
         {!jornadaCompleta && (
           <p className="mt-2 text-center text-[11px] text-[var(--c-texto-3)] leading-relaxed">
             Aponte a câmera para o QR afixado na loja {colaboradorAtual.loja}.
+          </p>
+        )}
+        {jornadaCompleta && marcaForaDaJornada && (
+          <p id="aviso-marcacao-extra" className="mt-2 text-center text-[11px] text-[var(--c-texto-3)] leading-relaxed">
+            {ehDomingo ? 'Domingo não tem jornada.' : 'A jornada de hoje está concluída.'} Se precisar marcar, a
+            marcação fica registrada e vai para o RH tratar.
           </p>
         )}
       </div>

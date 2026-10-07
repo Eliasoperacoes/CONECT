@@ -72,7 +72,8 @@ export const montarComprovante = (
       minute: '2-digit',
       second: '2-digit',
     }),
-    marcacao: ROTULO_MARCACAO[r.tipo],
+    // A fora da jornada não ocupou nenhuma das quatro: é "marcação", e o RH trata
+    marcacao: r.foraDaJornada ? 'Marcação fora da jornada' : ROTULO_MARCACAO[r.tipo],
     forma: r.metodo === 'qrcode' ? 'QR da loja' : 'Código da loja digitado',
     codigo: (r.codigoVerificacao || '').toLowerCase(),
   };

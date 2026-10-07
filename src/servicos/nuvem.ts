@@ -16,6 +16,7 @@ import {
   CodigoPontoLoja,
   Loja,
   MetodoMarcacao,
+  MotivoForaDaJornada,
   NivelHierarquico,
   RegistroPonto,
   Setor,
@@ -59,6 +60,8 @@ import {
   paraFeriado,
   LinhaCompensacao,
   paraCompensacao,
+  LinhaMarcacaoOriginal,
+  comprovanteDaOriginal,
 } from './linhasDoBanco';
 import { CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { acompanharCanal, definirRecarga, recarregarAoVoltar } from './reconexao';
@@ -784,11 +787,23 @@ class PonteNuvem {
     return (data as LinhaColaborador[]).map((l) => paraColaborador(l));
   }
 
-  async removerColaborador(id: string): Promise<{ sucesso: boolean; erro?: string }> {
+  async removerColaborador(id: string): Promise<{ sucesso: boolean; erro?: string; temPonto?: boolean }> {
     if (!supabase) return { sucesso: true };
 
     const { error } = await supabase.from('colaboradores').delete().eq('id', id);
     if (error) {
+      /*
+        QUEM JÁ BATEU PONTO NÃO SE EXCLUI (marcacao-original.sql): a marcação
+        original é guardada por lei, e a chave dela é RESTRICT. O banco diz
+        isso em linguagem de banco; a tela diz o que fazer.
+      */
+      if (error.code === '23503' && error.message.includes('marcacoes_originais')) {
+        return {
+          sucesso: false,
+          temPonto: true,
+          erro: 'Este colaborador tem marcações de ponto e não pode ser excluído: a lei exige guardá-las. Desative o cadastro.',
+        };
+      }
       console.error('Falha ao remover colaborador no banco:', error.message);
       return { sucesso: false, erro: error.message };
     }
@@ -1092,6 +1107,58 @@ class PonteNuvem {
       return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
     }
     return { sucesso: true, registro: paraRegistroPonto(data as LinhaRegistroPonto) };
+  }
+
+  /**
+   * A BATIDA QUE NUNCA É RECUSADA (registrar_marcacao, marcacao-original.sql).
+   *
+   * A Portaria 671/2021 proíbe restringir a marcação. O banco registra a
+   * original SEMPRE que o código da loja confere; a que não cabe na
+   * jornada (domingo, quinta batida, fora de ordem, repetida) volta com
+   * `foraDaJornada` e o comprovante dela, para o RH tratar.
+   *
+   * `semFuncao`: o SQL ainda não rodou — quem chama volta à `baterPonto`.
+   */
+  async registrarMarcacao(dados: {
+    codigo: string;
+    loja: string | null;
+    tipo: TipoMarcacao | null;
+  }): Promise<{
+    sucesso: boolean;
+    registro?: RegistroPonto;
+    comprovante?: RegistroPonto;
+    foraDaJornada?: MotivoForaDaJornada;
+    erro?: string;
+    duplicado?: boolean;
+    semFuncao?: boolean;
+  }> {
+    if (!supabase) return { sucesso: false, semFuncao: true };
+    const { data, error } = await supabase.rpc('registrar_marcacao', {
+      p_codigo: dados.codigo,
+      p_loja: dados.loja,
+      p_tipo: dados.tipo,
+    });
+    if (error) {
+      if (error.code === 'PGRST202' || error.code === '42883') return { sucesso: false, semFuncao: true };
+      // Duas batidas do mesmo passo no mesmo instante (dois aparelhos): a outra entrou
+      if (error.code === '23505') return { sucesso: false, duplicado: true };
+      if (error.code === 'P0001') return { sucesso: false, erro: error.message };
+      console.error('Falha ao registrar a marcação no banco:', error.message);
+      return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
+    }
+    const resposta = data as {
+      registro: LinhaRegistroPonto | null;
+      original: LinhaMarcacaoOriginal;
+      fora_da_jornada: MotivoForaDaJornada | null;
+    };
+    if (resposta.registro) {
+      return { sucesso: true, registro: paraRegistroPonto(resposta.registro) };
+    }
+    return {
+      sucesso: true,
+      comprovante: comprovanteDaOriginal(resposta.original),
+      foraDaJornada: resposta.fora_da_jornada ?? undefined,
+    };
   }
 
   /**
