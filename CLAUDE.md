@@ -10,6 +10,8 @@ organograma e permissões.
 
 Dono do sistema: Elias (TI/Administrador). Escreve e lê em **português do
 Brasil** — código, comentários, commits e conversa, tudo em português.
+Vale também para o que comandos e agentes devolvem: revisões
+(`/code-review`), relatórios, resumos e achados saem em português do Brasil.
 
 ---
 
