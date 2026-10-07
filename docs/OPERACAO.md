@@ -120,6 +120,7 @@ esquema.
 | `assinatura-responsavel.sql` | **Delta (05/10/2026), depois de `assinatura-espelho.sql`.** A assinatura do responsável: o RH assina de uma vez, em RH → Assinaturas, os espelhos de ponto que os colaboradores já assinaram. Só o espelho: o holerite leva só a assinatura do funcionário. Só entra o que o colaborador assinou, e nunca o espelho de quem assina. O colaborador passa a ver a assinatura do RH no próprio espelho. Sem ele, o Assinar do RH responde "avise o TI". A conferência precisa sair `1 · 1 · true` |
 | `compensacao-sabado.sql` | **Rode uma vez (01/10/2026).** O saldo de compensação do sábado (os 10 min diários do turno integral, que pagam a folga) passa de um mês ao outro: a apuração da madrugada fecha o mês anterior de cada pessoa nesta tabela, e o espelho mostra o que veio, o que juntou, a folga consumida e o que segue. Sem ele a madrugada segue sem gravar a compensação |
 | `lembretes-1-simular.sql`, `lembretes-2-ver-simulacao.sql`, `lembretes-3-agendar.sql` | **Em ordem, uma vez (02/10/2026)**, depois de publicar `lembrar-pendencias` e de publicar de novo `enviar-aviso` — ver "Os lembretes das 9h" abaixo. O endereço em maiúsculas é trocado na entrega |
+| `marcacao-original.sql` | **Uma vez (07/10/2026)** — etapa 1 da homologação: a marcação original (REP-P), que não se altera nem se apaga; NSR sem buracos; correção sem NSR; o RH grava só correção; e `registrar_marcacao`, a batida que nunca é recusada. Só acrescenta: o app de hoje segue funcionando. Conferência: as cinco colunas `true` e `contador_nsr` = `maior_nsr_dado`. Ver "A marcação original" abaixo |
 | `alerta-sem-bater-1-simular.sql`, `alerta-sem-bater-2-agendar.sql` | **Em ordem, uma vez (07/10/2026)**, depois de publicar de novo `lembrar-pendencias` e `enviar-aviso` — ver "Não bateu o ponto" abaixo. O endereço em maiúsculas é trocado na entrega |
 | `apuracao-1-preparar.sql`, `apuracao-2-ver-simulacao.sql`, `apuracao-3-agendar.sql` | **Em ordem, uma vez (01/10/2026)**, depois de publicar a função `apurar-ponto` — ver "A apuração da madrugada" abaixo. Os valores em maiúsculas são trocados na entrega |
 | `dias-com-batida.sql` | **Rode uma vez (01/10/2026).** O espelho incompleto passa a contar também os dias de trabalho sem batida nenhuma, perguntando ao banco em que dias cada pessoa bateu (uma linha por pessoa). Sem ele, a conta alarga o cache do aparelho para o período |
@@ -391,6 +392,29 @@ só a chamada que cai nela avisa. Mudou o intervalo do agendamento? Mude
 2. **`alerta-sem-bater-1-simular.sql`** e, ~10 s depois,
    **`alerta-sem-bater-2-agendar.sql`**: mostra a resposta da simulação
    e liga o agendamento.
+
+### A marcação original (`marcacao-original.sql`, 07/10/2026)
+
+Etapa 1 da homologação (Portaria MTP 671/2021). Duas tabelas, dois papéis:
+
+| Tabela | O que é | Quem grava | Muda? |
+|---|---|---|---|
+| `marcacoes_originais` | A marcação como foi feita (REP-P): NSR, hora do servidor, loja, código | Só o banco, junto da batida | **Nunca** — nem pela chave de serviço |
+| `registros_ponto` | O tratamento: a jornada que telas, apuração e espelho usam | A batida, e o RH/líder corrigindo com justificativa | Sim, como sempre |
+
+- **Colaborador com marcação não se exclui** — se desativa. Quem nunca
+  bateu ponto ainda pode ser excluído.
+- **A batida não é recusada** (`registrar_marcacao`): domingo, quinta
+  batida, fora de ordem e repetida viram original com `fora_da_jornada`
+  preenchido, para o RH tratar.
+- **NSR só para marcação**, sem buracos (`contador_nsr`). Correção,
+  lançamento e preenchimento pelo turno não ganham NSR.
+- **Não rode de novo** `ponto-pelo-servidor.sql` nem `cpf-e-comprovante.sql`:
+  eles trazem a versão antiga da `bater_ponto` e da trava `carimbar_batida`.
+  O ponto continuaria funcionando, mas `cpf-e-comprovante.sql` voltaria a
+  dar NSR a correções. Na dúvida, rode `marcacao-original.sql` por último.
+- A prova roda na suíte: `src/servicos/marcacaoOriginal.test.ts` monta um
+  Postgres local com o `esquema.sql` inteiro (`scripts/bancoLocal.ts`).
 
 ### Comprovante de batida e foto no aviso (07/10/2026)
 
