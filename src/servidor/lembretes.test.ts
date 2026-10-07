@@ -113,3 +113,38 @@ test('duas publicações pendentes: um aviso, que abre a mais recente', () => {
   expect(daAna[0].dados.publicacaoId).toBe('nova');
   expect(daAna[0].dados.texto).toContain('2 publicações');
 });
+
+test('ESPELHO DE PONTO: do dia 1 em diante, todo dia, a quem bate ponto e não assinou', () => {
+  const d = base();
+  const batePonto = (c: Colaborador) => c.setor !== 'RH';
+  // Em 10/10/2026 está fechado setembro (o primeiro que se cobra)
+  d.espelhos = { assinados: new Set(['bia|2026-09']), batePonto };
+  const lembretes = planejarLembretes(d, AGORA);
+  // ana não assinou; bia assinou; dani não bate ponto; zeca saiu da empresa
+  expect(quem(lembretes)).toEqual(['ana']);
+  expect(lembretes[0].dados).toMatchObject({
+    tipo: 'secao',
+    conversaId: 'meus_espelhos',
+    mensagemId: 'lembrete-espelho-ana',
+  });
+  expect(lembretes[0].dados.texto).toContain('Setembro de 2026');
+
+  // No dia 1, às 9h, o mês que acabou de fechar já é lembrado — sem esperar 20h
+  const primeiroDeNovembro = new Date('2026-11-01T12:00:00.000Z');
+  const deNovembro = planejarLembretes({ ...d, espelhos: { assinados: new Set(['ana|2026-09']), batePonto } }, primeiroDeNovembro);
+  const daAna = deNovembro.find((l) => l.colaboradorId === 'ana')!;
+  expect(daAna.dados.texto).toContain('Outubro de 2026');
+
+  // Dois meses em aberto viram UM aviso com a conta
+  const doisMeses = planejarLembretes({ ...d, espelhos: { assinados: new Set(), batePonto } }, primeiroDeNovembro);
+  expect(doisMeses.find((l) => l.colaboradorId === 'ana')!.dados.texto).toContain('2 espelhos');
+
+  // Admitida em outubro não tem espelho de setembro
+  d.colaboradores = [pessoa('ana', { dataAdmissao: '2026-10-02' })];
+  expect(planejarLembretes(d, AGORA)).toEqual([]);
+
+  // Sem a tabela de assinaturas, nenhum espelho é cobrado
+  d.espelhos = undefined;
+  d.colaboradores = [pessoa('ana')];
+  expect(planejarLembretes(d, AGORA)).toEqual([]);
+});

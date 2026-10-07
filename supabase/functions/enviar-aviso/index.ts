@@ -253,6 +253,82 @@ const lerVale = async (texto: string): Promise<Vale | null> => {
   }
 };
 
+// ---------------------------------------------------------------
+// A FOTO DE QUEM MANDOU, NO AVISO (Elias, 07/10/2026)
+//
+// O aviso do Firebase leva no máximo 4 KB, e a foto da ficha tem até
+// 60 KB: ela não viaja junto. Vai um ENDEREÇO, e o aparelho a baixa ao
+// desenhar o aviso (ServicoDeAvisos.java). Sem sessão — o aplicativo
+// pode estar fechado —, o endereço é assinado como o vale: de quem é a
+// foto e até quando vale. Vence em 48 horas, e só abre a foto, que todo
+// colaborador já vê no CONECTA.
+// ---------------------------------------------------------------
+
+const chaveDaFoto = async () =>
+  crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(`${chaveDeServico()}:foto-do-aviso`),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign', 'verify']
+  );
+
+const assinaturaDaFoto = async (colaboradorId: string, ate: number): Promise<string> =>
+  base64url(
+    new Uint8Array(
+      await crypto.subtle.sign('HMAC', await chaveDaFoto(), new TextEncoder().encode(`${colaboradorId}:${ate}`))
+    )
+  );
+
+/**
+ * O endereço da foto para o aviso, ou nada se a pessoa não tem foto.
+ *
+ * A FOTO NUNCA SEGURA O AVISO: qualquer falha aqui e a mensagem sai com
+ * a logo, como antes.
+ */
+const enderecoDaFoto = async (banco: Banco, colaboradorId: string): Promise<Record<string, string>> => {
+  try {
+    // Só pergunta SE tem: a foto em si (até 60 KB) não precisa sair do banco aqui
+    const { data } = await banco
+      .from('colaboradores')
+      .select('id')
+      .eq('id', colaboradorId)
+      .not('foto', 'is', null)
+      .neq('foto', '')
+      .maybeSingle();
+    if (!data) return {};
+    const ate = Date.now() + VALIDADE_DO_VALE_MS;
+    const ass = await assinaturaDaFoto(colaboradorId, ate);
+    const base = `${Deno.env.get('SUPABASE_URL')}/functions/v1/enviar-aviso`;
+    return { foto: `${base}?foto=${encodeURIComponent(colaboradorId)}&ate=${ate}&ass=${ass}` };
+  } catch (erro) {
+    console.warn('Foto do aviso:', erro);
+    return {};
+  }
+};
+
+/** GET ?foto=…: devolve a imagem, se a assinatura confere e não venceu. */
+const entregarFoto = async (banco: Banco, parametros: URLSearchParams): Promise<Response> => {
+  const id = parametros.get('foto') || '';
+  const ate = Number(parametros.get('ate'));
+  const ass = parametros.get('ass') || '';
+  if (!id || !Number.isFinite(ate) || ate < Date.now() || ass !== (await assinaturaDaFoto(id, ate))) {
+    return new Response('Endereço inválido ou vencido.', { status: 403 });
+  }
+
+  const { data } = await banco.from('colaboradores').select('foto').eq('id', id).maybeSingle();
+  const foto = String(data?.foto || '');
+  // Foto por endereço externo (a opção "colar um link"): o aparelho vai até lá
+  if (foto.startsWith('https://')) return Response.redirect(foto, 302);
+
+  const partes = foto.match(/^data:(image\/[a-z+.-]+);base64,(.+)/);
+  if (!partes) return new Response('Sem foto.', { status: 404 });
+  const bytes = Uint8Array.from(atob(partes[2]), (c) => c.charCodeAt(0));
+  return new Response(bytes, {
+    headers: { 'Content-Type': partes[1], 'Cache-Control': 'private, max-age=3600' },
+  });
+};
+
 /**
  * ONDE A RESPOSTA RÁPIDA É OFERECIDA.
  *
@@ -444,6 +520,8 @@ const avisarConversa = async (
       texto: previa,
       conversa: conversa.nome,
       ehGrupo: ehGrupo ? 'true' : 'false',
+      // A foto de quem mandou: trocou a foto, o próximo aviso já leva a nova
+      ...(await enderecoDaFoto(banco, eu.id)),
     },
     respondivel
       ? async (colaboradorId) => ({
@@ -533,6 +611,13 @@ const LIMITE_DA_RESPOSTA = 2000;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+
+  // A foto de quem mandou, baixada pelo aparelho ao desenhar o aviso
+  const parametros = new URL(req.url).searchParams;
+  if (req.method === 'GET' && parametros.has('foto')) {
+    return entregarFoto(createClient(Deno.env.get('SUPABASE_URL')!, chaveDeServico()), parametros);
+  }
+
   if (req.method !== 'POST') return responder({ erro: 'Só POST.' }, 405);
 
   let pedido: Record<string, unknown>;
@@ -755,6 +840,52 @@ Deno.serve(async (req) => {
       remetente,
       texto,
       conversa: titulo,
+      ehGrupo: 'true',
+    });
+    return responder(aviso, aviso.erro ? 503 : 200);
+  }
+
+  // =============================================================
+  // CAMINHO 7 — O COMPROVANTE DE UMA BATIDA, para quem bateu
+  //
+  //  · A BATIDA É LIDA COM A SESSÃO de quem chama, e tem de ser DELA:
+  //    ninguém pede o comprovante da batida de outro.
+  //  · SÓ A BATIDA DO SERVIDOR tem comprovante: sem NSR não há o que
+  //    comprovar (a lançada pelo RH é ajuste, não marcação).
+  //  · O texto vem do aparelho (`textoDoAvisoDoComprovante`), montado dos
+  //    mesmos dados do PDF. Vai só para a própria pessoa: forjá-lo só
+  //    enganaria a ela mesma.
+  //  · `tipo: 'comprovante'` e o id da batida em `conversaId`: é o que o
+  //    toque abre (`destinoDoPush`), e o que faz o aparelho desenhar o
+  //    aviso calado, mesmo com o CONECTA na tela (ServicoDeAvisos).
+  // =============================================================
+  if (pedido.comprovante && typeof pedido.comprovante === 'object') {
+    const p = pedido.comprovante as Record<string, unknown>;
+    const id = String(p.id || '');
+    const texto = String(p.texto || '').trim().slice(0, 240);
+    if (!id || !texto) return responder({ erro: 'Pedido de comprovante incompleto.' }, 400);
+
+    const comoQuemChama = createClient(url, chavePublica(), {
+      global: { headers: { Authorization: `Bearer ${jwt}` } },
+      auth: { persistSession: false },
+    });
+    const { data: batida } = await comoQuemChama
+      .from('registros_ponto')
+      .select('id, colaborador_id, nsr')
+      .eq('id', id)
+      .maybeSingle();
+    if (!batida || batida.colaborador_id !== eu.id) {
+      return responder({ erro: 'Batida fora do seu alcance.' }, 404);
+    }
+    if (batida.nsr == null) return responder({ erro: 'Batida sem comprovante.' }, 409);
+
+    const aviso = await entregarAosAparelhos(banco, [eu.id], {
+      tipo: 'comprovante',
+      conversaId: id,
+      mensagemId: `comprovante-${id}`,
+      remetente: 'Ponto',
+      texto,
+      conversa: 'Comprovante de batida',
       ehGrupo: 'true',
     });
     return responder(aviso, aviso.erro ? 503 : 200);

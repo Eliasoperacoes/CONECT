@@ -147,3 +147,13 @@ export const gerarPdfDoComprovante = async (d: DadosDoComprovante): Promise<Uint
 
   return pdf.save();
 };
+
+/**
+ * O TEXTO DO AVISO "COMPROVANTE DE BATIDA" (Elias, 07/10/2026): o que o
+ * celular mostra na barra logo depois de cada batida. Sai daqui, dos
+ * mesmos dados do PDF, para o aviso e o documento nunca dizerem coisas
+ * diferentes. Sem concordar com a marcação: "Saída" e "Retorno" pediriam
+ * gêneros.
+ */
+export const textoDoAvisoDoComprovante = (d: DadosDoComprovante): string =>
+  `${d.marcacao} · ${d.data} às ${d.hora.slice(0, 5)} · NSR ${d.nsr}. Toque para ver o comprovante.`;

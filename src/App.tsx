@@ -71,7 +71,8 @@ import {
   type DestinoNotificacao,
   type SecaoDestino,
 } from './servicos/centralDeNotificacoes';
-import { pedirFolhaDoMeuRH } from './servicos/folhaPedida';
+import { pedirFolhaDoMeuRH, FOLHA_DA_SECAO } from './servicos/folhaPedida';
+import { pedirComprovante } from './servicos/comprovantePedido';
 import { ModalNovaConversa } from './componentes/ModalNovaConversa';
 import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
@@ -1069,6 +1070,8 @@ export default function App() {
           : montarPreviaDaMensagem(ultima),
         conversaId: id,
         quantidade: daConversa.length,
+        // A foto de quem mandou: trocou a foto, o aviso dos outros já mostra a nova
+        foto: remetente?.foto,
         aoClicar: () => abrirJanela(id),
       });
     }
@@ -1516,6 +1519,16 @@ export default function App() {
       return;
     }
 
+    // O comprovante de uma batida: o Ponto, com ele aberto (comprovantePedido.ts)
+    if (destino.tipo === 'comprovante') {
+      navegarNaWeb(TELA_DO_DESTINO.meu_ponto);
+      setChatExpandido(false);
+      setConversaAtivaId(null);
+      setAbaAtiva('ponto');
+      pedirComprovante(destino.registroId);
+      return;
+    }
+
     // No computador, a tela do assunto (a tradução mora em telasPorAssunto.ts)
     navegarNaWeb(TELA_DO_DESTINO[destino.secao] ?? 'inicio');
     setChatExpandido(false);
@@ -1527,11 +1540,11 @@ export default function App() {
       return;
     }
 
-    // Holerite e documento do RH: a aba Eu, com a folha já aberta
-    if (destino.secao === 'meus_holerites' || destino.secao === 'minhas_advertencias') {
+    // Holerite, documento do RH e espelho: a aba Eu, com a folha já aberta
+    if (FOLHA_DA_SECAO[destino.secao]) {
       setConversaAtivaId(null);
       setAbaAtiva('eu');
-      pedirFolhaDoMeuRH(destino.secao === 'meus_holerites' ? 'holerites' : 'advertencias');
+      pedirFolhaDoMeuRH(FOLHA_DA_SECAO[destino.secao]!);
       return;
     }
 

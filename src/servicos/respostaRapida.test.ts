@@ -29,6 +29,7 @@ const consulta = (tabela: string) => {
     select: () => construtor,
     eq: (c: string, v: any) => (filtros.push((l) => l[c] === v), construtor),
     neq: (c: string, v: any) => (filtros.push((l) => l[c] !== v), construtor),
+    not: (c: string, op: string, v: any) => (filtros.push((l) => (op === 'is' ? l[c] != v : l[c] !== v)), construtor),
     in: (c: string, vs: any[]) => (filtros.push((l) => vs.includes(l[c])), construtor),
     maybeSingle: async () => ({ data: linhas()[0] ?? null, error: null }),
     delete: () => ((operacao = 'delete'), construtor),
@@ -409,4 +410,36 @@ test('resposta vazia não grava mensagem em branco', async () => {
   const r = await chamar({ vale, texto: '   ' });
   expect(r.status).toBe(400);
   expect(tabelas.mensagens.length).toBe(antes);
+});
+
+// ===============================================================
+// A FOTO DE QUEM MANDOU (Elias, 07/10/2026)
+// ===============================================================
+
+test('A FOTO DE QUEM MANDOU vai por endereço assinado: abre com a assinatura, e só com ela', async () => {
+  // Um JPEG de 2 bytes basta: o que importa é o caminho
+  tabelas.colaboradores[0].foto = 'data:image/jpeg;base64,/9g=';
+  await valeDaBia();
+  const endereco: string = entregas[0].data.foto;
+  // Vai o endereço, nunca a foto: o aviso do Firebase leva no máximo 4 KB
+  expect(endereco).toStartWith('https://projeto.supabase.co/functions/v1/enviar-aviso?foto=ana&ate=');
+  expect(endereco).not.toContain('base64');
+
+  const foto = await atender(new Request(endereco, { method: 'GET' }));
+  expect(foto.status).toBe(200);
+  expect(foto.headers.get('Content-Type')).toBe('image/jpeg');
+  expect([...new Uint8Array(await foto.arrayBuffer())]).toEqual([0xff, 0xd8]);
+
+  // Trocar a pessoa no endereço não passa na assinatura
+  const adulterado = endereco.replace('foto=ana', 'foto=bia');
+  expect((await atender(new Request(adulterado, { method: 'GET' }))).status).toBe(403);
+  // Nem esticar o prazo
+  const esticado = endereco.replace(/ate=(\d+)/, (_, n) => `ate=${Number(n) + 1}`);
+  expect((await atender(new Request(esticado, { method: 'GET' }))).status).toBe(403);
+});
+
+test('sem foto na ficha, o aviso sai sem endereço — e a mensagem sai do mesmo jeito', async () => {
+  await valeDaBia();
+  expect(entregas[0].data.foto).toBeUndefined();
+  expect(entregas[0].data.texto).toBe('chegou a peça');
 });

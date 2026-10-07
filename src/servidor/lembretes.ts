@@ -5,7 +5,8 @@
  *
  *   - o holerite publicado e não assinado;
  *   - o documento do RH (advertência) sem ciência;
- *   - a publicação da Central que pede confirmação e não foi confirmada.
+ *   - a publicação da Central que pede confirmação e não foi confirmada;
+ *   - o espelho de ponto do mês fechado ainda não assinado (07/10/2026).
  *
  * Regras de convivência, para o lembrete não virar motivo de silenciar o
  * CONECTA inteiro:
@@ -25,6 +26,8 @@
  */
 import type { AvisoRede, Colaborador } from '../tipos';
 import { publicoAlvo } from '../servicos/mural';
+import { espelhosParaAssinar, rotuloDoMes } from '../servicos/mesesDoEspelho';
+import { hojeEmBrasilia } from '../servicos/apuracaoDoDia';
 
 export const ESPERA_HORAS = 20;
 export const PUBLICACAO_COBRADA_DIAS = 15;
@@ -36,6 +39,11 @@ export interface DadosDosLembretes {
   assinados: Set<string>;
   advertencias: Array<{ id: string; colaboradorId: string; cienciaEm: string | null; criadoEm: string }>;
   publicacoes: AvisoRede[];
+  /**
+   * Os espelhos já assinados (`colaboradorId|AAAA-MM`) e quem bate ponto.
+   * Sem isto (tabela ausente), nenhum espelho é cobrado.
+   */
+  espelhos?: { assinados: Set<string>; batePonto: (c: Colaborador) => boolean };
 }
 
 /** Um aviso a entregar: para quem, e os dados que o aparelho lê (`enviar-aviso`). */
@@ -139,6 +147,35 @@ export const planejarLembretes = (d: DadosDosLembretes, agora: Date): Lembrete[]
             : `Você tem ${suas.length} publicações para confirmar a leitura.`,
       })
     );
+  }
+
+  /*
+    ESPELHOS DE PONTO PARA ASSINAR. Sem espera de 20h: o mês fecha à
+    meia-noite e o espelho fica disponível no dia 1 — o lembrete desse dia
+    é o próprio "está disponível". A regra de quais meses é a da tela
+    (`espelhosParaAssinar`): o lembrete nunca cobra o que o Meu RH não cobra.
+  */
+  if (d.espelhos) {
+    const hoje = hojeEmBrasilia(agora);
+    for (const c of d.colaboradores) {
+      if (!ativos.has(c.id)) continue;
+      const meses = espelhosParaAssinar(c, d.espelhos.batePonto(c), hoje, {
+        has: (mes) => d.espelhos!.assinados.has(`${c.id}|${mes}`),
+      });
+      if (meses.length === 0) continue;
+      lembretes.push(
+        aviso(c.id, 'espelho', {
+          tipo: 'secao',
+          conversaId: 'meus_espelhos',
+          remetente: 'Ponto',
+          conversa: 'Espelho de ponto',
+          texto:
+            meses.length === 1
+              ? `Seu espelho de ponto de ${rotuloDoMes(meses[0])} está disponível para assinar. Toque para conferir.`
+              : `Você tem ${meses.length} espelhos de ponto para assinar. Toque para ver.`,
+        })
+      );
+    }
   }
 
   return lembretes;

@@ -120,6 +120,7 @@ esquema.
 | `assinatura-responsavel.sql` | **Delta (05/10/2026), depois de `assinatura-espelho.sql`.** A assinatura do responsável: o RH assina de uma vez, em RH → Assinaturas, os espelhos de ponto que os colaboradores já assinaram. Só o espelho: o holerite leva só a assinatura do funcionário. Só entra o que o colaborador assinou, e nunca o espelho de quem assina. O colaborador passa a ver a assinatura do RH no próprio espelho. Sem ele, o Assinar do RH responde "avise o TI". A conferência precisa sair `1 · 1 · true` |
 | `compensacao-sabado.sql` | **Rode uma vez (01/10/2026).** O saldo de compensação do sábado (os 10 min diários do turno integral, que pagam a folga) passa de um mês ao outro: a apuração da madrugada fecha o mês anterior de cada pessoa nesta tabela, e o espelho mostra o que veio, o que juntou, a folga consumida e o que segue. Sem ele a madrugada segue sem gravar a compensação |
 | `lembretes-1-simular.sql`, `lembretes-2-ver-simulacao.sql`, `lembretes-3-agendar.sql` | **Em ordem, uma vez (02/10/2026)**, depois de publicar `lembrar-pendencias` e de publicar de novo `enviar-aviso` — ver "Os lembretes das 9h" abaixo. O endereço em maiúsculas é trocado na entrega |
+| `alerta-sem-bater-1-simular.sql`, `alerta-sem-bater-2-agendar.sql` | **Em ordem, uma vez (07/10/2026)**, depois de publicar de novo `lembrar-pendencias` e `enviar-aviso` — ver "Não bateu o ponto" abaixo. O endereço em maiúsculas é trocado na entrega |
 | `apuracao-1-preparar.sql`, `apuracao-2-ver-simulacao.sql`, `apuracao-3-agendar.sql` | **Em ordem, uma vez (01/10/2026)**, depois de publicar a função `apurar-ponto` — ver "A apuração da madrugada" abaixo. Os valores em maiúsculas são trocados na entrega |
 | `dias-com-batida.sql` | **Rode uma vez (01/10/2026).** O espelho incompleto passa a contar também os dias de trabalho sem batida nenhuma, perguntando ao banco em que dias cada pessoa bateu (uma linha por pessoa). Sem ele, a conta alarga o cache do aparelho para o período |
 | `ponto-pelo-servidor.sql` | **Rode uma vez (01/10/2026), DEPOIS de a versão nova estar no ar e fora do horário de entrada e saída.** A batida passa a ser carimbada pelo servidor (dia e hora do banco, em Brasília) e o código do cartaz é conferido lá; o aparelho não grava mais batida própria direto na tabela, e só quem cuida do cartaz lê os códigos. Quem estiver com o sistema antigo aberto precisa recarregar. **Não rode de novo `corrigir-ponto-pelo-lider.sql` nem `ponto-do-lider-completo.sql`**: eles recriam a política antiga e reabrem a batida direta |
@@ -362,6 +363,47 @@ madrugada (`APURAR_SEGREDO`), que já está nos Secrets e no cofre.
 3. **`lembretes-1-simular.sql`** e, ~10 s depois,
    **`lembretes-2-ver-simulacao.sql`**: quem seria lembrado de quê.
 4. **`lembretes-3-agendar.sql`** — conferida a simulação, liga as 9h.
+
+Desde 07/10/2026 as 9h lembram também o **espelho de ponto** do mês
+fechado ainda não assinado — do dia 1 em diante, pela mesma regra do Meu
+RH (`mesesDoEspelho.ts`), só para quem bate ponto.
+
+### "Não bateu o ponto" (`lembrar-pendencias?semBater=1`)
+
+Passados os 5 minutos da CLT do horário previsto, a pessoa recebe "Você
+ainda não bateu o ponto" — nas quatro marcações, uma de cada vez (a
+próxima que o aplicativo espera). Só ela: quem responde por ela segue
+vendo em Pendências › Sem bater hoje. Folga, atestado, férias, feriado
+e o sábado de quem não trabalha no sábado não cobram nada — as regras
+são as da madrugada (`apuracaoDoDia`).
+
+| Peça | Onde |
+|---|---|
+| A regra | `src/servidor/semBater.ts` (testado) |
+| Onde roda | a mesma `lembrar-pendencias`, com `?semBater=1` |
+| O agendamento | `alertar-sem-bater`: de 5 em 5 min, 06:00–19:55 de Brasília, seg a sáb |
+
+Não guarda "já avisado": cada marcação tem uma janela de 5 minutos, e
+só a chamada que cai nela avisa. Mudou o intervalo do agendamento? Mude
+`JANELA_DO_ALERTA_MIN` junto.
+
+1. **Publicar de novo a `lembrar-pendencias`** (o `index.ts` gerado).
+2. **`alerta-sem-bater-1-simular.sql`** e, ~10 s depois,
+   **`alerta-sem-bater-2-agendar.sql`**: mostra a resposta da simulação
+   e liga o agendamento.
+
+### Comprovante de batida e foto no aviso (07/10/2026)
+
+- **Comprovante**: depois de cada batida pelo servidor (com NSR), o
+  aplicativo pede à `enviar-aviso` (caminho "comprovante") o aviso para
+  o celular da própria pessoa; o toque abre aquele comprovante. No APK
+  1.2 ele aparece calado, mesmo com o CONECTA na tela (canal
+  "Comprovantes de batida").
+- **Foto de quem mandou**: o aviso de mensagem leva um endereço assinado
+  (`enviar-aviso?foto=`, vence em 48 h), e o APK 1.2 baixa a foto ao
+  desenhar o aviso. O APK antigo ignora o campo. No computador, o aviso
+  do navegador usa a foto direto.
+- As duas pedem **publicar de novo a `enviar-aviso`**.
 
 ### A resposta rápida
 

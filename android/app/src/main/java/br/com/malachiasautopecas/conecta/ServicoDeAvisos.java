@@ -6,6 +6,12 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.BitmapShader;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Shader;
 import android.media.AudioAttributes;
 import android.net.Uri;
 import android.os.Build;
@@ -17,8 +23,12 @@ import androidx.core.app.NotificationManagerCompat;
 import androidx.core.app.Person;
 import androidx.core.app.RemoteInput;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.drawable.IconCompat;
 import com.capacitorjs.plugins.pushnotifications.MessagingService;
 import com.google.firebase.messaging.RemoteMessage;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -97,6 +107,13 @@ public class ServicoDeAvisos extends MessagingService {
     /** Quem está com o aparelho: as respostas dele aparecem como "Você". */
     static final Person EU = new Person.Builder().setName("Você").build();
 
+    /**
+     * O canal do COMPROVANTE DE BATIDA: calado (sem som, sem descer por
+     * cima da tela). A pessoa acabou de bater o ponto com o celular na mão;
+     * o aviso é o recibo dela na barra, não um chamado.
+     */
+    static final String CANAL_COMPROVANTE = "comprovantes";
+
     @Override
     public void onMessageReceived(@NonNull RemoteMessage mensagem) {
         super.onMessageReceived(mensagem);
@@ -104,14 +121,112 @@ public class ServicoDeAvisos extends MessagingService {
         Map<String, String> dados = mensagem.getData();
         if (!dados.containsKey("remetente")) return;
 
+        // O comprovante fica na barra MESMO com o CONECTA na tela: é o recibo da batida
+        if ("comprovante".equals(dados.get("tipo"))) {
+            publicarComprovante(this, new HashMap<>(dados));
+            return;
+        }
+
         // Com o CONECTA na tela, a conversa já mostra a mensagem
         if (MainActivity.naTela) return;
 
-        NotificationCompat.MessagingStyle estilo = estiloAtual(this, idDoAviso(dados.get("conversaId")));
-        Person quem = new Person.Builder().setName(dados.get("remetente")).setKey(dados.get("remetente")).build();
-        estilo.addMessage(dados.get("texto"), System.currentTimeMillis(), quem);
+        // A foto de quem mandou, como no WhatsApp; sem ela (ou sem rede), o aviso sai igual
+        Bitmap foto = baixarFoto(dados.get("foto"));
 
-        publicar(this, new HashMap<>(dados), estilo, false);
+        NotificationCompat.MessagingStyle estilo = estiloAtual(this, idDoAviso(dados.get("conversaId")));
+        Person.Builder quem = new Person.Builder().setName(dados.get("remetente")).setKey(dados.get("remetente"));
+        if (foto != null) quem.setIcon(IconCompat.createWithBitmap(foto));
+        estilo.addMessage(dados.get("texto"), System.currentTimeMillis(), quem.build());
+
+        publicar(this, new HashMap<>(dados), estilo, false, foto);
+    }
+
+    /** O lado da foto no aviso, em pixels: o Android a mostra pequena. */
+    static final int LADO_DA_FOTO = 192;
+
+    /**
+     * BAIXA A FOTO DE QUEM MANDOU (enviar-aviso, `?foto=`), já redonda.
+     *
+     * O aviso do Firebase leva no máximo 4 KB e a foto tem até 60 KB: vem
+     * só o endereço, assinado e com prazo. Este método roda fora da tela
+     * principal (o serviço do Firebase tem a sua linha), então pode
+     * esperar a rede — mas pouco: 4 segundos, e o aviso sai sem foto.
+     */
+    @Nullable
+    static Bitmap baixarFoto(@Nullable String endereco) {
+        if (endereco == null || !endereco.startsWith("https://")) return null;
+        HttpURLConnection conexao = null;
+        try {
+            conexao = (HttpURLConnection) new URL(endereco).openConnection();
+            conexao.setConnectTimeout(4000);
+            conexao.setReadTimeout(4000);
+            conexao.setInstanceFollowRedirects(true);
+            if (conexao.getResponseCode() != 200) return null;
+            Bitmap original;
+            try (InputStream entrada = conexao.getInputStream()) {
+                original = BitmapFactory.decodeStream(entrada);
+            }
+            if (original == null) return null;
+            return redonda(original);
+        } catch (Exception semFoto) {
+            return null;
+        } finally {
+            if (conexao != null) conexao.disconnect();
+        }
+    }
+
+    /** O meio da foto, quadrado, recortado em círculo. */
+    static Bitmap redonda(Bitmap original) {
+        int lado = Math.min(original.getWidth(), original.getHeight());
+        int x = (original.getWidth() - lado) / 2;
+        int y = (original.getHeight() - lado) / 2;
+        Bitmap quadrada = Bitmap.createScaledBitmap(Bitmap.createBitmap(original, x, y, lado, lado), LADO_DA_FOTO, LADO_DA_FOTO, true);
+
+        Bitmap saida = Bitmap.createBitmap(LADO_DA_FOTO, LADO_DA_FOTO, Bitmap.Config.ARGB_8888);
+        Canvas tela = new Canvas(saida);
+        Paint pincel = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pincel.setShader(new BitmapShader(quadrada, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+        float raio = LADO_DA_FOTO / 2f;
+        tela.drawCircle(raio, raio, raio, pincel);
+        return saida;
+    }
+
+    /**
+     * O COMPROVANTE DE BATIDA na barra: calado, um por batida, e o toque
+     * abre aquele comprovante (`destinoDoPush`, tipo "comprovante"). Fica
+     * fora do grupo das conversas — não é mensagem, e não entra na conta
+     * do "4 mensagens de 2 conversas".
+     */
+    static void publicarComprovante(Context contexto, Map<String, String> dados) {
+        garantirCanalDoComprovante(contexto);
+        int id = idDoAviso(dados.get("conversaId"));
+        Notification aviso = new NotificationCompat.Builder(contexto, CANAL_COMPROVANTE)
+            .setSmallIcon(R.drawable.ic_stat_conecta)
+            .setColor(ContextCompat.getColor(contexto, R.color.cor_conecta))
+            .setContentTitle(dados.get("conversa"))
+            .setContentText(dados.get("texto"))
+            .setStyle(new NotificationCompat.BigTextStyle().bigText(dados.get("texto")))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setAutoCancel(true)
+            .setContentIntent(aoTocar(contexto, dados, id))
+            .build();
+        try {
+            NotificationManagerCompat.from(contexto).notify(id, aviso);
+        } catch (SecurityException semPermissao) {
+            // Notificação negada nos Ajustes
+        }
+    }
+
+    static void garantirCanalDoComprovante(Context contexto) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationManager gerente = contexto.getSystemService(NotificationManager.class);
+        if (gerente == null || gerente.getNotificationChannel(CANAL_COMPROVANTE) != null) return;
+        NotificationChannel canal = new NotificationChannel(
+            CANAL_COMPROVANTE, "Comprovantes de batida", NotificationManager.IMPORTANCE_LOW
+        );
+        canal.setDescription("O recibo de cada batida de ponto, com NSR e código de verificação");
+        gerente.createNotificationChannel(canal);
     }
 
     /** Um aviso por conversa: a mensagem nova se junta às anteriores. */
@@ -212,6 +327,17 @@ public class ServicoDeAvisos extends MessagingService {
      * @param silencioso redesenho depois de uma resposta: não toca de novo
      */
     static void publicar(Context contexto, Map<String, String> dados, NotificationCompat.MessagingStyle estilo, boolean silencioso) {
+        publicar(contexto, dados, estilo, silencioso, null);
+    }
+
+    /** @param foto a de quem mandou, já redonda; na conversa individual vira o ícone grande */
+    static void publicar(
+        Context contexto,
+        Map<String, String> dados,
+        NotificationCompat.MessagingStyle estilo,
+        boolean silencioso,
+        @Nullable Bitmap foto
+    ) {
         garantirCanal(contexto);
         int id = idDoAviso(dados.get("conversaId"));
         boolean ehGrupo = "true".equals(dados.get("ehGrupo"));
@@ -237,6 +363,9 @@ public class ServicoDeAvisos extends MessagingService {
             // aparelho avisaria duas vezes a mesma mensagem
             .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
             .setContentIntent(aoTocar(contexto, dados, id));
+
+        // No grupo, a foto de cada um vai na linha dele (Person); o ícone grande seria de um só
+        if (foto != null && !ehGrupo) aviso.setLargeIcon(foto);
 
         acrescentarResponder(contexto, aviso, dados, id);
 

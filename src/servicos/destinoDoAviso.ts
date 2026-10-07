@@ -17,13 +17,15 @@ export const SECOES_DESTINO = [
   'meu_ponto',
   'meus_holerites',
   'minhas_advertencias',
+  'meus_espelhos',
 ] as const;
 
 /**
  * `meu_ponto` é o ponto de quem pediu: é para onde leva o aviso de que
  * o pedido dele foi decidido. `meus_holerites` e `minhas_advertencias`
  * abrem a aba Eu com a folha certa: o holerite publicado, o documento
- * para dar ciência, e os lembretes diários de cada um.
+ * para dar ciência, e os lembretes diários de cada um. `meus_espelhos`
+ * abre o espelho de ponto do mês fechado, para conferir e assinar.
  */
 export type SecaoDestino = (typeof SECOES_DESTINO)[number];
 
@@ -35,4 +37,6 @@ export type DestinoNotificacao =
   | { tipo: 'secao'; secao: SecaoDestino }
   /* A publicação da Central: leva à Central COM ela aberta, e não só
      à lista — quem toca num aviso quer aquele aviso */
-  | { tipo: 'publicacao'; publicacaoId: string };
+  | { tipo: 'publicacao'; publicacaoId: string }
+  /* O comprovante de uma batida: leva ao Ponto com ele aberto */
+  | { tipo: 'comprovante'; registroId: string };

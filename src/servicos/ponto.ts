@@ -84,6 +84,8 @@ import { situacaoDoDia } from './justificativasCache';
 import { feriadoEm } from './feriadosCache';
 import { montarDocumento } from './documento';
 import { codigoDeVerificacao, dataHoraDeBrasilia } from './comprovanteDeHolerite';
+import { temComprovante, montarComprovante, textoDoAvisoDoComprovante } from './comprovanteDeBatida';
+import { pedirAvisoDoComprovante } from './envioDeAviso';
 import { nuvem } from './nuvem';
 import { fecharCompensacao, mesAnterior, CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { usandoNuvem } from './supabase';
@@ -930,6 +932,11 @@ class ServicoPonto {
     localStorage.setItem(CHAVE_REGISTROS_PONTO, JSON.stringify(registros));
   }
 
+  /** Uma batida pelo id — a do comprovante pedido pelo aviso. */
+  obterRegistroPorId(id: string): RegistroPonto | undefined {
+    return this.lerRegistros().find((r) => r.id === id);
+  }
+
   /** Marcações de um colaborador num dia, na ordem da jornada. */
   obterMarcacoesDoDia(colaboradorId: string, data: string): RegistroPonto[] {
     return this.lerRegistros()
@@ -1096,6 +1103,11 @@ class ServicoPonto {
     const registros = this.lerRegistros();
     registros.push(registro);
     this.gravarRegistros(registros);
+
+    // O comprovante desta batida no celular de quem bateu (só a do servidor tem NSR)
+    if (temComprovante(registro)) {
+      pedirAvisoDoComprovante(registro.id, textoDoAvisoDoComprovante(montarComprovante(registro, atual)));
+    }
 
     /**
      * Motivo dado numa batida do MEIO do dia (entrada atrasada, almoço

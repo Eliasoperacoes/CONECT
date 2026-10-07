@@ -293,6 +293,8 @@ export const mostrarAvisoDeMensagem = async (dados: {
   aoClicar?: () => void;
   /** Quantas mensagens desta conversa chegaram de uma vez (padrão: uma). */
   quantidade?: number;
+  /** A foto de quem mandou (`fotoDoAviso`): sem ela, a logo. */
+  foto?: string;
 }): Promise<void> => {
   /**
    * ===============================================================
@@ -378,8 +380,16 @@ export const mostrarAvisoDeMensagem = async (dados: {
  * que o Chrome entregou ao Windows foi às 14:45 de 30/09; o `silent`
  * entrou às 17:10.
  */
+/**
+ * A FOTO QUE O AVISO PODE MOSTRAR: a imagem guardada na ficha (data URL)
+ * ou um endereço https. Qualquer outra coisa (vazio, "logo", endereço
+ * http) fica com a logo — um ícone que não carrega vira quadrado vazio.
+ */
+export const fotoDoAviso = (foto?: string | null): string | undefined =>
+  foto && (foto.startsWith('data:image/') || foto.startsWith('https://')) ? foto : undefined;
+
 export const opcoesDoAviso = (
-  dados: { corpo: string; conversaId: string },
+  dados: { corpo: string; conversaId: string; foto?: string },
   silencioso: boolean,
   /** Saltar na tela de novo (`renotify`)? Falso: atualiza o aviso calado. */
   alertar = true
@@ -392,7 +402,8 @@ export const opcoesDoAviso = (
       PNG, e não o SVG da logo: o Windows não desenha SVG no aviso do
       Chrome, e no lugar ficava o quadrado genérico — "visualmente feia".
     */
-    icon: '/icone-192.png',
+    // A foto de quem mandou, como no WhatsApp (Elias, 07/10/2026); sem ela, a logo
+    icon: fotoDoAviso(dados.foto) ?? '/icone-192.png',
     // O "badge" é só a silhueta: o Android pinta de uma cor só, e a logo colorida virava um borrão
     badge: '/icone-aviso-96.png',
 

@@ -87,7 +87,7 @@ const mudou = (antes: AjusteJornada | undefined, depois: AjusteJornada): boolean
  * para a madrugada e para o dia avulso. Devolve o mapa das apurações (que
  * quem decide atualiza à medida que grava) e a pergunta "bate ponto?".
  */
-const ligarFonte = (dados: DadosDaApuracao, hoje: string) => {
+export const ligarFonte = (dados: DadosDaApuracao, hoje: string) => {
   const porId = new Map(dados.colaboradores.map((c) => [c.id, c]));
 
   const batidasDoDia = new Map<string, RegistroPonto[]>();

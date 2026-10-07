@@ -8,7 +8,14 @@
  *
  * Sem dependências: o App pede, o MeuRH atende.
  */
-export type FolhaPedida = 'holerites' | 'advertencias';
+export type FolhaPedida = 'holerites' | 'advertencias' | 'espelho';
+
+/** Qual folha cada seção de aviso abre (`destinoDoAviso`). */
+export const FOLHA_DA_SECAO: Partial<Record<string, FolhaPedida>> = {
+  meus_holerites: 'holerites',
+  minhas_advertencias: 'advertencias',
+  meus_espelhos: 'espelho',
+};
 
 let pedida: FolhaPedida | null = null;
 const ouvintes = new Set<() => void>();

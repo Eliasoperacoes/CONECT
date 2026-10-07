@@ -315,3 +315,48 @@ test('publicação que não existe não avisa ninguém', async () => {
   expect(r.status).toBe(404);
   expect(entregas).toEqual([]);
 });
+
+// ---------------------------------------------------------------
+// O COMPROVANTE DE CADA BATIDA (Elias, 07/10/2026)
+// ---------------------------------------------------------------
+
+const pedirComprovante = (comprovante: Record<string, unknown>, jwt?: string) =>
+  atender(
+    new Request('https://x/functions/v1/enviar-aviso', {
+      method: 'POST',
+      headers: jwt ? { Authorization: `Bearer ${jwt}` } : {},
+      body: JSON.stringify({ comprovante }),
+    })
+  );
+
+test('O COMPROVANTE vai para quem bateu, e só para ela; o toque abre aquela batida', async () => {
+  tabelas.registros_ponto = [
+    { id: 'bat-ana', colaborador_id: 'ana', nsr: 42 },
+    { id: 'bat-bia', colaborador_id: 'bia', nsr: 43 },
+    { id: 'bat-rh', colaborador_id: 'ana', nsr: null },
+  ];
+  // A RLS deixa a Bia, líder da Ana, ler a batida dela
+  visiveisPara['jwt-da-ana'] = ['bat-ana', 'bat-rh'];
+  visiveisPara['jwt-da-bia'] = ['bat-ana', 'bat-bia'];
+  const texto = 'Entrada · 07/10/2026 às 07:31 · NSR 000000042. Toque para ver o comprovante.';
+
+  const r = await pedirComprovante({ id: 'bat-ana', texto }, 'jwt-da-ana');
+  expect(r.status).toBe(200);
+  expect(quemRecebeu()).toEqual(['ana']);
+  expect(entregas[0].data).toMatchObject({
+    tipo: 'comprovante',
+    conversaId: 'bat-ana',
+    conversa: 'Comprovante de batida',
+    texto,
+  });
+
+  // Enxergar a batida de outro (o líder) não basta: o comprovante é do dono
+  entregas = [];
+  expect((await pedirComprovante({ id: 'bat-ana', texto }, 'jwt-da-bia')).status).toBe(404);
+  expect(entregas).toEqual([]);
+  // Batida sem NSR (lançada pelo RH) não tem comprovante
+  expect((await pedirComprovante({ id: 'bat-rh', texto }, 'jwt-da-ana')).status).toBe(409);
+  // Sem sessão, nada
+  expect((await pedirComprovante({ id: 'bat-ana', texto })).status).toBe(401);
+  expect(entregas).toEqual([]);
+});

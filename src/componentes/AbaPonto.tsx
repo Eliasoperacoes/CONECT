@@ -45,6 +45,9 @@ import { AbaJustificar } from './AbaJustificar';
 import { useTelaEmbutida } from './TelaEmbutida';
 import { ComprovanteDaBatida } from './ComprovanteDaBatida';
 import { temComprovante } from '../servicos/comprovanteDeBatida';
+import { ouvirComprovantePedido, tomarComprovantePedido } from '../servicos/comprovantePedido';
+import { nuvem } from '../servicos/nuvem';
+import { usandoNuvem } from '../servicos/supabase';
 
 interface PropsAbaPonto {
   colaboradorAtual: Colaborador;
@@ -121,6 +124,30 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
   const embutida = useTelaEmbutida();
   /** A batida cujo comprovante está aberto (Portaria 671/2021). */
   const [comprovanteAberto, setComprovanteAberto] = useState<RegistroPonto | null>(null);
+
+  /*
+    O toque no aviso "Comprovante de batida" pede aquela batida. Batida de
+    outro aparelho da pessoa pode não estar no cache ainda: busca uma vez.
+  */
+  useEffect(() => {
+    let vivo = true;
+    const atender = async () => {
+      const id = tomarComprovantePedido();
+      if (!id) return;
+      let registro = servicoPonto.obterRegistroPorId(id);
+      if (!registro && usandoNuvem()) {
+        await nuvem.sincronizarPonto();
+        registro = servicoPonto.obterRegistroPorId(id);
+      }
+      if (vivo && registro) setComprovanteAberto(registro);
+    };
+    void atender();
+    const parar = ouvirComprovantePedido(() => void atender());
+    return () => {
+      vivo = false;
+      parar();
+    };
+  }, []);
   const [secao, setSecao] = useState<'bater' | 'justificar'>('bater');
   const [modalAberto, setModalAberto] = useState(false);
   const [toast, setToast] = useState<string | null>(null);

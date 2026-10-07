@@ -73,6 +73,10 @@ export const destinoDoPush = (dados: DadosDoPush): DestinoNotificacao | null => 
   if (dados.tipo === 'publicacao' && publicacaoId) {
     return { tipo: 'publicacao', publicacaoId };
   }
+  // O comprovante leva o id da batida no lugar da conversa
+  if (dados.tipo === 'comprovante' && dados.conversaId) {
+    return { tipo: 'comprovante', registroId: dados.conversaId };
+  }
   if (dados.tipo === 'conversa' && dados.conversaId) {
     return { tipo: 'conversa', conversaId: dados.conversaId };
   }

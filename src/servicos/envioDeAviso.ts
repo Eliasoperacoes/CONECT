@@ -139,3 +139,24 @@ export const pedirAvisoDeEntradaNoGrupo = (conversaId: string, ids: string[]): v
     /* sem cliente de funções (teste, modo local): sem aviso, sem erro */
   }
 };
+
+/**
+ * O COMPROVANTE DE CADA BATIDA, NO CELULAR DE QUEM BATEU (Elias,
+ * 07/10/2026). Vai o id e o texto (`textoDoAvisoDoComprovante`). O
+ * servidor lê a batida com a sessão de quem chama, confere que é dela e
+ * avisa só a ela — o texto forjado só enganaria a própria pessoa.
+ */
+export const pedirAvisoDoComprovante = (registroId: string, texto: string): void => {
+  if (!supabase || !usandoNuvem()) return;
+
+  try {
+    supabase.functions
+      .invoke(FUNCAO_DE_AVISO, { body: { comprovante: { id: registroId, texto: texto.slice(0, LIMITE_DA_PREVIA) } } })
+      .then(({ error }) => {
+        if (error) console.warn('Aviso do comprovante não saiu:', error.message);
+      })
+      .catch(() => {});
+  } catch {
+    /* sem cliente de funções (teste, modo local): sem aviso, sem erro */
+  }
+};

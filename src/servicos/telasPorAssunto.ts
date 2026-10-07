@@ -345,6 +345,7 @@ export const TELA_DO_DESTINO: Record<string, TelaId> = {
   meu_ponto: 'meu_ponto',
   meus_holerites: 'meus_documentos',
   minhas_advertencias: 'meus_documentos',
+  meus_espelhos: 'meus_documentos',
 };
 
 /** Os atalhos do painel do RH ("Assinar →", "Ver quem →"), pela seção de lá. */
