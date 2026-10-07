@@ -18,6 +18,7 @@
  */
 import { Capacitor } from '@capacitor/core';
 import { App as AplicativoNativo } from '@capacitor/app';
+import { NativeBiometric } from '@capgo/capacitor-native-biometric';
 import { rodandoNoAplicativo } from './aplicativo';
 
 const CHAVE = 'conecta:biometria';
@@ -52,7 +53,22 @@ export const gravarPreferencia = (valor: 'ligada' | 'desligada'): void => {
 export const deveBloquear = (d: { ligada: boolean; saiuEm: number | null; agora: number }): boolean =>
   d.ligada && (d.saiuEm === null || d.agora - d.saiuEm >= INTERVALO_PARA_BLOQUEAR_MS);
 
-const plugin = async () => (await import('@capgo/capacitor-native-biometric')).NativeBiometric;
+/*
+  O PLUGIN É IMPORTADO DIRETO, como o dos avisos (pushNativo.ts) — e nunca
+  devolvido por uma função async. Era `async () => (await import(...)).NativeBiometric`:
+  ao resolver uma promessa com o plugin, o JavaScript pergunta se ele tem
+  `then`; o plugin do Capacitor repassa ao Android QUALQUER método pedido,
+  inclusive esse, e a promessa nunca resolvia. Nem a pergunta "usar a
+  digital?" nem a linha de Eu apareciam (Elias, 07/10/2026).
+*/
+
+/** O Android que não responde em alguns segundos vira motivo na tela, e não espera eterna. */
+const PRAZO_DO_ANDROID_MS = 5000;
+const comPrazo = <T>(promessa: Promise<T>, ms = PRAZO_DO_ANDROID_MS): Promise<T> =>
+  Promise.race([
+    promessa,
+    new Promise<T>((_, rejeitar) => setTimeout(() => rejeitar(new Error('o Android não respondeu')), ms)),
+  ]);
 
 /** O que cada código do Android quer dizer, para quem está com o celular na mão. */
 const MOTIVO_DO_CODIGO: Record<number, string> = {
@@ -81,7 +97,7 @@ export const situacaoDaBiometria = async (): Promise<SituacaoDaBiometria> => {
     return { disponivel: false, motivo: 'Este aplicativo é da versão antiga, sem a digital. Instale a versão nova do CONECTA.' };
   }
   try {
-    const r = await (await plugin()).isAvailable({ useFallback: false });
+    const r = await comPrazo(NativeBiometric.isAvailable({ useFallback: false }));
     if (r.isAvailable) return { disponivel: true };
     const codigo = Number(r.errorCode ?? 0);
     return { disponivel: false, motivo: MOTIVO_DO_CODIGO[codigo] ?? `O Android não liberou a digital (código ${codigo}).` };
@@ -107,7 +123,7 @@ export const versaoDoAplicativo = async (): Promise<string | null> => {
 /** A janela de biometria do Android. Verdadeiro só com a digital (ou rosto) confirmada. */
 export const confirmarIdentidade = async (titulo = 'Desbloquear o CONECTA'): Promise<boolean> => {
   try {
-    await (await plugin()).verifyIdentity({
+    await NativeBiometric.verifyIdentity({
       title: titulo,
       subtitle: 'Use a sua digital ou o seu rosto',
       negativeButtonText: 'Cancelar',
