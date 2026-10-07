@@ -586,6 +586,17 @@ begin
   new.loja           := old.loja;
   new.setor          := old.setor;
 
+  -- A ficha funcional (ficha-propria-protegida.sql, 07/10/2026): com o app
+  -- gravando por UPDATE, a regra de editar a própria linha passou a valer
+  -- de verdade, e o que é do RH volta ao que era
+  new.nome           := old.nome;
+  new.login          := old.login;
+  new.matricula      := old.matricula;
+  new.cnpj           := old.cnpj;
+  new.departamento   := old.departamento;
+  new.data_admissao  := old.data_admissao;
+  new.ativo          := old.ativo;
+
   return new;
 end;
 $$;

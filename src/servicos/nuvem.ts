@@ -244,6 +244,20 @@ const paraLinha = (c: Colaborador) => ({
   ativo: c.ativo,
 });
 
+/**
+ * A COLUNA DE CADA CAMPO que a pessoa pode mudar na própria ficha
+ * (CAMPOS_PROPRIOS em bancoDados.ts) — para gravar só eles.
+ */
+const COLUNA_DO_CAMPO: Partial<Record<keyof Colaborador, string>> = {
+  foto: 'foto',
+  presenca: 'presenca',
+  vistoPorUltimo: 'visto_por_ultimo',
+  ramal: 'ramal',
+  telefone: 'telefone',
+  email: 'email',
+  observacoes: 'observacoes',
+};
+
 /** Linha da tabela `codigos_ponto_loja`. */
 interface LinhaCodigoPonto {
   loja: string;
@@ -667,7 +681,53 @@ class PonteNuvem {
     return { sucesso: true, confirmadoEm: data.turno_confirmado_em };
   }
 
-  /** Cria ou atualiza a ficha no banco. Chamado após a gravação local. */
+  /**
+   * ATUALIZA UMA FICHA QUE JÁ EXISTE — foto, presença, contato, e a edição
+   * do RH e do organograma.
+   *
+   * NUNCA UPSERT AQUI (07/10/2026). Upsert é INSERT ... ON CONFLICT, e o
+   * banco confere a regra de INSERT, que é só de quem cuida de pessoas: um
+   * colaborador trocando a foto ouvia "new row violates row-level security
+   * policy", e a presença dele nunca saía do aparelho. Com UPDATE vale a
+   * regra de editar a própria linha, e a trava por coluna
+   * (`apenas_rh_move_o_organograma`) devolve o que não é dele.
+   *
+   * UPDATE sem permissão não dá erro: afeta zero linhas. Por isso pede a
+   * linha de volta e confere.
+   */
+  async atualizarFicha(
+    colaborador: Colaborador,
+    /**
+     * SÓ ESTES CAMPOS DA FICHA (os de Colaborador), quando dito. Quem não é
+     * RH manda só o que é dele: a linha inteira, vinda do cache do aparelho,
+     * desfaria uma correção recente do RH no CNPJ ou na admissão a cada
+     * mudança de presença.
+     */
+    apenas?: Array<keyof Colaborador>
+  ): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+    const linha = paraLinha(colaborador) as Record<string, unknown>;
+    const corpo = apenas
+      ? Object.fromEntries(apenas.map((campo) => COLUNA_DO_CAMPO[campo]).filter(Boolean).map((coluna) => [coluna, linha[coluna!]]))
+      : linha;
+    // Nada da ficha mudou (só a senha, que não mora nesta tabela): não há o que gravar
+    if (Object.keys(corpo).length === 0) return { sucesso: true };
+    const { data, error } = await supabase
+      .from('colaboradores')
+      .update(corpo)
+      .eq('id', colaborador.id)
+      .select('id');
+    if (error) {
+      console.error('Falha ao atualizar a ficha no banco:', error.message);
+      return { sucesso: false, erro: error.message };
+    }
+    if (!data || data.length === 0) {
+      return { sucesso: false, erro: 'O banco não deixou gravar esta ficha (sem permissão).' };
+    }
+    return { sucesso: true };
+  }
+
+  /** Cria a ficha no banco (cadastro novo, só quem cuida de pessoas). Chamado após a gravação local. */
   async salvarColaborador(colaborador: Colaborador): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
 

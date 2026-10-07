@@ -329,3 +329,32 @@ test('quem trocou a foto vê o PRÓPRIO ROSTO na hora', async () => {
     'colaboradores[indice] = { ...colaboradores[indice], foto: enderecoDaFotoNova };'
   );
 });
+
+test('A FICHA EXISTENTE É GRAVADA COM UPDATE, nunca upsert (07/10/2026)', async () => {
+  /*
+    Um colaborador trocou a foto e ouviu "new row violates row-level
+    security policy for table colaboradores": o upsert vira INSERT ... ON
+    CONFLICT, e a regra de INSERT é só do RH. A presença de quem não é RH
+    também nunca saía do aparelho (o erro era engolido).
+  */
+  const banco = await Bun.file(new URL('./bancoDados.ts', import.meta.url)).text();
+  // Foto, presença, edição e organograma: atualizarFicha
+  expect(banco.split('nuvem.atualizarFicha(').length - 1).toBe(3);
+  // O upsert sobra só no cadastro novo
+  expect(banco.split('nuvem.salvarColaborador(').length - 1).toBe(1);
+  const nuvem = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
+  const atualizar = nuvem.slice(nuvem.indexOf('async atualizarFicha('), nuvem.indexOf('async salvarColaborador('));
+  expect(atualizar).toContain(".update(corpo)");
+  // Quem não é RH manda só as colunas dele: a linha inteira do cache desfaria correções do RH
+  expect(banco).toContain("nuvem.atualizarFicha(todos[indice], ['presenca', 'vistoPorUltimo']).catch(() => {});");
+  expect(banco).toContain("ehAdmin || ehRh ? undefined : (Object.keys(dadosParaAplicar) as Array<keyof Colaborador>)");
+  expect(atualizar).not.toContain('upsert');
+  // UPDATE sem permissão afeta zero linhas e não dá erro: confere a linha de volta
+  expect(atualizar).toContain("if (!data || data.length === 0) {");
+  // E o banco devolve o que não é da pessoa — inclusive o CNPJ do comprovante e a admissão
+  const sql = await Bun.file(new URL('../../supabase/ficha-propria-protegida.sql', import.meta.url)).text();
+  for (const campo of ['nivel', 'setor', 'loja', 'responsavel_id', 'cnpj', 'data_admissao', 'ativo', 'login', 'nome']) {
+    const linha = new RegExp(String.raw`new\.${campo}\s+:= old\.${campo};`);
+    expect({ campo, protegido: linha.test(sql) }).toEqual({ campo, protegido: true });
+  }
+});

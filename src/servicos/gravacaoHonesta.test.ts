@@ -43,9 +43,10 @@ test('editar a ficha espera o banco', async () => {
    * cobrada pela errada, e ninguém desconfia porque a tela mostrou o valor
    * certo.
    */
-  expect(corpo).toContain('const res = await nuvem.salvarColaborador(');
+  // atualizarFicha (UPDATE): o upsert barrava a ficha de quem não é RH (07/10/2026)
+  expect(corpo).toContain('const res = await nuvem.atualizarFicha(');
   expect(corpo).toContain('não foi gravada no banco');
-  expect(s).not.toContain('if (usandoNuvem()) nuvem.salvarColaborador(colaboradores[indice]);');
+  expect(s).not.toContain('if (usandoNuvem()) nuvem.atualizarFicha(colaboradores[indice]);');
 });
 
 test('mudar o responsavel espera o banco', async () => {
@@ -96,7 +97,7 @@ test('presenca e leitura de mensagem podem subir sem esperar', async () => {
   const s = await lerServico();
 
   // Presença se corrige sozinha no próximo sinal de vida
-  expect(s).toContain('nuvem.salvarColaborador(todos[indice]).catch(() => {})');
+  expect(s).toContain("nuvem.atualizarFicha(todos[indice], ['presenca', 'vistoPorUltimo']).catch(() => {})");
 
   // Marcação de leitura idem: no pior caso a mensagem fica como não lida
   expect(s).toContain('nuvemComunicacao.marcarLeitura(recemLidas, atual.id).catch(() => {})');

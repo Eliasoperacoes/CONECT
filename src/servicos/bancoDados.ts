@@ -908,7 +908,8 @@ class BancoDadosConecta {
 
       // Estar disponível é informação para os colegas: não pode ficar só aqui
       if (usandoNuvem()) {
-        nuvem.salvarColaborador(todos[indice]).catch(() => {});
+        // UPDATE, e não upsert: o upsert barrava a presença de quem não é RH (nuvem.atualizarFicha)
+        nuvem.atualizarFicha(todos[indice], ['presenca', 'vistoPorUltimo']).catch(() => {});
       }
 
       this.notificar();
@@ -1428,7 +1429,11 @@ class BancoDadosConecta {
      * tela mostrou o valor certo.
      */
     if (usandoNuvem()) {
-      const res = await nuvem.salvarColaborador(colaboradores[indice]);
+      // Quem não é RH nem TI manda só o que mudou e é dele (os campos já filtrados acima)
+      const res = await nuvem.atualizarFicha(
+        colaboradores[indice],
+        ehAdmin || ehRh ? undefined : (Object.keys(dadosParaAplicar) as Array<keyof Colaborador>)
+      );
       if (!res.sucesso) {
         return {
           sucesso: false,
@@ -1515,7 +1520,7 @@ class BancoDadosConecta {
         // neste navegador põe a fila de aprovação de duas pessoas diferentes
         // em dois aparelhos diferentes.
         if (usandoNuvem()) {
-          const res = await nuvem.salvarColaborador(colaboradores[indice]);
+          const res = await nuvem.atualizarFicha(colaboradores[indice]);
           if (!res.sucesso) {
             return {
               sucesso: false,
