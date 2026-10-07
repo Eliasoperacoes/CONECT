@@ -54,14 +54,53 @@ export const deveBloquear = (d: { ligada: boolean; saiuEm: number | null; agora:
 
 const plugin = async () => (await import('@capgo/capacitor-native-biometric')).NativeBiometric;
 
-/** O aparelho tem digital ou rosto cadastrado, e o app tem o plugin? */
-export const biometriaDisponivel = async (): Promise<boolean> => {
-  if (!rodandoNoAplicativo() || !Capacitor.isPluginAvailable('NativeBiometric')) return false;
+/** O que cada código do Android quer dizer, para quem está com o celular na mão. */
+const MOTIVO_DO_CODIGO: Record<number, string> = {
+  1: 'Este celular não tem leitor de digital ou de rosto disponível.',
+  2: 'A digital foi bloqueada por tentativas erradas. Desbloqueie o celular com o PIN e tente de novo.',
+  3: 'Nenhuma digital cadastrada no celular. Cadastre em Configurações > Biometria e segurança.',
+  4: 'A digital está bloqueada por alguns segundos, por tentativas erradas. Tente de novo em instantes.',
+  14: 'O celular está sem bloqueio de tela. Defina um PIN ou padrão para usar a digital.',
+};
+
+export interface SituacaoDaBiometria {
+  disponivel: boolean;
+  /** Por que não — dito na tela, e não escondido (Elias, 07/10/2026: "em momento algum pediu"). */
+  motivo?: string;
+}
+
+/**
+ * A biometria funciona aqui? E, se não, POR QUÊ. Antes a resposta era só
+ * sim ou não, e o "não" escondia a linha de Eu sem explicar — quem
+ * esperava a digital via nada acontecer e não sabia se era o APK, o
+ * celular ou o sistema.
+ */
+export const situacaoDaBiometria = async (): Promise<SituacaoDaBiometria> => {
+  if (!rodandoNoAplicativo()) return { disponivel: false, motivo: 'Só no aplicativo Android.' };
+  if (!Capacitor.isPluginAvailable('NativeBiometric')) {
+    return { disponivel: false, motivo: 'Este aplicativo é da versão antiga, sem a digital. Instale a versão nova do CONECTA.' };
+  }
   try {
     const r = await (await plugin()).isAvailable({ useFallback: false });
-    return r.isAvailable;
+    if (r.isAvailable) return { disponivel: true };
+    const codigo = Number(r.errorCode ?? 0);
+    return { disponivel: false, motivo: MOTIVO_DO_CODIGO[codigo] ?? `O Android não liberou a digital (código ${codigo}).` };
+  } catch (erro) {
+    return { disponivel: false, motivo: `Não foi possível consultar a digital: ${(erro as Error)?.message || 'erro desconhecido'}.` };
+  }
+};
+
+/** O aparelho tem digital ou rosto cadastrado, e o app tem o plugin? */
+export const biometriaDisponivel = async (): Promise<boolean> => (await situacaoDaBiometria()).disponivel;
+
+/** "1.0 (build 1)": qual APK está instalado — para conferir sem cabo. */
+export const versaoDoAplicativo = async (): Promise<string | null> => {
+  if (!rodandoNoAplicativo()) return null;
+  try {
+    const info = await AplicativoNativo.getInfo();
+    return `${info.version} (build ${info.build})`;
   } catch {
-    return false;
+    return null;
   }
 };
 

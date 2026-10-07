@@ -34,7 +34,12 @@ test('A TRANCA NO APP: abre bloqueado se ligada, destranca quem entrou com a sen
   expect(app).toContain("if (deveBloquear({ ligada: lerPreferencia() === 'ligada'");
   // A tela de bloqueio fica POR CIMA: o que estava embaixo segue montado
   expect(app).toContain('{bloqueado && (\n        <TelaDeBloqueio');
-  // A biometria só é oferecida onde existe
+  // A biometria só é oferecida onde existe — e, onde não existe, diz por quê
   const servico = await Bun.file(new URL('./desbloqueio.ts', import.meta.url)).text();
-  expect(servico).toContain("if (!rodandoNoAplicativo() || !Capacitor.isPluginAvailable('NativeBiometric')) return false;");
+  expect(servico).toContain("if (!rodandoNoAplicativo()) return { disponivel: false, motivo: 'Só no aplicativo Android.' };");
+  expect(servico).toContain("if (!Capacitor.isPluginAvailable('NativeBiometric')) {");
+  expect(servico).toContain('export const biometriaDisponivel = async (): Promise<boolean> => (await situacaoDaBiometria()).disponivel;');
+  const eu = await Bun.file(new URL('../componentes/AbaEu.tsx', import.meta.url)).text();
+  expect(eu).toContain('{noAplicativo && biometria && !temBiometria && (');
+  expect(eu).toContain('{biometria.motivo}');
 });

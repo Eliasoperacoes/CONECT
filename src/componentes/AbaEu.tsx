@@ -19,7 +19,15 @@ import {
   Camera,
   Fingerprint,
 } from 'lucide-react';
-import { biometriaDisponivel, confirmarIdentidade, gravarPreferencia, lerPreferencia } from '../servicos/desbloqueio';
+import {
+  situacaoDaBiometria,
+  versaoDoAplicativo,
+  confirmarIdentidade,
+  gravarPreferencia,
+  lerPreferencia,
+  type SituacaoDaBiometria,
+} from '../servicos/desbloqueio';
+import { rodandoNoAplicativo } from '../servicos/aplicativo';
 import { Colaborador, EstadoPresenca, ROTULO_PRESENCA } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA } from '../servicos/bancoDados';
 import {
@@ -69,16 +77,26 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
   const [temaEscolhido, setTemaEscolhido] = useState<PreferenciaTema>(obterTemaSalvo);
   const [permissao, setPermissao] = useState<PermissaoAviso>(permissaoDeAviso);
   const [comSom, setComSom] = useState<boolean>(somLigado);
-  // A digital: a linha só aparece onde funciona
-  const [temBiometria, setTemBiometria] = useState(false);
+  /*
+    A DIGITAL, no app Android: a linha aparece sempre — com a chave, ou com
+    o motivo de não estar disponível e a versão instalada. Escondida, ela
+    deixava a pessoa sem saber se era o APK, o celular ou o sistema
+    (Elias, 07/10/2026: "em momento algum pediu biometria").
+  */
+  const noAplicativo = rodandoNoAplicativo();
+  const [biometria, setBiometria] = useState<SituacaoDaBiometria | null>(null);
+  const [versaoDoApp, setVersaoDoApp] = useState<string | null>(null);
   const [biometriaLigada, setBiometriaLigada] = useState(() => lerPreferencia() === 'ligada');
   useEffect(() => {
+    if (!noAplicativo) return;
     let vivo = true;
-    biometriaDisponivel().then((tem) => vivo && setTemBiometria(tem));
+    situacaoDaBiometria().then((s) => vivo && setBiometria(s));
+    versaoDoAplicativo().then((v) => vivo && setVersaoDoApp(v));
     return () => {
       vivo = false;
     };
-  }, []);
+  }, [noAplicativo]);
+  const temBiometria = !!biometria?.disponivel;
   const [resultadoTeste, setResultadoTeste] = useState<string | null>(null);
   const [modalTrocaAberto, setModalTrocaAberto] = useState(false);
   const [modalFotoAberto, setModalFotoAberto] = useState(false);
@@ -354,7 +372,17 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
           />
         </div>
 
-        {/* A digital: só onde funciona — o app Android, com digital cadastrada (desbloqueio.ts) */}
+        {/* A digital: no app Android, com o motivo quando não está disponível (desbloqueio.ts) */}
+        {noAplicativo && biometria && !temBiometria && (
+          <div id="biometria-indisponivel" className="px-4 py-3 flex items-start gap-3 border-t border-[var(--c-borda)]">
+            <Fingerprint className="w-5 h-5 mt-0.5 text-[var(--c-texto-3)] flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[var(--c-texto)]">Desbloquear com a digital</p>
+              <p className="text-xs text-[var(--c-atencao)] leading-snug">{biometria.motivo}</p>
+              {versaoDoApp && <p className="mt-0.5 text-[11px] text-[var(--c-texto-3)]">Aplicativo instalado: {versaoDoApp}</p>}
+            </div>
+          </div>
+        )}
         {temBiometria && (
           <div className="px-4 py-3 flex items-center justify-between min-h-[52px] border-t border-[var(--c-borda)]">
             <div className="flex items-center gap-3">
