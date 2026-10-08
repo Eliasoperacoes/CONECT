@@ -11,6 +11,7 @@ import {
   codigoEmBlocos,
   nomeDoArquivo,
   gerarPdfDoComprovante,
+  TITULO_DO_COMPROVANTE,
 } from './comprovanteDeBatida';
 import type { RegistroPonto } from '../tipos';
 
@@ -56,8 +57,26 @@ test('o comprovante tem todos os campos da portaria, e a hora é a REGISTRADA', 
     Hora: '07:31:07',
     'Marcação': 'Entrada',
     Registro: 'QR da loja',
+    'REP-P (INPI)': 'Não informado (registro em andamento)',
   });
   expect(d.codigo).toBe('a'.repeat(64));
+});
+
+test('ART. 79: o título letra por letra, a razão social do CNPJ da batida e o INPI do REP-P', () => {
+  expect(TITULO_DO_COMPROVANTE).toBe('Comprovante de Registro de Ponto do Trabalhador');
+  const d = montarComprovante(BATIDA, { nome: 'Ana', cpf: '52998224725' }, {
+    razaoSocial: 'R T MALACHIAS AUTO PECAS LTDA',
+    inpi: 'BR 51 2026 000123-4',
+  });
+  const linhas = Object.fromEntries(linhasDoComprovante(d));
+  // São dois CNPJs: o empregador é o da batida, não um nome fixo
+  expect(linhas.Empregador).toBe('R T MALACHIAS AUTO PECAS LTDA');
+  // O INPI só com os dígitos, como no AFD
+  expect(linhas['REP-P (INPI)']).toBe('5120260001234');
+});
+
+test('o hash na tela é o do AFD, com as letras como estão gravadas', () => {
+  expect(codigoEmBlocos('abcdef0123456789')).toBe('abcd ef01 2345 6789');
 });
 
 test('sem CNPJ na ficha ou sem CPF, o comprovante diz que falta — não inventa', () => {
@@ -70,7 +89,6 @@ test('sem CNPJ na ficha ou sem CPF, o comprovante diz que falta — não inventa
 test('formatos: CNPJ, código em blocos e nome do arquivo', () => {
   expect(formatarCnpj('12345678000190')).toBe('12.345.678/0001-90');
   expect(formatarCnpj('123')).toBe('');
-  expect(codigoEmBlocos('abcdef0123456789')).toBe('ABCD EF01 2345 6789');
   const d = montarComprovante(BATIDA, { nome: 'Ana', cpf: '52998224725' });
   expect(nomeDoArquivo(d)).toBe('Comprovante de ponto 06-10-2026 07h31 NSR 000000042.pdf');
 });

@@ -3281,3 +3281,23 @@ $$;
 
 revoke all on function public.gerar_afd(text, date, date) from public, anon;
 grant execute on function public.gerar_afd(text, date, date) to authenticated;
+
+-- ============================================================
+-- O NÚMERO DO INPI NO COMPROVANTE (comprovante-inpi.sql, 08/10/2026)
+-- Art. 79, VII: o comprovante traz o registro do REP-P no INPI. Só o
+-- número, a qualquer sessão — a linha de `identificacao_rep` guarda
+-- também o CPF do desenvolvedor, e ela continua só do RH.
+-- ============================================================
+
+create or replace function public.inpi_do_rep()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select nullif(inpi, '') from public.identificacao_rep where id;
+$$;
+
+revoke all on function public.inpi_do_rep() from public, anon;
+grant execute on function public.inpi_do_rep() to authenticated;

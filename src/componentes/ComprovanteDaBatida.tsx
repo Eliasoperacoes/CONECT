@@ -14,7 +14,10 @@ import {
   codigoEmBlocos,
   gerarPdfDoComprovante,
   nomeDoArquivo,
+  TITULO_DO_COMPROVANTE,
+  type IdentificacaoDoRep,
 } from '../servicos/comprovanteDeBatida';
+import { carregarEstabelecimentos, soDigitos } from '../servicos/estabelecimentos';
 import { nuvem } from '../servicos/nuvem';
 import { usandoNuvem } from '../servicos/supabase';
 import { baixarArquivo, compartilharArquivo } from '../servicos/compartilharArquivo';
@@ -26,6 +29,7 @@ export const ComprovanteDaBatida: React.FC<{
   aoFechar: () => void;
 }> = ({ registro, colaborador, aoFechar }) => {
   const [cpf, setCpf] = useState<string | null>(null);
+  const [rep, setRep] = useState<IdentificacaoDoRep>({});
   const [ocupado, setOcupado] = useState<'baixar' | 'compartilhar' | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
@@ -38,10 +42,24 @@ export const ComprovanteDaBatida: React.FC<{
       vivo = false;
     };
   }, [registro?.colaboradorId]);
+
+  // A razão social do CNPJ da batida e o INPI do REP-P (art. 79, III e VII)
+  useEffect(() => {
+    if (!registro || !usandoNuvem()) return;
+    let vivo = true;
+    Promise.all([carregarEstabelecimentos(), nuvem.inpiDoRep()]).then(([lista, inpi]) => {
+      if (!vivo) return;
+      const doCnpj = lista.find((e) => e.cnpj === soDigitos(registro.cnpjEmpregador));
+      setRep({ razaoSocial: doCnpj?.razaoSocial, inpi });
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [registro?.cnpjEmpregador]);
   useEffect(() => setAviso(null), [registro?.id]);
 
   if (!registro) return null;
-  const dados = montarComprovante(registro, { nome: colaborador.nome, cpf });
+  const dados = montarComprovante(registro, { nome: colaborador.nome, cpf }, rep);
 
   const baixar = async () => {
     setOcupado('baixar');
@@ -101,8 +119,9 @@ export const ComprovanteDaBatida: React.FC<{
         <div className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] overflow-hidden">
           <div className="px-4 py-3 bg-[var(--c-acento-suave)] flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-[var(--c-acento)]" />
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--c-acento)]">
-              Registro de ponto do trabalhador
+            {/* O título do art. 79, I, como a Portaria o escreve: sem caixa alta do CSS */}
+            <span className="text-xs font-bold text-[var(--c-acento)]">
+              {TITULO_DO_COMPROVANTE}
             </span>
           </div>
           <dl className="divide-y divide-[var(--c-borda)]">
@@ -121,7 +140,7 @@ export const ComprovanteDaBatida: React.FC<{
           </dl>
           <div className="px-4 py-3 border-t border-[var(--c-borda)] bg-[var(--c-canvas)]">
             <span className="block text-[11px] font-bold uppercase tracking-wider text-[var(--c-texto-3)]">
-              Código de verificação
+              Código hash da marcação (SHA-256)
             </span>
             <span id="comprovante-codigo" className="mt-1 block font-mono text-xs leading-relaxed break-all text-[var(--c-texto-2)]">
               {codigoEmBlocos(dados.codigo)}

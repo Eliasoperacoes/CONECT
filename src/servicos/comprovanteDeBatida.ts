@@ -14,8 +14,23 @@ import type { RegistroPonto } from '../tipos';
 import { ROTULO_MARCACAO } from '../tipos';
 import { formatarCpf } from './cpf';
 
-/** O nome que vai no comprovante como empregador. */
+/**
+ * O nome do empregador quando a razão social do CNPJ não chegou (modo
+ * local, ou a lista de estabelecimentos ainda não carregou). Com ela, vale
+ * a razão social — são dois CNPJs, e cada batida é de um deles.
+ */
 export const EMPREGADOR = 'Malachias Autopeças';
+
+/** O título que o art. 79, I, manda escrever, letra por letra. */
+export const TITULO_DO_COMPROVANTE = 'Comprovante de Registro de Ponto do Trabalhador';
+
+/** Quem é o REP-P e de quem é a batida — o que não vem na linha do registro. */
+export interface IdentificacaoDoRep {
+  /** A razão social do CNPJ da batida (`estabelecimentos`). */
+  razaoSocial?: string;
+  /** O registro no INPI, só dígitos; vazio até sair. */
+  inpi?: string | null;
+}
 
 /**
  * TEM COMPROVANTE quem BATEU: QR ou código digitado, e com o carimbo do
@@ -31,12 +46,19 @@ export const formatarCnpj = (texto?: string): string => {
   return d.length === 14 ? d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : '';
 };
 
-/** O código em blocos de quatro, para ler e conferir em voz alta. */
-export const codigoEmBlocos = (codigo: string): string => (codigo.match(/.{1,4}/g) || []).join(' ').toUpperCase();
+/**
+ * O código em blocos de quatro, para ler e conferir em voz alta — com as
+ * letras COMO ESTÃO GRAVADAS no AFD. Passar para maiúsculas mostraria ao
+ * trabalhador um texto que não é o do arquivo, e a caixa do hexadecimal é
+ * justamente a pergunta em aberto no Ministério.
+ */
+export const codigoEmBlocos = (codigo: string): string => (codigo.match(/.{1,4}/g) || []).join(' ');
 
 export interface DadosDoComprovante {
   nsr: string;
   empregador: string;
+  /** Registro do REP-P no INPI (art. 79, VII); vazio até sair. */
+  inpi: string;
   /** Vazio quando a ficha não tem o CNPJ do empregador. */
   cnpj: string;
   local: string;
@@ -55,12 +77,14 @@ const nsrFormatado = (nsr: number) => String(nsr).padStart(9, '0');
 
 export const montarComprovante = (
   r: RegistroPonto,
-  pessoa: { nome: string; cpf?: string | null }
+  pessoa: { nome: string; cpf?: string | null },
+  rep: IdentificacaoDoRep = {}
 ): DadosDoComprovante => {
   const quando = new Date(r.registradoEm || r.horario);
   return {
     nsr: nsrFormatado(r.nsr || 0),
-    empregador: EMPREGADOR,
+    empregador: rep.razaoSocial || EMPREGADOR,
+    inpi: (rep.inpi || '').replace(/\D/g, ''),
     cnpj: formatarCnpj(r.cnpjEmpregador),
     local: `Loja ${r.loja}`,
     trabalhador: pessoa.nome,
@@ -95,13 +119,14 @@ export const linhasDoComprovante = (d: DadosDoComprovante): Array<[string, strin
   ['Hora', d.hora],
   ['Marcação', d.marcacao],
   ['Registro', d.forma],
+  ['REP-P (INPI)', d.inpi || 'Não informado (registro em andamento)'],
 ];
 
 /** O comprovante em PDF, do tamanho de um recibo. */
 export const gerarPdfDoComprovante = async (d: DadosDoComprovante): Promise<Uint8Array> => {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
   const pdf = await PDFDocument.create();
-  pdf.setTitle(`Comprovante de registro de ponto · NSR ${d.nsr}`);
+  pdf.setTitle(`${TITULO_DO_COMPROVANTE} · NSR ${d.nsr}`);
   pdf.setAuthor(EMPREGADOR);
   const fonte = await pdf.embedFont(StandardFonts.Helvetica);
   const negrito = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -116,9 +141,10 @@ export const gerarPdfDoComprovante = async (d: DadosDoComprovante): Promise<Uint
   const marca = rgb(0.192, 0.357, 0.667); // #315BAA
 
   let y = altura - 36;
-  pagina.drawText('COMPROVANTE DE REGISTRO', { x: 20, y, size: 12, font: negrito, color: marca });
+  // O título do art. 79, I, em duas linhas só porque o recibo é estreito
+  pagina.drawText('Comprovante de Registro de Ponto', { x: 20, y, size: 12, font: negrito, color: marca });
   y -= 15;
-  pagina.drawText('DE PONTO DO TRABALHADOR', { x: 20, y, size: 12, font: negrito, color: marca });
+  pagina.drawText('do Trabalhador', { x: 20, y, size: 12, font: negrito, color: marca });
   y -= 14;
   pagina.drawText('Portaria MTP nº 671/2021', { x: 20, y, size: 8, font: fonte, color: cinza });
   y -= 14;
@@ -132,7 +158,7 @@ export const gerarPdfDoComprovante = async (d: DadosDoComprovante): Promise<Uint
   }
 
   y -= 4;
-  pagina.drawText('CÓDIGO DE VERIFICAÇÃO (SHA-256)', { x: 20, y, size: 7, font: negrito, color: cinza });
+  pagina.drawText('CÓDIGO HASH DA MARCAÇÃO (SHA-256)', { x: 20, y, size: 7, font: negrito, color: cinza });
   y -= 14;
   pagina.drawText(d.codigo.slice(0, 32), { x: 20, y, size: 9, font: mono, color: tinta });
   y -= 12;

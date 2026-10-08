@@ -1133,6 +1133,18 @@ class PonteNuvem {
   }
 
   /**
+   * O número do REP-P no INPI, para o comprovante (art. 79, VII) — só o
+   * número, a qualquer sessão (comprovante-inpi.sql). `null` enquanto o
+   * registro não sai, ou sem a função no banco.
+   */
+  async inpiDoRep(): Promise<string | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc('inpi_do_rep');
+    if (error) return null;
+    return typeof data === 'string' && data ? data : null;
+  }
+
+  /**
    * O QUE O AEJ PRECISA E O CACHE DO PONTO NÃO TEM: as originais do
    * estabelecimento no período, o que o tratamento decidiu de cada uma, o
    * CPF de quem aparece e a identificação do programa. Só quem cuida de
