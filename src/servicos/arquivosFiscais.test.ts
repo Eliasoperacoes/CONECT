@@ -35,4 +35,7 @@ test('o cartão do AFD fica no banco de horas, só para quem cuida de pessoas e 
   // O que falta para valer é dito, não escondido
   expect(cartao).toContain('falta o registro do sistema no INPI');
   expect(cartao).toContain("baixarArquivo(r.bytes, r.nome, 'text/plain;charset=ISO-8859-1');");
+  // O AEJ sai do mesmo cartão, e quem ficou sem CPF é nomeado
+  expect(cartao).toContain('await gerarArquivoAej(cnpj, inicio, fim)');
+  expect(cartao).toContain("r.semCpf.join(', ')");
 });

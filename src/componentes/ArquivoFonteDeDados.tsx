@@ -1,6 +1,7 @@
 /**
- * O AFD NA TELA DO RH — escolher o estabelecimento e baixar o arquivo do
- * período que a tela já mostra (Portaria 671/2021, art. 81, § 2º: o AFD do
+ * O AFD E O AEJ NA TELA DO RH — escolher o estabelecimento e baixar o
+ * arquivo do período que a tela já mostra. O AFD é o que o REP registrou;
+ * o AEJ, a jornada tratada, a mesma do espelho (Portaria 671/2021, art. 81, § 2º: o AFD do
  * REP-P é "prontamente gerado e entregue, quando solicitado pelo
  * Auditor-Fiscal do Trabalho").
  *
@@ -11,7 +12,7 @@
 import React, { useEffect, useState } from 'react';
 import { FileText, Download, Loader2 } from 'lucide-react';
 import { carregarEstabelecimentos, Estabelecimento } from '../servicos/estabelecimentos';
-import { gerarArquivoAfd } from '../servicos/arquivosFiscais';
+import { gerarArquivoAej, gerarArquivoAfd } from '../servicos/arquivosFiscais';
 import { baixarArquivo } from '../servicos/compartilharArquivo';
 import { formatarCnpj } from '../servicos/documentos';
 import { formatarDataBR } from '../servicos/ponto';
@@ -19,7 +20,7 @@ import { formatarDataBR } from '../servicos/ponto';
 export const ArquivoFonteDeDados: React.FC<{ inicio: string; fim: string }> = ({ inicio, fim }) => {
   const [estabelecimentos, setEstabelecimentos] = useState<Estabelecimento[]>([]);
   const [cnpj, setCnpj] = useState('');
-  const [gerando, setGerando] = useState(false);
+  const [gerando, setGerando] = useState<'afd' | 'aej' | null>(null);
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
 
   useEffect(() => {
@@ -38,15 +39,34 @@ export const ArquivoFonteDeDados: React.FC<{ inicio: string; fim: string }> = ({
   if (estabelecimentos.length === 0) return null;
 
   const gerar = async () => {
-    setGerando(true);
+    setGerando('afd');
     setAviso(null);
     const r = await gerarArquivoAfd(cnpj, inicio, fim);
-    setGerando(false);
+    setGerando(null);
     if (!r.sucesso) return setAviso({ tipo: 'erro', texto: r.erro });
     baixarArquivo(r.bytes, r.nome, 'text/plain;charset=ISO-8859-1');
     setAviso({
       tipo: 'ok',
       texto: `${r.nome} gerado: ${r.marcacoes} ${r.marcacoes === 1 ? 'marcação' : 'marcações'} no período.`,
+    });
+  };
+
+  const gerarAej = async () => {
+    setGerando('aej');
+    setAviso(null);
+    const r = await gerarArquivoAej(cnpj, inicio, fim);
+    setGerando(null);
+    if (!r.sucesso) return setAviso({ tipo: 'erro', texto: r.erro });
+    baixarArquivo(r.bytes, r.nome, 'text/plain;charset=ISO-8859-1');
+    // Quem ficou de fora por falta de CPF é dito pelo nome: o arquivo não está completo sem eles
+    const fora = r.semCpf.length
+      ? ` Ficaram de fora, sem CPF cadastrado: ${r.semCpf.join(', ')}.`
+      : '';
+    setAviso({
+      tipo: r.semCpf.length ? 'erro' : 'ok',
+      texto: `${r.nome} gerado: ${r.vinculos} ${r.vinculos === 1 ? 'pessoa' : 'pessoas'}, ${r.marcacoes} ${
+        r.marcacoes === 1 ? 'marcação' : 'marcações'
+      }.${fora}`,
     });
   };
 
@@ -62,11 +82,11 @@ export const ArquivoFonteDeDados: React.FC<{ inicio: string; fim: string }> = ({
         </span>
         <div className="min-w-0">
           <h3 id="titulo-afd" className="text-sm font-bold text-[var(--c-texto)]">
-            Arquivo Fonte de Dados (AFD)
+            Arquivos fiscais do ponto
           </h3>
           <p className="text-xs text-[var(--c-texto-3)] leading-relaxed">
-            As marcações originais de {formatarDataBR(inicio)} a {formatarDataBR(fim)}, no leiaute da Portaria 671, para
-            entregar à fiscalização.
+            De {formatarDataBR(inicio)} a {formatarDataBR(fim)}, no leiaute da Portaria 671, para entregar à
+            fiscalização: o AFD traz as marcações como o relógio registrou; o AEJ, a jornada tratada, como no espelho.
           </p>
         </div>
       </div>
@@ -89,11 +109,21 @@ export const ArquivoFonteDeDados: React.FC<{ inicio: string; fim: string }> = ({
           type="button"
           id="botao-gerar-afd"
           onClick={gerar}
-          disabled={gerando || !cnpj}
+          disabled={!!gerando || !cnpj}
           className="h-9 px-4 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
         >
-          {gerando ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-          {gerando ? 'Gerando…' : 'Baixar AFD'}
+          {gerando === 'afd' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          {gerando === 'afd' ? 'Gerando…' : 'Baixar AFD'}
+        </button>
+        <button
+          type="button"
+          id="botao-gerar-aej"
+          onClick={gerarAej}
+          disabled={!!gerando || !cnpj}
+          className="h-9 px-4 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-[var(--c-texto)] hover:border-[var(--c-acento)] text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
+        >
+          {gerando === 'aej' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+          {gerando === 'aej' ? 'Gerando…' : 'Baixar AEJ'}
         </button>
       </div>
 
@@ -108,7 +138,7 @@ export const ArquivoFonteDeDados: React.FC<{ inicio: string; fim: string }> = ({
 
       <p className="text-[11px] text-[var(--c-texto-3)] leading-relaxed">
         Ainda não vale como entrega oficial: falta o registro do sistema no INPI (o campo sai em branco) e a assinatura
-        com certificado digital ICP-Brasil (o arquivo .p7s que acompanha o AFD).
+        com certificado digital ICP-Brasil (o arquivo .p7s que acompanha cada um).
       </p>
     </section>
   );

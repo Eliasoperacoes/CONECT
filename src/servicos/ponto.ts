@@ -91,6 +91,7 @@ import { nuvem } from './nuvem';
 import { fecharCompensacao, mesAnterior, CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { usandoNuvem } from './supabase';
 import { lerLista } from './cacheDeLeitura';
+import type { DiaDoAej } from './arquivoEletronicoDeJornada';
 /**
  * As regras do dia moram em `apuracaoDoDia`, para o servidor apurar com as
  * mesmas. As de data continuam exportadas daqui: são dezenas de telas
@@ -1804,6 +1805,21 @@ class ServicoPonto {
     return listarDatasDoPeriodo(dataInicio, dataFim).map((data) =>
       this.obterJornadaDoDia(colaboradorId, data)
     );
+  }
+
+  /**
+   * Os dias do período como o espelho os vê, no formato do AEJ: as batidas
+   * do tratamento, a ordem do dia e a falta. A mesma `obterJornadaDoDia`
+   * do espelho — o arquivo não pode dizer outra coisa que o papel.
+   */
+  diasParaOAej(colaboradorId: string, dataInicio: string, dataFim: string): DiaDoAej[] {
+    const colaborador = bancoDados.obterColaboradorPorId(colaboradorId);
+    return this.obterJornadasDoPeriodo(colaboradorId, dataInicio, dataFim).map((j) => ({
+      data: j.data,
+      sequencia: sequenciaDoDia(j.data, colaborador),
+      marcacoes: Object.values(j.marcacoes).filter((m): m is RegistroPonto => !!m),
+      falta: j.falta,
+    }));
   }
 
   // --- APURAÇÃO DO DIA E APROVAÇÃO ---

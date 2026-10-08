@@ -1133,6 +1133,63 @@ class PonteNuvem {
   }
 
   /**
+   * O QUE O AEJ PRECISA E O CACHE DO PONTO NÃO TEM: as originais do
+   * estabelecimento no período, o que o tratamento decidiu de cada uma, o
+   * CPF de quem aparece e a identificação do programa. Só quem cuida de
+   * pessoas lê as quatro (RLS); para os outros, volta o erro.
+   */
+  async dadosDoAej(
+    cnpj: string,
+    inicio: string,
+    fim: string
+  ): Promise<
+    | {
+        sucesso: true;
+        originais: LinhaMarcacaoOriginal[];
+        tratamentos: Array<{ nsr: number | string; decisao: 'incluida' | 'desconsiderada'; registro_id: string | null; justificativa: string }>;
+        cpfs: Array<{ colaborador_id: string; cpf: string }>;
+        identificacao: {
+          inpi: string | null;
+          desenvolvedor_tipo: '1' | '2';
+          desenvolvedor_documento: string;
+          desenvolvedor_nome: string;
+          desenvolvedor_email: string | null;
+          programa_nome: string;
+          programa_versao: string;
+        } | null;
+      }
+    | { sucesso: false; erro: string }
+  > {
+    if (!supabase) return { sucesso: false, erro: 'Sem conexão com o banco.' };
+    const [originais, tratamentos, cpfs, identificacao] = await Promise.all([
+      buscarTodasAsLinhas<LinhaMarcacaoOriginal>(
+        () =>
+          supabase!
+            .from('marcacoes_originais')
+            .select('*')
+            .eq('cnpj_empregador', cnpj)
+            .gte('data', inicio)
+            .lte('data', fim)
+            .order('nsr'),
+        'as marcações originais'
+      ),
+      buscarTodasAsLinhas<{ nsr: number | string; decisao: 'incluida' | 'desconsiderada'; registro_id: string | null; justificativa: string }>(
+        () => supabase!.from('tratamento_marcacao').select('nsr, decisao, registro_id, justificativa').eq('cnpj', cnpj).order('nsr'),
+        'o tratamento das marcações'
+      ),
+      buscarTodasAsLinhas<{ colaborador_id: string; cpf: string }>(
+        () => supabase!.from('cpf_colaborador').select('colaborador_id, cpf').order('colaborador_id'),
+        'os CPFs'
+      ),
+      supabase.from('identificacao_rep').select('*').maybeSingle(),
+    ]);
+    if (!originais || !tratamentos || !cpfs || identificacao.error) {
+      return { sucesso: false, erro: 'Não deu para ler as marcações deste estabelecimento. Tente de novo.' };
+    }
+    return { sucesso: true, originais, tratamentos, cpfs, identificacao: identificacao.data };
+  }
+
+  /**
    * OS ESTABELECIMENTOS — os CNPJs em que as pessoas são registradas
    * (registrador-por-estabelecimento.sql). Vazia sem a tabela ou sem
    * cadastro: quem chama (estabelecimentos.ts) volta à regra de antes.
