@@ -31,7 +31,7 @@ import {
   ehDeEstagio,
   MINUTOS_SABADO,
 } from '../tipos';
-import { formatarMinutos } from '../servicos/ponto';
+import { formatarMinutos, batePonto } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 import { useVoltar } from '../servicos/voltar';
 import { carregarEstabelecimentos, cnpjDaFichaValido, soDigitos, Estabelecimento } from '../servicos/estabelecimentos';
@@ -147,7 +147,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       setErro('O nome é obrigatório.');
       return;
     }
-    if (!cnpjDaFichaValido(form.cnpj, estabelecimentos)) {
+    if (!cnpjDaFichaValido(form.cnpj, estabelecimentos, batePonto(colaborador))) {
       setErro('Escolha o CNPJ em que a pessoa está registrada.');
       return;
     }
@@ -411,13 +411,14 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
             {estabelecimentos.length > 0 ? (
               <select
                 id="cad-cnpj"
-                required
+                required={batePonto(colaborador)}
                 value={soDigitos(form.cnpj)}
                 onChange={(e) => setForm({ ...form, cnpj: e.target.value ? formatarCnpj(e.target.value) : '' })}
                 className={campo}
               >
-                <option value="" disabled>
-                  Escolha o CNPJ…
+                {/* Quem não bate ponto pode ficar sem CNPJ: não entra no registrador */}
+                <option value="" disabled={batePonto(colaborador)}>
+                  {batePonto(colaborador) ? 'Escolha o CNPJ…' : 'Sem CNPJ (não bate ponto)'}
                 </option>
                 {estabelecimentos.map((est) => (
                   <option key={est.cnpj} value={est.cnpj}>

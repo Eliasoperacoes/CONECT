@@ -36,6 +36,18 @@ export const carregarEstabelecimentos = async (): Promise<Estabelecimento[]> => 
 /**
  * O CNPJ DA FICHA ESTÁ CERTO? Com estabelecimentos cadastrados, só vale
  * um deles; sem nenhum, a regra de antes (qualquer CNPJ, ou vazio).
+ *
+ * OBRIGATÓRIO SÓ PARA QUEM BATE PONTO, como o CPF (Elias, 07/10/2026): a
+ * direção, o RH que não bate e as contas de administração não entram no
+ * registrador — exigir um CNPJ delas seria inventar um vínculo. Quem não
+ * bate pode ficar sem; se tiver, tem de ser um dos estabelecimentos.
  */
-export const cnpjDaFichaValido = (cnpj: string | undefined, lista: Estabelecimento[]): boolean =>
-  lista.length === 0 || lista.some((e) => e.cnpj === soDigitos(cnpj));
+export const cnpjDaFichaValido = (
+  cnpj: string | undefined,
+  lista: Estabelecimento[],
+  bateOPonto = true
+): boolean => {
+  if (lista.length === 0) return true;
+  if (!soDigitos(cnpj)) return !bateOPonto;
+  return lista.some((e) => e.cnpj === soDigitos(cnpj));
+};
