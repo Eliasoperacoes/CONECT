@@ -1,4 +1,19 @@
 -- ============================================================
+-- SUBSTITUÍDO por registrador-por-estabelecimento.sql (07/10/2026).
+--
+-- Este script redefine peças do ponto (a batida, o carimbo, a marcação
+-- original ou a fila) numa versão anterior. Rodado depois do registrador
+-- novo, ele criaria uma segunda versão das funções — e a batida pararia.
+-- A trava abaixo para o script antes de ele mudar qualquer coisa.
+-- ============================================================
+do $$
+begin
+  if to_regclass('public.contador_nsr_estabelecimento') is not null then
+    raise exception 'cpf-e-comprovante.sql foi substituído por registrador-por-estabelecimento.sql. Não rode este arquivo de novo.';
+  end if;
+end $$;
+
+-- ============================================================
 -- CPF DO COLABORADOR E COMPROVANTE DE CADA BATIDA — CONECTA
 --
 -- Pedido do Elias (06/10/2026), a partir da análise da Portaria MTP

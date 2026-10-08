@@ -62,6 +62,13 @@ export const rodandoNoAplicativo = (): boolean => {
 export const ondeEstamosRodando = (): 'aplicativo' | 'navegador' =>
   rodandoNoAplicativo() ? 'aplicativo' : 'navegador';
 
+/**
+ * O IDENTIFICADOR DO COLETOR DA MARCAÇÃO, no código do AFD (leiaute
+ * vigente, registro tipo "7", campo 6): "01" aplicativo mobile, "02"
+ * browser. O iPhone (PWA) é navegador.
+ */
+export const coletorDaMarcacao = (): '01' | '02' => (rodandoNoAplicativo() ? '01' : '02');
+
 /** O plugin nativo do próprio app (android/.../Barras.java). */
 const Barras = registerPlugin<{ pintar(opcoes: { cor: string }): Promise<void> }>('Barras');
 

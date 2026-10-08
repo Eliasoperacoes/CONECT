@@ -36,6 +36,7 @@ import {
   normalizarLogin,
 } from './supabase';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
+import { coletorDaMarcacao } from './aplicativo';
 import { ehCaminhoDeFotoPerfil, resolverCaminhos } from './anexos';
 import { nuvemComunicacao } from './nuvemComunicacao';
 /**
@@ -1126,20 +1127,30 @@ class PonteNuvem {
     return (data || []) as LinhaMarcacaoOriginal[];
   }
 
-  /** A DECISÃO sobre uma marcação fora da jornada (tratar_marcacao). */
+  /**
+   * A DECISÃO sobre uma marcação fora da jornada (tratar_marcacao). A chave
+   * é o par (CNPJ, NSR): o NSR é por estabelecimento
+   * (registrador-por-estabelecimento.sql). Banco ainda sem o CNPJ na
+   * função: repete só com o NSR, como antes.
+   */
   async tratarMarcacao(dados: {
+    cnpj: string;
     nsr: number;
     decisao: 'incluida' | 'desconsiderada';
     tipo: TipoMarcacao | null;
     justificativa: string;
   }): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: false, erro: 'Sem conexão com o banco.' };
-    const { error } = await supabase.rpc('tratar_marcacao', {
+    const base = {
       p_nsr: dados.nsr,
       p_decisao: dados.decisao,
       p_tipo: dados.tipo,
       p_justificativa: dados.justificativa,
-    });
+    };
+    let { error } = await supabase.rpc('tratar_marcacao', { ...base, p_cnpj: dados.cnpj });
+    if (error && (error.code === 'PGRST202' || error.code === '42883')) {
+      ({ error } = await supabase.rpc('tratar_marcacao', base));
+    }
     if (error) {
       // A recusa escrita pelo banco ("Já existe essa marcação neste dia...") vai como está
       if (error.code === 'P0001') return { sucesso: false, erro: error.message };
@@ -1173,11 +1184,16 @@ class PonteNuvem {
     semFuncao?: boolean;
   }> {
     if (!supabase) return { sucesso: false, semFuncao: true };
-    const { data, error } = await supabase.rpc('registrar_marcacao', {
-      p_codigo: dados.codigo,
-      p_loja: dados.loja,
-      p_tipo: dados.tipo,
-    });
+    const base = { p_codigo: dados.codigo, p_loja: dados.loja, p_tipo: dados.tipo };
+    /*
+      O COLETOR (Anexo IX, 6.5): "01" no aplicativo, "02" no navegador.
+      Banco ainda sem o parâmetro (registrador-por-estabelecimento.sql não
+      rodado): repete sem ele, e a batida segue sem recusa do mesmo jeito.
+    */
+    let { data, error } = await supabase.rpc('registrar_marcacao', { ...base, p_coletor: coletorDaMarcacao() });
+    if (error && (error.code === 'PGRST202' || error.code === '42883')) {
+      ({ data, error } = await supabase.rpc('registrar_marcacao', base));
+    }
     if (error) {
       if (error.code === 'PGRST202' || error.code === '42883') return { sucesso: false, semFuncao: true };
       // Duas batidas do mesmo passo no mesmo instante (dois aparelhos): a outra entrou

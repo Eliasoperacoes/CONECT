@@ -20,12 +20,19 @@ class ArmazenamentoFalso {
 
 let respostaRpc: { data: unknown; error: unknown } = { data: null, error: null };
 let rpcPedido: { nome: string; args: any } | null = null;
+/** Todas as chamadas, em ordem; e o banco sem os parâmetros novos (SQL da etapa 2a não rodado). */
+let chamadas: Array<{ nome: string; args: any }> = [];
+let bancoSemParametrosNovos = false;
 let erroDoDelete: unknown = null;
 
 mock.module('./supabase', () => ({
   supabase: {
     rpc: async (nome: string, args: any) => {
       rpcPedido = { nome, args };
+      chamadas.push({ nome, args });
+      if (bancoSemParametrosNovos && ('p_coletor' in args || 'p_cnpj' in args)) {
+        return { data: null, error: { code: 'PGRST202', message: 'Could not find the function' } };
+      }
       return respostaRpc;
     },
     from: () => ({
@@ -59,13 +66,39 @@ const ORIGINAL = {
 beforeEach(() => {
   respostaRpc = { data: null, error: null };
   rpcPedido = null;
+  chamadas = [];
+  bancoSemParametrosNovos = false;
   erroDoDelete = null;
 });
 
 test('chama a registrar_marcacao com o que o aparelho leu — e o tipo pode ir vazio', async () => {
   respostaRpc = { data: { registro: null, original: ORIGINAL, fora_da_jornada: 'jornada_completa' }, error: null };
   await nuvem.registrarMarcacao({ codigo: 'ABC123', loja: 'Pirassununga', tipo: null });
-  expect(rpcPedido).toEqual({ nome: 'registrar_marcacao', args: { p_codigo: 'ABC123', p_loja: 'Pirassununga', p_tipo: null } });
+  // Com o coletor (Anexo IX, 6.5): fora do aplicativo, "02" — navegador
+  expect(rpcPedido).toEqual({ nome: 'registrar_marcacao', args: { p_codigo: 'ABC123', p_loja: 'Pirassununga', p_tipo: null, p_coletor: '02' } });
+});
+
+test('BANCO SEM O COLETOR AINDA (SQL não rodado): repete sem ele — a batida não volta a ser recusada', async () => {
+  bancoSemParametrosNovos = true;
+  respostaRpc = { data: { registro: null, original: ORIGINAL, fora_da_jornada: 'domingo' }, error: null };
+  const r = await nuvem.registrarMarcacao({ codigo: 'ABC123', loja: 'Pirassununga', tipo: 'entrada' });
+  expect(r.sucesso).toBe(true);
+  expect(r.foraDaJornada).toBe('domingo');
+  expect(chamadas.map((c) => Object.keys(c.args).sort().join(','))).toEqual([
+    'p_codigo,p_coletor,p_loja,p_tipo',
+    'p_codigo,p_loja,p_tipo',
+  ]);
+});
+
+test('A DECISÃO vai com o CNPJ; banco sem ele ainda, repete só com o NSR', async () => {
+  respostaRpc = { data: {}, error: null };
+  const dados = { cnpj: '11222333000144', nsr: 793, decisao: 'desconsiderada' as const, tipo: null, justificativa: 'x' };
+  expect((await nuvem.tratarMarcacao(dados)).sucesso).toBe(true);
+  expect(chamadas[0].args).toEqual({ p_nsr: 793, p_decisao: 'desconsiderada', p_tipo: null, p_justificativa: 'x', p_cnpj: '11222333000144' });
+  chamadas = [];
+  bancoSemParametrosNovos = true;
+  expect((await nuvem.tratarMarcacao(dados)).sucesso).toBe(true);
+  expect(chamadas.map((c) => 'p_cnpj' in c.args)).toEqual([true, false]);
 });
 
 test('FORA DA JORNADA: volta o comprovante da original, com a hora de Brasília', async () => {

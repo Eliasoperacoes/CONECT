@@ -18,9 +18,10 @@ let domingo = false;
 
 beforeAll(async () => {
   banco = await montarBancoLocal();
-  await banco.db.exec(lerSql('marcacao-original.sql'));
-  // Rodar de novo não pode quebrar
-  await banco.db.exec(lerSql('marcacao-original.sql'));
+  // O esquema já traz o registrador por estabelecimento (etapa 2a); o
+  // delta dele, rodado de novo por cima, não pode quebrar nada
+  await banco.db.exec(lerSql('registrador-por-estabelecimento.sql'));
+  await banco.db.exec(lerSql('registrador-por-estabelecimento.sql'));
   domingo = (await banco.db.query<{ d: boolean }>(
     `select extract(dow from now() at time zone 'America/Sao_Paulo') = 0 as d`
   )).rows[0].d;
@@ -30,19 +31,47 @@ test('o esquema.sql inteiro roda num banco vazio, sem erro nenhum', () => {
   expect(banco.errosDoEsquema).toEqual([]);
 });
 
-test('o esquema.sql traz o MESMO texto do delta (uma regra, um lugar)', () => {
-  const delta = readFileSync('supabase/marcacao-original.sql', 'utf8');
+test('o esquema.sql traz o MESMO texto dos deltas (uma regra, um lugar)', () => {
   const esquema = readFileSync('supabase/esquema.sql', 'utf8');
   const SEP = '-- ------------------------------------------------------------\n';
-  const s1 = delta.lastIndexOf(SEP, delta.indexOf('-- 1. A TABELA DA MARCAÇÃO ORIGINAL'));
-  const s6 = delta.lastIndexOf(SEP, delta.indexOf('-- 6. SÓ A BATIDA DO SERVIDOR ENTRA COMO QR'));
-  const s7 = delta.lastIndexOf(SEP, delta.indexOf('-- 7. A BATIDA QUE NUNCA É RECUSADA'));
-  const fim = delta.indexOf("notify pgrst, 'reload schema';");
-  expect(esquema.includes(delta.slice(s1, s6))).toBe(true);
-  expect(esquema.includes(delta.slice(s7, fim).trimEnd())).toBe(true);
+  // Da etapa 1 continuam valendo: a tabela da original, a trava e a regra de quem grava
+  const etapa1 = readFileSync('supabase/marcacao-original.sql', 'utf8');
+  const secao = (n: string, proxima: string) =>
+    etapa1.slice(etapa1.lastIndexOf(SEP, etapa1.indexOf(n)), etapa1.lastIndexOf(SEP, etapa1.indexOf(proxima)));
+  expect(esquema.includes(secao('-- 1. A TABELA DA MARCAÇÃO ORIGINAL', '-- 2. O CONTADOR DO NSR'))).toBe(true);
+  expect(esquema.includes(secao('-- 3. A TRAVA: original não se altera', '-- 4. UMA MARCAÇÃO ORIGINAL NOVA'))).toBe(true);
+  // A regra de quem grava foi atualizada no lugar dela no esquema: confere-se o conteúdo
+  expect(esquema).toContain("public.cuido_de_pessoas()\n      and metodo in ('ajuste_rh', 'ajuste_lider', 'preenchimento_turno')");
+  // O resto é o do registrador por estabelecimento (etapa 2a)
+  const etapa2 = readFileSync('supabase/registrador-por-estabelecimento.sql', 'utf8');
+  const ini = etapa2.lastIndexOf(SEP, etapa2.indexOf('-- 1. O FORMATO DO AFD'));
+  expect(esquema.includes(etapa2.slice(ini, etapa2.indexOf("notify pgrst, 'reload schema';")).trimEnd())).toBe(true);
   // E uma definição só de cada peça no esquema
-  expect(esquema.split('create or replace function public.carimbar_batida()').length).toBe(2);
-  expect(esquema.split('create policy ponto_batida').length).toBe(2);
+  for (const peca of [
+    'create or replace function public.carimbar_batida()',
+    'create or replace function public.nova_marcacao_original(',
+    'create or replace function public.registrar_marcacao(',
+    'create policy ponto_batida',
+  ]) {
+    expect({ peca, vezes: esquema.split(peca).length - 1 }).toEqual({ peca, vezes: 1 });
+  }
+  expect(esquema).not.toContain('create table if not exists public.contador_nsr (');
+});
+
+test('O SQL ANTIGO, rodado depois do registrador novo, PARA antes de mudar qualquer coisa', async () => {
+  // Rodado de novo, ele criaria a segunda versão das funções, e a batida pararia
+  for (const antigo of ['marcacao-original.sql', 'tratamento-da-marcacao.sql', 'cpf-e-comprovante.sql', 'ponto-pelo-servidor.sql']) {
+    let erro = '';
+    try {
+      await banco.db.exec(lerSql(antigo));
+    } catch (e) {
+      erro = (e as Error).message;
+    }
+    expect({ antigo, erro }).toEqual({ antigo, erro: `${antigo} foi substituído por registrador-por-estabelecimento.sql. Não rode este arquivo de novo.` });
+  }
+  // E a batida continua com UMA função
+  const funcoes = await banco.db.query<{ n: number }>(`select count(*)::int n from pg_proc where proname = 'registrar_marcacao'`);
+  expect(funcoes.rows[0].n).toBe(1);
 });
 
 test('DOMINGO: a marcação não é recusada — vai para o RH, com NSR', async () => {
@@ -112,14 +141,25 @@ test('A MARCAÇÃO ORIGINAL: nasce com a batida, não se altera, não se apaga, 
     prova('a batida de hoje cria a original, com o mesmo NSR e código', !!o1 && o1.nsr === b1.nsr && o1.codigo_verificacao === b1.codigo_verificacao, { b1, o1 });
     prova('NSR começa em 1 (contador no maior já dado, 0)', Number(b1.nsr) === 1, b1.nsr);
     prova('CNPJ só com dígitos, igual ao carimbo de antes', o1?.cnpj_empregador === '11222333000144', o1?.cnpj_empregador);
-    prova('o código é o SHA-256 de antes (mesma fórmula)', o1?.codigo_verificacao === (await um(`select public.codigo_da_batida(${o1?.nsr}, '11222333000144', '${o1?.data instanceof Date ? o1.data.toISOString().slice(0, 10) : o1?.data}', '${new Date(o1?.registrado_em).toISOString()}'::timestamptz, 'ana') as c`)).c);
+    /*
+      O CÓDIGO É O HASH DO AFD (etapa 2a), conferido por fora do banco:
+      SHA-256 das posições 001 a 073 do registro tipo "7", na primeira
+      marcação do CNPJ sem hash anterior. A Ana não tem CPF (doze zeros) e
+      bateu pela `bater_ponto`, que não diz o coletor ("05"). Brasília é
+      -0300 (sem horário de verão desde 2019).
+    */
+    const { createHash } = await import('node:crypto');
+    const dh = (iso: string) => `${new Date(new Date(iso).getTime() - 3 * 3600_000).toISOString().slice(0, 16)}:00-0300`;
+    const linha = `${String(o1?.nsr).padStart(9, '0')}7${dh(o1?.registrado_em)}000000000000${dh(o1?.registrado_em)}050`;
+    prova('o código é o hash do AFD: posições 001 a 073 do tipo "7"', linha.length === 73 && o1?.codigo_verificacao === createHash('sha256').update(linha).digest('hex'), { linha, codigo: o1?.codigo_verificacao });
+    prova('a original guarda o coletor e o CPF', o1?.coletor === '05' && o1?.cpf === '' && o1?.offline === false, o1);
 
     secao('A batida repetida não gasta número');
     await como(ANA);
     const repetida = await erroDe(`select * from public.bater_ponto('ABC123', 'Pirassununga', 'entrada')`);
     await como(null);
     prova('bater_ponto repetida é recusada como antes (o app trata)', !!repetida && /duplicate|unique/i.test(repetida), repetida);
-    prova('e o contador continua em 1: sem buraco', Number((await um(`select ultimo from public.contador_nsr`)).ultimo) === 1);
+    prova('e o contador continua em 1: sem buraco', Number((await um(`select ultimo from public.contador_nsr_estabelecimento where cnpj = '11222333000144'`)).ultimo) === 1);
 
     secao('A batida que nunca é recusada (registrar_marcacao)');
     await como(ANA);
@@ -137,7 +177,7 @@ test('A MARCAÇÃO ORIGINAL: nasce com a batida, não se altera, não se apaga, 
       v2fim.r.fora_da_jornada === 'jornada_completa' && Number(v2fim.r.original.nsr) === 4, v2fim.r);
     prova('o comprovante da fora da jornada tem NSR e código', !!v2fim.r.original.codigo_verificacao && !!v2fim.r.original.registrado_em);
     prova('código da loja errado continua recusado, sem gastar número',
-      !!v2codigo && v2codigo.includes('Código não reconhecido') && Number((await um(`select ultimo from public.contador_nsr`)).ultimo) === 5, { v2codigo });
+      !!v2codigo && v2codigo.includes('Código não reconhecido') && Number((await um(`select ultimo from public.contador_nsr_estabelecimento where cnpj = '11222333000144'`)).ultimo) === 5, { v2codigo });
     prova('repetir a entrada depois do almoço: fora da jornada (repetida)', v2ordem.r.fora_da_jornada === 'repetida');
     prova('o tratamento tem só as duas da jornada', (await varios(`select tipo from public.registros_ponto where colaborador_id = 'ana' order by tipo`)).map((l) => l.tipo).join() === 'entrada,saida_almoco');
 
@@ -158,18 +198,18 @@ test('A MARCAÇÃO ORIGINAL: nasce com a batida, não se altera, não se apaga, 
     await como(ANA);
     const anaApaga = await db.query(`delete from public.marcacoes_originais where colaborador_id = 'ana' returning nsr`).then((r) => r.rows.length).catch((e) => (e as Error).message);
     const anaGrava = await erroDe(`insert into public.marcacoes_originais (nsr, colaborador_id, registrado_em, data, loja, metodo, codigo_verificacao) values (500, 'ana', now(), current_date, 'Pirassununga', 'qrcode', 'x')`);
-    const anaContador = await erroDe(`update public.contador_nsr set ultimo = 0`);
+    const anaContador = await erroDe(`update public.contador_nsr_estabelecimento set ultimo = 0`);
     const anaLe = (await varios(`select nsr from public.marcacoes_originais`)).length;
     await como(null);
     prova('a pessoa não apaga a própria original (0 linhas)', anaApaga === 0, anaApaga);
     prova('a pessoa não grava original direto', !!anaGrava, anaGrava);
-    prova('a pessoa não mexe no contador', Number((await um(`select ultimo from public.contador_nsr`)).ultimo) === 5, anaContador);
+    prova('a pessoa não mexe no contador', Number((await um(`select ultimo from public.contador_nsr_estabelecimento where cnpj = '11222333000144'`)).ultimo) === 5, anaContador);
     prova('a pessoa lê as próprias originais (as 5 dela)', anaLe === 5, anaLe);
 
     secao('O RH corrige no tratamento; a original fica');
     await como(RITA);
-    const ritaQr = await erroDe(`insert into public.registros_ponto (id, colaborador_id, data, tipo, horario, hora_formatada, metodo, loja) values ('falsa', 'ana', current_date - 1, 'entrada', now() - interval '1 day', '07:30', 'qrcode', 'Pirassununga')`);
-    const ritaAjuste = await erroDe(`insert into public.registros_ponto (id, colaborador_id, data, tipo, horario, hora_formatada, metodo, loja, justificativa) values ('aj1', 'ana', current_date - 1, 'entrada', now() - interval '1 day', '07:30', 'ajuste_rh', 'Pirassununga', 'esqueceu')`);
+    const ritaQr = await erroDe(`insert into public.registros_ponto (id, colaborador_id, data, tipo, horario, hora_formatada, metodo, loja) values ('falsa', 'ana', '2026-01-05', 'entrada', '2026-01-05T10:30:00Z', '07:30', 'qrcode', 'Pirassununga')`);
+    const ritaAjuste = await erroDe(`insert into public.registros_ponto (id, colaborador_id, data, tipo, horario, hora_formatada, metodo, loja, justificativa) values ('aj1', 'ana', '2026-01-05', 'entrada', '2026-01-05T10:30:00Z', '07:30', 'ajuste_rh', 'Pirassununga', 'esqueceu')`);
     const ritaMudaQr = await erroDe(`update public.registros_ponto set horario = horario - interval '10 minutes' where id = '${b1.id}'`);
     const ritaCorrige = await erroDe(`update public.registros_ponto set horario = horario - interval '10 minutes', metodo = 'ajuste_rh', justificativa = 'relógio' where id = '${b1.id}'`);
     const ritaViraQr = await erroDe(`update public.registros_ponto set metodo = 'qrcode' where id = 'aj1'`);
@@ -187,7 +227,7 @@ test('A MARCAÇÃO ORIGINAL: nasce com a batida, não se altera, não se apaga, 
     prova('correção não vira batida de QR', !!ritaViraQr, ritaViraQr);
     prova('RH remove do tratamento (como hoje)', ritaRemove === 1, ritaRemove);
     prova('e a original da removida continua lá', !!(await um(`select 1 x from public.marcacoes_originais where nsr = 3`)));
-    prova('nenhuma correção gastou NSR', Number((await um(`select ultimo from public.contador_nsr`)).ultimo) === 5);
+    prova('nenhuma correção gastou NSR', Number((await um(`select ultimo from public.contador_nsr_estabelecimento where cnpj = '11222333000144'`)).ultimo) === 5);
 
     secao('Excluir colaborador');
     await como(TIAGO);
@@ -215,9 +255,10 @@ test('A MARCAÇÃO ORIGINAL: nasce com a batida, não se altera, não se apaga, 
     await como(null);
     const fusao = await erroDe(blocoFusao);
     prova('a fusão roda (não trava no restrict)', fusao === null, fusao);
+    // A fantasma não tem CNPJ: a marcação dela é a primeira do balde "sem CNPJ" (NSR por estabelecimento)
     prova('a original foi para a ficha boa, com o mesmo NSR',
-      (await um(`select colaborador_id from public.marcacoes_originais where nsr = 6`))?.colaborador_id === 'bia-planilha',
-      await varios(`select nsr, colaborador_id from public.marcacoes_originais order by nsr`));
+      (await um(`select colaborador_id from public.marcacoes_originais where cnpj_empregador = '' and nsr = 1`))?.colaborador_id === 'bia-planilha',
+      await varios(`select cnpj_empregador, nsr, colaborador_id from public.marcacoes_originais order by cnpj_empregador, nsr`));
     prova('a fantasma saiu', !(await um(`select 1 x from public.colaboradores where id = 'colab-000000000000000000000000000000dd'`)));
 
   expect(falhas).toEqual([]);

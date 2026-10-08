@@ -20,9 +20,8 @@ const ZE = '00000000-0000-0000-0000-0000000000a4';
 
 beforeAll(async () => {
   banco = await montarBancoLocal();
-  await banco.db.exec(lerSql('marcacao-original.sql'));
-  await banco.db.exec(lerSql('tratamento-da-marcacao.sql'));
-  await banco.db.exec(lerSql('tratamento-da-marcacao.sql'));
+  // O esquema já traz tudo (etapas 1 e 2a); o delta mais novo, rodado de novo, não pode quebrar
+  await banco.db.exec(lerSql('registrador-por-estabelecimento.sql'));
   await banco.db.exec(`
     alter table auth.users disable trigger all;
     insert into auth.users (id) values ('${ANA}'), ('${SONIA}'), ('${RITA}'), ('${ZE}');
@@ -60,9 +59,13 @@ test('o esquema.sql traz o MESMO texto do delta, e roda sem erro num banco vazio
   expect(banco.errosDoEsquema).toEqual([]);
   const delta = readFileSync('supabase/tratamento-da-marcacao.sql', 'utf8');
   const esquema = readFileSync('supabase/esquema.sql', 'utf8');
+  // Daqui continuam valendo a tabela, a leitura e a trava; a fila e a decisão
+  // são as do registrador por estabelecimento (com a chave CNPJ + NSR)
   const ini = delta.indexOf('create table if not exists public.tratamento_marcacao');
-  const fim = delta.indexOf("notify pgrst, 'reload schema';");
+  const fim = delta.lastIndexOf('-- ------------------------------------------------------------\n', delta.indexOf('-- AS QUE ESPERAM DECISÃO'));
   expect(esquema.includes(delta.slice(ini, fim).trimEnd())).toBe(true);
+  expect(esquema.split('create or replace function public.tratar_marcacao(').length - 1).toBe(1);
+  expect(esquema.split('create or replace function public.marcacoes_para_tratar()').length - 1).toBe(1);
 });
 
 test('QUEM VÊ A FILA: o RH e quem responde pela pessoa — a pessoa e quem não responde, não', async () => {

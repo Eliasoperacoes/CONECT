@@ -113,10 +113,10 @@ export const MarcacoesForaDaJornada: React.FC<{
       ) : (
         <ul className="rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] divide-y divide-[var(--c-borda)] overflow-hidden">
           {marcacoes.map((m) => (
-            <li key={m.nsr}>
+            <li key={`${m.cnpj}-${m.nsr}`}>
               <button
                 type="button"
-                id={`fora-da-jornada-${m.nsr}`}
+                id={`fora-da-jornada-${m.cnpj}-${m.nsr}`}
                 onClick={() => abrir(m)}
                 className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-[var(--c-superficie-2)] active:bg-[var(--c-superficie-2)] transition-colors"
               >

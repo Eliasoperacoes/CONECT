@@ -5149,7 +5149,7 @@ test('o comprovante da fora da jornada diz "Marcação fora da jornada", e não 
 /** Uma original fora da jornada, como o banco devolve: 21:05 UTC = 18:05 em Brasília. */
 const foraDaAna = (nsr: number, extra: any = {}) => ({
   nsr: String(nsr), colaborador_id: 'colab-ana', registrado_em: '2026-09-16T21:05:00+00:00', data: '2026-09-16',
-  loja: 'Pirassununga', metodo: 'qrcode', cnpj_empregador: '', codigo_verificacao: 'x', registro_id: null,
+  loja: 'Pirassununga', metodo: 'qrcode', cnpj_empregador: '11222333000144', codigo_verificacao: 'x', registro_id: null,
   tipo_pedido: null, fora_da_jornada: 'jornada_completa', ...extra,
 });
 
@@ -5159,7 +5159,7 @@ test('A FILA: cada marcação com a pessoa, a hora de Brasília e o motivo — s
   const fila = await servicoPonto.buscarMarcacoesParaTratar();
   // Quem não está na equipe visível não entra (a ficha não está no aparelho)
   expect(fila).toHaveLength(1);
-  expect(fila[0]).toMatchObject({ nsr: 800, data: '2026-09-16', hora: '18:05', motivo: 'jornada_completa', tipoPedido: null });
+  expect(fila[0]).toMatchObject({ cnpj: '11222333000144', nsr: 800, data: '2026-09-16', hora: '18:05', motivo: 'jornada_completa', tipoPedido: null });
   expect(fila[0].colaborador.id).toBe('colab-ana');
   // No modo local não há registro legal, nem fila
   modoNuvem = false;
@@ -5172,7 +5172,7 @@ test('INCLUIR: o banco decide, o aparelho traz a correção e reapura o dia', as
   const antes = sincronizacoes;
   const res = await servicoPonto.tratarMarcacao({ marcacao: m, decisao: 'incluida', tipo: 'saida', justificativa: '  ficou no inventário ' });
   expect(res.sucesso).toBe(true);
-  expect(decisoesPedidas).toEqual([{ nsr: 800, decisao: 'incluida', tipo: 'saida', justificativa: 'ficou no inventário' }]);
+  expect(decisoesPedidas).toEqual([{ cnpj: '11222333000144', nsr: 800, decisao: 'incluida', tipo: 'saida', justificativa: 'ficou no inventário' }]);
   expect(sincronizacoes).toBeGreaterThan(antes);
 });
 
@@ -5187,7 +5187,7 @@ test('DESCONSIDERAR vai sem tipo; sem justificativa, nem chega ao banco; a recus
 
   const antes = sincronizacoes;
   expect((await servicoPonto.tratarMarcacao({ marcacao: m, decisao: 'desconsiderada', tipo: 'saida', justificativa: 'duas vezes' })).sucesso).toBe(true);
-  expect(decisoesPedidas[0]).toEqual({ nsr: 800, decisao: 'desconsiderada', tipo: null, justificativa: 'duas vezes' });
+  expect(decisoesPedidas[0]).toEqual({ cnpj: '11222333000144', nsr: 800, decisao: 'desconsiderada', tipo: null, justificativa: 'duas vezes' });
   // Desconsiderar não muda a jornada: nada a trazer nem a reapurar
   expect(sincronizacoes).toBe(antes);
 

@@ -75,7 +75,11 @@ export interface BancoLocal {
   como: (uid: string | null) => Promise<void>;
 }
 
-export const montarBancoLocal = async (passadas = 4): Promise<BancoLocal> => {
+export const montarBancoLocal = async (
+  passadas = 4,
+  /** Outro texto de esquema — por exemplo, o de um commit anterior, para provar uma migração. */
+  esquema: string = lerSql('esquema.sql')
+): Promise<BancoLocal> => {
   const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(`
     create role authenticated; create role anon; create role service_role;
@@ -92,7 +96,7 @@ export const montarBancoLocal = async (passadas = 4): Promise<BancoLocal> => {
     create function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name, '/') $$;
   `);
 
-  const lista = comandosDoSql(lerSql('esquema.sql'));
+  const lista = comandosDoSql(esquema.replace(/notify pgrst, 'reload schema';/g, ''));
   let errosDoEsquema: string[] = [];
   for (let p = 0; p < passadas; p++) {
     errosDoEsquema = [];

@@ -287,6 +287,8 @@ export interface PontoIncompleto {
  * a original, que não coube nas quatro do dia, e a pessoa dela.
  */
 export interface MarcacaoParaTratar {
+  /** O NSR é por estabelecimento: a marcação é o par (CNPJ, NSR). */
+  cnpj: string;
   nsr: number;
   colaborador: Colaborador;
   data: string;
@@ -1650,6 +1652,7 @@ class ServicoPonto {
       if (!colaborador) return [];
       return [
         {
+          cnpj: o.cnpj_empregador,
           nsr: Number(o.nsr),
           colaborador,
           data: o.data,
@@ -1686,6 +1689,7 @@ class ServicoPonto {
     }
 
     const res = await nuvem.tratarMarcacao({
+      cnpj: dados.marcacao.cnpj,
       nsr: dados.marcacao.nsr,
       decisao: dados.decisao,
       tipo: dados.decisao === 'incluida' ? dados.tipo : null,

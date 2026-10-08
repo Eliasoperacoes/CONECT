@@ -121,6 +121,7 @@ esquema.
 | `compensacao-sabado.sql` | **Rode uma vez (01/10/2026).** O saldo de compensação do sábado (os 10 min diários do turno integral, que pagam a folga) passa de um mês ao outro: a apuração da madrugada fecha o mês anterior de cada pessoa nesta tabela, e o espelho mostra o que veio, o que juntou, a folga consumida e o que segue. Sem ele a madrugada segue sem gravar a compensação |
 | `lembretes-1-simular.sql`, `lembretes-2-ver-simulacao.sql`, `lembretes-3-agendar.sql` | **Em ordem, uma vez (02/10/2026)**, depois de publicar `lembrar-pendencias` e de publicar de novo `enviar-aviso` — ver "Os lembretes das 9h" abaixo. O endereço em maiúsculas é trocado na entrega |
 | `marcacao-original.sql` | **Uma vez (07/10/2026)** — etapa 1 da homologação: a marcação original (REP-P), que não se altera nem se apaga; NSR sem buracos; correção sem NSR; o RH grava só correção; e `registrar_marcacao`, a batida que nunca é recusada. Só acrescenta: o app de hoje segue funcionando. Conferência: as cinco colunas `true` e `contador_nsr` = `maior_nsr_dado`. Ver "A marcação original" abaixo |
+| `registrador-por-estabelecimento.sql` | **Uma vez (07/10/2026), depois de `tratamento-da-marcacao.sql`** — homologação, etapa 2a: NSR por CNPJ; o código da marcação passa a ser o hash do AFD (encadeado por CNPJ); CPF e coletor na marcação; eventos do registrador (empregado, tipo 5; estabelecimento, tipo 2), intocáveis; a tabela `estabelecimentos`. Migra sem perder nada (medido sobre o esquema de produção). Conferência: as quatro primeiras colunas `true`, e o que falta no cadastro (estabelecimentos, ativos sem CNPJ, ativos sem CPF). **Depois dele, `marcacao-original.sql`, `tratamento-da-marcacao.sql`, `cpf-e-comprovante.sql` e `ponto-pelo-servidor.sql` param sozinhos se rodados de novo** |
 | `tratamento-da-marcacao.sql` | **Uma vez (07/10/2026), depois de `marcacao-original.sql`** — a fila "Fora da jornada" em Pendências do ponto: incluir a marcação na jornada (vira correção com a hora da original) ou desconsiderar, com justificativa. A decisão não se altera nem se apaga. Conferência: as quatro colunas `true` e quantas esperam decisão |
 | `alerta-sem-bater-1-simular.sql`, `alerta-sem-bater-2-agendar.sql` | **Em ordem, uma vez (07/10/2026)**, depois de publicar de novo `lembrar-pendencias` e `enviar-aviso` — ver "Não bateu o ponto" abaixo. O endereço em maiúsculas é trocado na entrega |
 | `apuracao-1-preparar.sql`, `apuracao-2-ver-simulacao.sql`, `apuracao-3-agendar.sql` | **Em ordem, uma vez (01/10/2026)**, depois de publicar a função `apurar-ponto` — ver "A apuração da madrugada" abaixo. Os valores em maiúsculas são trocados na entrega |
@@ -422,6 +423,30 @@ Etapa 1 da homologação (Portaria MTP 671/2021). Duas tabelas, dois papéis:
   original e reapura o dia — domingo trabalhado vira hora extra para
   aprovar. A decisão fica em `tratamento_marcacao`, de onde o AEJ lê.
   Provas: `src/servicos/tratamentoDaMarcacao.test.ts`.
+
+### O registrador por estabelecimento (`registrador-por-estabelecimento.sql`, 07/10/2026)
+
+Homologação, etapa 2a. Fontes: leiaute do AFD vigente (gov.br,
+31/07/2026), Anexo IX e a pergunta 41 do Ministério.
+
+- **NSR por CNPJ**, começando em 1 no reset de início oficial
+  (`contador_nsr_estabelecimento`). Numera as marcações (tipo 7) e os
+  eventos do registrador (`eventos_rep`: tipo 2, estabelecimento; tipo 5,
+  empregado — inclusão quando o CPF é cadastrado, alteração de nome,
+  exclusão na desativação, troca de CNPJ).
+- **O código da marcação é o hash do AFD**: SHA-256 das posições 001 a 073
+  do registro tipo 7 + o hash da marcação anterior do mesmo CNPJ. Toda a
+  formatação mora nas funções `afd_*` — **ponto a confirmar com quem
+  homologar**: a junção exata dos campos e o "registro anterior" (do CNPJ)
+  não estão escritos de forma inequívoca no leiaute. Trocar a leitura é
+  trocar essas funções, antes do reset.
+- **Coletor**: "01" no aplicativo, "02" no navegador, "05" quando a batida
+  vem pela `bater_ponto` antiga.
+- **`estabelecimentos`**: CNPJ, razão social e local de cada empregador.
+  Só o administrador grava; cada mudança vira evento tipo 2. Preencher
+  com os dados das lojas antes do AFD.
+- Provas: `src/servicos/registradorPorEstabelecimento.test.ts` (o hash é
+  refeito fora do banco, pelo texto do leiaute).
 
 ### Comprovante de batida e foto no aviso (07/10/2026)
 
