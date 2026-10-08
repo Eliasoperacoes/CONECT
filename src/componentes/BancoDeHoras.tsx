@@ -49,7 +49,9 @@ import {
   INFORMACOES_LOJAS,
   ehMarcacaoCorrigida,
   ehMarcacaoPreenchida,
+  cuidaDePessoas,
 } from '../tipos';
+import { ArquivoFonteDeDados } from './ArquivoFonteDeDados';
 import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
 import { SeletorDeMes, periodoDoMesNaLista } from './SeletorDeMes';
 import { useTelaEmbutida } from './TelaEmbutida';
@@ -827,6 +829,11 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
               </button>
               </div>
             </div>
+
+            {/* O AFD do período escolhido acima (Portaria 671): só para quem cuida de pessoas */}
+            {cuidaDePessoas(colaboradorAtual) && usandoNuvem() && (
+              <ArquivoFonteDeDados inicio={dataInicio} fim={dataFim} />
+            )}
 
             {/* Indicadores: da rede no nível das lojas, da equipe ao entrar */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">

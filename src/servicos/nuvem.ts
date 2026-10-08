@@ -1111,6 +1111,28 @@ class PonteNuvem {
   }
 
   /**
+   * O AFD DE UM ESTABELECIMENTO NUM PERÍODO (gerar_afd,
+   * arquivo-fonte-de-dados.sql): as linhas já no leiaute, na ordem do
+   * arquivo. Só quem cuida de pessoas; a recusa do banco vem como está.
+   */
+  async gerarAfd(cnpj: string, inicio: string, fim: string): Promise<{ sucesso: boolean; linhas?: string[]; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Sem conexão com o banco.' };
+    const { data, error } = await supabase.rpc('gerar_afd', { p_cnpj: cnpj, p_inicio: inicio, p_fim: fim });
+    if (error) {
+      if (error.code === 'PGRST202' || error.code === '42883') {
+        return { sucesso: false, erro: 'A geração do AFD ainda não foi ligada no banco (arquivo-fonte-de-dados.sql).' };
+      }
+      if (error.code === 'P0001') return { sucesso: false, erro: error.message };
+      console.error('Falha ao gerar o AFD:', error.message);
+      return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
+    }
+    const linhas = ((data || []) as Array<{ ordem: number; linha: string }>)
+      .sort((a, b) => a.ordem - b.ordem)
+      .map((l) => l.linha);
+    return { sucesso: true, linhas };
+  }
+
+  /**
    * OS ESTABELECIMENTOS — os CNPJs em que as pessoas são registradas
    * (registrador-por-estabelecimento.sql). Vazia sem a tabela ou sem
    * cadastro: quem chama (estabelecimentos.ts) volta à regra de antes.
