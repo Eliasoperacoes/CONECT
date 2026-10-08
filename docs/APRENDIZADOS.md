@@ -595,3 +595,26 @@ a aplicada, não.
 prop da renderização em que ele foi armado — leia o estado de agora (aqui,
 o texto do próprio campo). E campo editável se testa digitando, com pausa,
 no navegador: o teste de texto puro (`textoAoVivo`) não enxerga o cursor.
+
+## A tela escondida pelo CSS também bateu o ponto
+
+**Sintoma (Yan, 07 e 08/10/2026):** cada batida chegava ao banco duas
+vezes, a 2 s uma da outra. A segunda voltava "repetida" e ia para a fila
+do RH; ele achava que não tinha batido, batia de novo uns 20 s depois — e
+a entrada das 08:23 ganhou uma saída para almoço às 08:23.
+
+**Causa:** o ponto do celular (`App.tsx`) e o do computador
+(`ConteudoWeb`) ficam montados juntos; `hidden md:flex` só tira um deles
+da vista. O `App` entregava o código do cartaz (`?ponto=`) e o pedido do
+atalho aos dois, e cada um abria o seu modal e mandava a batida.
+
+**Como achei:** pelo banco, não pela tela. As originais mostraram o par a
+2 s com o mesmo `tipo_pedido`; a auditoria, gravada pelo aparelho, tinha
+duas linhas no mesmo segundo e o coletor "02" nas duas — dois fluxos no
+mesmo navegador. No Chrome a 412 px e a 1280 px, o link do cartaz abria
+2 modais (1 visível); depois da correção, 1.
+
+**A regra:** componente escondido por CSS continua montado e continua
+agindo — efeito, câmera, chamada ao banco. Pedido que dispara uma ação
+(código do cartaz, atalho, aviso) vai a UMA tela, escolhida pela régua do
+layout (`ehTelaDeCelular`), e nunca por props repetidas nas duas árvores.

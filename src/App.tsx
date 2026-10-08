@@ -1636,6 +1636,19 @@ export default function App() {
    * marcar — Conversas quando o chat está em tela cheia.
    */
   const telaMostrada = telaQueAbre(telaWeb, acessoWeb.visiveis);
+
+  /**
+   * O PEDIDO DE BATER VAI A UMA TELA SÓ — a que está à vista.
+   *
+   * O ponto do celular e o do computador ficam montados juntos: o CSS só
+   * esconde o outro. Os dois recebiam o código do cartaz e o pedido do
+   * atalho, e cada um abria o seu modal e batia: o Yan, que lê o cartaz
+   * pela câmera do celular, gravou toda batida duas vezes, 2 s uma da
+   * outra (08/10/2026). A segunda voltava "repetida", ele achava que não
+   * tinha batido, batia de novo — e a entrada das 08:23 ganhou uma saída
+   * para almoço às 08:23. A régua é a do layout (`ehTelaDeCelular`).
+   */
+  const pontoNoCelular = ehTelaDeCelular();
   const assuntoMostrado = chatExpandido ? 'conversas' : assuntoDaTela(telaMostrada);
   const contadoresWeb: Partial<Record<AssuntoId, number>> = {
     conversas: totalNaoLidas,
@@ -1893,9 +1906,9 @@ export default function App() {
               <div className="block md:hidden h-full">
                 <AbaPonto
                   colaboradorAtual={colaboradorAtual}
-                  codigoDoEndereco={codigoDoCartaz}
+                  codigoDoEndereco={pontoNoCelular ? codigoDoCartaz : null}
                   aoConsumirCodigo={() => setCodigoDoCartaz(null)}
-                  pedidoDeBater={pedidoDeBater}
+                  pedidoDeBater={pontoNoCelular && pedidoDeBater}
                   aoAtenderPedido={() => setPedidoDeBater(false)}
                 />
               </div>
@@ -2070,9 +2083,9 @@ export default function App() {
               aoAbrirAdmin={() => setPainelAdminAberto(true)}
               aoTrocarColaborador={lidarTrocarColaborador}
               aoSair={lidarDeslogar}
-              codigoDoCartaz={codigoDoCartaz}
+              codigoDoCartaz={pontoNoCelular ? null : codigoDoCartaz}
               aoConsumirCodigo={() => setCodigoDoCartaz(null)}
-              pedidoDeBater={pedidoDeBater}
+              pedidoDeBater={!pontoNoCelular && pedidoDeBater}
               aoAtenderPedido={() => setPedidoDeBater(false)}
               publicacaoAAbrir={publicacaoAAbrir}
               aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}
