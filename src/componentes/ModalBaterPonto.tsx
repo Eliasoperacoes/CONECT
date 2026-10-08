@@ -29,6 +29,7 @@ import { abrirFluxo, soltarFluxo, assinarRetomada, CAPA_VAZIA_DO_VIDEO } from '.
 import { CardJustificarBatida } from './CardJustificarBatida';
 import { EscolherTurno } from './EscolherTurno';
 import { useVoltar } from '../servicos/voltar';
+import { RelogioDaMarcacao } from './RelogioDaMarcacao';
 
 interface PropsModalBaterPonto {
   aberto: boolean;
@@ -340,6 +341,9 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
               )}
             </div>
           </div>
+          {/* O relógio com segundos no momento da marcação (Anexo IX, item 3) */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {estado !== 'sucesso' && <RelogioDaMarcacao />}
           <button
             type="button"
             id="botao-fechar-bater-ponto"
@@ -349,6 +353,7 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
           >
             <X className="w-4 h-4" />
           </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
