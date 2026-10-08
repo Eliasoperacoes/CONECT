@@ -1133,6 +1133,23 @@ class PonteNuvem {
   }
 
   /**
+   * As marcações originais DA PRÓPRIA PESSOA desde um instante — a fonte
+   * dos comprovantes que ela baixa (art. 80, III). A RLS deixa o RH ler
+   * todas: o filtro pela pessoa é daqui. `null` se o banco não respondeu.
+   */
+  async listarMinhasOriginais(colaboradorId: string, desdeIso: string): Promise<LinhaMarcacaoOriginal[] | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('marcacoes_originais')
+      .select('*')
+      .eq('colaborador_id', colaboradorId)
+      .gte('registrado_em', desdeIso)
+      .order('registrado_em', { ascending: false });
+    if (error) return null;
+    return (data || []) as LinhaMarcacaoOriginal[];
+  }
+
+  /**
    * O número do REP-P no INPI, para o comprovante (art. 79, VII) — só o
    * número, a qualquer sessão (comprovante-inpi.sql). `null` enquanto o
    * registro não sai, ou sem a função no banco.

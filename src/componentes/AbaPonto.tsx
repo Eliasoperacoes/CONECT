@@ -22,6 +22,7 @@ import {
   UtensilsCrossed,
   LogIn,
   LogOut,
+  Receipt,
 } from 'lucide-react';
 import {
   Colaborador,
@@ -44,6 +45,7 @@ import { ModalBaterPonto } from './ModalBaterPonto';
 import { AbaJustificar } from './AbaJustificar';
 import { useTelaEmbutida } from './TelaEmbutida';
 import { ComprovanteDaBatida } from './ComprovanteDaBatida';
+import { MeusComprovantes } from './MeusComprovantes';
 import { temComprovante } from '../servicos/comprovanteDeBatida';
 import { ouvirComprovantePedido, tomarComprovantePedido } from '../servicos/comprovantePedido';
 import { nuvem } from '../servicos/nuvem';
@@ -124,6 +126,7 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
   const embutida = useTelaEmbutida();
   /** A batida cujo comprovante está aberto (Portaria 671/2021). */
   const [comprovanteAberto, setComprovanteAberto] = useState<RegistroPonto | null>(null);
+  const [comprovantesAbertos, setComprovantesAbertos] = useState(false);
 
   /*
     O toque no aviso "Comprovante de batida" pede aquela batida. Batida de
@@ -471,6 +474,19 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
             marcação fica registrada e vai para o RH tratar.
           </p>
         )}
+
+        {/* Os comprovantes dos últimos dias (art. 80, III): só com o banco, que é onde eles existem */}
+        {usandoNuvem() && (
+          <button
+            type="button"
+            id="botao-meus-comprovantes"
+            onClick={() => setComprovantesAbertos(true)}
+            className="mt-3 w-full py-3 rounded-2xl border border-[var(--c-borda)] bg-[var(--c-superficie)] text-sm font-semibold text-[var(--c-texto)] flex items-center justify-center gap-2 hover:bg-[var(--c-superficie-2)] active:scale-[0.99] transition-all"
+          >
+            <Receipt className="w-4 h-4 text-[var(--c-texto-3)]" />
+            Meus comprovantes
+          </button>
+        )}
       </div>
 
       {/* Saldo do banco de horas */}
@@ -694,6 +710,16 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
           setModalAberto(false);
           setComprovanteAberto(registro);
         }}
+      />
+
+      <MeusComprovantes
+        aberto={comprovantesAbertos}
+        colaboradorId={colaboradorAtual.id}
+        aoEscolher={(registro) => {
+          setComprovantesAbertos(false);
+          setComprovanteAberto(registro);
+        }}
+        aoFechar={() => setComprovantesAbertos(false)}
       />
 
       <ComprovanteDaBatida

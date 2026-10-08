@@ -148,3 +148,30 @@ test('SÓ QUEM BATE PONTO PRECISA DE CPF — a conta ADM, a diretoria e a gerên
   expect([bate(5, 'TI'), bate(4, 'Diretoria'), bate(3, 'Gerência')]).toEqual([false, false, false]);
   expect([bate(2, 'RH'), bate(1, 'Balcão')]).toEqual([true, true]);
 });
+
+test('ART. 80, III: os comprovantes dos últimos dias saem das ORIGINAIS, da mais nova à mais antiga', async () => {
+  const { comprovantesRecentes, DIAS_DOS_COMPROVANTES } = await import('./comprovanteDeBatida');
+  const original = (nsr: number, quando: string, extra: Record<string, unknown> = {}) => ({
+    nsr, colaborador_id: 'ana', registrado_em: quando, data: quando.slice(0, 10), loja: 'Pirassununga',
+    metodo: 'qrcode', cnpj_empregador: '05041606000199', codigo_verificacao: 'b'.repeat(64),
+    registro_id: `r${nsr}`, tipo_pedido: 'entrada', fora_da_jornada: null, ...extra,
+  });
+  const agora = new Date('2026-10-08T15:00:00.000Z');
+  const lista = comprovantesRecentes(
+    [
+      original(1, '2026-09-30T10:00:00.000Z'), // 8 dias: fora da janela
+      original(2, '2026-10-06T10:31:00.000Z'), // anteontem: dentro (o mínimo da Portaria são 48 h)
+      original(3, '2026-10-07T20:58:15.000Z', { tipo_pedido: 'saida', registro_id: 'corrigida-pelo-rh' }),
+      original(4, '2026-10-07T20:58:40.000Z', { tipo_pedido: null, registro_id: null, fora_da_jornada: 'jornada_completa' }),
+    ],
+    agora
+  );
+  expect(DIAS_DOS_COMPROVANTES).toBeGreaterThanOrEqual(2);
+  expect(lista.map((r) => r.nsr)).toEqual([4, 3, 2]);
+  // Toda original da pessoa tem comprovante — inclusive a corrigida depois
+  expect(lista.every(temComprovante)).toBe(true);
+  // A que entrou na jornada não se diz "fora da jornada"; a que ficou fora, sim
+  const [fora, saida] = lista;
+  expect(montarComprovante(saida, { nome: 'Ana' }).marcacao).toBe('Saída');
+  expect(montarComprovante(fora, { nome: 'Ana' }).marcacao).toBe('Marcação fora da jornada');
+});

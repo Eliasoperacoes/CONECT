@@ -189,7 +189,9 @@ export const comprovanteDaOriginal = (o: LinhaMarcacaoOriginal): RegistroPonto =
     registradoEm: o.registrado_em,
     cnpjEmpregador: o.cnpj_empregador || undefined,
     codigoVerificacao: o.codigo_verificacao,
-    foraDaJornada: (o.fora_da_jornada || 'jornada_completa') as MotivoForaDaJornada,
+    // A original que entrou na jornada não é "fora da jornada": vazio fica vazio,
+    // ou o comprovante da entrada de ontem diria "Marcação fora da jornada"
+    foraDaJornada: o.fora_da_jornada ? (o.fora_da_jornada as MotivoForaDaJornada) : undefined,
   };
 };
 

@@ -13,6 +13,7 @@
 import type { RegistroPonto } from '../tipos';
 import { ROTULO_MARCACAO } from '../tipos';
 import { formatarCpf } from './cpf';
+import { comprovanteDaOriginal, type LinhaMarcacaoOriginal } from './linhasDoBanco';
 
 /**
  * O nome do empregador quando a razão social do CNPJ não chegou (modo
@@ -173,6 +174,33 @@ export const gerarPdfDoComprovante = async (d: DadosDoComprovante): Promise<Uint
   });
 
   return pdf.save();
+};
+
+/**
+ * QUANTOS DIAS DE COMPROVANTE O TRABALHADOR BAIXA A QUALQUER HORA.
+ *
+ * O art. 80, III, pede "no mínimo" as últimas quarenta e oito horas. Sete
+ * dias cobrem o fim de semana inteiro de quem só olha na segunda.
+ */
+export const DIAS_DOS_COMPROVANTES = 7;
+
+/**
+ * OS COMPROVANTES QUE A PESSOA BAIXA — das ORIGINAIS, e não das batidas
+ * do espelho. A batida corrigida pelo RH deixa de ser "batida" no
+ * espelho, mas a marcação que a pessoa fez continua existindo, e o
+ * comprovante é dela; a fora da jornada nunca esteve no espelho. Da mais
+ * nova para a mais antiga, só a janela de `DIAS_DOS_COMPROVANTES`.
+ */
+export const comprovantesRecentes = (
+  originais: LinhaMarcacaoOriginal[],
+  agora: Date,
+  dias = DIAS_DOS_COMPROVANTES
+): RegistroPonto[] => {
+  const desde = agora.getTime() - dias * 24 * 60 * 60 * 1000;
+  return originais
+    .filter((o) => new Date(o.registrado_em).getTime() >= desde)
+    .sort((a, b) => b.registrado_em.localeCompare(a.registrado_em))
+    .map(comprovanteDaOriginal);
 };
 
 /**
