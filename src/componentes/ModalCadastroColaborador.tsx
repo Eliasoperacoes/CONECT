@@ -34,6 +34,7 @@ import {
 import { formatarMinutos } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 import { useVoltar } from '../servicos/voltar';
+import { carregarEstabelecimentos, cnpjDaFichaValido, soDigitos, Estabelecimento } from '../servicos/estabelecimentos';
 
 interface PropsModalCadastroColaborador {
   colaborador: Colaborador | null;
@@ -70,6 +71,20 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
   });
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  /*
+    OS CNPJs EM QUE SE REGISTRA (estabelecimentos.ts): com eles cadastrados,
+    o CNPJ da ficha é uma escolha entre eles, e obrigatória — o registrador
+    de ponto numera tudo por CNPJ. Sem nenhum, o campo é o texto de antes.
+  */
+  const [estabelecimentos, setEstabelecimentos] = useState<Estabelecimento[]>([]);
+  useEffect(() => {
+    if (!colaborador) return;
+    let vivo = true;
+    carregarEstabelecimentos().then((lista) => vivo && setEstabelecimentos(lista));
+    return () => {
+      vivo = false;
+    };
+  }, [colaborador?.id]);
 
   // Recarrega o formulário sempre que outro colaborador é aberto
   useEffect(() => {
@@ -130,6 +145,10 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
 
     if (!form.nome.trim()) {
       setErro('O nome é obrigatório.');
+      return;
+    }
+    if (!cnpjDaFichaValido(form.cnpj, estabelecimentos)) {
+      setErro('Escolha o CNPJ em que a pessoa está registrada.');
       return;
     }
 
@@ -389,6 +408,30 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
             <label htmlFor="cad-cnpj" className={rotuloCampo}>
               CNPJ da empresa
             </label>
+            {estabelecimentos.length > 0 ? (
+              <select
+                id="cad-cnpj"
+                required
+                value={soDigitos(form.cnpj)}
+                onChange={(e) => setForm({ ...form, cnpj: e.target.value ? formatarCnpj(e.target.value) : '' })}
+                className={campo}
+              >
+                <option value="" disabled>
+                  Escolha o CNPJ…
+                </option>
+                {estabelecimentos.map((est) => (
+                  <option key={est.cnpj} value={est.cnpj}>
+                    {est.razaoSocial} · {formatarCnpj(est.cnpj)}
+                  </option>
+                ))}
+                {/* O CNPJ que a ficha já tinha e não é de nenhum estabelecimento: aparece, e não some calado */}
+                {soDigitos(form.cnpj) && !estabelecimentos.some((est) => est.cnpj === soDigitos(form.cnpj)) && (
+                  <option value={soDigitos(form.cnpj)} disabled>
+                    {formatarCnpj(form.cnpj)} (não cadastrado — escolha outro)
+                  </option>
+                )}
+              </select>
+            ) : (
             <input
               id="cad-cnpj"
               type="text"
@@ -407,7 +450,8 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
               }}
               className={campo}
             />
-            {form.cnpj.trim() && !cnpjEhValido(form.cnpj) && (
+            )}
+            {estabelecimentos.length === 0 && form.cnpj.trim() && !cnpjEhValido(form.cnpj) && (
               <span className="text-[11px] text-amber-600 mt-1 block">
                 Os dígitos não conferem. Confira o número antes de salvar.
               </span>

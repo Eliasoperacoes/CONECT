@@ -3082,3 +3082,35 @@ $$;
 
 revoke all on function public.tratar_marcacao(bigint, text, text, text, text) from public, anon;
 grant execute on function public.tratar_marcacao(bigint, text, text, text, text) to authenticated;
+
+-- ============================================================
+-- A IDENTIFICAÇÃO DO REP-P (identificacao-do-rep.sql, 07/10/2026) — o
+-- mesmo texto do delta; há teste conferindo. O preenchimento (com o
+-- documento do desenvolvedor) fica fora do repositório.
+-- ============================================================
+
+create table if not exists public.identificacao_rep (
+  id                       boolean primary key default true check (id),
+  -- Só os dígitos do registro no INPI (pergunta 49 do Ministério); vazio até sair
+  inpi                     text check (inpi is null or inpi !~ '[^0-9]'),
+  -- "1": CNPJ; "2": CPF
+  desenvolvedor_tipo       text not null check (desenvolvedor_tipo in ('1', '2')),
+  desenvolvedor_documento  text not null check (desenvolvedor_documento !~ '[^0-9]'
+                             and length(desenvolvedor_documento) in (11, 14)),
+  desenvolvedor_nome       text not null check (length(trim(desenvolvedor_nome)) > 0),
+  desenvolvedor_email      text,
+  programa_nome            text not null default 'CONECTA',
+  programa_versao          text not null default '1.0',
+  atualizado_em            timestamptz not null default now(),
+  check ((desenvolvedor_tipo = '2') = (length(desenvolvedor_documento) = 11))
+);
+
+alter table public.identificacao_rep enable row level security;
+
+drop policy if exists identificacao_rep_leitura on public.identificacao_rep;
+create policy identificacao_rep_leitura on public.identificacao_rep
+  for select to authenticated using (public.cuido_de_pessoas());
+
+drop policy if exists identificacao_rep_escrita on public.identificacao_rep;
+create policy identificacao_rep_escrita on public.identificacao_rep
+  for all to authenticated using (public.sou_admin()) with check (public.sou_admin());

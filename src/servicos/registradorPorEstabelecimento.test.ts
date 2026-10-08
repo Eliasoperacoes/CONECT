@@ -209,3 +209,29 @@ test('A DECISÃO PELO PAR (CNPJ, NSR) — e o aplicativo antigo, só com o NSR, 
     decisao: 'desconsiderada',
   });
 });
+
+test('A IDENTIFICAÇÃO DO REP: o mesmo texto no esquema; só o RH lê, só o administrador grava, e o documento é conferido', async () => {
+  const { readFileSync } = await import('node:fs');
+  const delta = readFileSync('supabase/identificacao-do-rep.sql', 'utf8');
+  const esquema = readFileSync('supabase/esquema.sql', 'utf8');
+  expect(esquema.includes(delta.slice(delta.indexOf('create table if not exists public.identificacao_rep'), delta.indexOf("notify pgrst, 'reload schema';")).trimEnd())).toBe(true);
+
+  // Documento inválido (CPF com tamanho de CNPJ, letras) é recusado
+  expect(await erroDe(`insert into public.identificacao_rep (desenvolvedor_tipo, desenvolvedor_documento, desenvolvedor_nome) values ('2', '12345678000199', 'X')`)).not.toBeNull();
+  expect(await erroDe(`insert into public.identificacao_rep (desenvolvedor_tipo, desenvolvedor_documento, desenvolvedor_nome, inpi) values ('2', '12345678909', 'X', 'BR512022')`)).not.toBeNull();
+
+  await banco.como(TIAGO);
+  const doAdmin = await erroDe(`insert into public.identificacao_rep (desenvolvedor_tipo, desenvolvedor_documento, desenvolvedor_nome) values ('2', '12345678909', 'Dev Teste')`);
+  await banco.como(ANA);
+  const daAna = (await varios(`select 1 from public.identificacao_rep`)).length;
+  await banco.como(RITA);
+  const daRita = (await varios(`select desenvolvedor_nome from public.identificacao_rep`)).map((l) => l.desenvolvedor_nome);
+  const ritaGrava = await erroDe(`update public.identificacao_rep set inpi = '512022' where id`);
+  await banco.como(null);
+  expect(doAdmin).toBeNull();
+  expect(daAna).toBe(0);
+  expect(daRita).toEqual(['Dev Teste']);
+  // A RLS de escrita é do administrador: a RH não muda (0 linhas)
+  expect(ritaGrava).toBeNull();
+  expect((await um(`select inpi from public.identificacao_rep`)).inpi).toBeNull();
+});

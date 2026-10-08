@@ -1111,6 +1111,18 @@ class PonteNuvem {
   }
 
   /**
+   * OS ESTABELECIMENTOS — os CNPJs em que as pessoas são registradas
+   * (registrador-por-estabelecimento.sql). Vazia sem a tabela ou sem
+   * cadastro: quem chama (estabelecimentos.ts) volta à regra de antes.
+   */
+  async listarEstabelecimentos(): Promise<Array<{ cnpj: string; razao_social: string; local: string }>> {
+    if (!supabase) return [];
+    const { data, error } = await supabase.from('estabelecimentos').select('cnpj, razao_social, local').order('razao_social');
+    if (error || !data) return [];
+    return data as Array<{ cnpj: string; razao_social: string; local: string }>;
+  }
+
+  /**
    * AS MARCAÇÕES FORA DA JORNADA QUE ESPERAM DECISÃO, das pessoas que quem
    * chama pode decidir (marcacoes_para_tratar, tratamento-da-marcacao.sql).
    * `null`: o SQL ainda não rodou, ou o banco não respondeu.

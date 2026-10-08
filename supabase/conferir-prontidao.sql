@@ -187,6 +187,7 @@ operacoes (tabela, comando) as (values
   ('compensacao_sabado', 'SELECT'),
   ('configuracoes', 'SELECT'),
   ('cpf_colaborador', 'SELECT'),
+  ('estabelecimentos', 'SELECT'),
   ('configuracoes', 'UPDATE'),
   ('conversas', 'DELETE'),
   ('conversas', 'INSERT'),
