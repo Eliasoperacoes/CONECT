@@ -43,7 +43,18 @@ test('o esquema.sql traz o MESMO texto dos deltas (uma regra, um lugar)', () => 
   // A regra de quem grava foi atualizada no lugar dela no esquema: confere-se o conteúdo
   expect(esquema).toContain("public.cuido_de_pessoas()\n      and metodo in ('ajuste_rh', 'ajuste_lider', 'preenchimento_turno')");
   // O resto é o do registrador por estabelecimento (etapa 2a)
-  const etapa2 = readFileSync('supabase/registrador-por-estabelecimento.sql', 'utf8');
+  // — menos a batida, que a janela de 2 minutos substituiu
+  // (batida-repetida-em-2-minutos.sql): no esquema vale a função do delta novo
+  const funcaoDe = (texto: string) => {
+    const i = texto.indexOf('create or replace function public.registrar_marcacao(');
+    const fim = 'grant execute on function public.registrar_marcacao(text, text, text, text) to authenticated;';
+    return texto.slice(i, texto.indexOf(fim, i) + fim.length);
+  };
+  const janela = funcaoDe(readFileSync('supabase/batida-repetida-em-2-minutos.sql', 'utf8'));
+  expect(janela).toContain("interval '2 minutes'");
+  const etapa2Lida = readFileSync('supabase/registrador-por-estabelecimento.sql', 'utf8');
+  // Substituição por função: em texto, o "$$" do plpgsql viraria "$"
+  const etapa2 = etapa2Lida.replace(funcaoDe(etapa2Lida), () => janela);
   const ini = etapa2.lastIndexOf(SEP, etapa2.indexOf('-- 1. O FORMATO DO AFD'));
   expect(esquema.includes(etapa2.slice(ini, etapa2.indexOf("notify pgrst, 'reload schema';")).trimEnd())).toBe(true);
   // E uma definição só de cada peça no esquema

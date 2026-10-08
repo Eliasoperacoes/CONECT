@@ -2940,6 +2940,19 @@ begin
       select 1 from public.registros_ponto r
        where r.colaborador_id = eu.id and r.data = hoje and r.tipo = v_tipo
     ) then 'repetida'
+    -- MENOS DE 2 MINUTOS DEPOIS DA ANTERIOR NÃO AVANÇA A JORNADA
+    -- (batida-repetida-em-2-minutos.sql, 08/10/2026). O Yan bateu a
+    -- entrada às 08:23:35, achou que não tinha batido e bateu de novo às
+    -- 08:23:54 — e a jornada ganhou uma saída para almoço às 08:23.
+    -- Ninguém sai para o almoço 19 s depois de entrar: a marcação fica
+    -- registrada, com NSR e comprovante, e o RH decide o que ela é.
+    when exists (
+      -- "anterior", e não "o": a função já tem a variável "o" (a original nova)
+      select 1 from public.marcacoes_originais anterior
+       where anterior.colaborador_id = eu.id
+         and anterior.data = hoje
+         and anterior.registrado_em > agora - interval '2 minutes'
+    ) then 'repetida'
     when exists (
       select 1 from public.registros_ponto r
        where r.colaborador_id = eu.id and r.data = hoje
