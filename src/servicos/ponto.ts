@@ -1115,6 +1115,9 @@ class ServicoPonto {
           'sistema',
           `${atual.nome} registrou uma marcação fora da jornada (${nova.foraDaJornada}) às ${nova.comprovante.horaFormatada}, NSR ${nova.comprovante.nsr}, na loja ${nova.comprovante.loja}.`
         );
+        // O comprovante chega ao celular também desta: a Portaria (art. 80,
+        // II) pede acesso depois de CADA marcação, não só das que entram
+        pedirAvisoDoComprovante(nova.comprovante.id, textoDoAvisoDoComprovante(montarComprovante(nova.comprovante, atual)));
         return { sucesso: true, comprovante: nova.comprovante, foraDaJornada: nova.foraDaJornada };
       }
       if (nova.duplicado) return jaRegistrada();

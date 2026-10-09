@@ -46,3 +46,24 @@ test('os conversores só importam tipos: vão inteiros para o servidor', () => {
   const fonte = readFileSync(join(import.meta.dir, 'linhasDoBanco.ts'), 'utf8');
   expect([...fonte.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1])).toEqual(['../tipos']);
 });
+
+test('O ID DA ORIGINAL leva o CNPJ: o NSR se repete entre os estabelecimentos', async () => {
+  const { idDaOriginal, lerIdDaOriginal, comprovanteDaOriginal } = await import('./linhasDoBanco');
+  expect(idDaOriginal('05.041.606/0001-99', 42)).toBe('original-05041606000199-42');
+  expect(lerIdDaOriginal('original-05041606000199-42')).toEqual({ cnpj: '05041606000199', nsr: 42 });
+  expect(lerIdDaOriginal('ponto-abc')).toBeNull();
+  // O mesmo NSR nos dois CNPJs: dois ids
+  const de = (cnpj: string) =>
+    comprovanteDaOriginal({ nsr: 7, colaborador_id: 'ana', registrado_em: '2026-10-08T11:00:00Z', data: '2026-10-08', loja: 'Pirassununga',
+      metodo: 'qrcode', cnpj_empregador: cnpj, codigo_verificacao: 'x', registro_id: null, tipo_pedido: null, fora_da_jornada: 'repetida' }).id;
+  expect(de('05041606000199')).not.toBe(de('28251342000101'));
+});
+
+test('o SERVIDOR lê o id da original com a MESMA regra do aparelho (enviar-aviso, caminho 7)', async () => {
+  const servidor = await Bun.file(new URL('../../supabase/functions/enviar-aviso/index.ts', import.meta.url)).text();
+  const aparelho = await Bun.file(new URL('./linhasDoBanco.ts', import.meta.url)).text();
+  const REGRA = String.raw`/^original-(\d*)-(\d+)$/`;
+  expect(aparelho).toContain(REGRA);
+  expect(servidor).toContain(`const daOriginal = ${REGRA}.exec(id);`);
+  expect(servidor).toContain(".from('marcacoes_originais')");
+});

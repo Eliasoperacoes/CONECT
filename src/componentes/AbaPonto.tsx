@@ -46,6 +46,7 @@ import { AbaJustificar } from './AbaJustificar';
 import { useTelaEmbutida } from './TelaEmbutida';
 import { ComprovanteDaBatida } from './ComprovanteDaBatida';
 import { MeusComprovantes } from './MeusComprovantes';
+import { comprovanteDaOriginal, lerIdDaOriginal } from '../servicos/linhasDoBanco';
 import { temComprovante } from '../servicos/comprovanteDeBatida';
 import { ouvirComprovantePedido, tomarComprovantePedido } from '../servicos/comprovantePedido';
 import { nuvem } from '../servicos/nuvem';
@@ -137,6 +138,13 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
     const atender = async () => {
       const id = tomarComprovantePedido();
       if (!id) return;
+      // A marcação fora da jornada não está no cache das batidas: vem da original
+      const daOriginal = lerIdDaOriginal(id);
+      if (daOriginal) {
+        const o = usandoNuvem() ? await nuvem.obterOriginal(daOriginal.cnpj, daOriginal.nsr) : null;
+        if (vivo && o) setComprovanteAberto(comprovanteDaOriginal(o));
+        return;
+      }
       let registro = servicoPonto.obterRegistroPorId(id);
       if (!registro && usandoNuvem()) {
         await nuvem.sincronizarPonto();

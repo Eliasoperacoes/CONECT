@@ -272,6 +272,16 @@ mock.module('./nuvem', () => ({
   },
 }));
 
+// Os avisos de comprovante que o ponto pede (o envio de verdade precisa do banco)
+let avisosDeComprovante: Array<{ id: string; texto: string }> = [];
+const envioReal = await import('./envioDeAviso');
+mock.module('./envioDeAviso', () => ({
+  ...envioReal,
+  pedirAvisoDoComprovante: (id: string, texto: string) => {
+    avisosDeComprovante.push({ id, texto });
+  },
+}));
+
 const { servicoPonto, dataDeHoje, marcacoesEsperadas, motivoSemMarcacao } = await import(
   './ponto'
 );
@@ -293,6 +303,7 @@ beforeEach(() => {
   funcaoRegistrarMarcacao = false;
   nsrDoServidor = 0;
   originaisForaDaJornada = [];
+  avisosDeComprovante = [];
   linhasParaTratar = null;
   decisoesPedidas = [];
   recusaDoTratamento = null;
@@ -5100,6 +5111,11 @@ test('A QUINTA BATIDA não é recusada: vira original, com comprovante, e vai ao
   expect(extra.comprovante).toMatchObject({ nsr: 5, horaFormatada: '18:05', foraDaJornada: 'jornada_completa' });
   // O aparelho pediu sem tipo: o banco é quem registra a original
   expect(originaisForaDaJornada).toEqual([{ nsr: 5, tipo: null }]);
+  // E o comprovante dela chega ao celular, como o das quatro (art. 80, II)
+  expect(avisosDeComprovante).toHaveLength(5);
+  // (a hora do texto sai no fuso de Brasília; o relógio falso daqui não tem fuso)
+  expect(avisosDeComprovante[4].id).toBe(extra.comprovante!.id);
+  expect(avisosDeComprovante[4].texto).toMatch(/^Marcação fora da jornada · 16\/09\/2026 às \d\d:05 · NSR 000000005\. /);
   // A jornada não muda sozinha: continuam as quatro, no banco e no aparelho
   expect(bancoRegistros).toHaveLength(4);
   expect(servicoPonto.obterMarcacoesDoDia('colab-elias', '2026-09-16')).toHaveLength(4);

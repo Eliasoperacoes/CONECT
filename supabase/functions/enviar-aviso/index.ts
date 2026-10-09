@@ -884,11 +884,25 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: `Bearer ${jwt}` } },
       auth: { persistSession: false },
     });
-    const { data: batida } = await comoQuemChama
-      .from('registros_ponto')
-      .select('id, colaborador_id, nsr')
-      .eq('id', id)
-      .maybeSingle();
+    /*
+      A MARCAÇÃO FORA DA JORNADA não tem linha no tratamento: o id dela é
+      "original-<CNPJ>-<NSR>" (idDaOriginal, linhasDoBanco.ts), e ela é
+      lida da original — com a sessão de quem chama, e tem de ser dela.
+      O NSR sozinho não basta: é numerado por CNPJ.
+    */
+    const daOriginal = /^original-(\d*)-(\d+)$/.exec(id);
+    const { data: batida } = daOriginal
+      ? await comoQuemChama
+          .from('marcacoes_originais')
+          .select('colaborador_id, nsr')
+          .eq('cnpj_empregador', daOriginal[1])
+          .eq('nsr', Number(daOriginal[2]))
+          .maybeSingle()
+      : await comoQuemChama
+          .from('registros_ponto')
+          .select('id, colaborador_id, nsr')
+          .eq('id', id)
+          .maybeSingle();
     if (!batida || batida.colaborador_id !== eu.id) {
       return responder({ erro: 'Batida fora do seu alcance.' }, 404);
     }

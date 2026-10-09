@@ -168,10 +168,25 @@ export interface LinhaMarcacaoOriginal {
  * batida — é o que o comprovante (`montarComprovante`) e a tela já sabem
  * ler. Não entra no cache do ponto: não é linha do tratamento.
  */
+/**
+ * O ID DO COMPROVANTE DE UMA ORIGINAL: "original-<CNPJ>-<NSR>". O NSR é
+ * numerado por CNPJ (registrador-por-estabelecimento.sql), e o mesmo
+ * número existe nos dois estabelecimentos — só o par diz qual marcação é.
+ * É por este id que o aviso do comprovante volta a ela (enviar-aviso,
+ * caminho 7, lê o mesmo formato).
+ */
+export const idDaOriginal = (cnpj: string, nsr: number | string): string =>
+  `original-${(cnpj || '').replace(/\D/g, '')}-${nsr}`;
+
+export const lerIdDaOriginal = (id: string): { cnpj: string; nsr: number } | null => {
+  const m = /^original-(\d*)-(\d+)$/.exec(id);
+  return m ? { cnpj: m[1], nsr: Number(m[2]) } : null;
+};
+
 export const comprovanteDaOriginal = (o: LinhaMarcacaoOriginal): RegistroPonto => {
   const quando = new Date(o.registrado_em);
   return {
-    id: `original-${o.nsr}`,
+    id: idDaOriginal(o.cnpj_empregador, o.nsr),
     colaboradorId: o.colaborador_id,
     data: o.data,
     // Sem lugar entre as quatro: o rótulo do comprovante vem de `foraDaJornada`

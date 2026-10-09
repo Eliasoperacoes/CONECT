@@ -1150,6 +1150,23 @@ class PonteNuvem {
   }
 
   /**
+   * Uma original pelo par (CNPJ, NSR) — o toque no aviso do comprovante de
+   * uma marcação fora da jornada. A RLS só a entrega a quem pode lê-la;
+   * `null` se não veio.
+   */
+  async obterOriginal(cnpj: string, nsr: number): Promise<LinhaMarcacaoOriginal | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase
+      .from('marcacoes_originais')
+      .select('*')
+      .eq('cnpj_empregador', cnpj)
+      .eq('nsr', nsr)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as LinhaMarcacaoOriginal;
+  }
+
+  /**
    * O número do REP-P no INPI, para o comprovante (art. 79, VII) — só o
    * número, a qualquer sessão (comprovante-inpi.sql). `null` enquanto o
    * registro não sai, ou sem a função no banco.
