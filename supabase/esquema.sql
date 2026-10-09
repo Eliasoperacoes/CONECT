@@ -3314,3 +3314,199 @@ $$;
 
 revoke all on function public.inpi_do_rep() from public, anon;
 grant execute on function public.inpi_do_rep() to authenticated;
+
+-- ============================================================
+-- AUSÊNCIAS E FERIADOS — o que só morava nos deltas (09/10/2026)
+--
+-- As duas tabelas existiam em produção, mas não aqui: o esquema rodado num
+-- banco vazio criava um sistema sem atestado, férias, folga de sábado e
+-- calendário. Cada peça abaixo está na versão que VALE hoje, na ordem em
+-- que os deltas rodaram:
+--
+--   ponto-tolerancia-justificativas.sql  a tabela, o índice, a remoção,
+--                                        o tempo real e a tolerância
+--   folga-sabado.sql, escala-pela-lideranca.sql
+--                                        a lista de tipos (com férias)
+--   atestado-e-do-rh.sql                 leitura, abertura e decisão:
+--                                        atestado é do RH, folga e
+--                                        férias são da cadeia
+--   calendario-feriados.sql              o calendário inteiro
+-- ============================================================
+
+-- A tolerância como parâmetro da rede (ponto-tolerancia-justificativas.sql)
+alter table public.configuracoes
+  add column if not exists tolerancia_ponto_minutos        integer not null default 10,
+  add column if not exists horario_entrada_padrao          text    not null default '08:00',
+  add column if not exists intervalo_almoco_padrao_minutos integer not null default 60;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'configuracoes_tolerancia_check'
+  ) then
+    alter table public.configuracoes
+      add constraint configuracoes_tolerancia_check
+      check (tolerancia_ponto_minutos between 0 and 120);
+  end if;
+end $$;
+
+-- Um atestado de 3 dias é UMA solicitação com início e fim
+create table if not exists public.justificativas_ausencia (
+  id              text primary key,
+  colaborador_id  text not null references public.colaboradores(id) on delete cascade,
+  data_inicio     date not null,
+  data_fim        date not null,
+  tipo            text not null,
+  observacao      text,
+  anexo_caminho   text,
+  anexo_nome      text,
+  estado          text not null default 'pendente' check (
+                    estado in ('pendente', 'aprovada', 'recusada')
+                  ),
+  aprovador_id    text references public.colaboradores(id) on delete set null,
+  aprovador_nome  text,
+  decidido_em     timestamptz,
+  motivo_recusa   text,
+  criado_em       timestamptz not null default now(),
+  -- Fim antes do início seria um período negativo, e o abono de dias
+  -- percorreria o intervalo ao contrário
+  constraint justificativas_periodo_valido check (data_fim >= data_inicio)
+);
+
+-- A lista de tipos tem nome próprio: é a que folga-sabado.sql e
+-- escala-pela-lideranca.sql trocaram. A mesma lista do código (tipos.ts).
+alter table public.justificativas_ausencia
+  drop constraint if exists justificativas_ausencia_tipo_check;
+alter table public.justificativas_ausencia
+  add constraint justificativas_ausencia_tipo_check
+  check (
+    tipo in (
+      'atestado',
+      'falta_justificada',
+      'comparecimento',
+      'folga_sabado',
+      'ferias',
+      'outro'
+    )
+  );
+
+create index if not exists justificativas_por_colaborador
+  on public.justificativas_ausencia (colaborador_id, data_inicio desc);
+
+alter table public.justificativas_ausencia enable row level security;
+
+-- LEITURA: a própria pessoa; quem cuida de pessoas; a cadeia, só folga e
+-- férias — atestado é dado de saúde e fica com o RH (atestado-e-do-rh.sql)
+drop policy if exists justificativas_leitura on public.justificativas_ausencia;
+create policy justificativas_leitura on public.justificativas_ausencia
+  for select to authenticated
+  using (
+    colaborador_id = public.meu_colaborador_id()
+    or public.cuido_de_pessoas()
+    or (
+      tipo in ('folga_sabado', 'ferias')
+      and public.posso_decidir_jornada(colaborador_id)
+    )
+  );
+
+-- DECISÃO: cada tipo com o seu dono; ninguém aprova a própria
+drop policy if exists justificativas_decisao on public.justificativas_ausencia;
+create policy justificativas_decisao on public.justificativas_ausencia
+  for update to authenticated
+  using (
+    (
+      tipo in ('folga_sabado', 'ferias')
+      and public.posso_decidir_jornada(colaborador_id)
+    )
+    or (
+      tipo not in ('folga_sabado', 'ferias')
+      and public.cuido_de_pessoas()
+      and colaborador_id <> public.meu_colaborador_id()
+    )
+    -- O dono corrige a própria solicitação enquanto ninguém decidiu
+    or (colaborador_id = public.meu_colaborador_id() and estado = 'pendente')
+  )
+  with check (
+    (
+      tipo in ('folga_sabado', 'ferias')
+      and public.posso_decidir_jornada(colaborador_id)
+    )
+    or (
+      tipo not in ('folga_sabado', 'ferias')
+      and public.cuido_de_pessoas()
+      and colaborador_id <> public.meu_colaborador_id()
+    )
+    or (colaborador_id = public.meu_colaborador_id() and estado = 'pendente')
+  );
+
+-- CRIAÇÃO: o pedido da pessoa nasce pendente; o RH abre qualquer um; a
+-- liderança monta a escala de folga e férias de quem responde a ela
+drop policy if exists justificativas_abertura on public.justificativas_ausencia;
+create policy justificativas_abertura on public.justificativas_ausencia
+  for insert to authenticated
+  with check (
+    (colaborador_id = public.meu_colaborador_id() and estado = 'pendente')
+    or public.cuido_de_pessoas()
+    or (
+      tipo in ('folga_sabado', 'ferias')
+      and public.posso_decidir_jornada(colaborador_id)
+    )
+  );
+
+-- REMOÇÃO: atestado recusado vira histórico, não lixo. Só o RH apaga.
+drop policy if exists justificativas_remocao on public.justificativas_ausencia;
+create policy justificativas_remocao on public.justificativas_ausencia
+  for delete to authenticated using (public.cuido_de_pessoas());
+
+-- A decisão chega ao aparelho de quem pediu sem recarregar a tela
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+     where pubname = 'supabase_realtime'
+       and schemaname = 'public'
+       and tablename = 'justificativas_ausencia'
+  ) then
+    alter publication supabase_realtime add table public.justificativas_ausencia;
+  end if;
+end $$;
+
+-- O CALENDÁRIO DE FERIADOS, por loja (calendario-feriados.sql). `loja`
+-- nula vale para a rede; `minutos_previstos` zero é dia fechado, maior
+-- que zero é meio expediente.
+create table if not exists public.feriados (
+  id                 text primary key,
+  data               date not null,
+  nome               text not null,
+  -- Nula = rede inteira
+  loja               text,
+  minutos_previstos  integer not null default 0
+                       check (minutos_previstos between 0 and 600),
+  criado_em          timestamptz not null default now(),
+  -- Um feriado por dia e por abrangência
+  unique (data, loja)
+);
+
+create index if not exists feriados_por_data on public.feriados (data);
+
+alter table public.feriados enable row level security;
+
+-- Todo mundo lê: é o calendário da empresa, e cada espelho precisa dele
+drop policy if exists feriados_leitura on public.feriados;
+create policy feriados_leitura on public.feriados
+  for select to authenticated using (true);
+
+-- Só quem cuida de pessoas escreve: feriado mexe no banco de horas de todos
+drop policy if exists feriados_escrita on public.feriados;
+create policy feriados_escrita on public.feriados
+  for insert to authenticated with check (public.cuido_de_pessoas());
+
+drop policy if exists feriados_edicao on public.feriados;
+create policy feriados_edicao on public.feriados
+  for update to authenticated
+  using (public.cuido_de_pessoas())
+  with check (public.cuido_de_pessoas());
+
+drop policy if exists feriados_remocao on public.feriados;
+create policy feriados_remocao on public.feriados
+  for delete to authenticated using (public.cuido_de_pessoas());
