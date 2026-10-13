@@ -3740,3 +3740,36 @@ $$;
 
 revoke all on function public.senhas_para_entregar() from public, anon;
 grant execute on function public.senhas_para_entregar() to authenticated;
+
+-- ============================================================
+-- NENHUMA FUNÇÃO PARA QUEM NÃO ESTÁ LOGADO (funcoes-sem-acesso-anonimo.sql,
+-- 13/10/2026) — o mesmo texto do delta; há teste conferindo. Fica no FIM
+-- do esquema de propósito: alcança todas as funções criadas acima.
+-- ============================================================
+
+do $$
+declare
+  f record;
+begin
+  for f in
+    select p.oid::regprocedure as assinatura,
+           has_function_privilege('authenticated', p.oid, 'execute') as logado,
+           has_function_privilege('service_role', p.oid, 'execute') as servico
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.prokind = 'f'
+  loop
+    execute format('revoke execute on function %s from public, anon', f.assinatura);
+    if f.logado then
+      execute format('grant execute on function %s to authenticated', f.assinatura);
+    end if;
+    if f.servico then
+      execute format('grant execute on function %s to service_role', f.assinatura);
+    end if;
+  end loop;
+end $$;
+
+-- As funções criadas daqui em diante também não nascem abertas ao anônimo
+alter default privileges revoke execute on functions from public;
+alter default privileges in schema public revoke execute on functions from anon;
