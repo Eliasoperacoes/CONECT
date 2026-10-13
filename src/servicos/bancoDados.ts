@@ -67,7 +67,8 @@ const CHAVE_CONFIGURACOES = 'conecta_v4_configuracoes';
 const CHAVE_AUDITORIA = 'conecta_v4_auditoria';
 // Guarda apenas o ID do último colaborador que entrou NESTE dispositivo,
 // para sugerir a conta no próximo acesso. Nenhuma senha é armazenada.
-const CHAVE_ULTIMO_ACESSO_DISPOSITIVO = 'conecta_v4_ultimo_acesso_dispositivo';
+// Mora em limpezaDoAparelho.ts, que decide o que sobrevive ao Sair
+import { CHAVE_ULTIMO_ACESSO_DISPOSITIVO } from './limpezaDoAparelho';
 
 // Logo oficial da Malachias Autopeças como padrão de foto de usuário da rede
 // (mora em avatar.ts, que decide quando ela vale como "sem foto")
@@ -769,8 +770,14 @@ class BancoDadosConecta {
    * rede quem autentica é o Supabase, então a gravação precisa vir de fora —
    * sem isto a sugestão do aparelho nunca seria atualizada.
    */
-  registrarAcessoDoDispositivo(id: string, senha: string): void {
-    this.salvarUltimoAcessoDoDispositivo(id, senha);
+  registrarAcessoDoDispositivo(id: string): void {
+    /*
+      SÓ A CONTA, NUNCA A SENHA (13/10/2026). A senha de login ficava aqui
+      em texto puro e sobrevivia ao Sair: no computador da loja, quem
+      sentasse depois a lia pelo navegador. A sessão do banco já mantém a
+      pessoa dentro enquanto ela não sai; depois de sair, digita a senha.
+    */
+    localStorage.setItem(CHAVE_ULTIMO_ACESSO_DISPOSITIVO, JSON.stringify({ id }));
   }
 
   /** Senha guardada neste aparelho para o acesso de um clique, se houver. */

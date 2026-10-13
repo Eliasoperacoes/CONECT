@@ -967,9 +967,12 @@ test('ACESSO DE UM CLIQUE: no modo rede não entra pela verificação local', ()
   expect(res.colaborador).toBeUndefined();
 });
 
-test('a senha do aparelho fica disponível para o login pelo banco', () => {
-  bancoDados.registrarAcessoDoDispositivo('colab-ana', 'segredo123');
-  expect(bancoDados.obterSenhaSugeridaDoDispositivo()).toBe('segredo123');
+test('o login pelo banco guarda a CONTA no aparelho, nunca a senha (13/10/2026)', () => {
+  // A senha ficava aqui em texto puro e sobrevivia ao Sair: no computador
+  // da loja, quem sentasse depois a lia pelo navegador
+  bancoDados.registrarAcessoDoDispositivo('colab-ana');
+  expect(bancoDados.obterSenhaSugeridaDoDispositivo()).toBeNull();
+  expect(armazenamento.getItem('conecta_v4_ultimo_acesso_dispositivo')).toBe(JSON.stringify({ id: 'colab-ana' }));
 });
 
 test('no modo local os resets continuam funcionando', () => {

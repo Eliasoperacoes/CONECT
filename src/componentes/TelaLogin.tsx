@@ -43,9 +43,9 @@ export const TelaLogin: React.FC<PropsTelaLogin> = ({ aoAutenticar }) => {
       const entrada = await nuvem.entrar(login, senha);
       setCarregando(false);
       if (entrada.sucesso && entrada.colaborador) {
-        // Guarda a conta deste aparelho para o próximo acesso ser de um
-        // clique. Quem autenticou foi o banco, então a gravação é aqui.
-        bancoDados.registrarAcessoDoDispositivo(entrada.colaborador.id, senha);
+        // Guarda QUAL conta entrou neste aparelho (para preencher o login da
+        // próxima vez) — a senha, nunca. Quem autenticou foi o banco.
+        bancoDados.registrarAcessoDoDispositivo(entrada.colaborador.id);
         aoAutenticar(entrada.colaborador, entrada.precisaTrocarSenha);
       } else {
         setErro(entrada.erro || 'Falha ao autenticar.');

@@ -38,6 +38,7 @@ import {
 import { explicarRecusaDoBanco } from './recusaDoBanco';
 import { coletorDaMarcacao } from './aplicativo';
 import { ehCaminhoDeFotoPerfil, esquecerAssinaturas, resolverCaminhos } from './anexos';
+import { apagarSenhaGuardada, limparAoSair } from './limpezaDoAparelho';
 import { nuvemComunicacao } from './nuvemComunicacao';
 /**
  * A folha, e não `justificativas`: aquele arquivo importa `ponto`, que
@@ -621,6 +622,9 @@ class PonteNuvem {
     localStorage.removeItem(CHAVE_REGISTROS_PONTO);
     nuvemComunicacao.limparCache();
     esquecerAssinaturas();
+    // E todo o resto do CONECTA — atestados, banco de horas, fichas, a
+    // senha que ficava guardada —, menos as preferências do aparelho
+    limparAoSair();
   }
 
   /** Há uma sessão válida guardada neste aparelho? */
@@ -1845,6 +1849,10 @@ export const nuvem = new PonteNuvem();
  */
 export const iniciarNuvem = async (): Promise<void> => {
   if (!usandoNuvem()) return;
+
+  // A senha de login que versões antigas gravavam no aparelho sai na
+  // primeira abertura desta (limpezaDoAparelho.ts)
+  apagarSenhaGuardada();
 
   /**
    * TUDO O QUE O APARELHO GUARDA, trazido de novo do banco.
