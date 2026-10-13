@@ -1,4 +1,14 @@
-import * as XLSX from 'xlsx';
+/**
+ * A BIBLIOTECA DE PLANILHA SÓ CHEGA A QUEM IMPORTA PLANILHA (13/10/2026).
+ *
+ * Era `import * as XLSX` no topo, e ela ia no pacote de todo celular — uns
+ * 400 KB que só o administrador usa, baixados na primeira abertura de cada
+ * aparelho. Agora é carregada na hora de baixar o modelo ou ler o arquivo.
+ * E é a 0.20.3, do site da SheetJS: a do npm (0.18.5) tinha duas falhas
+ * conhecidas, e o registro do npm parou nela (laudo de 13/10, item 7).
+ */
+const carregarXlsx = () => import('xlsx');
+
 import {
   Colaborador,
   Loja,
@@ -241,7 +251,8 @@ export function resolverSetorDaPlanilha(valor: string): {
  * Gera e realiza o download da planilha modelo oficial do Excel (.xlsx)
  * com as colunas necessárias e linhas de exemplo realistas da Malachias Autopeças.
  */
-export function baixarPlanilhaModeloExcel(): void {
+export async function baixarPlanilhaModeloExcel(): Promise<void> {
+  const XLSX = await carregarXlsx();
   const wb = XLSX.utils.book_new();
 
   // Cabeçalhos claros e explicativos
@@ -461,6 +472,7 @@ export async function processarArquivoPlanilha(
   colaboradoresAtuais: Colaborador[]
 ): Promise<ResultadoProcessamentoPlanilha> {
   const buffer = await arquivo.arrayBuffer();
+  const XLSX = await carregarXlsx();
   const workbook = XLSX.read(buffer, { type: 'array' });
 
   const primeiraAba = workbook.SheetNames[0];
