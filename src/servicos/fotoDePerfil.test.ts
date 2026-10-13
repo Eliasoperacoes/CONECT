@@ -66,6 +66,8 @@ const consulta = () => {
 mock.module('./supabase', () => ({
   supabase: {
     from: () => consulta(),
+    // fichas_reservadas() (fichas-por-nivel.sql): aqui só importa o diretório
+    rpc: async () => ({ data: [], error: null }),
     storage: {
       from: () => ({
         createSignedUrls: async (caminhos: string[]) => {

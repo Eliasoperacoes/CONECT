@@ -86,13 +86,14 @@ test('sem sessão carregada ainda, não há o que recarregar', () => {
   expect(pedirRecarga(3_000_000)).toBe(false);
 });
 
-test('os quatro canais avisam quando voltam, e a abertura registra a recarga', () => {
+test('os cinco canais avisam quando voltam, e a abertura registra a recarga', () => {
   const ler = (arq: string) => readFileSync(join(import.meta.dir, arq), 'utf8');
   const nuvem = ler('nuvem.ts');
   const comunicacao = ler('nuvemComunicacao.ts');
 
+  // O quinto é o sinal de mudança das fichas (fichas-por-nivel.sql, 13/10/2026)
   const inscricoes = [...nuvem.matchAll(/\.subscribe\(([^)]*\)?)\)/g), ...comunicacao.matchAll(/\.subscribe\(([^)]*\)?)\)/g)];
-  expect(inscricoes).toHaveLength(4);
+  expect(inscricoes).toHaveLength(5);
   for (const [, argumento] of inscricoes) expect(argumento).toContain('acompanharCanal(');
 
   expect(nuvem).toContain('definirRecarga(carregarTudo)');

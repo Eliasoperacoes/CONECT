@@ -306,19 +306,23 @@ grant  execute on function public.resetar_senha_inicial(text) to authenticated;
 -- ------------------------------------------------------------
 -- 6. OS CUPONS: login e senha de quem ainda não ativou
 --
--- Roda com a permissão de quem chama: a tabela das senhas só entrega a
--- quem cuida de pessoas, e para os outros a lista volta vazia.
+-- Roda como dono e confere QUEM CHAMA aqui dentro: desde
+-- fichas-por-nivel.sql o login fica fora da leitura direta da ficha, e a
+-- função não pode mais depender das regras das tabelas para barrar.
+-- Para quem não cuida de pessoas, a lista volta vazia.
 -- ------------------------------------------------------------
 create or replace function public.senhas_para_entregar()
 returns table (colaborador_id text, nome text, login text, loja text, setor text, senha text, gerada_em timestamptz)
 language sql
 stable
+security definer
 set search_path = public
 as $$
   select c.id, c.nome, c.login, c.loja, c.setor, s.senha, s.gerada_em
     from public.senhas_de_ativacao s
     join public.colaboradores c on c.id = s.colaborador_id
-   where c.auth_user_id is null
+   where public.cuido_de_pessoas()
+     and c.auth_user_id is null
      and c.ativo
    order by c.loja, c.nome;
 $$;

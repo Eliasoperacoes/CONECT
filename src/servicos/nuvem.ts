@@ -96,6 +96,14 @@ const CHAVE_REGISTROS_PONTO = 'conecta_v4_registros_ponto';
  * ou "corrigido", gravava a auditoria, e o banco continuava como estava.
  * Quem grava decisão de ponto pede as linhas de volta e confere.
  */
+/**
+ * O DIRETÓRIO — as colunas da ficha que todo logado lê (nível 1 de
+ * fichas-por-nivel.sql). A MESMA lista de `travar_colunas_da_ficha()`: há
+ * teste conferindo. Pedir uma coluna fora dela é recusado pelo banco.
+ */
+const COLUNAS_DO_DIRETORIO =
+  'id, nome, cargo, setor, loja, nivel, foto, presenca, visto_por_ultimo, ramal, responsavel_id, ativo, criado_em';
+
 const RECUSA_SEM_LINHAS =
   'O banco não gravou: pela regra de alçada do banco, você não responde por esta pessoa. Nada foi alterado. Procure o RH.';
 const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
@@ -488,19 +496,37 @@ class PonteNuvem {
     };
   }
 
+  /**
+   * A FICHA INTEIRA DE QUEM ESTÁ LOGADO (fichas-por-nivel.sql).
+   *
+   * A leitura direta da tabela só entrega o diretório, e filtrar pela
+   * conta de login deixou de ser possível (a coluna é travada). Quem dá a
+   * ficha da própria pessoa é `minha_ficha()`. Banco ainda sem a função
+   * (SQL não rodado): a leitura de antes, para não haver janela quebrada.
+   */
+  private async lerMinhaFicha(): Promise<LinhaColaborador | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc('minha_ficha');
+    if (!error) {
+      const linhas = (data || []) as LinhaColaborador[];
+      return linhas[0] ?? null;
+    }
+    if (error.code !== 'PGRST202' && error.code !== '42883') return null;
+    const { data: sessao } = await supabase.auth.getUser();
+    if (!sessao.user) return null;
+    const { data: antiga } = await supabase
+      .from('colaboradores')
+      .select('*')
+      .eq('auth_user_id', sessao.user.id)
+      .maybeSingle();
+    return (antiga as LinhaColaborador | null) ?? null;
+  }
+
   /** Ainda está com a senha padrão? */
   async precisaTrocarSenha(): Promise<boolean> {
     if (!supabase) return false;
-    const { data: sessao } = await supabase.auth.getUser();
-    if (!sessao.user) return false;
-
-    const { data } = await supabase
-      .from('colaboradores')
-      .select('precisa_trocar_senha')
-      .eq('auth_user_id', sessao.user.id)
-      .maybeSingle();
-
-    return !!data?.precisa_trocar_senha;
+    const minha = await this.lerMinhaFicha();
+    return !!(minha as { precisa_trocar_senha?: boolean } | null)?.precisa_trocar_senha;
   }
 
   /**
@@ -519,13 +545,7 @@ class PonteNuvem {
    */
   async obterMeuCpf(): Promise<{ cpf: string | null; indisponivel?: boolean }> {
     if (!supabase) return { cpf: null, indisponivel: true };
-    const { data: sessao } = await supabase.auth.getUser();
-    if (!sessao.user) return { cpf: null, indisponivel: true };
-    const { data: eu } = await supabase
-      .from('colaboradores')
-      .select('id')
-      .eq('auth_user_id', sessao.user.id)
-      .maybeSingle();
+    const eu = await this.lerMinhaFicha();
     if (!eu?.id) return { cpf: null, indisponivel: true };
     const { data, error } = await supabase
       .from('cpf_colaborador')
@@ -649,29 +669,46 @@ class PonteNuvem {
   /** A ficha do colaborador ligada à sessão atual. */
   async obterMeuColaborador(): Promise<Colaborador | null> {
     if (!supabase) return null;
-    const { data: sessao } = await supabase.auth.getUser();
-    if (!sessao.user) return null;
-
-    const { data, error } = await supabase
-      .from('colaboradores')
-      .select('*')
-      .eq('auth_user_id', sessao.user.id)
-      .maybeSingle();
-
-    if (error || !data) return null;
-    return paraColaborador(data as LinhaColaborador);
+    const minha = await this.lerMinhaFicha();
+    return minha ? paraColaborador(minha) : null;
   }
 
   // --- COLABORADORES ---
 
   /** Traz a lista do banco para o cache local. */
+  /**
+   * AS FICHAS QUE ESTA PESSOA PODE VER (fichas-por-nivel.sql).
+   *
+   * O diretório (nível 1) de todos, pela leitura direta — é só o que ela
+   * entrega desde a trava por coluna. Os níveis 2 e 3 chegam de
+   * `fichas_reservadas()`, e só de quem a pessoa pode ver: a própria, a
+   * equipe que ela decide, e todos para o RH. Juntados aqui pelo id.
+   *
+   * Banco ainda sem a função (SQL não rodado): a leitura de antes. Outra
+   * falha devolve `null` — a sincronização fica com o que já tinha, em vez
+   * de gravar a ficha da pessoa sem turno nem jornada.
+   */
+  private async lerFichasVisiveis(): Promise<LinhaColaborador[] | null> {
+    if (!supabase) return null;
+    const [diretorio, reservadas] = await Promise.all([
+      supabase.from('colaboradores').select(COLUNAS_DO_DIRETORIO).order('nome'),
+      supabase.rpc('fichas_reservadas'),
+    ]);
+    if (reservadas.error) {
+      if (reservadas.error.code !== 'PGRST202' && reservadas.error.code !== '42883') return null;
+      const { data, error } = await supabase.from('colaboradores').select('*').order('nome');
+      return error || !data ? null : (data as LinhaColaborador[]);
+    }
+    if (diretorio.error || !diretorio.data) return null;
+    const porId = new Map(((reservadas.data || []) as Array<{ id: string }>).map((r) => [r.id, r]));
+    return (diretorio.data as unknown as LinhaColaborador[]).map((d) => ({ ...d, ...(porId.get(d.id) || {}) }) as LinhaColaborador);
+  }
+
   async sincronizarColaboradores(): Promise<boolean> {
     if (!supabase) return false;
 
-    const { data, error } = await supabase.from('colaboradores').select('*').order('nome');
-    if (error || !data) return false;
-
-    const linhas = data as LinhaColaborador[];
+    const linhas = await this.lerFichasVisiveis();
+    if (!linhas) return false;
 
     /**
      * AS 89 ASSINATURAS NUMA CHAMADA SÓ.
@@ -710,17 +747,20 @@ class PonteNuvem {
   ): Promise<{ sucesso: boolean; erro?: string; confirmadoEm?: string }> {
     if (!supabase) return { sucesso: true, confirmadoEm: new Date().toISOString() };
 
-    const { data, error } = await supabase
+    // Sem pedir o turno de volta na gravação: ele é coluna travada para a
+    // leitura direta (fichas-por-nivel.sql). A conferência vem da própria
+    // ficha, pela `minha_ficha()`, logo em seguida.
+    const { error } = await supabase
       .from('colaboradores')
       .update({ turno, turno_confirmado_em: new Date().toISOString() })
       .eq('id', colaboradorId)
-      .select('turno, turno_confirmado_em')
-      .maybeSingle();
+      .select('id');
 
     if (error) {
       console.error('Falha ao confirmar o turno:', error.message);
       return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
     }
+    const data = (await this.lerMinhaFicha()) as { turno?: string; turno_confirmado_em?: string } | null;
     if (!data || data.turno !== turno || !data.turno_confirmado_em) {
       return {
         sucesso: false,
@@ -778,16 +818,39 @@ class PonteNuvem {
 
   /** Cria a ficha no banco (cadastro novo, só quem cuida de pessoas). Chamado após a gravação local. */
   async salvarColaborador(colaborador: Colaborador): Promise<{ sucesso: boolean; erro?: string }> {
+    return this.gravarFicha(paraLinha(colaborador));
+  }
+
+  /**
+   * GRAVA UMA FICHA DO RH: insert, e se ela já existe, update.
+   *
+   * Era `upsert`. Com a trava por coluna (fichas-por-nivel.sql) o banco o
+   * recusa: no conflito, o Postgres precisa LER as colunas travadas da
+   * linha existente — medido no Postgres local, "permission denied". O
+   * update pede de volta só o id, que é do diretório, e confere a linha.
+   */
+  private async gravarFicha(linha: ReturnType<typeof paraLinha>): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
-
-    const { error } = await supabase
-      .from('colaboradores')
-      .upsert(paraLinha(colaborador), { onConflict: 'id' });
-
-    if (error) {
+    const { error } = await supabase.from('colaboradores').insert(linha);
+    if (!error) return { sucesso: true };
+    const ehDoId = error.code === '23505' && /pkey/i.test(`${error.message} ${error.details ?? ''}`);
+    if (error.code === '23505' && !ehDoId) {
+      return { sucesso: false, erro: 'Há login repetido: algum já está cadastrado na rede com outra ficha.' };
+    }
+    if (!ehDoId) {
       console.error('Falha ao salvar colaborador no banco:', error.message);
       return { sucesso: false, erro: error.message };
     }
+    const { data, error: erroUpdate } = await supabase
+      .from('colaboradores')
+      .update(linha)
+      .eq('id', linha.id)
+      .select('id');
+    if (erroUpdate) {
+      console.error('Falha ao reescrever colaborador no banco:', erroUpdate.message);
+      return { sucesso: false, erro: erroUpdate.message };
+    }
+    if (!data || data.length === 0) return { sucesso: false, erro: 'O banco não deixou gravar esta ficha (sem permissão).' };
     return { sucesso: true };
   }
 
@@ -804,33 +867,49 @@ class PonteNuvem {
     if (!supabase) return { sucesso: true, gravados: lista.length };
     if (lista.length === 0) return { sucesso: true, gravados: 0 };
 
-    const { error } = await supabase
-      .from('colaboradores')
-      .upsert(lista.map(paraLinha), { onConflict: 'id' });
+    /*
+      Sem upsert (ver `gravarFicha`). As fichas NOVAS entram num insert só,
+      como antes: um login repetido recusa o lote inteiro, e nada fica pela
+      metade. As que já existem são atualizadas uma a uma, conferidas.
+    */
+    const { data: existentes, error: erroIds } = await supabase.from('colaboradores').select('id');
+    if (erroIds || !existentes) return { sucesso: false, gravados: 0, erro: 'Não deu para ler as fichas atuais. Tente de novo.' };
+    const jaExistem = new Set(existentes.map((e) => e.id as string));
+    const novas = lista.filter((c) => !jaExistem.has(c.id));
+    const atualizar = lista.filter((c) => jaExistem.has(c.id));
 
-    if (error) {
-      console.error('Falha ao importar colaboradores:', error.message);
-      // Login repetido é o erro esperado quando a planilha traz alguém que já existe
-      if (error.code === '23505') {
-        return {
-          sucesso: false,
-          gravados: 0,
-          erro: 'Há login repetido: algum já está cadastrado na rede com outra ficha.',
-        };
+    if (novas.length > 0) {
+      const { error } = await supabase.from('colaboradores').insert(novas.map(paraLinha));
+      if (error) {
+        console.error('Falha ao importar colaboradores:', error.message);
+        // Login repetido é o erro esperado quando a planilha traz alguém que já existe
+        if (error.code === '23505') {
+          return { sucesso: false, gravados: 0, erro: 'Há login repetido: algum já está cadastrado na rede com outra ficha.' };
+        }
+        return { sucesso: false, gravados: 0, erro: error.message };
       }
-      return { sucesso: false, gravados: 0, erro: error.message };
+    }
+
+    let gravados = novas.length;
+    for (const c of atualizar) {
+      const r = await this.gravarFicha(paraLinha(c));
+      if (!r.sucesso) {
+        await this.sincronizarColaboradores();
+        return { sucesso: false, gravados, erro: `${c.nome}: ${r.erro}` };
+      }
+      gravados++;
     }
 
     await this.sincronizarColaboradores();
-    return { sucesso: true, gravados: lista.length };
+    return { sucesso: true, gravados };
   }
 
   /** Fichas já cadastradas, para a planilha saber quem é novo e quem é atualização. */
   async obterColaboradores(): Promise<Colaborador[]> {
     if (!supabase) return [];
-    const { data, error } = await supabase.from('colaboradores').select('*').order('nome');
-    if (error || !data) return [];
-    return (data as LinhaColaborador[]).map((l) => paraColaborador(l));
+    // O RH (quem importa) recebe as fichas inteiras de fichas_reservadas()
+    const linhas = await this.lerFichasVisiveis();
+    return (linhas || []).map((l) => paraColaborador(l));
   }
 
   async removerColaborador(id: string): Promise<{ sucesso: boolean; erro?: string; temPonto?: boolean }> {
@@ -1808,6 +1887,25 @@ class PonteNuvem {
         }
       )
       .subscribe(acompanharCanal('colaboradores'));
+
+    /*
+      O CANAL NÃO TRANSMITE MAIS A FICHA (fichas-por-nivel.sql): mandava a
+      linha inteira de quem mudasse qualquer coisa a todo aparelho. Depois
+      do SQL, `colaboradores` sai do canal e entra `colaboradores_versao`,
+      que carrega só um número. Ao vê-lo mudar, o aparelho busca de novo o
+      que pode ver. Canal à parte: antes do SQL a tabela não existe, e a
+      falha dele não derruba o de cima.
+    */
+    supabase
+      .channel('conecta-colaboradores-versao')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'colaboradores_versao' },
+        () => {
+          this.sincronizarColaboradores();
+        }
+      )
+      .subscribe(acompanharCanal('colaboradores_versao'));
 
     // O ponto é o dado que mais depende de chegar igual em todo aparelho:
     // a batida feita no celular tem que aparecer no computador na hora.

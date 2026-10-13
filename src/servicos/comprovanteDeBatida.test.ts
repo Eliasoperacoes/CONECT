@@ -118,10 +118,16 @@ test('O PRIMEIRO ACESSO PEDE O CPF, e quem já tem senha mas não tem CPF també
 test('O CPF É PEDIDO UMA VEZ SÓ, no web ou no celular, e a tela nunca prende ninguém (06/10/2026)', async () => {
   const nuvem = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
   const obter = nuvem.slice(nuvem.indexOf('async obterMeuCpf('), nuvem.indexOf('async registrarMeuCpf('));
-  // Quem é "eu" sai do login, e não do colaborador que a tela tem na mão
-  expect(obter).toContain('await supabase.auth.getUser()');
-  expect(obter).toContain(".eq('auth_user_id', sessao.user.id)");
+  // Quem é "eu" sai do login, e não do colaborador que a tela tem na mão.
+  // Desde fichas-por-nivel.sql, pela `minha_ficha()` — o banco a responde
+  // pela sessão (meu_colaborador_id), e só cai no filtro pela conta de
+  // login se o banco ainda não tiver a função
+  expect(obter).toContain('await this.lerMinhaFicha()');
   expect(obter).not.toContain('colaboradorId');
+  const minha = nuvem.slice(nuvem.indexOf('private async lerMinhaFicha('), nuvem.indexOf('async precisaTrocarSenha('));
+  expect(minha).toContain("supabase.rpc('minha_ficha')");
+  expect(minha).toContain(".eq('auth_user_id', sessao.user.id)");
+  expect(minha).not.toContain('colaboradorId');
   // "Seu CPF já está cadastrado" é sucesso: a pessoa tem CPF
   expect(nuvem).toContain("error.message.startsWith('Seu CPF já está cadastrado')) return { sucesso: true };");
   // E a tela tem saída

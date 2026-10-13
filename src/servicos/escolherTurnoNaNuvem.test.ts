@@ -13,19 +13,25 @@ let linhaDevolvida: any = null;
 let erroDoBanco: any = null;
 const pedidos: any[] = [];
 
+/*
+  Desde fichas-por-nivel.sql o update pede de volta só o id (o turno é
+  coluna travada para a leitura direta), e o que o banco gravou é lido da
+  própria ficha, por `minha_ficha()`. A pergunta do teste é a mesma: vale
+  o que o banco tem, e não o que foi pedido.
+*/
 const clienteFalso = {
   from: (tabela: string) => ({
     update: (valores: any) => ({
       eq: (coluna: string, valor: string) => ({
-        select: () => ({
-          maybeSingle: async () => {
-            pedidos.push({ tabela, valores, coluna, valor });
-            return { data: linhaDevolvida, error: erroDoBanco };
-          },
-        }),
+        select: async () => {
+          pedidos.push({ tabela, valores, coluna, valor });
+          return { data: erroDoBanco ? null : [{ id: valor }], error: erroDoBanco };
+        },
       }),
     }),
   }),
+  rpc: async (nome: string) =>
+    nome === 'minha_ficha' ? { data: linhaDevolvida ? [linhaDevolvida] : [], error: null } : { data: null, error: { code: 'PGRST202' } },
 };
 
 mock.module('./supabase', () => ({

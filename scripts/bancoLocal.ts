@@ -117,6 +117,15 @@ export const montarBancoLocal = async (
     grant all on all tables in schema public to authenticated;
     grant execute on all functions in schema public, extensions to authenticated;
   `);
+  // E a trava por coluna da ficha (fichas-por-nivel.sql) volta por cima do
+  // "tudo" acima, como fica na produção: a suíte roda com ela
+  await db.exec(`
+    do $$ begin
+      if to_regprocedure('public.travar_colunas_da_ficha()') is not null then
+        perform public.travar_colunas_da_ficha();
+      end if;
+    end $$;
+  `);
 
   const como = async (uid: string | null) => {
     await db.exec(`reset role; select set_config('teste.uid', '${uid ?? ''}', false);`);
