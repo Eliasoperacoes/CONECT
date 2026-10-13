@@ -35,6 +35,43 @@ const ESTILO_DOS_CUPONS = `
   .cupom .aviso { margin-top: 6px; font-size: 8.5px; color: #6b7280; line-height: 1.35; }
 `;
 
+/**
+ * A ENTREGA É POR CIDADE — e Pirassununga, que começou primeiro, por setor
+ * (Elias, 13/10/2026). Cada grupo é uma leva de cupons impressa de uma vez.
+ */
+export const LOJA_ENTREGUE_POR_SETOR = 'Pirassununga';
+
+export interface GrupoDeCupons {
+  /** "Leme", ou "Pirassununga · Balcão" */
+  rotulo: string;
+  loja: string;
+  /** Só em Pirassununga */
+  setor?: string;
+  quantos: number;
+}
+
+/** Os grupos de entrega, na ordem de leitura: cidades, e os setores de Pirassununga. */
+export const gruposDeCupons = (cupons: CupomDeAcesso[]): GrupoDeCupons[] => {
+  const contagem = new Map<string, GrupoDeCupons>();
+  for (const c of cupons) {
+    const porSetor = c.loja === LOJA_ENTREGUE_POR_SETOR;
+    const chave = porSetor ? `${c.loja}|${c.setor}` : c.loja;
+    const grupo = contagem.get(chave) || {
+      rotulo: porSetor ? `${c.loja} · ${c.setor}` : c.loja,
+      loja: c.loja,
+      ...(porSetor ? { setor: c.setor } : {}),
+      quantos: 0,
+    };
+    grupo.quantos++;
+    contagem.set(chave, grupo);
+  }
+  return [...contagem.values()].sort((a, b) => a.rotulo.localeCompare(b.rotulo, 'pt-BR'));
+};
+
+/** Os cupons de um grupo de entrega. */
+export const cuponsDoGrupo = (cupons: CupomDeAcesso[], grupo: Pick<GrupoDeCupons, 'loja' | 'setor'>): CupomDeAcesso[] =>
+  cupons.filter((c) => c.loja === grupo.loja && (grupo.setor === undefined || c.setor === grupo.setor));
+
 /** A página dos cupons, pronta para `imprimirDocumento`. */
 export const documentoDosCupons = (cupons: CupomDeAcesso[], endereco: string): string => {
   const sem = endereco.replace(/^https?:\/\//, '').replace(/\/$/, '');

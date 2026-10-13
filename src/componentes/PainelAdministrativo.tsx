@@ -45,7 +45,8 @@ import {
   Image as ImageIcon,
   Printer,
 } from 'lucide-react';
-import { documentoDosCupons } from '../servicos/cuponsDeAcesso';
+import { documentoDosCupons, cuponsDoGrupo, type CupomDeAcesso, type GrupoDeCupons } from '../servicos/cuponsDeAcesso';
+import { EscolherCupons } from './EscolherCupons';
 import { imprimirDocumento } from '../servicos/visorDeDocumento';
 import {
   Colaborador,
@@ -244,6 +245,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   const [colaboradorParaAlterarFoto, setColaboradorParaAlterarFoto] = useState<Colaborador | null>(null);
   // Os cupons de primeiro acesso sendo buscados no banco
   const [gerandoCupons, setGerandoCupons] = useState(false);
+  // A lista buscada, esperando a escolha da leva (cidade, ou setor em Pirassununga)
+  const [cuponsParaEntregar, setCuponsParaEntregar] = useState<CupomDeAcesso[] | null>(null);
   // Modal para Confirmar Exclusão de Colaborador
   const [colabParaExcluir, setColabParaExcluir] = useState<{ id: string; nome: string } | null>(null);
   // Modal para Confirmar Exclusão de Comunicado Oficial
@@ -420,7 +423,15 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       return exibirToast('Não deu para buscar as senhas. Confira se senha-de-ativacao-aleatoria.sql já rodou.', true);
     }
     if (lista.length === 0) return exibirToast('Todos os colaboradores ativos já fizeram o primeiro acesso.');
-    if (!imprimirDocumento(documentoDosCupons(lista, window.location.origin))) {
+    // A entrega é por leva: cidade, e Pirassununga por setor (EscolherCupons)
+    setCuponsParaEntregar(lista);
+  };
+
+  const imprimirLevaDeCupons = (grupo: GrupoDeCupons) => {
+    if (!cuponsParaEntregar) return;
+    const leva = cuponsDoGrupo(cuponsParaEntregar, grupo);
+    setCuponsParaEntregar(null);
+    if (!imprimirDocumento(documentoDosCupons(leva, window.location.origin))) {
       exibirToast('O navegador bloqueou a janela de impressão. Libere os pop-ups deste site.', true);
     }
   };
@@ -2675,6 +2686,13 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
           </div>
         </div>
       )}
+
+      {/* ================= CUPONS DE PRIMEIRO ACESSO: a leva a imprimir ================= */}
+      <EscolherCupons
+        cupons={cuponsParaEntregar}
+        aoImprimir={imprimirLevaDeCupons}
+        aoFechar={() => setCuponsParaEntregar(null)}
+      />
 
       {/* ================= MODAL: ALTERAR FOTO / LOGO ================= */}
       {colaboradorParaAlterarFoto && (

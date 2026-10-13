@@ -28,3 +28,28 @@ test('o nome que vem da planilha não vira HTML', () => {
   expect(html).toContain('Bruno &lt;b&gt;');
   expect(html).not.toContain('Bruno <b>');
 });
+
+test('A ENTREGA É POR CIDADE — e Pirassununga por setor (Elias, 13/10/2026)', async () => {
+  const { gruposDeCupons, cuponsDoGrupo } = await import('./cuponsDeAcesso');
+  const pessoa = (nome: string, loja: string, setor: string) => ({ nome, login: nome.toLowerCase(), loja, setor, senha: 'abc23def' });
+  const lista = [
+    pessoa('Ana', 'Leme', 'Balcão'),
+    pessoa('Bia', 'Leme', 'Estoque'),
+    pessoa('Caio', 'Pirassununga', 'Balcão'),
+    pessoa('Davi', 'Pirassununga', 'Estoque'),
+    pessoa('Eva', 'Pirassununga', 'Balcão'),
+    pessoa('Fabi', 'Descalvado', 'Balcão'),
+  ];
+  const grupos = gruposDeCupons(lista);
+  expect(grupos.map((g) => [g.rotulo, g.quantos])).toEqual([
+    ['Descalvado', 1],
+    ['Leme', 2],
+    ['Pirassununga · Balcão', 2],
+    ['Pirassununga · Estoque', 1],
+  ]);
+  // Cada leva imprime só os seus: Leme inteiro, e só o Balcão de Pirassununga
+  expect(cuponsDoGrupo(lista, grupos[1]).map((c) => c.nome)).toEqual(['Ana', 'Bia']);
+  expect(cuponsDoGrupo(lista, grupos[2]).map((c) => c.nome)).toEqual(['Caio', 'Eva']);
+  // Nenhum cupom fica fora de grupo, nem aparece em dois
+  expect(grupos.reduce((s, g) => s + g.quantos, 0)).toBe(lista.length);
+});
