@@ -29,8 +29,11 @@ interface Commit {
 }
 
 const buscar = async (caminho: string) => {
+  // Sem login o GitHub dá 60 consultas por hora (cada execução gasta ~11);
+  // com GITHUB_TOKEN no ambiente, 5.000. Nenhum token fica guardado aqui.
+  const token = process.env.GITHUB_TOKEN;
   const resposta = await fetch(`https://api.github.com/repos/${REPO}/${caminho}`, {
-    headers: { accept: 'application/vnd.github+json' },
+    headers: { accept: 'application/vnd.github+json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
   });
   if (!resposta.ok) {
     throw new Error(`GitHub respondeu ${resposta.status} em ${caminho}`);
@@ -49,10 +52,12 @@ const commits: Commit[] = await buscar(`commits?sha=main&per_page=${QUANTOS}`);
 
 let primeiraFalha: { sha: string; titulo: string } | null = null;
 let houveSucesso = false;
+let situacaoDoMaisNovo = 'success';
 
 for (const c of commits) {
   const estado = await buscar(`commits/${c.sha}/status`);
   const situacao: string = estado.state;
+  if (c === commits[0]) situacaoDoMaisNovo = situacao;
   const titulo = c.commit.message.split('\n')[0].slice(0, 58);
 
   console.log(`${SINAL[situacao] || situacao.padEnd(8)} ${c.sha.slice(0, 7)} ${titulo}`);
@@ -79,4 +84,15 @@ if (primeiraFalha) {
   process.exit(1);
 }
 
-console.log('A última publicação está no ar.');
+/*
+  A RESPOSTA É SOBRE O COMMIT MAIS NOVO (14/10/2026). Dizia "A última
+  publicação está no ar." mesmo com o mais novo ainda subindo — e quem
+  esperava por essa frase seguia achando que a versão nova já estava
+  publicada (o assetlinks.json do APK 1.3 ainda era o antigo).
+*/
+const maisNovo = commits[0];
+if (maisNovo && situacaoDoMaisNovo !== 'success') {
+  console.log(`O commit mais novo (${maisNovo.sha.slice(0, 7)}) AINDA NÃO ESTÁ NO AR: ${situacaoDoMaisNovo}.`);
+  process.exit(2);
+}
+console.log('O commit mais novo está no ar.');
