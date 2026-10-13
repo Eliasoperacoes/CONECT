@@ -63,6 +63,8 @@
     border: 6px solid #1F2937; background: #fff;
     box-shadow: 0 8px 24px rgba(17,24,39,.15);
   }
+  /* O print da notificação é uma faixa, não uma tela inteira */
+  figure.faixa img { max-width: 100%; border-width: 3px; border-radius: 14px; }
   figcaption { font-size: 13px; color: var(--texto-3); margin-top: 8px; }
   .toque { font-weight: 700; color: var(--marca); }
   h3 { font-size: 18px; margin: 32px 0 12px; }
@@ -74,12 +76,19 @@
   }
   .baixar:active { transform: scale(.99); }
   .versao { text-align: center; font-size: 13px; color: var(--texto-3); margin: 0 0 20px; }
+  .so-impresso { display: none; }
   footer { text-align: center; color: var(--texto-3); font-size: 14px; margin-top: 32px; }
   @media print {
     body { background: #fff; font-size: 13px; }
     .pagina { padding: 0; }
     ol.passos > li { border-color: #ccc; }
     figure img { max-width: 180px; box-shadow: none; }
+    figure.faixa img { max-width: 360px; }
+    .baixar { display: none; }
+    .so-impresso {
+      display: block; text-align: center; font-size: 16px; margin: 0 0 6px;
+      padding: 14px; border: 2px solid var(--marca); border-radius: 14px;
+    }
   }
 </style>
 </head>
@@ -92,6 +101,7 @@
   </header>
 
   <a class="baixar" id="baixar-apk" href="/conecta.apk" download="CONECTA.apk">⬇ Baixar o CONECTA</a>
+  <p class="so-impresso">No celular, abra no <strong>Chrome</strong>: <strong>conectamalachias.vercel.app/instalar.html</strong><br>e toque em <strong>Baixar o CONECTA</strong>.</p>
   <p class="versao">Versão 1.3 · 9,8 MB · só para Android</p>
 
   <div class="aviso">
@@ -110,38 +120,55 @@
       <div class="titulo-passo"><h2>Toque em "Baixar o CONECTA" e abra o arquivo</h2></div>
       <div class="passo-corpo">
         <p>Toque no botão azul acima. Se o Chrome perguntar se quer manter o arquivo, toque em <span class="toque">Fazer o download mesmo assim</span>.
-          Quando terminar, toque em <span class="toque">Abrir</span>.</p>
-        <figure><img onerror="this.closest('figure').remove()" src="/instalar/1-baixar.png" alt="O download do CONECTA no Chrome"><figcaption>Baixe e toque em Abrir</figcaption></figure>
+          Quando terminar, toque em <span class="toque">Abrir</span> — ou puxe a barra de notificações e toque em
+          <strong>CONECTA.apk · Download concluído</strong>.</p>
+        <figure class="faixa"><img onerror="this.closest('figure').remove()" src="/instalar/1-baixar.png" alt="Notificação CONECTA.apk, download concluído"><figcaption>Toque no download concluído</figcaption></figure>
       </div>
     </li>
     <li>
       <div class="titulo-passo"><h2>Se o celular pedir permissão, toque em Configurações</h2></div>
       <div class="passo-corpo">
         <p>Na primeira vez, o Android avisa que o Chrome ainda não pode instalar aplicativos. Toque em <span class="toque">Configurações</span>.</p>
-        <figure><img onerror="this.closest('figure').remove()" src="/instalar/2-aviso.png" alt="Aviso do Android pedindo permissão"><figcaption>Toque em Configurações</figcaption></figure>
+        <figure><img onerror="this.closest('figure').remove()" src="/instalar/2-aviso.png" alt="Aviso do Chrome: o smartphone não tem permissão para instalar apps desconhecidos"><figcaption>Toque em Configurações</figcaption></figure>
       </div>
     </li>
     <li>
-      <div class="titulo-passo"><h2>Ligue "Permitir desta fonte" e volte</h2></div>
+      <div class="titulo-passo"><h2>Ligue a chave do Chrome e volte</h2></div>
       <div class="passo-corpo">
-        <p>Ligue a chave <span class="toque">Permitir desta fonte</span> e toque na seta de <strong>voltar</strong>. Essa liberação vale só para o Chrome.</p>
-        <figure><img onerror="this.closest('figure').remove()" src="/instalar/3-permitir.png" alt="Chave Permitir desta fonte ligada"><figcaption>Ligue a chave e volte</figcaption></figure>
+        <p>Na lista <strong>Instalar apps desconhecidos</strong>, ligue a chave do <span class="toque">Chrome</span> e toque na seta de
+          <strong>voltar</strong>. Em alguns celulares a chave se chama <strong>Permitir desta fonte</strong>. A liberação vale só para o Chrome.</p>
+        <figure><img onerror="this.closest('figure').remove()" src="/instalar/3-permitir.png" alt="Lista Instalar apps desconhecidos com a chave do Chrome ligada"><figcaption>Chave do Chrome ligada</figcaption></figure>
       </div>
     </li>
     <li>
       <div class="titulo-passo"><h2>Toque em Instalar</h2></div>
       <div class="passo-corpo">
-        <p>O celular pergunta se quer instalar o CONECTA. Toque em <span class="toque">Instalar</span>.</p>
-        <p>Se aparecer uma janela do <strong>Google Play Protect</strong>, <strong>tire um print e mande ao TI</strong> antes de
-          tocar em qualquer opção. É normal ela aparecer: o CONECTA é um aplicativo interno da Malachias e não está na Play Store.</p>
-        <figure><img onerror="this.closest('figure').remove()" src="/instalar/4-instalar.png" alt="Pergunta Deseja instalar este app"><figcaption>Toque em Instalar</figcaption></figure>
+        <p>O celular pergunta se quer instalar o app <strong>Malachias Autopeças</strong> — é o CONECTA. Toque em <span class="toque">Instalar</span>.</p>
+        <figure><img onerror="this.closest('figure').remove()" src="/instalar/4-instalar.png" alt="Pergunta Quer instalar esse app?"><figcaption>Toque em Instalar</figcaption></figure>
+      </div>
+    </li>
+    <li>
+      <div class="titulo-passo"><h2>Play Protect: toque em "Instalar assim mesmo"</h2></div>
+      <div class="passo-corpo">
+        <p>O Google mostra <strong>"O app foi bloqueado para proteger seu dispositivo"</strong>. É normal: o CONECTA é um aplicativo
+          interno da Malachias e não está na Play Store, então o Google não o conhece.</p>
+        <p>Toque no texto <span class="toque">Instalar assim mesmo</span>, logo acima do botão. <strong>Não toque em "Entendi"</strong> — ele cancela a instalação.</p>
+        <figure><img onerror="this.closest('figure').remove()" src="/instalar/5-bloqueado.png" alt="Google Play Protect: O app foi bloqueado, com a opção Instalar assim mesmo"><figcaption>Toque em Instalar assim mesmo</figcaption></figure>
+      </div>
+    </li>
+    <li>
+      <div class="titulo-passo"><h2>Se perguntar sobre enviar o app, toque em "Não enviar"</h2></div>
+      <div class="passo-corpo">
+        <p>Pode aparecer <strong>"Enviar o app para uma verificação de segurança?"</strong>. Toque em <span class="toque">Não enviar</span>.
+          Enviar faz a instalação ficar parada esperando o Google.</p>
+        <figure><img onerror="this.closest('figure').remove()" src="/instalar/6-nao-enviar.png" alt="Pergunta Enviar o app para uma verificação de segurança, com a opção Não enviar"><figcaption>Toque em Não enviar</figcaption></figure>
       </div>
     </li>
     <li>
       <div class="titulo-passo"><h2>Toque em Abrir</h2></div>
       <div class="passo-corpo">
         <p>Quando aparecer <strong>App instalado</strong>, toque em <span class="toque">Abrir</span>. O ícone do CONECTA fica na tela do celular.</p>
-        <figure><img onerror="this.closest('figure').remove()" src="/instalar/5-abrir.png" alt="App instalado, com o botão Abrir"><figcaption>Toque em Abrir</figcaption></figure>
+        <figure><img onerror="this.closest('figure').remove()" src="/instalar/7-abrir.png" alt="App instalado, com o botão Abrir"><figcaption>Toque em Abrir</figcaption></figure>
       </div>
     </li>
     <li>
@@ -149,15 +176,9 @@
       <div class="passo-corpo">
         <p>Os <strong>mesmos</strong> que você já usa no navegador. Se ainda não entrou nenhuma vez, use o usuário e a senha do
           <strong>cupom de primeiro acesso</strong> que o RH entregou.</p>
-        <figure><img onerror="this.closest('figure').remove()" src="/instalar/6-login.png" alt="Tela de login do CONECTA"><figcaption>Usuário e senha</figcaption></figure>
-      </div>
-    </li>
-    <li>
-      <div class="titulo-passo"><h2>Permita as notificações</h2></div>
-      <div class="passo-corpo">
-        <p>Quando o celular perguntar se o CONECTA pode enviar notificações, toque em <span class="toque">Permitir</span>.
+        <p>Se o celular perguntar se o CONECTA pode enviar notificações, toque em <span class="toque">Permitir</span>.
           <strong>Sem isso, o comprovante da batida e o aviso de ponto não chegam.</strong></p>
-        <figure><img onerror="this.closest('figure').remove()" src="/instalar/7-notificacoes.png" alt="Pergunta do Android sobre notificações"><figcaption>Toque em Permitir</figcaption></figure>
+        <figure><img onerror="this.closest('figure').remove()" src="/instalar/8-login.png" alt="Tela Acesse sua conta do CONECTA"><figcaption>Usuário e senha</figcaption></figure>
       </div>
     </li>
     <li>
