@@ -9,6 +9,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
+import { AVISO_QR_DO_INSTALAR, ehQrDoInstalar } from '../servicos/cartazDoPonto';
 import {
   ReceiptText,
   X,
@@ -218,7 +219,9 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
             inversionAttempts: 'dontInvert',
           });
 
-          if (achado && achado.data) {
+          if (achado && achado.data && ehQrDoInstalar(achado.data)) {
+            setErro(AVISO_QR_DO_INSTALAR);
+          } else if (achado && achado.data) {
             confirmarCodigo(achado.data);
             return;
           }

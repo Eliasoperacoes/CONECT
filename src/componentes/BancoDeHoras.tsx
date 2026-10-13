@@ -86,6 +86,7 @@ import { dataHoraDeBrasilia } from '../servicos/comprovanteDeHolerite';
 import { podeUsar } from '../servicos/permissoes';
 import { nuvem } from '../servicos/nuvem';
 import { usandoNuvem } from '../servicos/supabase';
+import { enderecoDoInstalar, montarCartazDoPonto } from '../servicos/cartazDoPonto';
 
 interface PropsBancoDeHoras {
   colaboradorAtual: Colaborador;
@@ -233,6 +234,8 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
   useVoltar(!!ajuste, () => setAjuste(null));
 
   const [qrcodes, setQrcodes] = useState<Array<{ loja: Loja; codigo: string; imagem: string }>>([]);
+  /** O QR pequeno do rodapé do cartaz, que abre o tutorial de instalação */
+  const [qrDoInstalar, setQrDoInstalar] = useState<string | null>(null);
 
   /**
    * O endereço quando ele só existe nesta máquina.
@@ -381,8 +384,15 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
           return { loja, codigo: registroCodigo.codigo, imagem };
         })
       );
+      const instalar = await QRCode.toDataURL(enderecoDoInstalar(window.location.origin), {
+        width: 200,
+        margin: 1,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#0E1216', light: '#FFFFFF' },
+      });
       if (!cancelado) {
         setQrcodes(gerados.filter((q): q is NonNullable<typeof q> => !!q));
+        setQrDoInstalar(instalar);
       }
     };
 
@@ -1744,15 +1754,12 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        const cartaz =
-                          `<title>Ponto ${item.loja}</title>` +
-                          `<div style="font-family:system-ui,sans-serif;text-align:center;padding:40px">` +
-                          `<h1 style="margin:0 0 4px">CONECTA · Registro de Ponto</h1>` +
-                          `<h2 style="margin:0 0 24px;font-weight:500">Loja ${item.loja}</h2>` +
-                          `<img src="${item.imagem}" style="width:340px;height:340px" />` +
-                          `<p style="margin:24px 0 4px;font-size:14px">Sem câmera? Digite o código:</p>` +
-                          `<p style="font-family:monospace;font-size:44px;letter-spacing:10px;margin:0;font-weight:700">${item.codigo}</p>` +
-                          `</div>`;
+                        const cartaz = montarCartazDoPonto({
+                          loja: item.loja,
+                          codigo: item.codigo,
+                          qrDoPonto: item.imagem,
+                          qrDoInstalar,
+                        });
                         // No celular, o visor (com Voltar); no computador, a janela de impressão
                         if (!mostrarDocumento(cartaz, { imprimir: true })) {
                           exibirToast('Permita as janelas pop-up para imprimir.', true);
