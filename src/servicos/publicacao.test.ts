@@ -95,3 +95,13 @@ test('o carimbo da versão é gerado no build', async () => {
   expect(vite).toContain('__VERSAO_BUILD__');
   expect(vite).toContain("fileName: 'versao.json'");
 });
+
+test('OS CABEÇALHOS DE SEGURANÇA valem para todo endereço (laudo de 13/10/2026, item 9)', async () => {
+  const config = JSON.parse(await Bun.file(new URL('../../vercel.json', import.meta.url)).text());
+  const todos = config.headers.find((h: { source: string }) => h.source === '/(.*)');
+  const valor = (k: string) => todos?.headers.find((h: { key: string }) => h.key === k)?.value;
+  expect(valor('X-Content-Type-Options')).toBe('nosniff');
+  // SAMEORIGIN, e não DENY: o visor de documentos é uma moldura do próprio sistema
+  expect(valor('X-Frame-Options')).toBe('SAMEORIGIN');
+  expect(valor('Referrer-Policy')).toBe('strict-origin-when-cross-origin');
+});
