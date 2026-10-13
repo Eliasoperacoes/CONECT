@@ -32,3 +32,8 @@ android/local.properties
 android/.idea/
 android/capacitor-cordova-android-plugins/
 entregar/
+
+# Chave que assina o APK e a senha dela: NUNCA no repositório (ficam em ~/ConectaChave)
+*.jks
+*.keystore
+android/assinatura.properties
