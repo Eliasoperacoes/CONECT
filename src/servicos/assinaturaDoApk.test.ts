@@ -32,3 +32,27 @@ test('a chave e a senha nunca entram no repositório', () => {
   expect(ignorados).toContain('*.keystore');
   expect(ignorados).toContain('android/assinatura.properties');
 });
+
+test('O APK NO SITE: /conecta.apk sai como aplicativo Android, nunca de cache velho', () => {
+  const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
+  const apk = config.headers.find((h: { source: string }) => h.source === '/conecta.apk');
+  const valor = (k: string) => apk?.headers.find((h: { key: string }) => h.key === k)?.value;
+  expect(valor('Content-Type')).toBe('application/vnd.android.package-archive');
+  expect(valor('Content-Disposition')).toContain('attachment');
+  expect(valor('Cache-Control')).toContain('must-revalidate');
+  // O service worker não guarda o APK: seriam 10 MB por celular, e versão velha sem rede
+  expect(readFileSync('public/sw-avisos.js', 'utf8')).toContain("if (endereco.pathname.endsWith('.apk')) return;");
+});
+
+test('a versão que o tutorial anuncia é a do APK que o build gera', () => {
+  const gradle = readFileSync('android/app/build.gradle', 'utf8');
+  const versao = /versionName "([^"]+)"/.exec(gradle)![1];
+  const pagina = readFileSync('public/instalar.html', 'utf8');
+  expect(pagina).toContain(`Versão ${versao} ·`);
+  expect(pagina).toContain('href="/conecta.apk"');
+});
+
+test('o APK não carrega dentro de si o APK do site', () => {
+  const gradle = readFileSync('android/app/build.gradle', 'utf8');
+  expect(gradle).toMatch(/ignoreAssetsPattern = '[^']*!\*\.apk'/);
+});

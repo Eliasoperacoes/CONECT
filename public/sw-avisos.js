@@ -67,6 +67,10 @@ self.addEventListener('fetch', (evento) => {
   // O carimbo da versão precisa vir do servidor, sempre: é ele que
   // avisa que saiu publicação nova
   if (endereco.pathname === '/versao.json') return;
+  // O APK do aplicativo (/conecta.apk) vem SEMPRE do servidor: em cache
+  // seriam 10 MB guardados em cada celular, e sem rede ele entregaria uma
+  // versão velha como se fosse a nova
+  if (endereco.pathname.endsWith('.apk')) return;
 
   const ehNavegacao =
     pedido.mode === 'navigate' || pedido.destination === 'document';
