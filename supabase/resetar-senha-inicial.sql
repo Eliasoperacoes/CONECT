@@ -1,4 +1,18 @@
 -- ============================================================
+-- SUBSTITUÍDO por senha-de-ativacao-aleatoria.sql (13/10/2026).
+--
+-- Este script devolve o reset à senha "123456", que a ativação não aceita
+-- mais: rodado depois do novo, quem fosse resetado ficaria trancado do
+-- lado de fora. A trava abaixo para o script antes de ele mudar algo.
+-- ============================================================
+do $$
+begin
+  if to_regclass('public.senhas_de_ativacao') is not null then
+    raise exception 'resetar-senha-inicial.sql foi substituído por senha-de-ativacao-aleatoria.sql. Não rode este arquivo de novo.';
+  end if;
+end $$;
+
+-- ============================================================
 -- CONECTA — RESETAR A SENHA INICIAL PELO SISTEMA
 --
 -- O QUE ESTE ARQUIVO FAZ

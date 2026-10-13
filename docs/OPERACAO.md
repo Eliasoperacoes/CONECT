@@ -108,7 +108,8 @@ esquema.
 | `conferir-tolerancia.sql` | **Não altera nada.** Saldo de alguém não bate com o que a pessoa diz ter trabalhado — mostra quanto do saldo dela veio de minutos que a tolerância aprovou sozinha (art. 58 §1º da CLT manda não descontá-los) |
 | `aviso-no-chat.sql` | **Rode uma vez.** Dá ao recado do chat o id da publicação, para o botão "Abrir publicação" levar à certa |
 | `central-da-direcao.sql` | **Rode uma vez.** Dá à Central da Direção tipo, categoria, destinos e anexo, e põe o filtro de quem vê o quê no banco |
-| `resetar-senha-inicial.sql` | **Rode uma vez.** Cria a função do botão "Resetar para a senha padrão", na ficha do colaborador |
+| `resetar-senha-inicial.sql` | **Substituído por `senha-de-ativacao-aleatoria.sql`** — tem trava e para se rodado de novo (devolveria o reset ao "123456", que não ativa mais ninguém) |
+| `senha-de-ativacao-aleatoria.sql` | **Uma vez (13/10/2026).** Acaba com a senha padrão "123456": cada ficha ainda não ativada recebe uma senha sorteada de 8 caracteres, guardada em `senhas_de_ativacao` (só quem cuida de pessoas lê); quem já ativou não é tocado. Ficha nova e o botão "Gerar nova senha de primeiro acesso" também sorteiam. Os cupons saem em Painel ADM › Colaboradores › "Cupons de primeiro acesso". Conferência: `senha_padrao_aceita` false, `coluna_da_ficha_vazia` 0, `nao_ativadas_sem_senha` 0, `ativadas_com_senha_guardada` 0 |
 | `apuracao-pode-zerar.sql` | **Rode uma vez.** Solta a trava que recusava apuração de ZERO minuto — sem ela, "Reapurar período" não consegue desfazer um débito errado, e a tela diz "0 dias mudaram" como se estivesse tudo certo. No fim ele **lista quem tem débito com cara de pausa cobrada**, sem alterar nada |
 | `horario-pelo-turno.sql` | **Rode uma vez (29/09/2026).** Tira a carga própria que o Painel ADM gravava ao salvar a ficha, para o previsto e a tolerância saírem do turno; põe a Lyvia no turno de estágio da tarde (E3) |
 | `pontos-incompletos.sql` | **Rode uma vez (01/10/2026).** "Pontos incompletos", o aviso de Espelhos de ponto e o cartão do RH passam a perguntar ao banco quais dias têm batida faltando — antes liam o cache do aparelho, que muda com a tela aberta. Sem ele, continuam lendo o cache |
@@ -176,12 +177,13 @@ A pessoa ativou o acesso algum dia e esqueceu a senha. A senha de primeiro
 acesso não vale mais.
 
 **Solução, pelo sistema:** Painel Administrativo → Colaboradores → editar a
-pessoa → **Senha Inicial → "Resetar para a senha padrão"**. Pede confirmação
-e devolve a pessoa ao primeiro acesso, com `123456`.
+pessoa → **Senha Inicial → "Gerar nova senha de primeiro acesso"**. Pede
+confirmação, devolve a pessoa ao primeiro acesso e mostra a senha nova,
+sorteada, para entregar (ela também sai nos cupons de primeiro acesso).
 
-Depende de `supabase/resetar-senha-inicial.sql` ter sido rodado uma vez. O
-botão não aparece em cadastro novo nem sobre a sua própria ficha, e o banco
-recusa resetar alguém de nível acima do seu.
+Depende de `supabase/senha-de-ativacao-aleatoria.sql` ter sido rodado uma
+vez. O botão não aparece em cadastro novo nem sobre a sua própria ficha, e o
+banco recusa resetar alguém de nível acima do seu.
 
 **Solução, pelo SQL:** `supabase/resetar-acesso.sql`. Troque o login na linha
 marcada:
@@ -191,10 +193,10 @@ login_alvo  text := 'Dani';
 ```
 
 Apaga a conta de autenticação e **deixa a ficha intacta** — nível, loja,
-CNPJ, organograma, banco de horas. A pessoa volta ao primeiro acesso e entra
-com `123456`.
+CNPJ, organograma, banco de horas. A pessoa volta ao primeiro acesso com uma
+senha nova, sorteada.
 
-A conferência no fim mostra `pronto_para_entrar = true` e a senha a digitar.
+A conferência no fim mostra `pronto_para_entrar = true` e a senha a entregar.
 
 ### "Login não cadastrado na rede"
 
@@ -269,12 +271,13 @@ select count(*) as fichas,
        count(*) filter (where auth_user_id is not null) as ativados
 from public.colaboradores;
 
--- Quem ainda não ativou o acesso, e com qual senha entra
-select nome, login, nivel, loja,
-       coalesce(nullif(senha_ativacao, ''), '123456') as senha
-from public.colaboradores
-where auth_user_id is null and ativo
-order by nivel desc, nome;
+-- Quem ainda não ativou o acesso, e com qual senha entra (a mesma lista dos
+-- cupons; só quem cuida de pessoas a vê pelo app)
+select c.nome, c.login, c.nivel, c.loja, s.senha
+from public.colaboradores c
+left join public.senhas_de_ativacao s on s.colaborador_id = c.id
+where c.auth_user_id is null and c.ativo
+order by c.nivel desc, c.nome;
 
 -- O gatilho de primeiro acesso está na versão certa?
 select exists (

@@ -10,8 +10,9 @@
 --
 -- A conta de autenticação é apagada e a FICHA CONTINUA INTACTA — nível,
 -- loja, setor, cargo, CNPJ, organograma, banco de horas, tudo. A pessoa
--- volta para o estado de "primeiro acesso" e entra com a senha padrão
--- (123456), sendo obrigada a definir a dela em seguida.
+-- volta para o estado de "primeiro acesso" e entra com uma senha nova,
+-- sorteada (mostrada na conferência), sendo obrigada a definir a dela em
+-- seguida. Desde 13/10/2026 não existe mais senha padrão.
 --
 -- Por que apagar em vez de trocar a senha: a senha vive na autenticação do
 -- Supabase, cifrada, e não há como reescrevê-la por SQL comum. Apagar a
@@ -68,7 +69,16 @@ begin
          precisa_trocar_senha = true
    where id = ficha.id;
 
-  raise notice '% (%): % conta(s) removida(s). Pode entrar com a senha padrao.',
+  -- A SENHA NOVA É SORTEADA (senha-de-ativacao-aleatoria.sql, 13/10/2026):
+  -- "123456" não ativa mais ninguém. Ela aparece na conferência abaixo.
+  if to_regclass('public.senhas_de_ativacao') is null then
+    raise exception 'Rode antes senha-de-ativacao-aleatoria.sql: sem ela a pessoa resetada não teria senha para entrar.';
+  end if;
+  insert into public.senhas_de_ativacao (colaborador_id, senha)
+    values (ficha.id, public.senha_aleatoria())
+    on conflict (colaborador_id) do update set senha = excluded.senha, gerada_em = now();
+
+  raise notice '% (%): % conta(s) removida(s). A senha nova de primeiro acesso esta na conferencia abaixo.',
     ficha.nome, ficha.login, quantas;
 end $$;
 
@@ -88,6 +98,6 @@ select
   cargo,
   loja,
   (auth_user_id is null)                          as pronto_para_entrar,
-  coalesce(nullif(senha_ativacao, ''), '123456')  as senha
+  (select s.senha from public.senhas_de_ativacao s where s.colaborador_id = colaboradores.id) as senha
 from public.colaboradores
 where lower(trim(login)) = lower(trim('Dani'));

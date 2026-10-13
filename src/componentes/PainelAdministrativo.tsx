@@ -43,7 +43,10 @@ import {
   Camera,
   Clock,
   Image as ImageIcon,
+  Printer,
 } from 'lucide-react';
+import { documentoDosCupons } from '../servicos/cuponsDeAcesso';
+import { imprimirDocumento } from '../servicos/visorDeDocumento';
 import {
   Colaborador,
   Loja,
@@ -239,6 +242,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   const [modalResetUsuariosAberto, setModalResetUsuariosAberto] = useState(false);
   // Modal para Alteração de Foto do Colaborador
   const [colaboradorParaAlterarFoto, setColaboradorParaAlterarFoto] = useState<Colaborador | null>(null);
+  // Os cupons de primeiro acesso sendo buscados no banco
+  const [gerandoCupons, setGerandoCupons] = useState(false);
   // Modal para Confirmar Exclusão de Colaborador
   const [colabParaExcluir, setColabParaExcluir] = useState<{ id: string; nome: string } | null>(null);
   // Modal para Confirmar Exclusão de Comunicado Oficial
@@ -403,6 +408,23 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
    * só esconder o que não faz sentido; trava de tela se contorna abrindo
    * o console.
    */
+  /**
+   * OS CUPONS DE PRIMEIRO ACESSO: login e senha sorteada de quem ainda não
+   * entrou, para recortar e entregar (senha-de-ativacao-aleatoria.sql).
+   */
+  const imprimirCuponsDeAcesso = async () => {
+    setGerandoCupons(true);
+    const lista = await nuvem.senhasParaEntregar();
+    setGerandoCupons(false);
+    if (lista === null) {
+      return exibirToast('Não deu para buscar as senhas. Confira se senha-de-ativacao-aleatoria.sql já rodou.', true);
+    }
+    if (lista.length === 0) return exibirToast('Todos os colaboradores ativos já fizeram o primeiro acesso.');
+    if (!imprimirDocumento(documentoDosCupons(lista, window.location.origin))) {
+      exibirToast('O navegador bloqueou a janela de impressão. Libere os pop-ups deste site.', true);
+    }
+  };
+
   const resetarSenhaInicial = async () => {
     if (!colabEditando) return;
 
@@ -415,7 +437,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       res.sucesso
         ? {
             ok: true,
-            texto: `${colabEditando.nome} volta a entrar com a senha ${res.senha} e cria a dela na primeira entrada.`,
+            texto: `Senha de primeiro acesso de ${colabEditando.nome}: ${res.senha}. Entregue a ela (ou imprima o cupom); na primeira entrada ela cria a dela.`,
           }
         : { ok: false, texto: res.erro || 'Não foi possível resetar.' }
     );
@@ -824,6 +846,20 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     <Download className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Baixar Modelo (.xlsx)</span>
                   </button>
+
+                  {usandoNuvem() && (
+                    <button
+                      type="button"
+                      id="botao-cupons-de-acesso"
+                      onClick={imprimirCuponsDeAcesso}
+                      disabled={gerandoCupons}
+                      className="py-2 px-3 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-xs font-semibold text-[var(--c-texto)] hover:bg-[var(--c-canvas)] flex items-center gap-1.5 transition-all disabled:opacity-50"
+                      title="Login e senha de primeiro acesso de quem ainda não entrou, para recortar e entregar"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-[var(--c-acento)]" />
+                      <span>{gerandoCupons ? 'Gerando…' : 'Cupons de primeiro acesso'}</span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -1962,15 +1998,14 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                   </label>
 
                   {/* No modo rede o administrador não define senha de ninguém:
-                      a pessoa ativa o acesso com a padrão e cria a dela. */}
+                      o banco sorteia a de primeiro acesso de cada pessoa
+                      (senha-de-ativacao-aleatoria.sql), e ela vai no cupom. */}
                   {usandoNuvem() ? (
                     <div className="flex flex-col gap-1.5">
                       <div className="w-full px-3 py-2 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] text-[11px] text-[var(--c-texto-3)] leading-snug">
-                        Entra com{' '}
-                        <strong className="font-mono text-[var(--c-texto-2)]">
-                          {SENHA_PADRAO_PRIMEIRO_ACESSO}
-                        </strong>{' '}
-                        e cria a própria senha na primeira entrada.
+                        Recebe uma senha de primeiro acesso sorteada pelo sistema, entregue no{' '}
+                        <strong className="text-[var(--c-texto-2)]">cupom de primeiro acesso</strong>, e cria a
+                        própria senha na primeira entrada.
                       </div>
 
                       {/* SÓ AO EDITAR, e nunca sobre si mesmo: quem reseta a
@@ -1988,19 +2023,16 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                               className="w-full px-3 py-2 rounded-xl border border-amber-500/40 bg-amber-500/5 text-[11px] font-bold text-amber-700 dark:text-amber-400 hover:bg-amber-500/10 transition-colors flex items-center justify-center gap-1.5"
                             >
                               <RotateCcw className="w-3.5 h-3.5" />
-                              Resetar para a senha padrão
+                              Gerar nova senha de primeiro acesso
                             </button>
                           ) : (
                             <div className="w-full p-2.5 rounded-xl border border-amber-500/40 bg-amber-500/5 flex flex-col gap-2">
                               <span className="text-[11px] leading-snug text-[var(--c-texto-2)]">
                                 A senha atual de{' '}
-                                <strong>{colabEditando.nome}</strong> deixa de valer.
-                                Ela entra com{' '}
-                                <strong className="font-mono">
-                                  {SENHA_PADRAO_PRIMEIRO_ACESSO}
-                                </strong>{' '}
-                                e cria uma nova. Ficha, ponto e mensagens não são
-                                tocados.
+                                <strong>{colabEditando.nome}</strong> deixa de valer. O
+                                sistema sorteia uma senha de primeiro acesso nova, para
+                                entregar a ela, que cria a própria na entrada.
+                                Ficha, ponto e mensagens não são tocados.
                               </span>
                               <div className="flex items-center gap-1.5">
                                 <button

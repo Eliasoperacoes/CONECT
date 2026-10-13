@@ -1817,8 +1817,12 @@ export const INFORMACOES_LOJAS: InfoLoja[] = [
 ];
 
 /**
- * Senha entregue pelo RH para o primeiro acesso de cada colaborador.
- * Trocá-la é obrigatório na primeira entrada. O mínimo de 6 caracteres é
- * exigência da autenticação do Supabase, por isso não pode ser menor.
+ * A SENHA DE PRIMEIRO ACESSO DO MODO LOCAL — e só dele.
+ *
+ * No modo rede ela deixou de existir (13/10/2026): cada pessoa que ainda
+ * não entrou tem a sua, sorteada no banco (senha-de-ativacao-aleatoria.sql),
+ * e o RH a entrega no cupom. Quem soubesse o login de alguém ativava a conta
+ * dele com esta. O banco ainda a reconhece, mas só para tratá-la como "sem
+ * senha" quando um aplicativo antigo a envia.
  */
 export const SENHA_PADRAO_PRIMEIRO_ACESSO = '123456';

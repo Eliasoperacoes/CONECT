@@ -103,7 +103,8 @@ sistema (pelo RH ou pela planilha) e só então **ativa** o acesso.
 1ª entrada  →  não existe conta de autenticação
             →  o gatilho ao_criar_usuario ADOTA a ficha, casando pelo login
             →  nível, loja, CNPJ e organograma da planilha ficam intactos
-            →  exige a senha de primeiro acesso (senha_ativacao, ou 123456)
+            →  exige a senha de primeiro acesso da ficha (senhas_de_ativacao:
+               sorteada, só o RH lê; não há senha padrão desde 13/10/2026)
             →  obriga a trocar a senha em seguida
 
 login desconhecido  →  recusado. Não vira cadastro novo.

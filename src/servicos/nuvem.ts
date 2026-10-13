@@ -239,7 +239,10 @@ const paraLinha = (c: Colaborador) => ({
    * senha de quem ainda não entrou, deixando a pessoa com a padrão sem
    * ninguém saber.
    */
-  ...(c.senhaAtivacao ? { senha_ativacao: c.senhaAtivacao } : {}),
+  // A antiga padrão não viaja: desde senha-de-ativacao-aleatoria.sql o
+  // banco sorteia a senha de quem não tem uma individual (e, por garantia,
+  // trata "123456" como "sem senha" se ela chegar)
+  ...(c.senhaAtivacao && c.senhaAtivacao !== SENHA_PADRAO_PRIMEIRO_ACESSO ? { senha_ativacao: c.senhaAtivacao } : {}),
   // Mesma regra do campo acima: só viaja quando dito, senão cada alteração
   // de ramal reabriria a troca de senha de quem já definiu a dele
   ...(c.precisaTrocarSenha === undefined
@@ -581,7 +584,32 @@ class PonteNuvem {
 
     await this.sincronizarColaboradores();
     const linha = Array.isArray(data) ? data[0] : data;
-    return { sucesso: true, senha: linha?.senha || SENHA_PADRAO_PRIMEIRO_ACESSO };
+    /*
+      A senha nova é SORTEADA no banco (senha-de-ativacao-aleatoria.sql) e
+      só existe nesta resposta e na lista dos cupons. Sem ela, não se
+      inventa uma: a padrão "123456" não ativa mais ninguém.
+    */
+    if (!linha?.senha) return { sucesso: false, erro: 'O banco não devolveu a senha nova. Rode senha-de-ativacao-aleatoria.sql.' };
+    return { sucesso: true, senha: linha.senha };
+  }
+
+  /**
+   * Login e senha de primeiro acesso de quem ainda não entrou, para os
+   * cupons. Só quem cuida de pessoas recebe (RLS de `senhas_de_ativacao`);
+   * `null` se o banco não respondeu ou ainda não tem a função.
+   */
+  async senhasParaEntregar(): Promise<Array<{
+    colaborador_id: string;
+    nome: string;
+    login: string;
+    loja: string;
+    setor: string;
+    senha: string;
+  }> | null> {
+    if (!supabase) return null;
+    const { data, error } = await supabase.rpc('senhas_para_entregar');
+    if (error) return null;
+    return data || [];
   }
 
   async sair(): Promise<void> {

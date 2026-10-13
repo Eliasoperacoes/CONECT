@@ -283,8 +283,9 @@ test('a senha que o painel mostra é a que o banco espera', async () => {
   const ponte = await Bun.file(new URL('./nuvem.ts', import.meta.url)).text();
 
   expect(ponte).toContain('senha_ativacao: c.senhaAtivacao');
-  // Condicional: enviar sempre apagaria a senha a cada troca de foto
-  expect(ponte).toContain('...(c.senhaAtivacao ?');
+  // Condicional: enviar sempre apagaria a senha a cada troca de foto. E a
+  // antiga padrão não viaja (senha-de-ativacao-aleatoria.sql, 13/10/2026)
+  expect(ponte).toContain('...(c.senhaAtivacao && c.senhaAtivacao !== SENHA_PADRAO_PRIMEIRO_ACESSO ?');
 });
 
 test('a senha de ativação NÃO é reenviada nas atualizações', async () => {

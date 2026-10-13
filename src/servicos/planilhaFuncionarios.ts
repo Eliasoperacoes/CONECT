@@ -369,7 +369,7 @@ export function baixarPlanilhaModeloExcel(): void {
     ['CAMPO', 'REGRA / VALORES PERMITIDOS'],
     ['Nome Completo', 'Obrigatório. Nome e sobrenome do funcionário.'],
     ['Login de Acesso', 'Obrigatório e único na rede. Use apenas letras sem acento, números, ponto, hífen ou sublinhado. Sem espaços, sem cedilha e sem acento — ex: "joao.silva". Se ficar em branco, o sistema gera a partir do nome.'],
-    ['Senha', `NÃO vai na planilha. Todo colaborador entra pela primeira vez com a senha padrão "${SENHA_PADRAO_PRIMEIRO_ACESSO}" e o sistema obriga a criar a senha dele em seguida.`],
+    ['Senha', 'NÃO vai na planilha. O sistema sorteia uma senha de primeiro acesso para cada pessoa; o RH imprime os cupons em Colaboradores › "Cupons de primeiro acesso" e entrega em mão. Na primeira entrada, o sistema obriga a criar a senha dela.'],
     ['Cargo / Função', 'Obrigatório. A função da pessoa — NÃO define o nível de acesso, que vai na coluna própria. Cargos usados na rede: Administrativo, Balconista, Caixa, Comprador(a), Conferente, Estagiário(a), Estoquista, Motoboy, Operador(a) de Caixa, Telefonista, Vendedor(a). Outro cargo pode ser escrito à vontade.'],
     ['Loja / Filial', 'Obrigatório. Escolha uma das 5 unidades: Pirassununga, Porto Ferreira, Palmeiras, Descalvado, Santa Rita ou Rede.'],
     ['Setor', 'Obrigatório: Balcão, Estoque, Caixas, Compras, Garantia, Callcenter, Tesouraria, RH, Diretoria ou TI.'],
