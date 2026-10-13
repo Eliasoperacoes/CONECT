@@ -4,6 +4,7 @@ import App from './App.tsx';
 import {iniciarTema} from './servicos/tema';
 import {iniciarNuvem} from './servicos/nuvem';
 import {calarSugestoesDoNavegador} from './servicos/sugestoesDoNavegador';
+import {impedirQueArquivoSoltoAbra} from './servicos/arquivosSoltos';
 // A fonte do computador (index.css, a partir de 768px); o celular não a baixa
 import '@fontsource-variable/manrope';
 import './index.css';
@@ -13,6 +14,9 @@ iniciarTema();
 
 // Antes de desenhar: o primeiro campo já nasce sem a lista do navegador.
 calarSugestoesDoNavegador();
+
+// Arquivo solto fora de quem o recebe não troca o CONECTA pelo arquivo
+impedirQueArquivoSoltoAbra();
 
 // Recupera a sessão e preenche o cache a partir do banco. Não bloqueia a
 // renderização: a tela abre com o que já está em cache e se atualiza sozinha.

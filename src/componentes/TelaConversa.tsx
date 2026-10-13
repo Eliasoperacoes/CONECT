@@ -32,7 +32,9 @@ import {
   Reply,
   Mic,
   Megaphone,
+  UploadCloud,
 } from 'lucide-react';
+import { MAXIMO_DE_ARQUIVOS_POR_VEZ, trazArquivos } from '../servicos/arquivosSoltos';
 import {
   Conversa,
   Colaborador,
@@ -600,28 +602,20 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     return true;
   };
 
-  const lidarEnvioArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const arquivos = e.target.files;
-    if (!arquivos || arquivos.length === 0) return;
-    const arquivo = arquivos[0];
-
-    const limparCampo = () => {
-      if (refInputArquivo.current) refInputArquivo.current.value = '';
-    };
-
+  /**
+   * Manda UM arquivo para a conversa. É o caminho do clipe de anexo e de
+   * quem arrasta arquivos do computador para a conversa — os dois iguais.
+   */
+  const enviarArquivo = async (arquivo: File): Promise<void> => {
     // Foto anexada é foto: entra na conversa como imagem, não como documento
     // para baixar. Vai reduzida, porque foto de celular estoura o navegador.
     if (ehArquivoDeImagem(arquivo)) {
-      if (await enviarComoImagem(arquivo)) {
-        limparCampo();
-        return;
-      }
+      if (await enviarComoImagem(arquivo)) return;
       // Formato de imagem que o navegador não abriu: segue como anexo comum
     }
 
     if (arquivo.size > LIMITE_ANEXO_BYTES) {
-      exibirToast('Arquivo acima de 2 MB. Envie um menor ou compartilhe o link.');
-      limparCampo();
+      exibirToast(`"${arquivo.name}" passa de 2 MB. Envie um menor ou compartilhe o link.`);
       return;
     }
 
@@ -629,24 +623,81 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     const tamanhoFormatado =
       tamanhoKb > 1024 ? `${(tamanhoKb / 1024).toFixed(1)} MB` : `${tamanhoKb} KB`;
 
-    const leitor = new FileReader();
-    leitor.onload = async () => {
-      const resultado = await bancoDados.enviarMensagem(conversa.id, {
-        tipo: 'arquivo',
-        arquivoNome: arquivo.name,
-        arquivoTamanho: tamanhoFormatado,
-        arquivoUrl: typeof leitor.result === 'string' ? leitor.result : undefined,
-      });
-      if (!resultado.sucesso) {
-        exibirToast(resultado.erro || 'Não foi possível enviar o arquivo.');
-      }
-      limparCampo();
-    };
-    leitor.onerror = () => {
-      exibirToast('Não foi possível ler o arquivo.');
-      limparCampo();
-    };
-    leitor.readAsDataURL(arquivo);
+    const conteudo = await new Promise<string | null>((resolver) => {
+      const leitor = new FileReader();
+      leitor.onload = () => resolver(typeof leitor.result === 'string' ? leitor.result : null);
+      leitor.onerror = () => resolver(null);
+      leitor.readAsDataURL(arquivo);
+    });
+    if (!conteudo) {
+      exibirToast(`Não foi possível ler "${arquivo.name}".`);
+      return;
+    }
+
+    const resultado = await bancoDados.enviarMensagem(conversa.id, {
+      tipo: 'arquivo',
+      arquivoNome: arquivo.name,
+      arquivoTamanho: tamanhoFormatado,
+      arquivoUrl: conteudo,
+    });
+    if (!resultado.sucesso) {
+      exibirToast(resultado.erro || 'Não foi possível enviar o arquivo.');
+    }
+  };
+
+  const lidarEnvioArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = e.target.files?.[0];
+    if (!arquivo) return;
+    await enviarArquivo(arquivo);
+    if (refInputArquivo.current) refInputArquivo.current.value = '';
+  };
+
+  /**
+   * ARRASTAR DO COMPUTADOR PARA A CONVERSA, como no WhatsApp Web e no Teams.
+   *
+   * Antes, o navegador abria o arquivo solto em outra janela. Agora a
+   * conversa inteira vira área de soltar enquanto o arquivo passa por ela,
+   * e cada arquivo vai pelo mesmo caminho do clipe, na ordem em que veio.
+   *
+   * O contador existe porque o navegador avisa "saiu" a cada filho da tela
+   * que o cursor atravessa; sem ele o aviso piscaria a cada balão.
+   */
+  const [arrastandoArquivo, setArrastandoArquivo] = useState(false);
+  const refEntradasDoArraste = useRef(0);
+
+  const aoEntrarArrastando = (e: React.DragEvent) => {
+    if (!podePublicar || !trazArquivos(e.dataTransfer)) return;
+    e.preventDefault();
+    refEntradasDoArraste.current += 1;
+    setArrastandoArquivo(true);
+  };
+  const aoPassarArrastando = (e: React.DragEvent) => {
+    if (!podePublicar || !trazArquivos(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+  const aoSairArrastando = (e: React.DragEvent) => {
+    if (!trazArquivos(e.dataTransfer)) return;
+    refEntradasDoArraste.current = Math.max(0, refEntradasDoArraste.current - 1);
+    if (refEntradasDoArraste.current === 0) setArrastandoArquivo(false);
+  };
+  const aoSoltarArquivos = async (e: React.DragEvent) => {
+    refEntradasDoArraste.current = 0;
+    setArrastandoArquivo(false);
+    if (!podePublicar || !trazArquivos(e.dataTransfer)) return;
+    e.preventDefault();
+
+    const arquivos = Array.from(e.dataTransfer.files);
+    if (arquivos.length === 0) {
+      // Pasta, ou imagem arrastada de outro site: não chega como arquivo
+      exibirToast('Não deu para ler o que foi solto. Arraste arquivos do computador.');
+      return;
+    }
+    if (arquivos.length > MAXIMO_DE_ARQUIVOS_POR_VEZ) {
+      exibirToast(`Solte até ${MAXIMO_DE_ARQUIVOS_POR_VEZ} arquivos por vez.`);
+      return;
+    }
+    for (const arquivo of arquivos) await enviarArquivo(arquivo);
   };
 
   // Ação de segurar a BARRA DO RÁDIO
@@ -894,7 +945,29 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
     <div
       id="tela-conversa-ativa"
       className="relative flex flex-col w-full h-[100dvh] bg-[var(--c-canvas)] overflow-hidden"
+      onDragEnter={aoEntrarArrastando}
+      onDragOver={aoPassarArrastando}
+      onDragLeave={aoSairArrastando}
+      onDrop={aoSoltarArquivos}
     >
+      {/* O arquivo arrastado sobre a conversa: solte e ele vai para ela */}
+      {arrastandoArquivo && (
+        <div
+          id="area-soltar-arquivos"
+          className="pointer-events-none absolute inset-2 z-50 flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-[var(--c-acento)] bg-[var(--c-canvas)]/90 backdrop-blur-sm text-center animate-in fade-in"
+        >
+          <div className="w-16 h-16 rounded-full bg-[var(--c-acento)] text-white flex items-center justify-center shadow-lg">
+            <UploadCloud className="w-8 h-8" />
+          </div>
+          <div>
+            <p className="text-base font-bold text-[var(--c-texto)]">Solte para enviar</p>
+            <p className="text-sm text-[var(--c-texto-3)]">
+              para {conversa.nome}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 1. Cabeçalho: alterna entre a barra normal e a barra de seleção */}
       {mensagensSelecionadasIds.length > 0 ? (
         <header
