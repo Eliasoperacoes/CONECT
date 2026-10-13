@@ -878,9 +878,14 @@ create policy mensagens_remocao on public.mensagens
   using (remetente_id = public.meu_colaborador_id() or public.sou_admin());
 
 -- LEITURAS: cada um marca as próprias
+-- Vê quem leu quem pode ver a mensagem (leituras-so-das-minhas-conversas.sql,
+-- 13/10/2026). Era `using (true)`: todo logado via as leituras da rede inteira.
 drop policy if exists leituras_leitura on public.leituras_mensagem;
 create policy leituras_leitura on public.leituras_mensagem
-  for select to authenticated using (true);
+  for select to authenticated
+  using (
+    exists (select 1 from public.mensagens m where m.id = leituras_mensagem.mensagem_id)
+  );
 
 drop policy if exists leituras_insercao on public.leituras_mensagem;
 create policy leituras_insercao on public.leituras_mensagem
