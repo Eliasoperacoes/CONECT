@@ -37,7 +37,7 @@ import {
 } from './supabase';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
 import { coletorDaMarcacao } from './aplicativo';
-import { ehCaminhoDeFotoPerfil, resolverCaminhos } from './anexos';
+import { ehCaminhoDeFotoPerfil, esquecerAssinaturas, resolverCaminhos } from './anexos';
 import { nuvemComunicacao } from './nuvemComunicacao';
 /**
  * A folha, e não `justificativas`: aquele arquivo importa `ponto`, que
@@ -592,6 +592,7 @@ class PonteNuvem {
     // quem entrar depois
     localStorage.removeItem(CHAVE_REGISTROS_PONTO);
     nuvemComunicacao.limparCache();
+    esquecerAssinaturas();
   }
 
   /** Há uma sessão válida guardada neste aparelho? */

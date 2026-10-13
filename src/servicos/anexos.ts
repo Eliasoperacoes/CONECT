@@ -165,8 +165,67 @@ export const enviarFotoDePerfil = async (
     `${PREFIXO_FOTO_PERFIL}/${colaboradorId}/${Date.now()}.jpg`
   );
 
+/**
+ * A ASSINATURA QUE AINDA VALE É REAPROVEITADA (13/10/2026).
+ *
+ * Cada assinatura nova é um endereço novo — e endereço novo, para o
+ * navegador, é imagem nova: baixa de novo, e a foto pisca. A lista de
+ * colaboradores sincroniza a cada mudança em QUALQUER ficha, inclusive a
+ * presença de quem abre ou fecha o app, e reassinava as fotos de todos a
+ * cada vez. O Elias via a própria foto recarregar ao abrir as conversas,
+ * como internet lenta.
+ *
+ * Guardada no aparelho, a assinatura é usada até faltar uma hora para
+ * vencer. Foto trocada tem caminho novo (o nome leva a hora do envio), e
+ * por isso aparece na hora.
+ */
+const CHAVE_ASSINATURAS = 'conecta_v4_assinaturas_anexos';
+const FOLGA_ANTES_DE_VENCER_MS = 60 * 60 * 1000;
+
+type Guardadas = Record<string, { url: string; valeAte: number }>;
+
+const lerGuardadas = (): Guardadas => {
+  try {
+    return JSON.parse(localStorage.getItem(CHAVE_ASSINATURAS) || '{}') as Guardadas;
+  } catch {
+    return {};
+  }
+};
+
+const guardar = (novas: Map<string, string>, agoraMs: number): void => {
+  try {
+    const todas = lerGuardadas();
+    // As vencidas saem: o que fica é só o que ainda serve
+    for (const [caminho, a] of Object.entries(todas)) if (a.valeAte <= agoraMs) delete todas[caminho];
+    for (const [caminho, url] of novas) todas[caminho] = { url, valeAte: agoraMs + VALIDADE_SEGUNDOS * 1000 };
+    localStorage.setItem(CHAVE_ASSINATURAS, JSON.stringify(todas));
+  } catch {
+    // Sem armazenamento: assina de novo da próxima vez, como antes
+  }
+};
+
+/**
+ * Ao sair: as assinaturas abrem arquivos privados (fotos, anexos das
+ * conversas), e não ficam no aparelho para quem entrar depois.
+ */
+export const esquecerAssinaturas = (): void => {
+  try {
+    localStorage.removeItem(CHAVE_ASSINATURAS);
+  } catch {
+    // Sem armazenamento: não havia o que esquecer
+  }
+};
+
+/** A assinatura guardada deste caminho, se ainda tem mais de uma hora de vida. */
+export const assinaturaGuardada = (caminho: string, agoraMs = Date.now()): string | null => {
+  const a = lerGuardadas()[caminho];
+  return a && a.valeAte - agoraMs > FOLGA_ANTES_DE_VENCER_MS ? a.url : null;
+};
+
 export const resolverCaminho = async (caminho: string): Promise<string | null> => {
   if (!supabase) return null;
+  const guardada = assinaturaGuardada(caminho);
+  if (guardada) return guardada;
 
   const { data, error } = await supabase.storage
     .from(BALDE)
@@ -176,6 +235,7 @@ export const resolverCaminho = async (caminho: string): Promise<string | null> =
     console.error('Falha ao abrir o anexo:', error?.message);
     return null;
   }
+  guardar(new Map([[caminho, data.signedUrl]]), Date.now());
   return data.signedUrl;
 };
 
@@ -189,19 +249,32 @@ export const resolverCaminhos = async (
   const resolvidos = new Map<string, string>();
   if (!supabase || caminhos.length === 0) return resolvidos;
 
-  const unicos = [...new Set(caminhos)];
+  // O que ainda tem assinatura válida no aparelho não vai à rede: o endereço
+  // fica o mesmo, e a imagem não é baixada de novo
+  const agoraMs = Date.now();
+  const faltam: string[] = [];
+  for (const caminho of new Set(caminhos)) {
+    const guardada = assinaturaGuardada(caminho, agoraMs);
+    if (guardada) resolvidos.set(caminho, guardada);
+    else faltam.push(caminho);
+  }
+  if (faltam.length === 0) return resolvidos;
+
   const { data, error } = await supabase.storage
     .from(BALDE)
-    .createSignedUrls(unicos, VALIDADE_SEGUNDOS);
+    .createSignedUrls(faltam, VALIDADE_SEGUNDOS);
 
   if (error || !data) {
     console.error('Falha ao abrir os anexos da conversa:', error?.message);
     return resolvidos;
   }
 
+  const novas = new Map<string, string>();
   data.forEach((item) => {
-    if (item.path && item.signedUrl) resolvidos.set(item.path, item.signedUrl);
+    if (item.path && item.signedUrl) novas.set(item.path, item.signedUrl);
   });
+  guardar(novas, agoraMs);
+  for (const [caminho, url] of novas) resolvidos.set(caminho, url);
   return resolvidos;
 };
 
