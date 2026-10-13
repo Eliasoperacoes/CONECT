@@ -1638,17 +1638,22 @@ export default function App() {
   const telaMostrada = telaQueAbre(telaWeb, acessoWeb.visiveis);
 
   /**
-   * O PEDIDO DE BATER VAI A UMA TELA SÓ — a que está à vista.
+   * TODO PEDIDO QUE DISPARA UMA AÇÃO VAI A UMA TELA SÓ — a que está à vista.
    *
-   * O ponto do celular e o do computador ficam montados juntos: o CSS só
-   * esconde o outro. Os dois recebiam o código do cartaz e o pedido do
-   * atalho, e cada um abria o seu modal e batia: o Yan, que lê o cartaz
-   * pela câmera do celular, gravou toda batida duas vezes, 2 s uma da
-   * outra (08/10/2026). A segunda voltava "repetida", ele achava que não
-   * tinha batido, batia de novo — e a entrada das 08:23 ganhou uma saída
-   * para almoço às 08:23. A régua é a do layout (`ehTelaDeCelular`).
+   * As telas do celular e as do computador ficam montadas juntas: o CSS só
+   * esconde as outras. Os pedidos iam às duas, e cada uma agia:
+   *
+   *   · o código do cartaz e o atalho "Bater ponto": cada ponto abria o seu
+   *     modal e batia — o Yan gravou toda batida duas vezes, e a entrada das
+   *     08:23 ganhou uma saída para almoço às 08:23 (08/10/2026);
+   *   · a publicação da Central (o toque no aviso): duas folhas abertas,
+   *     a leitura confirmada duas vezes, e o Voltar do celular precisando
+   *     de dois toques (laudo de 13/10/2026, item 4, medido no Chrome);
+   *   · a seção do painel (`secaoAlvo`): o mesmo desenho.
+   *
+   * A régua é a do layout (`ehTelaDeCelular`).
    */
-  const pontoNoCelular = ehTelaDeCelular();
+  const telaDoCelular = ehTelaDeCelular();
   const assuntoMostrado = chatExpandido ? 'conversas' : assuntoDaTela(telaMostrada);
   const contadoresWeb: Partial<Record<AssuntoId, number>> = {
     conversas: totalNaoLidas,
@@ -1823,7 +1828,7 @@ export default function App() {
                   colaboradorAtual={colaboradorAtual}
                   aoAbrirConversa={(id) => abrirJanela(id)}
                   aoAlternarParaGestor={() => setPainelAdminAberto(true)}
-                  secaoAlvo={secaoAlvo}
+                  secaoAlvo={telaDoCelular ? secaoAlvo : null}
                   aoConsumirSecao={consumirSecaoAlvo}
                 />
               </div>
@@ -1896,7 +1901,7 @@ export default function App() {
               <div className="block md:hidden h-full overflow-y-auto">
                 <CentralAvisos
                   colaboradorAtual={colaboradorAtual}
-                  publicacaoAAbrir={publicacaoAAbrir}
+                  publicacaoAAbrir={telaDoCelular ? publicacaoAAbrir : null}
                   aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}
                 />
               </div>
@@ -1906,9 +1911,9 @@ export default function App() {
               <div className="block md:hidden h-full">
                 <AbaPonto
                   colaboradorAtual={colaboradorAtual}
-                  codigoDoEndereco={pontoNoCelular ? codigoDoCartaz : null}
+                  codigoDoEndereco={telaDoCelular ? codigoDoCartaz : null}
                   aoConsumirCodigo={() => setCodigoDoCartaz(null)}
-                  pedidoDeBater={pontoNoCelular && pedidoDeBater}
+                  pedidoDeBater={telaDoCelular && pedidoDeBater}
                   aoAtenderPedido={() => setPedidoDeBater(false)}
                 />
               </div>
@@ -2083,13 +2088,13 @@ export default function App() {
               aoAbrirAdmin={() => setPainelAdminAberto(true)}
               aoTrocarColaborador={lidarTrocarColaborador}
               aoSair={lidarDeslogar}
-              codigoDoCartaz={pontoNoCelular ? null : codigoDoCartaz}
+              codigoDoCartaz={telaDoCelular ? null : codigoDoCartaz}
               aoConsumirCodigo={() => setCodigoDoCartaz(null)}
-              pedidoDeBater={!pontoNoCelular && pedidoDeBater}
+              pedidoDeBater={!telaDoCelular && pedidoDeBater}
               aoAtenderPedido={() => setPedidoDeBater(false)}
-              publicacaoAAbrir={publicacaoAAbrir}
+              publicacaoAAbrir={telaDoCelular ? null : publicacaoAAbrir}
               aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}
-              secaoAlvo={secaoAlvo}
+              secaoAlvo={telaDoCelular ? null : secaoAlvo}
               aoConsumirSecao={consumirSecaoAlvo}
               aoAbrirPublicacao={abrirPublicacao}
               acoesDoTopo={

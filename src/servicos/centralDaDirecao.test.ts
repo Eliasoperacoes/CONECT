@@ -409,7 +409,8 @@ test('A CENTRAL É ABA DE TODOS, e não sub-aba de Gerenciar', async () => {
   const app = await Bun.file('src/App.tsx').text();
   expect(app).toMatch(/id: 'central',[\s\S]{0,80}visivel: true/);
   expect(app).toContain('<CentralAvisos');
-  expect(app).toContain('publicacaoAAbrir={publicacaoAAbrir}');
+  // Só quando a tela é de celular: a do computador recebe a dela (laudo de 13/10, item 4)
+  expect(app).toContain('publicacaoAAbrir={telaDoCelular ? publicacaoAAbrir : null}');
 
   // E não existe em dois lugares: saiu do painel de gestão
   const painel = await Bun.file('src/componentes/PainelRede.tsx').text();
