@@ -1014,7 +1014,7 @@ var paraFeriado = (l) => ({
   minutosPrevistos: Number(l.minutos_previstos) || 0,
   criadoEm: String(l.criado_em)
 });
-var horaDe = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+var horaDe = (iso) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
 var paraAvisoRede = (linha, lidoPorIds, confirmacoesIds) => ({
   id: linha.id,
   titulo: linha.titulo,
@@ -1028,7 +1028,8 @@ var paraAvisoRede = (linha, lidoPorIds, confirmacoesIds) => ({
   dataPorExtenso: new Date(linha.criado_em).toLocaleDateString("pt-BR", {
     day: "2-digit",
     month: "long",
-    year: "numeric"
+    year: "numeric",
+    timeZone: "America/Sao_Paulo"
   }),
   fixadoNoTopo: linha.fixado_no_topo,
   tipo: linha.tipo || "aviso",

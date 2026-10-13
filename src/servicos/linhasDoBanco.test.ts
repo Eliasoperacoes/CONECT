@@ -67,3 +67,13 @@ test('o SERVIDOR lê o id da original com a MESMA regra do aparelho (enviar-avis
   expect(servidor).toContain(`const daOriginal = ${REGRA}.exec(id);`);
   expect(servidor).toContain(".from('marcacoes_originais')");
 });
+
+test('HORA E DATA NO RELÓGIO DE BRASÍLIA, em qualquer máquina (laudo de 13/10/2026, item 10)', async () => {
+  const { horaDe, paraAvisoRede } = await import('./linhasDoBanco');
+  // 01:30 em UTC do dia 14 é 22:30 do dia 13 em Brasília: o servidor (UTC) dizia 01:30 do dia 14
+  expect(horaDe('2026-10-14T01:30:00Z')).toBe('22:30');
+  const aviso = paraAvisoRede({ id: 'a', titulo: 't', conteudo: 'c', prioridade: 'normal', autor_id: null, autor_nome: 'x', autor_cargo: 'y',
+    loja_destino: 'Todas', fixado_no_topo: false, criado_em: '2026-10-14T01:30:00Z', tipo: null, categoria: null, anexo_caminho: null,
+    anexo_nome: null, exige_confirmacao: null, destinos: null }, [], []);
+  expect(aviso.dataPorExtenso).toBe('13 de outubro de 2026');
+});

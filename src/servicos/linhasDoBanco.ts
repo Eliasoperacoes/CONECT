@@ -372,8 +372,10 @@ export const paraLinhaCompensacao = (c: CompensacaoDoMes): LinhaCompensacao => (
 });
 
 /** "14:32" — a hora como a conversa e a Central mostram. */
+// No relógio de Brasília, e não no da máquina: este arquivo vai inteiro para o
+// servidor (UTC), onde a hora sairia 3 adiantada (laudo de 13/10/2026, item 10)
 export const horaDe = (iso: string): string =>
-  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
 
 /** Linha da tabela `avisos_rede` — uma publicação da Central. */
 export interface LinhaAviso {
@@ -424,6 +426,7 @@ export const paraAvisoRede = (linha: LinhaAviso, lidoPorIds: string[], confirmac
     day: '2-digit',
     month: 'long',
     year: 'numeric',
+    timeZone: 'America/Sao_Paulo',
   }),
   fixadoNoTopo: linha.fixado_no_topo,
   /**
