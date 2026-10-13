@@ -86,6 +86,18 @@ const carregarComunicacao = async (): Promise<void> => {
 const CHAVE_COLABORADORES = 'conecta_v4_colaboradores';
 const CHAVE_COLABORADOR_ATUAL = 'conecta_v4_colaborador_atual';
 const CHAVE_REGISTROS_PONTO = 'conecta_v4_registros_ponto';
+
+/**
+ * UPDATE QUE NÃO ALTEROU LINHA NENHUMA (laudo de 13/10/2026, item 3).
+ *
+ * A RLS não dá erro quando barra um update: ele afeta zero linhas e volta
+ * "sucesso". A alçada mora em dois lugares (organograma.ts na tela,
+ * posso_decidir_jornada no banco); se discordarem, a tela dizia "aprovado"
+ * ou "corrigido", gravava a auditoria, e o banco continuava como estava.
+ * Quem grava decisão de ponto pede as linhas de volta e confere.
+ */
+const RECUSA_SEM_LINHAS =
+  'O banco não gravou: pela regra de alçada do banco, você não responde por esta pessoa. Nada foi alterado. Procure o RH.';
 const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
 const CHAVE_AJUSTES = 'conecta_v4_ajustes_jornada';
 
@@ -1464,17 +1476,20 @@ class PonteNuvem {
       return { sucesso: false, erro: error.message };
     }
 
-    const { error: erroUpdate } = await supabase
+    const { data: reescritas, error: erroUpdate } = await supabase
       .from('registros_ponto')
       .update(paraLinhaPonto(registro))
       .eq('colaborador_id', registro.colaboradorId)
       .eq('data', registro.data)
-      .eq('tipo', registro.tipo);
+      .eq('tipo', registro.tipo)
+      .select('id');
 
     if (erroUpdate) {
       console.error('Falha ao reescrever a marcação:', erroUpdate.message);
       return { sucesso: false, erro: erroUpdate.message };
     }
+    // Zero linhas é RECUSA, não sucesso: a regra do banco barrou sem erro
+    if (!reescritas || reescritas.length === 0) return { sucesso: false, erro: RECUSA_SEM_LINHAS };
     return { sucesso: true };
   }
 
@@ -1719,16 +1734,19 @@ class PonteNuvem {
       return { sucesso: false, erro: error.message };
     }
 
-    const { error: erroUpdate } = await supabase
+    const { data: reescritas, error: erroUpdate } = await supabase
       .from('ajustes_jornada')
       .update(paraLinhaAjuste(ajuste))
       .eq('colaborador_id', ajuste.colaboradorId)
-      .eq('data', ajuste.data);
+      .eq('data', ajuste.data)
+      .select('id');
 
     if (erroUpdate) {
       console.error('Falha ao reescrever a apuração:', erroUpdate.message);
       return { sucesso: false, erro: erroUpdate.message };
     }
+    // Zero linhas é RECUSA, não sucesso: a regra do banco barrou sem erro
+    if (!reescritas || reescritas.length === 0) return { sucesso: false, erro: RECUSA_SEM_LINHAS };
     return { sucesso: true };
   }
 
