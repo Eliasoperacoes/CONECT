@@ -113,6 +113,8 @@ esquema.
 | `diagnostico-colunas-colaboradores.sql` | Só leitura: as colunas reais de `colaboradores`, as regras e se está no canal ao vivo. Usado para desenhar `fichas-por-nivel.sql` |
 | `leituras-so-das-minhas-conversas.sql` | **Uma vez (13/10/2026).** Quem leu cada mensagem passa a ser visto só por quem vê a mensagem (a mesma regra das mensagens). Antes qualquer logado via as leituras da rede inteira, e todo aparelho baixava a tabela toda. Conferência: `regra_aberta` false, `segue_a_mensagem` true |
 | `funcoes-sem-acesso-anonimo.sql` | **Uma vez (13/10/2026).** Nenhuma função do banco fica ao alcance de quem não fez login (era o caso de 30, entre elas `nomes_em_lista`, que devolvia nomes de funcionários). Quem está logado não perde nada: a permissão é devolvida explicitamente. Funções criadas depois também não nascem abertas. Conferência: `anonimo_executa` 0, `nomes_em_lista_anonimo` false, `logado_bate_ponto` e `logado_le_alcada` true |
+| `escrita-com-ia.sql` | **Uma vez (14/10/2026), antes de publicar `escrever-com-ia`.** A regra de quem publica na Central ganha nome (`posso_publicar_na_central`) e passa a valer para a publicação e para a IA de escrita; a contagem de usos (30 por pessoa por dia) fica numa tabela que ninguém do app lê. Ver "A IA de escrita da Central" abaixo. Conferência: as quatro `true` |
+| `diagnostico-aparelhos.sql` | Só leitura: os aparelhos na lista de entrega do aviso, com quando cada um foi registrado e visto. O token muda a cada instalação: aparelho que não aparece com data depois da instalação não recebe aviso |
 | `senha-de-ativacao-aleatoria.sql` | **Uma vez (13/10/2026).** Acaba com a senha padrão "123456": cada ficha ainda não ativada recebe uma senha sorteada de 8 caracteres, guardada em `senhas_de_ativacao` (só quem cuida de pessoas lê); quem já ativou não é tocado. Ficha nova e o botão "Gerar nova senha de primeiro acesso" também sorteiam. Os cupons saem em Painel ADM › Colaboradores › "Cupons de primeiro acesso". Conferência: `senha_padrao_aceita` false, `coluna_da_ficha_vazia` 0, `nao_ativadas_sem_senha` 0, `ativadas_com_senha_guardada` 0 |
 | `apuracao-pode-zerar.sql` | **Rode uma vez.** Solta a trava que recusava apuração de ZERO minuto — sem ela, "Reapurar período" não consegue desfazer um débito errado, e a tela diz "0 dias mudaram" como se estivesse tudo certo. No fim ele **lista quem tem débito com cara de pausa cobrada**, sem alterar nada |
 | `horario-pelo-turno.sql` | **Rode uma vez (29/09/2026).** Tira a carga própria que o Painel ADM gravava ao salvar a ficha, para o previsto e a tolerância saírem do turno; põe a Lyvia no turno de estágio da tarde (E3) |
@@ -510,6 +512,41 @@ notificação negada, ou o app não chegou a registrar). Com linha e sem
 aviso, o problema está na função: *Edge Functions → enviar-aviso → Logs*.
 
 ---
+
+## A IA de escrita da Central (`escrever-com-ia`, 14/10/2026)
+
+O botão **Escrever com IA** do editor da Central: criar a partir de
+tópicos, melhorar, encurtar, mudar o tom e sugerir título. Pedido do
+Elias: só para essa tarefa, "sem acesso a código, informações e etc".
+
+| Peça | Onde |
+|---|---|
+| O que a IA recebe e devolve (instrução fixa, cinco ações, limpeza) | `src/servidor/escritaComIa.ts` (testado) |
+| O que não sai do aparelho (imagens, links, pessoas citadas viram ⟦1⟧) | `src/servicos/assistenteDeEscrita.ts` (testado) |
+| Quem pode (quem publica na Central) e quanto (30/dia) | `escrita-com-ia.sql` — a trava que vale |
+| A fonte da função | `src/servidor/funcaoEscreverComIa.ts` |
+| O arquivo colado no Supabase | `supabase/functions/escrever-com-ia/index.ts` — **gerado**, não edite |
+
+A IA é o **Gemini**, do Google, pela chave do AI Studio. Ela recebe só a
+instrução fixa e o texto da pessoa: nenhuma linha do banco, nenhuma
+ferramenta. No plano gratuito o Google pode usar o texto para melhorar
+os produtos dele — por isso o aviso fixo no painel: nada de CPF,
+salário, atestado. Ativar a cobrança na mesma chave tira isso e sobe o
+limite; o custo, no volume da rede, é de centavos.
+
+1. **`escrita-com-ia.sql`** no SQL Editor (conferência: as quatro `true`).
+2. **A chave.** aistudio.google.com → *Get API key* → *Create API key*,
+   com a conta Google da empresa. **Não mande a chave por mensagem.**
+3. **Guardar no Supabase.** Edge Functions → *Secrets* → nome
+   `GEMINI_CHAVE`, valor = a chave.
+4. **Criar a função.** Edge Functions → *Deploy a new function* → *Via
+   Editor*, nome **`escrever-com-ia`**, colar o `index.ts` gerado inteiro.
+   **"Verify JWT" fica LIGADO** (o padrão): só quem está logado chega.
+5. **Testar** na Central → Nova publicação → Escrever com IA.
+
+Trocar de modelo sem gerar a função de novo: segredo `IA_MODELO` (o
+padrão é `gemini-flash-latest`, o Flash mais novo). Os erros do Google
+aparecem nos *Logs* da função como "Gemini respondeu …".
 
 ## Gerar o APK no PWABuilder
 

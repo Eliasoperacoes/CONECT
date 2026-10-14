@@ -3,6 +3,7 @@
  *
  *   supabase/functions/apurar-ponto/index.ts        de src/servidor/funcaoApurarPonto.ts
  *   supabase/functions/lembrar-pendencias/index.ts  de src/servidor/funcaoLembrarPendencias.ts
+ *   supabase/functions/escrever-com-ia/index.ts     de src/servidor/funcaoEscreverComIa.ts
  *
  * O Supabase recebe a função colada no painel, num arquivo só — e as
  * regras moram em `src/servicos/` (`apuracaoDoDia.ts`, `mural.ts`), que o
@@ -42,10 +43,16 @@ export const gerarFuncaoApurar = (): Promise<string> =>
 export const gerarFuncaoLembretes = (): Promise<string> =>
   gerar('src/servidor/funcaoLembrarPendencias.ts', 'lembrar-pendencias');
 
+export const DESTINO_ESCRITA = 'supabase/functions/escrever-com-ia/index.ts';
+
+export const gerarFuncaoEscrita = (): Promise<string> =>
+  gerar('src/servidor/funcaoEscreverComIa.ts', 'escrever-com-ia');
+
 if (import.meta.main) {
   for (const [destino, gerador] of [
     [DESTINO, gerarFuncaoApurar],
     [DESTINO_LEMBRETES, gerarFuncaoLembretes],
+    [DESTINO_ESCRITA, gerarFuncaoEscrita],
   ] as const) {
     mkdirSync(dirname(destino), { recursive: true });
     writeFileSync(destino, await gerador());

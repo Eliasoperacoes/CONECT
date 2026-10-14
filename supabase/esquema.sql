@@ -1483,9 +1483,69 @@ alter table public.colaboradores
 -- desde a migração dos cinco níveis, enquanto a tela já liberava o líder:
 -- ele montava a publicação inteira e o banco recusava no fim. Pedido do
 -- Elias: "líderes também poderão publicar avisos, conteúdos".
+--
+-- Desde 14/10/2026 a regra tem nome: a IA de escrita usa a mesma
+create or replace function public.posso_publicar_na_central()
+returns boolean language sql stable security definer set search_path = public as $$
+  -- Do líder de setor para cima: `publicaComunicado` (tipos.ts) na tela
+  select public.meu_nivel() >= 2;
+$$;
+revoke all on function public.posso_publicar_na_central() from public, anon;
+grant execute on function public.posso_publicar_na_central() to authenticated;
+
 drop policy if exists avisos_insercao on public.avisos_rede;
 create policy avisos_insercao on public.avisos_rede
-  for insert to authenticated with check (public.meu_nivel() >= 2);
+  for insert to authenticated with check (public.posso_publicar_na_central());
+
+-- ============================================================
+-- A IA QUE AJUDA A ESCREVER NA CENTRAL (14/10/2026)
+--
+-- A função de servidor `escrever-com-ia` pergunta aqui, com a sessão de
+-- quem pede, se a pessoa pode (quem publica na Central) e se ainda tem
+-- uso hoje (30 por dia). Guarda QUANTAS vezes, nunca o que foi escrito.
+-- ============================================================
+create table if not exists public.usos_da_ia (
+  colaborador_id text not null references public.colaboradores(id) on delete cascade,
+  dia            date not null,
+  usos           integer not null default 0,
+  primary key (colaborador_id, dia)
+);
+alter table public.usos_da_ia enable row level security;
+revoke all on public.usos_da_ia from public, anon, authenticated;
+
+create or replace function public.usar_escrita_com_ia()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  limite constant integer := 30;
+  eu    text := public.meu_colaborador_id();
+  hoje  date := (now() at time zone 'America/Sao_Paulo')::date;
+  feito integer;
+begin
+  if eu is null then
+    raise exception 'Sem colaborador para esta sessão.' using errcode = '42501';
+  end if;
+  if not public.posso_publicar_na_central() then
+    raise exception 'A IA de escrita é de quem publica na Central.' using errcode = '42501';
+  end if;
+
+  insert into public.usos_da_ia as u (colaborador_id, dia, usos)
+  values (eu, hoje, 1)
+  on conflict (colaborador_id, dia) do update set usos = u.usos + 1
+  returning u.usos into feito;
+
+  if feito > limite then
+    raise exception 'Você já usou a IA % vezes hoje. Amanhã libera de novo.', limite using errcode = 'P0001';
+  end if;
+
+  return limite - feito;
+end;
+$$;
+revoke all on function public.usar_escrita_com_ia() from public, anon;
+grant execute on function public.usar_escrita_com_ia() to authenticated;
 
 -- ============================================================
 -- ARQUIVOS DAS MENSAGENS

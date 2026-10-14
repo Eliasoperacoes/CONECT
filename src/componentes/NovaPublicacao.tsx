@@ -39,7 +39,9 @@ import {
   Send,
   ShieldCheck,
   Pin,
+  Sparkles,
 } from 'lucide-react';
+import { AssistenteDeEscrita } from './AssistenteDeEscrita';
 import {
   AvisoRede,
   Colaborador,
@@ -137,6 +139,8 @@ export const NovaPublicacao: React.FC<Props> = ({
       : null
   );
   const [salvando, setSalvando] = useState(false);
+  /** O painel "Escrever com IA" (AssistenteDeEscrita) */
+  const [assistenteAberto, setAssistenteAberto] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
 
   void colaboradorAtual;
@@ -296,6 +300,17 @@ export const NovaPublicacao: React.FC<Props> = ({
 
         <button
           type="button"
+          id="botao-escrever-com-ia"
+          onClick={() => setAssistenteAberto(true)}
+          className="px-3 py-2 rounded-xl border border-[var(--c-acento)]/40 bg-[var(--c-acento)]/5 text-xs font-bold text-[var(--c-acento)] flex items-center gap-1.5 shrink-0 hover:bg-[var(--c-acento)]/10"
+          title="Escrever com IA"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Escrever com IA</span>
+          <span className="sm:hidden">IA</span>
+        </button>
+        <button
+          type="button"
           onClick={aoFechar}
           className="px-3 py-2 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hidden sm:block"
         >
@@ -317,6 +332,19 @@ export const NovaPublicacao: React.FC<Props> = ({
               : 'Publicar'}
         </button>
       </header>
+
+      {assistenteAberto && (
+        <AssistenteDeEscrita
+          tipo={tipo}
+          titulo={titulo}
+          conteudo={conteudo}
+          aoUsar={({ titulo: novoTitulo, texto }) => {
+            if (texto !== undefined) setConteudo(texto);
+            if (novoTitulo) setTitulo(novoTitulo);
+          }}
+          aoFechar={() => setAssistenteAberto(false)}
+        />
+      )}
 
       {aviso && (
         <div className="shrink-0 px-4 sm:px-6 py-2 bg-red-500/5 border-b border-red-500/25 text-xs text-red-700 dark:text-red-400">
