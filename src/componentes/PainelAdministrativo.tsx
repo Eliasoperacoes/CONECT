@@ -45,7 +45,7 @@ import {
   Image as ImageIcon,
   Printer,
 } from 'lucide-react';
-import { documentoDosCupons, cuponsDoGrupo, type CupomDeAcesso, type GrupoDeCupons } from '../servicos/cuponsDeAcesso';
+import { documentoDosCupons, cuponsDosGrupos, type CupomDeAcesso, type GrupoDeCupons } from '../servicos/cuponsDeAcesso';
 import { EscolherCupons } from './EscolherCupons';
 import { imprimirDocumento } from '../servicos/visorDeDocumento';
 import {
@@ -423,13 +423,22 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       return exibirToast('Não deu para buscar as senhas. Confira se senha-de-ativacao-aleatoria.sql já rodou.', true);
     }
     if (lista.length === 0) return exibirToast('Todos os colaboradores ativos já fizeram o primeiro acesso.');
-    // A entrega é por leva: cidade, e Pirassununga por setor (EscolherCupons)
-    setCuponsParaEntregar(lista);
+    /*
+      A entrega é por leva: cidade, e Pirassununga por responsável
+      (EscolherCupons). O chefe sai do cadastro que este aparelho já tem —
+      "a quem responde" é visível a todos (fichas-por-nivel.sql, nível 1).
+    */
+    setCuponsParaEntregar(
+      lista.map((c) => {
+        const chefeId = bancoDados.obterColaboradorPorId(c.colaborador_id)?.responsavelId;
+        return { ...c, responsavel: (chefeId && bancoDados.obterColaboradorPorId(chefeId)?.nome) || '' };
+      })
+    );
   };
 
-  const imprimirLevaDeCupons = (grupo: GrupoDeCupons) => {
+  const imprimirLevaDeCupons = (grupos: GrupoDeCupons[]) => {
     if (!cuponsParaEntregar) return;
-    const leva = cuponsDoGrupo(cuponsParaEntregar, grupo);
+    const leva = cuponsDosGrupos(cuponsParaEntregar, grupos);
     setCuponsParaEntregar(null);
     if (!imprimirDocumento(documentoDosCupons(leva, window.location.origin))) {
       exibirToast('O navegador bloqueou a janela de impressão. Libere os pop-ups deste site.', true);

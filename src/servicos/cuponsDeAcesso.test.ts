@@ -29,27 +29,50 @@ test('o nome que vem da planilha não vira HTML', () => {
   expect(html).not.toContain('Bruno <b>');
 });
 
-test('A ENTREGA É POR CIDADE — e Pirassununga por setor (Elias, 13/10/2026)', async () => {
+
+test('A ENTREGA É POR CIDADE — e Pirassununga por responsável (Elias, 14/10/2026)', async () => {
   const { gruposDeCupons, cuponsDoGrupo } = await import('./cuponsDeAcesso');
-  const pessoa = (nome: string, loja: string, setor: string) => ({ nome, login: nome.toLowerCase(), loja, setor, senha: 'abc23def' });
+  const pessoa = (nome: string, loja: string, responsavel = '') =>
+    ({ nome, login: nome.toLowerCase(), loja, setor: 'Balcão', senha: 'abc23def', responsavel });
   const lista = [
-    pessoa('Ana', 'Leme', 'Balcão'),
-    pessoa('Bia', 'Leme', 'Estoque'),
-    pessoa('Caio', 'Pirassununga', 'Balcão'),
-    pessoa('Davi', 'Pirassununga', 'Estoque'),
-    pessoa('Eva', 'Pirassununga', 'Balcão'),
-    pessoa('Fabi', 'Descalvado', 'Balcão'),
+    pessoa('Ana', 'Leme', 'Rui'),
+    pessoa('Bia', 'Leme'),
+    pessoa('Caio', 'Pirassununga', 'Gi'),
+    pessoa('Davi', 'Pirassununga', 'Fabio'),
+    pessoa('Eva', 'Pirassununga', 'Gi'),
+    pessoa('Gil', 'Pirassununga'),
+    pessoa('Fabi', 'Descalvado'),
   ];
   const grupos = gruposDeCupons(lista);
   expect(grupos.map((g) => [g.rotulo, g.quantos])).toEqual([
     ['Descalvado', 1],
+    // Fora de Pirassununga a cidade é uma leva só, tenha ou não chefe
     ['Leme', 2],
-    ['Pirassununga · Balcão', 2],
-    ['Pirassununga · Estoque', 1],
+    ['Pirassununga · equipe de Fabio', 1],
+    ['Pirassununga · equipe de Gi', 2],
+    ['Pirassununga · sem responsável no cadastro', 1],
   ]);
-  // Cada leva imprime só os seus: Leme inteiro, e só o Balcão de Pirassununga
-  expect(cuponsDoGrupo(lista, grupos[1]).map((c) => c.nome)).toEqual(['Ana', 'Bia']);
-  expect(cuponsDoGrupo(lista, grupos[2]).map((c) => c.nome)).toEqual(['Caio', 'Eva']);
+  expect(cuponsDoGrupo(lista, grupos[3]).map((c) => c.nome)).toEqual(['Caio', 'Eva']);
+  expect(cuponsDoGrupo(lista, grupos[4]).map((c) => c.nome)).toEqual(['Gil']);
   // Nenhum cupom fica fora de grupo, nem aparece em dois
   expect(grupos.reduce((s, g) => s + g.quantos, 0)).toBe(lista.length);
+});
+
+test('"A DANI COM O RESTANTE": várias levas numa impressão, sem repetir ninguém', async () => {
+  const { gruposDeCupons, cuponsDosGrupos } = await import('./cuponsDeAcesso');
+  const pessoa = (nome: string, responsavel: string) =>
+    ({ nome, login: nome, loja: 'Pirassununga', setor: 'Balcão', senha: 'x', responsavel });
+  const lista = [pessoa('Caio', 'Gi'), pessoa('Davi', 'Fabio'), pessoa('Eva', 'Fernanda'), pessoa('Gil', 'Raul'), pessoa('Ivo', '')];
+  const grupos = gruposDeCupons(lista);
+  // O restante: todas as equipes menos Gi, Fernanda e Fabio
+  const restante = grupos.filter((g) => !['Gi', 'Fernanda', 'Fabio'].includes(g.responsavel!));
+  expect(cuponsDosGrupos(lista, restante).map((c) => c.nome)).toEqual(['Gil', 'Ivo']);
+  // Marcar a mesma leva duas vezes não imprime cupom em dobro
+  expect(cuponsDosGrupos(lista, [grupos[0], grupos[0]])).toHaveLength(1);
+});
+
+test('o chefe sai do cadastro, ao montar a lista dos cupons', () => {
+  const tela = require('node:fs').readFileSync('src/componentes/PainelAdministrativo.tsx', 'utf8');
+  expect(tela).toContain('const chefeId = bancoDados.obterColaboradorPorId(c.colaborador_id)?.responsavelId;');
+  expect(tela).toContain('const leva = cuponsDosGrupos(cuponsParaEntregar, grupos);');
 });

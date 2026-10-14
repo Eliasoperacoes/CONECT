@@ -18,6 +18,8 @@ export interface CupomDeAcesso {
   loja: string;
   setor: string;
   senha: string;
+  /** O nome de quem a pessoa responde (o chefe imediato); vazio se não há no cadastro */
+  responsavel?: string;
 }
 
 const escapar = (texto: string): string =>
@@ -36,30 +38,40 @@ const ESTILO_DOS_CUPONS = `
 `;
 
 /**
- * A ENTREGA É POR CIDADE — e Pirassununga, que começou primeiro, por setor
- * (Elias, 13/10/2026). Cada grupo é uma leva de cupons impressa de uma vez.
+ * A ENTREGA É POR CIDADE — e Pirassununga, que começou primeiro, POR
+ * RESPONSÁVEL: cada chefe entrega os cupons da própria equipe (Elias,
+ * 14/10/2026: "os subordinados da Gi e da Fernanda já foram, ficaria a do
+ * Fabio, e a Dani com o restante"). Até 14/10 era por setor.
+ *
+ * Cada grupo é uma leva; várias levas se imprimem juntas (`cuponsDosGrupos`)
+ * — "o restante" é marcar todas as que sobraram.
  */
-export const LOJA_ENTREGUE_POR_SETOR = 'Pirassununga';
+export const LOJA_ENTREGUE_POR_RESPONSAVEL = 'Pirassununga';
+
+export const SEM_RESPONSAVEL = 'sem responsável no cadastro';
 
 export interface GrupoDeCupons {
-  /** "Leme", ou "Pirassununga · Balcão" */
+  /** "Leme", ou "Pirassununga · equipe de Fabio Souza" */
   rotulo: string;
   loja: string;
-  /** Só em Pirassununga */
-  setor?: string;
+  /** Só em Pirassununga: o nome do chefe, ou '' para quem não tem no cadastro */
+  responsavel?: string;
   quantos: number;
 }
 
-/** Os grupos de entrega, na ordem de leitura: cidades, e os setores de Pirassununga. */
+/** Os grupos de entrega, na ordem de leitura: cidades, e as equipes de Pirassununga. */
 export const gruposDeCupons = (cupons: CupomDeAcesso[]): GrupoDeCupons[] => {
   const contagem = new Map<string, GrupoDeCupons>();
   for (const c of cupons) {
-    const porSetor = c.loja === LOJA_ENTREGUE_POR_SETOR;
-    const chave = porSetor ? `${c.loja}|${c.setor}` : c.loja;
+    const porResponsavel = c.loja === LOJA_ENTREGUE_POR_RESPONSAVEL;
+    const responsavel = (c.responsavel || '').trim();
+    const chave = porResponsavel ? `${c.loja}|${responsavel}` : c.loja;
     const grupo = contagem.get(chave) || {
-      rotulo: porSetor ? `${c.loja} · ${c.setor}` : c.loja,
+      rotulo: porResponsavel
+        ? `${c.loja} · ${responsavel ? `equipe de ${responsavel}` : SEM_RESPONSAVEL}`
+        : c.loja,
       loja: c.loja,
-      ...(porSetor ? { setor: c.setor } : {}),
+      ...(porResponsavel ? { responsavel } : {}),
       quantos: 0,
     };
     grupo.quantos++;
@@ -69,8 +81,21 @@ export const gruposDeCupons = (cupons: CupomDeAcesso[]): GrupoDeCupons[] => {
 };
 
 /** Os cupons de um grupo de entrega. */
-export const cuponsDoGrupo = (cupons: CupomDeAcesso[], grupo: Pick<GrupoDeCupons, 'loja' | 'setor'>): CupomDeAcesso[] =>
-  cupons.filter((c) => c.loja === grupo.loja && (grupo.setor === undefined || c.setor === grupo.setor));
+export const cuponsDoGrupo = (
+  cupons: CupomDeAcesso[],
+  grupo: Pick<GrupoDeCupons, 'loja' | 'responsavel'>
+): CupomDeAcesso[] =>
+  cupons.filter(
+    (c) =>
+      c.loja === grupo.loja &&
+      (grupo.responsavel === undefined || (c.responsavel || '').trim() === grupo.responsavel)
+  );
+
+/** Várias levas numa impressão só, na ordem dos grupos — sem repetir ninguém. */
+export const cuponsDosGrupos = (
+  cupons: CupomDeAcesso[],
+  grupos: Pick<GrupoDeCupons, 'loja' | 'responsavel'>[]
+): CupomDeAcesso[] => [...new Set(grupos.flatMap((g) => cuponsDoGrupo(cupons, g)))];
 
 /** A página dos cupons, pronta para `imprimirDocumento`. */
 export const documentoDosCupons = (cupons: CupomDeAcesso[], endereco: string): string => {
