@@ -648,13 +648,19 @@ export const PainelGestao: React.FC<Props> = ({
                 />
               )}
 
-              {/* Marcação é registro trabalhista: alterar é do RH */}
+              {/*
+                QUEM CORRIGE: o RH E quem responde pela pessoa. Este aviso dizia
+                "só o RH" desde antes de o líder ganhar a correção (ponto.ts,
+                `ajustarMarcacao`; política `ponto_ajuste`) — e mandava o líder
+                pedir ao RH o que ele mesmo resolve. Achado ao escrever o
+                manual dos líderes (14/10/2026).
+              */}
               <div className="p-3 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] flex gap-2.5 text-[11px] text-[var(--c-texto-3)]">
                 <Inbox className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                 <span>
-                  Marcação errada ou esquecida se corrige com o RH — a alteração fica
-                  registrada com data, motivo e autor. Avise pelo chat e o RH ajusta;
-                  depois o dia volta para você aprovar.
+                  Batida esquecida: complete em Pendências › Pontos incompletos. Batida
+                  errada: corrija em Pendências › Aprovar jornadas › Editar. As duas
+                  pedem justificativa e ficam registradas com data, motivo e o seu nome.
                 </span>
               </div>
             </>
