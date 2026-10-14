@@ -92,9 +92,12 @@ export const montarBancoLocal = async (
     create extension pgcrypto schema extensions;
     create schema storage;
     create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
-    create table storage.objects (id uuid default gen_random_uuid(), bucket_id text, name text, owner uuid);
+    create table storage.objects (id uuid default gen_random_uuid(), bucket_id text, name text, owner uuid, owner_id text);
     alter table storage.objects enable row level security;
     create function storage.foldername(name text) returns text[] language sql immutable as $$ select string_to_array(name, '/') $$;
+    -- Como no Supabase: o logado alcança a tabela, e quem decide é a regra (RLS)
+    grant usage on schema storage to authenticated;
+    grant select, insert, update, delete on storage.objects to authenticated;
   `);
 
   const lista = comandosDoSql(esquema.replace(/notify pgrst, 'reload schema';/g, ''));

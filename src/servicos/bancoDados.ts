@@ -2499,6 +2499,45 @@ class BancoDadosConecta {
     return this.apagarGrupoDaMinhaLista(conversaId);
   }
 
+  /**
+   * EXCLUIR UM CANAL OU GRUPO PARA TODOS — só o TI, e nunca um canal oficial
+   * (Administração › Canais & Grupos). Diferente de "sair e apagar", que é
+   * de cada um e só da própria lista: aqui o grupo deixa de existir, com as
+   * mensagens e os arquivos. A trava que vale é a do banco
+   * (`excluir_conversa`); esta é a da tela, para não oferecer o que ele recusa.
+   */
+  podeExcluirConversaParaTodos(conversa: Conversa): boolean {
+    return this.obterColaboradorAtual().nivel >= NIVEL_TI && conversa.tipo === 'grupo' && !conversa.ehSistemaPadrao;
+  }
+
+  async excluirConversaParaTodos(conversaId: string): Promise<{ sucesso: boolean; arquivos?: number; erro?: string }> {
+    const conversa = this.obterTodasConversas().find((c) => c.id === conversaId);
+    if (!conversa) return { sucesso: false, erro: 'Grupo não encontrado.' };
+    if (!this.podeExcluirConversaParaTodos(conversa)) {
+      return { sucesso: false, erro: 'Só o TI exclui grupos, e canal oficial não se exclui.' };
+    }
+
+    let arquivos = 0;
+    if (usandoNuvem()) {
+      const res = await nuvemComunicacao.excluirConversa(conversaId);
+      if (!res.sucesso) return { sucesso: false, erro: res.erro };
+      arquivos = await apagarAnexos(res.caminhos || []);
+    }
+
+    localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(this.obterTodasConversas().filter((c) => c.id !== conversaId)));
+    const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+    const mensagens: Mensagem[] = bruto ? JSON.parse(bruto) : [];
+    localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(mensagens.filter((m) => m.conversaId !== conversaId)));
+
+    this.registrarAuditoria(
+      'Exclusão de Grupo',
+      'seguranca',
+      `${this.obterColaboradorAtual().nome} excluiu o grupo "${conversa.nome}" para todos (${arquivos} arquivo(s) apagado(s)).`
+    );
+    this.notificar();
+    return { sucesso: true, arquivos };
+  }
+
   /** Depois de sair: o grupo some da MINHA lista, e segue existindo para os outros. */
   apagarGrupoDaMinhaLista(conversaId: string) {
     const eu = this.obterColaboradorAtual().id;
@@ -2953,6 +2992,9 @@ class BancoDadosConecta {
         if (!res.sucesso) {
           return { sucesso: false, erro: 'Falha ao apagar a mensagem no banco.' };
         }
+        // O arquivo sai junto: sem isto a foto apagada ficava no armazenamento
+        // para sempre (exclusao-nas-conversas.sql deixa quem enviou apagar)
+        if (alvo.anexoCaminho) await apagarAnexos([alvo.anexoCaminho]);
       }
 
       const restantes = todas.filter((m) => m.id !== mensagemId);

@@ -1632,7 +1632,9 @@ create policy anexos_envio on storage.objects
     )
   );
 
--- Apagar é parte do expurgo de histórico, e isso é decisão da administração
+-- Apagar é parte do expurgo de histórico, e isso é decisão da administração.
+-- Desde 14/10/2026 (exclusao-nas-conversas.sql) quem ENVIOU o arquivo também
+-- o apaga: antes, apagar a própria foto deixava o arquivo órfão no plano.
 create policy anexos_remocao on storage.objects
   for delete to authenticated
   using (
@@ -1642,9 +1644,50 @@ create policy anexos_remocao on storage.objects
         when split_part(name, '/', 1) in ('holerites', 'advertencias')
           then public.cuido_de_pessoas()
         else public.sou_admin()
+          -- O dono do arquivo, nas duas colunas que o armazenamento já usou
+          or owner_id = (select auth.uid())::text
+          or owner = (select auth.uid())
       end
     )
   );
+
+-- O TI exclui um canal ou grupo, com os arquivos (exclusao-nas-conversas.sql).
+-- Devolve só os caminhos dos anexos, nunca as mensagens: o TI não as lê.
+create or replace function public.excluir_conversa(p_conversa text)
+returns text[]
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  alvo record;
+  caminhos text[];
+begin
+  if not public.sou_admin() then
+    raise exception 'Excluir canal ou grupo é do TI.' using errcode = '42501';
+  end if;
+
+  select id, eh_sistema_padrao into alvo from public.conversas where id = p_conversa;
+  if not found then
+    raise exception 'Conversa não encontrada.' using errcode = 'P0002';
+  end if;
+  if alvo.eh_sistema_padrao then
+    raise exception 'Canal oficial da rede não se exclui.' using errcode = '42501';
+  end if;
+
+  select coalesce(array_agg(anexo_caminho), '{}')
+    into caminhos
+    from public.mensagens
+   where conversa_id = p_conversa
+     and anexo_caminho is not null;
+
+  -- Participantes, mensagens e leituras caem junto (on delete cascade)
+  delete from public.conversas where id = p_conversa;
+  return caminhos;
+end;
+$$;
+revoke all on function public.excluir_conversa(text) from public, anon;
+grant execute on function public.excluir_conversa(text) to authenticated;
 
 -- ============================================================
 -- LIMPEZA DO HISTÓRICO DE CONVERSAS

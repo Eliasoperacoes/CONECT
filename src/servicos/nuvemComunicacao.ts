@@ -767,14 +767,6 @@ class PonteComunicacao {
     return { sucesso: true };
   }
 
-  async removerConversa(id: string): Promise<{ sucesso: boolean; erro?: string }> {
-    if (!supabase) return { sucesso: true };
-    // Participantes e mensagens caem junto, pelo `on delete cascade`
-    const { error } = await supabase.from('conversas').delete().eq('id', id);
-    if (error) return { sucesso: false, erro: error.message };
-    return { sucesso: true };
-  }
-
   // --- GRUPOS DE TODOS (grupos-de-todos.sql) ---
   //
   // Cada ação é uma função do banco, que confere quem pode e deixa no grupo
@@ -930,14 +922,37 @@ class PonteComunicacao {
     return { sucesso: true };
   }
 
+  /**
+   * O `.select()` diz se a linha saiu de fato: barrado pela regra, o delete
+   * afeta zero linhas e responde SUCESSO — a mensagem sumiria da tela e
+   * voltaria na próxima sincronização, sem ninguém entender por quê.
+   */
   async removerMensagem(id: string): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
-    const { error } = await supabase.from('mensagens').delete().eq('id', id);
+    const { data, error } = await supabase.from('mensagens').delete().eq('id', id).select('id');
     if (error) {
       console.error('Falha ao remover mensagem:', error.message);
       return { sucesso: false, erro: error.message };
     }
+    if (!data || data.length === 0) return { sucesso: false, erro: 'O banco não apagou a mensagem.' };
     return { sucesso: true };
+  }
+
+  /**
+   * EXCLUIR UM CANAL OU GRUPO PARA TODOS — só o TI (exclusao-nas-conversas.sql).
+   * A função do banco confere quem pede, recusa os canais oficiais e devolve
+   * só os caminhos dos arquivos, que saem do armazenamento aqui.
+   */
+  async excluirConversa(id: string): Promise<{ sucesso: boolean; caminhos?: string[]; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
+    const { data, error } = await supabase.rpc('excluir_conversa', { p_conversa: id });
+    if (error) {
+      return {
+        sucesso: false,
+        erro: error.code === 'PGRST202' ? 'A exclusão ainda não foi ligada no banco. Rode exclusao-nas-conversas.sql.' : error.message,
+      };
+    }
+    return { sucesso: true, caminhos: (data as string[] | null) || [] };
   }
 
   /** Marca como lidas. Repetir não é erro: a chave é (mensagem, pessoa). */

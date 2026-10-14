@@ -251,6 +251,18 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   const [colabParaExcluir, setColabParaExcluir] = useState<{ id: string; nome: string } | null>(null);
   // Modal para Confirmar Exclusão de Comunicado Oficial
   const [avisoParaExcluirId, setAvisoParaExcluirId] = useState<string | null>(null);
+  /** O grupo à espera da confirmação de exclusão para todos */
+  const [grupoParaExcluir, setGrupoParaExcluir] = useState<{ id: string; nome: string } | null>(null);
+  const [excluindoGrupo, setExcluindoGrupo] = useState(false);
+  const excluirGrupoParaTodos = async () => {
+    if (!grupoParaExcluir) return;
+    setExcluindoGrupo(true);
+    const res = await bancoDados.excluirConversaParaTodos(grupoParaExcluir.id);
+    setExcluindoGrupo(false);
+    if (!res.sucesso) return exibirToast(res.erro || 'Não foi possível excluir o grupo.', true);
+    exibirToast(`"${grupoParaExcluir.nome}" foi excluído para todos.`);
+    setGrupoParaExcluir(null);
+  };
 
   const exibirToast = (msg: string, erro = false) => {
     if (erro) {
@@ -1297,17 +1309,31 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                       </span>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        aoAbrirConversa(grupo.id);
-                        aoFechar();
-                      }}
-                      className="p-2 rounded-xl bg-[var(--c-superficie-2)] hover:bg-[var(--c-canvas)] text-[var(--c-texto)] border border-[var(--c-borda)] text-xs font-bold transition-all flex items-center gap-1 flex-shrink-0"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" />
-                      <span>Abrir</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          aoAbrirConversa(grupo.id);
+                          aoFechar();
+                        }}
+                        className="p-2 rounded-xl bg-[var(--c-superficie-2)] hover:bg-[var(--c-canvas)] text-[var(--c-texto)] border border-[var(--c-borda)] text-xs font-bold transition-all flex items-center gap-1"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>Abrir</span>
+                      </button>
+                      {/* Excluir para todos: só o TI, e nunca um canal oficial */}
+                      {bancoDados.podeExcluirConversaParaTodos(grupo) && (
+                        <button
+                          type="button"
+                          id={`excluir-grupo-${grupo.id}`}
+                          onClick={() => setGrupoParaExcluir({ id: grupo.id, nome: grupo.nome })}
+                          className="p-2 rounded-xl text-red-600 hover:bg-red-500/10 border border-transparent hover:border-red-500/20 transition-all"
+                          title="Excluir o grupo para todos"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2651,6 +2677,48 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       )}
 
       {/* ================= MODAL: CONFIRMAR EXCLUSÃO AVISO ================= */}
+      {grupoParaExcluir && (
+        <div
+          id="modal-confirmar-exclusao-grupo"
+          className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-xs"
+        >
+          <div className="bg-[var(--c-superficie)] border border-[var(--c-borda)] rounded-2xl w-full max-w-sm shadow-2xl p-5 space-y-4 animate-in fade-in duration-150">
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-[var(--c-texto)]">Excluir "{grupoParaExcluir.nome}"</h3>
+                <p className="text-xs text-[var(--c-texto-3)]">Para todos os participantes</p>
+              </div>
+            </div>
+            <p className="text-xs text-[var(--c-texto-2)] leading-relaxed">
+              O grupo deixa de existir: <strong>todas as mensagens, fotos e arquivos</strong> dele são apagados, para
+              todo mundo. <strong>Não tem como desfazer.</strong> Para só sair dele, use "Sair e apagar" na sua lista de
+              conversas.
+            </p>
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setGrupoParaExcluir(null)}
+                className="py-2 px-3.5 rounded-xl border border-[var(--c-borda)] text-[var(--c-texto-3)] hover:text-[var(--c-texto)] text-xs font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                id="confirmar-exclusao-grupo"
+                disabled={excluindoGrupo}
+                onClick={excluirGrupoParaTodos}
+                className="py-2 px-3.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold disabled:opacity-50"
+              >
+                {excluindoGrupo ? 'Excluindo…' : 'Excluir para todos'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {avisoParaExcluirId && (
         <div
           id="modal-confirmar-exclusao-aviso"

@@ -192,7 +192,6 @@ operacoes (tabela, comando) as (values
   ('tratamento_marcacao', 'SELECT'),
   ('identificacao_rep', 'SELECT'),
   ('configuracoes', 'UPDATE'),
-  ('conversas', 'DELETE'),
   ('conversas', 'INSERT'),
   ('conversas', 'SELECT'),
   ('conversas', 'UPDATE'),
