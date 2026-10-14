@@ -315,6 +315,15 @@ returns boolean language sql stable security definer set search_path = public as
   select public.meu_nivel() >= 4 or public.meu_setor() = 'RH';
 $$;
 
+-- Preencher dias vazios pelo turno: só RH e TI (preencher-so-rh-e-ti.sql,
+-- 14/10/2026). Par de `preenchePeloTurno` (tipos.ts); a do banco é a que vale.
+create or replace function public.posso_preencher_pelo_turno()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.meu_setor() = 'RH' or public.sou_admin();
+$$;
+revoke all on function public.posso_preencher_pelo_turno() from public, anon;
+grant execute on function public.posso_preencher_pelo_turno() to authenticated;
+
 create or replace function public.participo_da_conversa(alvo text)
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (
@@ -1034,17 +1043,21 @@ create policy ponto_batida on public.registros_ponto
     -- servidor a cria (marcacao-original.sql, 07/10/2026).
     (
       public.cuido_de_pessoas()
-      and metodo in ('ajuste_rh', 'ajuste_lider', 'preenchimento_turno')
+      and metodo in ('ajuste_rh', 'ajuste_lider')
+    )
+    -- Preencher dias vazios pelo turno: só RH e TI (preencher-so-rh-e-ti.sql,
+    -- 14/10/2026). Até então valia para quem cuida de pessoas e para o
+    -- responsável; o Elias restringiu — é registro de ponto por dedução.
+    or (
+      public.posso_preencher_pelo_turno()
+      and metodo = 'preenchimento_turno'
     )
     -- O responsável lança a batida que faltou, na fila de aprovação. Sem
     -- isto ele só podia aprovar o dia errado ou recusar — e recusar não
     -- conserta o espelho de ninguém.
-    -- E preenche os dias vazios da equipe pelo turno, como o RH: sem o
-    -- segundo valor, o preenchimento do líder seria recusado pelo banco
-    -- enquanto o do RH funcionava.
     or (
       public.posso_decidir_jornada(colaborador_id)
-      and metodo in ('ajuste_lider', 'preenchimento_turno')
+      and metodo = 'ajuste_lider'
     )
   );
 

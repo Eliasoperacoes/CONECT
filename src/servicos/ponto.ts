@@ -47,6 +47,7 @@ import {
   NIVEL_GERENTE,
   NIVEL_LIDER_SETOR,
   cuidaDePessoas,
+  preenchePeloTurno,
   AjusteJornada,
   EstadoAjuste,
   ROTULO_TIPO_AJUSTE,
@@ -3035,11 +3036,12 @@ class ServicoPonto {
     if (!colaborador) {
       return { sucesso: false, dias: 0, erro: 'Colaborador não encontrado.' };
     }
-    if (!this.podeAcessarPainelRH(atual) && !this.podeDecidirSobre(colaborador)) {
+    // Só RH e TI (`preenchePeloTurno`, tipos.ts) — o banco confere de novo
+    if (!preenchePeloTurno(atual)) {
       return {
         sucesso: false,
         dias: 0,
-        erro: 'Preencher espelho é de quem responde por esta pessoa, ou do RH.',
+        erro: 'Preencher dias vazios pelo turno é do RH e do TI.',
       };
     }
     if (!dados.justificativa.trim()) {

@@ -28,7 +28,13 @@ for (const arquivo of ['esquema.sql', 'ponto-pelo-servidor.sql']) {
     expect(politica).not.toContain('meu_colaborador_id');
     // As correções de RH e do líder continuam
     expect(politica).toContain('public.cuido_de_pessoas()');
-    expect(politica).toContain("metodo in ('ajuste_lider', 'preenchimento_turno')");
+    if (arquivo === 'esquema.sql') {
+      // Desde preencher-so-rh-e-ti.sql (14/10/2026): o líder corrige, mas não preenche
+      expect(politica).toContain("public.posso_decidir_jornada(colaborador_id)\n      and metodo = 'ajuste_lider'");
+      expect(politica).toContain("public.posso_preencher_pelo_turno()\n      and metodo = 'preenchimento_turno'");
+    } else {
+      expect(politica).toContain("metodo in ('ajuste_lider', 'preenchimento_turno')");
+    }
   });
 
   test(`${arquivo}: só quem cuida do cartaz lê o código da loja`, () => {

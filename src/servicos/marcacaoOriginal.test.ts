@@ -40,8 +40,10 @@ test('o esquema.sql traz o MESMO texto dos deltas (uma regra, um lugar)', () => 
     etapa1.slice(etapa1.lastIndexOf(SEP, etapa1.indexOf(n)), etapa1.lastIndexOf(SEP, etapa1.indexOf(proxima)));
   expect(esquema.includes(secao('-- 1. A TABELA DA MARCAÇÃO ORIGINAL', '-- 2. O CONTADOR DO NSR'))).toBe(true);
   expect(esquema.includes(secao('-- 3. A TRAVA: original não se altera', '-- 4. UMA MARCAÇÃO ORIGINAL NOVA'))).toBe(true);
-  // A regra de quem grava foi atualizada no lugar dela no esquema: confere-se o conteúdo
-  expect(esquema).toContain("public.cuido_de_pessoas()\n      and metodo in ('ajuste_rh', 'ajuste_lider', 'preenchimento_turno')");
+  // A regra de quem grava foi atualizada no lugar dela no esquema: confere-se o conteúdo.
+  // Desde preencher-so-rh-e-ti.sql (14/10/2026) o preenchimento tem ramo próprio
+  expect(esquema).toContain("public.cuido_de_pessoas()\n      and metodo in ('ajuste_rh', 'ajuste_lider')");
+  expect(esquema).toContain("public.posso_preencher_pelo_turno()\n      and metodo = 'preenchimento_turno'");
   // O resto é o do registrador por estabelecimento (etapa 2a)
   // — menos a batida, que a janela de 2 minutos substituiu
   // (batida-repetida-em-2-minutos.sql): no esquema vale a função do delta novo

@@ -163,7 +163,7 @@ export const EspelhosIncompletos: React.FC<Props> = ({ espelhos, aoAbrir }) => {
 
           <p className="px-4 py-2.5 border-t border-[var(--c-borda)] text-[11px] text-[var(--c-texto-3)] leading-relaxed">
             <strong className="text-[var(--c-texto-2)]">Sem batida:</strong> dia de trabalho em branco — no espelho,
-            "Preencher dias vazios" ou o lançamento dia a dia.{' '}
+            o lançamento dia a dia (o RH e o TI têm também "Preencher dias vazios").{' '}
             <strong className="text-[var(--c-texto-2)]">Sem fechar:</strong> o dia começou e faltou batida — Equipe e
             ponto › Pontos incompletos.
           </p>

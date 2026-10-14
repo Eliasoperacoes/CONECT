@@ -127,6 +127,22 @@ export const ehDoRh = (c: { setor: string }): boolean => c.setor === 'RH';
 export const ehAdministrador = (c: { nivel: number }): boolean => c.nivel >= NIVEL_TI;
 
 /**
+ * PREENCHE DIAS VAZIOS PELO TURNO: só o RH e o TI (Elias, 14/10/2026).
+ *
+ * É escrever registro de ponto por dedução, em lote. Antes valia para
+ * quem responde pela pessoa e, na tela, seguia a permissão do banco de
+ * horas da rede — que inclui o gerente. Mais estreito que
+ * `cuidaDePessoas` de propósito: a Diretoria corrige marcação, mas não
+ * preenche mês.
+ *
+ * A REGRA MORA EM DOIS LUGARES DE PROPÓSITO, como a alçada: aqui (a tela
+ * e o serviço) e em `posso_preencher_pelo_turno()` (a política do banco,
+ * que é a que vale). Mudou uma, mude a outra.
+ */
+export const preenchePeloTurno = (c: { nivel: number; setor: string }): boolean =>
+  ehDoRh(c) || ehAdministrador(c);
+
+/**
  * Enxerga o painel de RH & Rede. O líder de setor entra aqui, mas o que ele
  * vê lá dentro é o setor dele, não a rede.
  */

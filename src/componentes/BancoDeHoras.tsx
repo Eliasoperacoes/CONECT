@@ -50,6 +50,7 @@ import {
   ehMarcacaoCorrigida,
   ehMarcacaoPreenchida,
   cuidaDePessoas,
+  preenchePeloTurno,
 } from '../tipos';
 import { ArquivoFonteDeDados } from './ArquivoFonteDeDados';
 import { bancoDados, obterFotoColaborador } from '../servicos/bancoDados';
@@ -169,6 +170,8 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
    * botão que vai ser recusado.
    */
   const podeReapurar = podeUsar('banco_horas_rh', colaboradorAtual);
+  /** "Preencher dias vazios": só RH e TI (`preenchePeloTurno`), não a permissão acima */
+  const podePreencher = preenchePeloTurno(colaboradorAtual);
   const [reapurando, setReapurando] = useState(false);
 
   const reapurar = async () => {
@@ -1332,7 +1335,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
                           <strong>
                             {semBatida} dia{semBatida === 1 ? '' : 's'} sem batida
                           </strong>
-                          {podeReapurar ? ' — "Preencher dias vazios" escreve neles o horário do turno' : ''}
+                          {podePreencher ? ' — "Preencher dias vazios" escreve neles o horário do turno' : ''}
                         </li>
                       )}
                       {incompletos.map((d) => (
@@ -1346,7 +1349,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
               );
             })()}
 
-            {podeReapurar && (
+            {podePreencher && (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"

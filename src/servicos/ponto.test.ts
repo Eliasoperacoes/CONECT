@@ -3636,12 +3636,21 @@ test('TRAVA: exige justificativa', async () => {
   expect(res.erro).toContain('motivo');
 });
 
-test('TRAVA: quem não responde pela pessoa não preenche', async () => {
-  montarEquipe(OUTRA_LOJA);
-  const res = await preencher(PEDRO, '2026-09-15', '2026-09-15');
+test('TRAVA: só RH e TI preenchem — nem o líder nem o gerente da própria pessoa (Elias, 14/10/2026)', async () => {
+  // Quem responde pelo Pedro corrige o dia dele, mas não preenche mês
+  for (const quem of [LIDER_BALCAO, GERENTE, OUTRA_LOJA]) {
+    montarEquipe(quem);
+    const res = await preencher(PEDRO, '2026-09-15', '2026-09-15');
+    expect(res.sucesso).toBe(false);
+    expect(res.erro).toBe('Preencher dias vazios pelo turno é do RH e do TI.');
+  }
+  // A Diretoria cuida de pessoas, mas não é RH nem TI
+  montarEquipe({ ...GERENTE, id: 'colab-dir', setor: 'Diretoria', nivel: 4 });
+  expect((await preencher(PEDRO, '2026-09-15', '2026-09-15')).sucesso).toBe(false);
 
-  expect(res.sucesso).toBe(false);
-  expect(res.erro).toContain('responde');
+  // O RH, de qualquer nível, preenche
+  montarEquipe({ ...ANA, id: 'colab-rh', nome: 'Dani', setor: 'RH', nivel: 4 });
+  expect((await preencher(PEDRO, '2026-09-15', '2026-09-15')).sucesso).toBe(true);
 });
 
 test('não preenche DOMINGO nem dia que não é da pessoa', async () => {
