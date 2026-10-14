@@ -28,8 +28,14 @@ declare const Deno: {
   serve(tratar: (req: Request) => Promise<Response>): void;
 };
 
-/** O Flash mais novo do Google: rápido, barato e de sobra para avisos */
-const MODELO_PADRAO = 'gemini-flash-latest';
+/**
+ * O FLASH-LITE, e não o Flash (14/10/2026).
+ *
+ * O Flash "pensa" antes de responder: segundos de raciocínio calado, bom
+ * para problema difícil e desperdício para redigir aviso. O Elias mediu
+ * os dois no uso real: o Lite "muito mais rápido", com texto equivalente.
+ */
+const MODELO_PADRAO = 'gemini-flash-lite-latest';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',

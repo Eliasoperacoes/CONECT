@@ -545,7 +545,9 @@ limite; o custo, no volume da rede, é de centavos.
 5. **Testar** na Central → Nova publicação → Escrever com IA.
 
 Trocar de modelo sem gerar a função de novo: segredo `IA_MODELO` (o
-padrão é `gemini-flash-latest`, o Flash mais novo). Os erros do Google
+padrão é `gemini-flash-lite-latest`). Não use o Flash comum: ele
+"pensa" antes de responder e a espera ficou grande no uso real (14/10/2026);
+o Lite é muito mais rápido com texto equivalente. Os erros do Google
 aparecem nos *Logs* da função como "Gemini respondeu …".
 
 ## Gerar o APK no PWABuilder

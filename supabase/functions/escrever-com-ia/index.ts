@@ -119,7 +119,7 @@ var chaveDoAmbiente = (antiga, novas, faltando) => {
 var chavePublica = () => chaveDoAmbiente("SUPABASE_ANON_KEY", "SUPABASE_PUBLISHABLE_KEYS", "Sem chave pública no ambiente da função.");
 
 // src/servidor/funcaoEscreverComIa.ts
-var MODELO_PADRAO = "gemini-flash-latest";
+var MODELO_PADRAO = "gemini-flash-lite-latest";
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
