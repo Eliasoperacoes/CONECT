@@ -23,6 +23,8 @@ class ArmazenamentoFalso {
 
 /** Quantas linhas o update "afetou" — zero é o que a RLS devolve ao barrar. */
 let linhasAfetadas: Array<{ id: string }> = [];
+/** Como o banco recusa o insert: 23505 (já existe) ou 42501 (a regra de inserção) */
+let erroDoInsert = { code: '23505', message: 'duplicate key' };
 const pedidoDeVolta: boolean[] = [];
 
 const construtorDoUpdate = () => {
@@ -44,7 +46,7 @@ mock.module('./supabase', () => ({
   usandoNuvem: () => true,
   supabase: {
     from: () => ({
-      insert: () => Promise.resolve({ error: { code: '23505', message: 'duplicate key' } }),
+      insert: () => Promise.resolve({ error: erroDoInsert }),
       update: () => construtorDoUpdate(),
     }),
   },
@@ -54,6 +56,7 @@ const { nuvem } = await import('./nuvem');
 
 beforeEach(() => {
   linhasAfetadas = [];
+  erroDoInsert = { code: '23505', message: 'duplicate key' };
   pedidoDeVolta.length = 0;
 });
 
@@ -85,4 +88,26 @@ test('quando o banco grava de verdade (uma linha de volta), é sucesso', async (
   linhasAfetadas = [{ id: 'x' }];
   expect((await nuvem.salvarAjuste(AJUSTE)).sucesso).toBe(true);
   expect((await nuvem.salvarAjustePonto(BATIDA)).sucesso).toBe(true);
+});
+
+test('O GERENTE ABONA: a regra de inserção recusa (42501) e a decisão vai pelo update (15/10/2026)', async () => {
+  // O print do Elias: "new row violates row-level security policy for table ajustes_jornada"
+  erroDoInsert = { code: '42501', message: 'new row violates row-level security policy for table "ajustes_jornada"' };
+  linhasAfetadas = [{ id: 'a1' }];
+  const r = await nuvem.salvarAjuste(AJUSTE);
+  expect(r).toEqual({ sucesso: true });
+  expect(pedidoDeVolta).toHaveLength(1);
+
+  // E se o update também não mudar nada, continua sendo recusa — não sucesso
+  linhasAfetadas = [];
+  const barrado = await nuvem.salvarAjuste(AJUSTE);
+  expect(barrado.sucesso).toBe(false);
+  expect(barrado.erro).toContain('você não responde por esta pessoa');
+});
+
+test('outro erro do insert não vira tentativa de update', async () => {
+  erroDoInsert = { code: '22P02', message: 'invalid input' };
+  const r = await nuvem.salvarAjuste(AJUSTE);
+  expect(r).toEqual({ sucesso: false, erro: 'invalid input' });
+  expect(pedidoDeVolta).toHaveLength(0);
 });

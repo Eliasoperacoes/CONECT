@@ -1837,7 +1837,19 @@ class PonteNuvem {
     const { error } = await supabase.from('ajustes_jornada').insert(paraLinhaAjuste(ajuste));
     if (!error) return { sucesso: true };
 
-    if (error.code !== '23505') {
+    /*
+      A LINHA JÁ EXISTE — e o banco pode dizer isso de dois jeitos.
+
+      23505 é "já existe". Mas quando o LÍDER decide um dia (abonar, confirmar
+      a falta), a regra de inserção recusa ANTES da chave: ele só cria ajuste
+      pendente, e a decisão é aprovada. Vinha 42501, e "Abonar dia" e
+      "Confirmar falta" falhavam para todo líder e gerente — só o RH, que pode
+      inserir, conseguia (Elias, 15/10/2026, no login do gerente). A regra
+      está certa: o líder não CRIA aprovado, ele DECIDE o que existe. Então
+      os dois caminhos seguem para o update, e zero linhas lá continua
+      sendo recusa.
+    */
+    if (error.code !== '23505' && error.code !== '42501') {
       console.error('Falha ao gravar a apuração:', error.message);
       return { sucesso: false, erro: error.message };
     }
