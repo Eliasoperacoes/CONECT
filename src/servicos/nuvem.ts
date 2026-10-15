@@ -574,24 +574,48 @@ class PonteNuvem {
     return { sucesso: true };
   }
 
+  /** O motivo da recusa da senha nova, em português — o mesmo no primeiro acesso e na troca. */
+  private explicarRecusaDaSenha(mensagem: string): string {
+    const msg = mensagem.toLowerCase();
+    if (msg.includes('password') && msg.includes('6')) return 'A senha precisa ter ao menos 6 caracteres.';
+    if (msg.includes('should be different')) return 'A nova senha precisa ser diferente da atual.';
+    return mensagem;
+  }
+
   /** Define a senha própria e encerra a obrigação de trocá-la. */
   async definirNovaSenha(novaSenha: string): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
 
     const { error } = await supabase.auth.updateUser({ password: novaSenha });
-    if (error) {
-      const msg = error.message.toLowerCase();
-      if (msg.includes('password') && msg.includes('6')) {
-        return { sucesso: false, erro: 'A senha precisa ter ao menos 6 caracteres.' };
-      }
-      if (msg.includes('should be different')) {
-        return { sucesso: false, erro: 'A nova senha precisa ser diferente da atual.' };
-      }
-      return { sucesso: false, erro: error.message };
-    }
+    if (error) return { sucesso: false, erro: this.explicarRecusaDaSenha(error.message) };
 
     await supabase.rpc('concluir_troca_de_senha');
     await this.sincronizarColaboradores();
+    return { sucesso: true };
+  }
+
+  /**
+   * TROCAR A PRÓPRIA SENHA, pelo perfil (15/10/2026).
+   *
+   * Até aqui só se definia senha no primeiro acesso ou depois de o TI
+   * redefinir — e o TI não tinha a quem pedir (Elias: "como vou trocar
+   * minha senha adm?"). A SENHA ATUAL É CONFERIDA antes: sem ela, quem
+   * achasse o computador do balcão aberto trocaria a senha do dono e o
+   * deixaria do lado de fora. Entrar de novo com a atual é a conferência —
+   * e deixa o login recente, que o Supabase pode exigir para trocar.
+   */
+  async trocarMinhaSenha(atual: string, nova: string): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'A troca de senha só funciona com o sistema na nuvem.' };
+
+    const { data } = await supabase.auth.getUser();
+    const email = data.user?.email;
+    if (!email) return { sucesso: false, erro: 'Sessão expirada. Entre de novo para trocar a senha.' };
+
+    const conferida = await supabase.auth.signInWithPassword({ email, password: atual });
+    if (conferida.error) return { sucesso: false, erro: 'A senha atual não confere.' };
+
+    const { error } = await supabase.auth.updateUser({ password: nova });
+    if (error) return { sucesso: false, erro: this.explicarRecusaDaSenha(error.message) };
     return { sucesso: true };
   }
 

@@ -18,6 +18,8 @@ import {
   Phone,
   Camera,
   Fingerprint,
+  KeyRound,
+  ChevronRight,
 } from 'lucide-react';
 import {
   situacaoDaBiometria,
@@ -28,6 +30,8 @@ import {
   type SituacaoDaBiometria,
 } from '../servicos/desbloqueio';
 import { rodandoNoAplicativo } from '../servicos/aplicativo';
+import { usandoNuvem } from '../servicos/supabase';
+import { TrocarSenha } from './TrocarSenha';
 import { Colaborador, EstadoPresenca, ROTULO_PRESENCA } from '../tipos';
 import { bancoDados, FOTO_PADRAO_LOGO_EMPRESA } from '../servicos/bancoDados';
 import {
@@ -87,6 +91,7 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
   const [biometria, setBiometria] = useState<SituacaoDaBiometria | null>(null);
   const [versaoDoApp, setVersaoDoApp] = useState<string | null>(null);
   const [biometriaLigada, setBiometriaLigada] = useState(() => lerPreferencia() === 'ligada');
+  const [trocandoSenha, setTrocandoSenha] = useState(false);
   useEffect(() => {
     if (!noAplicativo) return;
     let vivo = true;
@@ -355,6 +360,26 @@ export const AbaEu: React.FC<PropsAbaEu> = ({
         icone={<Settings className="w-5 h-5" />}
         resumo={`${ROTULO_TEMA[temaEscolhido]} · ${comSom ? 'com som' : 'sem som'}`}
       >
+        {/* A própria senha, com a atual conferida (TrocarSenha.tsx). Só na nuvem: no modo local não há conta */}
+        {usandoNuvem() && (
+          <button
+            type="button"
+            id="botao-trocar-senha"
+            onClick={() => setTrocandoSenha(true)}
+            className="w-full px-4 py-3 flex items-center justify-between min-h-[52px] text-left hover:bg-[var(--c-superficie-2)] transition-colors border-b border-[var(--c-borda)]"
+          >
+            <span className="flex items-center gap-3">
+              <KeyRound className="w-5 h-5 text-[var(--c-texto-2)]" />
+              <span>
+                <span className="block text-sm font-medium text-[var(--c-texto)]">Trocar senha</span>
+                <span className="block text-xs text-[var(--c-texto-3)]">A mesma no celular e no computador</span>
+              </span>
+            </span>
+            <ChevronRight className="w-4 h-4 text-[var(--c-texto-3)]" />
+          </button>
+        )}
+        <TrocarSenha aberto={trocandoSenha} aoFechar={() => setTrocandoSenha(false)} />
+
         <div className="px-4 py-3 flex items-center justify-between min-h-[52px]">
           <div className="flex items-center gap-3">
             <Bell className="w-5 h-5 text-[var(--c-texto-2)]" />
