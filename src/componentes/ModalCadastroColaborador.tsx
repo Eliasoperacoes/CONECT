@@ -62,6 +62,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
     cnpj: '',
     turno: TURNO_PADRAO,
     dataAdmissao: '',
+    pontoDesde: '',
     cargaHorariaDiariaMinutos: undefined as number | undefined,
     cargaSemanalMinutos: undefined as number | undefined,
     trabalhaSabado: undefined as boolean | undefined,
@@ -102,6 +103,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       cnpj: colaborador.cnpj || '',
       turno: colaborador.turno || TURNO_PADRAO,
       dataAdmissao: colaborador.dataAdmissao || '',
+      pontoDesde: colaborador.pontoDesde || '',
       cargaHorariaDiariaMinutos: colaborador.cargaHorariaDiariaMinutos,
       cargaSemanalMinutos: colaborador.cargaSemanalMinutos,
       trabalhaSabado: colaborador.trabalhaSabado,
@@ -165,6 +167,9 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       cnpj: form.cnpj.trim() ? formatarCnpj(form.cnpj) : undefined,
       turno: form.turno,
       dataAdmissao: form.dataAdmissao.trim(),
+      // Só vai ao banco quando diz algo: vazio numa ficha que nunca teve data não
+      // mexe na coluna (que pode ainda não existir, antes de ponto-desde.sql)
+      pontoDesde: form.pontoDesde.trim() || (colaborador?.pontoDesde ? '' : undefined),
       cargaHorariaDiariaMinutos: form.cargaHorariaDiariaMinutos,
       cargaSemanalMinutos: form.cargaSemanalMinutos,
       trabalhaSabado: form.trabalhaSabado,
@@ -552,6 +557,26 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                 onChange={(e) => setForm({ ...form, dataAdmissao: e.target.value })}
                 className={campo}
               />
+            </div>
+            {/*
+              PONTO DESDE (15/10/2026): o ponto entra na rede por grupos, e a
+              admissão não serve de corte — é dado trabalhista. Antes desta
+              data não há falta, "não bateu" nem espelho a assinar.
+            */}
+            <div>
+              <label htmlFor="cad-ponto-desde" className={rotuloCampo}>
+                Ponto vale desde
+              </label>
+              <input
+                id="cad-ponto-desde"
+                type="date"
+                value={form.pontoDesde}
+                onChange={(e) => setForm({ ...form, pontoDesde: e.target.value })}
+                className={campo}
+              />
+              <p className="text-[10px] text-[var(--c-texto-3)] mt-1 leading-snug">
+                Antes desta data não conta falta. Vazio: desde a admissão.
+              </p>
             </div>
             {/*
               "JORNADA DIÁRIA" SAIU DAQUI, e foi o campo que quebrou o

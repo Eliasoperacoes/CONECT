@@ -19,6 +19,8 @@ export const MESES_DO_ESPELHO = 12;
  * de hoje. Os meses de antes continuam abrindo e podem ser assinados — só
  * não viram pendência, para ninguém ganhar uma fila de meses de uma vez.
  */
+import { inicioDoPontoDe } from '../tipos';
+
 export const ESPELHO_ASSINADO_DESDE = '2026-09';
 
 const NOMES_DOS_MESES = [
@@ -78,13 +80,14 @@ export const mesesFechados = (
  * não tem espelho.
  */
 export const espelhosParaAssinar = (
-  colaborador: { dataAdmissao?: string },
+  colaborador: { dataAdmissao?: string; pontoDesde?: string },
   bateOPonto: boolean,
   hoje: string,
   assinados: { has: (mes: string) => boolean }
 ): string[] =>
   bateOPonto
-    ? mesesFechados(hoje, colaborador.dataAdmissao).filter((m) => m >= ESPELHO_ASSINADO_DESDE && !assinados.has(m))
+    ? // Desde que o ponto vale para ela, e não só desde a admissão (`inicioDoPontoDe`)
+      mesesFechados(hoje, inicioDoPontoDe(colaborador)).filter((m) => m >= ESPELHO_ASSINADO_DESDE && !assinados.has(m))
     : [];
 
 /** Quando o mês corrente fica disponível: o dia 1 do seguinte. */

@@ -30,7 +30,7 @@ import {
   Clock,
   Loader2,
 } from 'lucide-react';
-import { Colaborador, Holerite, Advertencia, ROTULO_ADVERTENCIA, RecebimentoHolerite } from '../tipos';
+import { Colaborador, Holerite, Advertencia, ROTULO_ADVERTENCIA, RecebimentoHolerite, inicioDoPontoDe } from '../tipos';
 import {
   listarRecebimentos,
   listarEspelhosAssinados,
@@ -229,7 +229,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
   }, [eu.id, versaoAusencias]);
 
   const ferias = situacaoDasFerias(ausencias.ferias, hoje);
-  const meses = mesesFechados(hoje, eu.dataAdmissao);
+  const meses = mesesFechados(hoje, inicioDoPontoDe(eu));
   const { semCiencia, holeritesParaAssinar, espelhosParaAssinar: espelhosPendentes } = pendenciasDoMeuRH(
     holerites,
     recebimentos,

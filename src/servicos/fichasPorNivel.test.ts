@@ -125,8 +125,16 @@ test('o esquema.sql traz o mesmo texto do delta (menos a seção 5, que mora no 
   const delta = readFileSync('supabase/fichas-por-nivel.sql', 'utf8');
   const esquema = readFileSync('supabase/esquema.sql', 'utf8');
   const SEP = '-- ------------------------------------------------------------\n';
-  const corpo = delta.slice(delta.indexOf('-- As três colunas que a produção tem'), delta.lastIndexOf(SEP, delta.indexOf('-- 5. OS CUPONS'))).trimEnd();
+  const corpo = delta
+    .slice(delta.indexOf('-- As três colunas que a produção tem'), delta.lastIndexOf(SEP, delta.indexOf('-- 5. OS CUPONS')))
+    .trimEnd()
+    // A trava ganhou a coluna do "ponto desde" depois (ponto-desde.sql, 15/10/2026):
+    // o esquema traz a versão de hoje, no lugar dela
+    .replace('ramal, responsavel_id, ativo, criado_em\n  ) on', 'ramal, responsavel_id, ativo, criado_em, ponto_desde\n  ) on');
+  expect(corpo).toContain('criado_em, ponto_desde');
   expect(esquema.includes(corpo)).toBe(true);
+  // E o delta novo diz o mesmo que o esquema
+  expect(readFileSync('supabase/ponto-desde.sql', 'utf8')).toContain('ramal, responsavel_id, ativo, criado_em, ponto_desde\n  ) on');
   for (const peca of ['create or replace function public.fichas_reservadas()', 'create or replace function public.minha_ficha()', 'create or replace function public.senhas_para_entregar()']) {
     expect({ peca, vezes: esquema.split(peca).length - 1 }).toEqual({ peca, vezes: 1 });
   }

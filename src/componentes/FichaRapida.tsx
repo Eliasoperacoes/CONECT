@@ -17,7 +17,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { X, MessageSquare, FileClock, Receipt, UserCog, Loader2, Wallet } from 'lucide-react';
-import { Colaborador } from '../tipos';
+import { Colaborador, inicioDoPontoDe } from '../tipos';
 import type { TelaId } from '../servicos/telasPorAssunto';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoPonto, dataDeHoje, formatarSaldo } from '../servicos/ponto';
@@ -89,7 +89,7 @@ export const FichaRapida: React.FC<{
   const editaFicha = bancoDados.podeGerenciarPessoas(colaboradorAtual);
   const saldo = vePonto ? servicoPonto.obterSaldoAcumulado(pessoa.id) : null;
   const mesAtual = hoje.slice(0, 7);
-  const ultimoFechado = mesesFechados(hoje, pessoa.dataAdmissao)[0];
+  const ultimoFechado = mesesFechados(hoje, inicioDoPontoDe(pessoa))[0];
 
   /** O espelho do mês, com as assinaturas — o mesmo documento do RH. */
   const abrirEspelho = async (mes: string, chave: string) => {

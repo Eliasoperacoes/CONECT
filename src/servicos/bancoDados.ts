@@ -1376,6 +1376,8 @@ class BancoDadosConecta {
         // responsável, escolheria quem aprova a hora dela.
         'responsavelId',
         'dataAdmissao',
+        // A partir de quando o ponto vale (ponto-desde.sql): ficha funcional
+        'pontoDesde',
         'observacoes',
         'cargaHorariaDiariaMinutos',
         // O turno decide o horário cobrado e o previsto do dia: é ficha

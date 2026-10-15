@@ -238,6 +238,12 @@ export interface Colaborador {
    */
   responsavelId?: string;
   dataAdmissao?: string;
+  /**
+   * O dia em que o PONTO passou a valer para esta pessoa (15/10/2026).
+   * Antes dele não há falta, dia vazio nem "não bateu". Vazio = desde a
+   * admissão. Ver `inicioDoPontoDe`.
+   */
+  pontoDesde?: string;
   permissoes?: string[];
   observacoes?: string;
   // Jornada contratada por dia útil, em minutos. Base do banco de horas.
@@ -455,6 +461,22 @@ export const TURNO_PADRAO = 'A';
  * o mês inteiro por dias em que batia ponto no papel.
  */
 export const INICIO_DA_COBRANCA_DE_FALTAS = '2026-10-01';
+
+/**
+ * A PARTIR DE QUANDO O PONTO VALE PARA ESTA PESSOA — o mais tarde entre a
+ * admissão e o "ponto desde" da ficha ('' se nenhum dos dois).
+ *
+ * Existe porque o ponto entra na rede por grupos (Elias, 15/10/2026: as 23
+ * pessoas de Pirassununga do Fabio e da Dani ainda batiam no papel), e a
+ * admissão não serve de corte: é dado trabalhista, sai no AEJ. Falta, dia
+ * vazio, "sem bater hoje", o alerta do servidor e o espelho a assinar
+ * perguntam AQUI — um lugar só, para nenhum deles cobrar o que outro não cobra.
+ */
+export const inicioDoPontoDe = (c: { dataAdmissao?: string; pontoDesde?: string } | undefined): string => {
+  const admissao = c?.dataAdmissao || '';
+  const desde = c?.pontoDesde || '';
+  return admissao > desde ? admissao : desde;
+};
 
 const emMinutos = (hora: string): number => {
   const [h, m] = hora.split(':').map(Number);

@@ -65,6 +65,11 @@ var TURNOS = [
   }
 ];
 var TURNO_SABADO = { entrada: "08:00", saida: "12:00" };
+var inicioDoPontoDe = (c) => {
+  const admissao = c?.dataAdmissao || "";
+  const desde = c?.pontoDesde || "";
+  return admissao > desde ? admissao : desde;
+};
 var emMinutos = (hora) => {
   const [h, m] = hora.split(":").map(Number);
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
@@ -262,7 +267,7 @@ var mesesFechados = (hoje, dataAdmissao, quantos = MESES_DO_ESPELHO) => {
   }
   return meses;
 };
-var espelhosParaAssinar = (colaborador, bateOPonto, hoje, assinados) => bateOPonto ? mesesFechados(hoje, colaborador.dataAdmissao).filter((m) => m >= ESPELHO_ASSINADO_DESDE && !assinados.has(m)) : [];
+var espelhosParaAssinar = (colaborador, bateOPonto, hoje, assinados) => bateOPonto ? mesesFechados(hoje, inicioDoPontoDe(colaborador)).filter((m) => m >= ESPELHO_ASSINADO_DESDE && !assinados.has(m)) : [];
 
 // src/servicos/apuracaoDoDia.ts
 var SEM_FONTE = new Proxy({}, {
@@ -914,6 +919,8 @@ var planejarAlertasSemBater = (dados, agora) => {
   for (const c of dados.colaboradores) {
     if (c.ativo === false || !batePonto(c))
       continue;
+    if (hoje < inicioDoPontoDe(c))
+      continue;
     const feitas = batidasDe.get(c.id) ?? new Map;
     const proxima = marcacoesEsperadas(hoje, c).find((t) => !feitas.has(t));
     if (!proxima)
@@ -961,6 +968,7 @@ var paraColaboradorDaLinha = (linha, foto) => ({
   departamento: linha.departamento || undefined,
   responsavelId: linha.responsavel_id || undefined,
   dataAdmissao: linha.data_admissao || undefined,
+  pontoDesde: linha.ponto_desde || undefined,
   observacoes: linha.observacoes || undefined,
   cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos ?? undefined,
   turno: linha.turno || undefined,

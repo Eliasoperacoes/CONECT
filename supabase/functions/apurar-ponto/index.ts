@@ -66,6 +66,11 @@ var TURNOS = [
 ];
 var TURNO_SABADO = { entrada: "08:00", saida: "12:00" };
 var INICIO_DA_COBRANCA_DE_FALTAS = "2026-10-01";
+var inicioDoPontoDe = (c) => {
+  const admissao = c?.dataAdmissao || "";
+  const desde = c?.pontoDesde || "";
+  return admissao > desde ? admissao : desde;
+};
 var emMinutos = (hora) => {
   const [h, m] = hora.split(":").map(Number);
   return (Number.isFinite(h) ? h : 0) * 60 + (Number.isFinite(m) ? m : 0);
@@ -450,7 +455,7 @@ var ehFalta = (colaborador, data, batidas, minutosPrevistos) => {
     return false;
   if (data >= fonte.hoje() || data < INICIO_DA_COBRANCA_DE_FALTAS)
     return false;
-  if (colaborador?.dataAdmissao && data < colaborador.dataAdmissao)
+  if (data < inicioDoPontoDe(colaborador))
     return false;
   return true;
 };
@@ -1080,6 +1085,7 @@ var paraColaboradorDaLinha = (linha, foto) => ({
   departamento: linha.departamento || undefined,
   responsavelId: linha.responsavel_id || undefined,
   dataAdmissao: linha.data_admissao || undefined,
+  pontoDesde: linha.ponto_desde || undefined,
   observacoes: linha.observacoes || undefined,
   cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos ?? undefined,
   turno: linha.turno || undefined,

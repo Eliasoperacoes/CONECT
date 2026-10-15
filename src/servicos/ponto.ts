@@ -48,6 +48,7 @@ import {
   NIVEL_LIDER_SETOR,
   cuidaDePessoas,
   preenchePeloTurno,
+  inicioDoPontoDe,
   AjusteJornada,
   EstadoAjuste,
   ROTULO_TIPO_AJUSTE,
@@ -1729,7 +1730,7 @@ class ServicoPonto {
    */
   ehDiaVazio(colaborador: Colaborador, data: string, batidasNoDia: number): boolean {
     if (batidasNoDia > 0 || data >= dataDeHoje()) return false;
-    if (colaborador.dataAdmissao && data < colaborador.dataAdmissao) return false;
+    if (data < inicioDoPontoDe(colaborador)) return false;
     if (marcacoesEsperadas(data, colaborador).length === 0) return false;
     return situacaoDoDia(colaborador.id, data) === 'normal';
   }
@@ -1993,6 +1994,8 @@ class ServicoPonto {
   ): boolean {
     if (!batePonto(colaborador)) return false;
     const data = paraDataLocal(agora);
+    // Antes de o ponto valer para ela não há o que cobrar (`inicioDoPontoDe`)
+    if (data < inicioDoPontoDe(colaborador)) return false;
     if (this.obterMarcacoesDoDia(colaborador.id, data).length > 0) return false;
     if (this.cargaPrevistaEmMinutos(colaborador, data) === 0) return false;
 

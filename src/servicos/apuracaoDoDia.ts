@@ -26,6 +26,7 @@ import {
   Colaborador,
   Feriado,
   INICIO_DA_COBRANCA_DE_FALTAS,
+  inicioDoPontoDe,
   JornadaDia,
   Loja,
   MINUTOS_SABADO,
@@ -794,7 +795,8 @@ export const ehFalta = (
   // Quem não bate ponto não falta: não tinha por onde bater
   if (colaborador && !fonte.batePonto(colaborador)) return false;
   if (data >= fonte.hoje() || data < INICIO_DA_COBRANCA_DE_FALTAS) return false;
-  if (colaborador?.dataAdmissao && data < colaborador.dataAdmissao) return false;
+  // Nem antes de o ponto valer para ela: admissão ou "ponto desde" da ficha
+  if (data < inicioDoPontoDe(colaborador)) return false;
   return true;
 };
 

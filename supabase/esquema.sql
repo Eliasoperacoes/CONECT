@@ -33,6 +33,8 @@ create table if not exists public.colaboradores (
   cnpj                            text,
   departamento                    text,
   data_admissao                   text,
+  -- A partir de quando o ponto vale para a pessoa (ponto-desde.sql, 15/10/2026)
+  ponto_desde                     date,
   observacoes                     text,
   -- NULO quer dizer "vale o turno da pessoa", que é o certo para quase
   -- todo mundo. Era `not null default 480`, e o efeito foi silencioso: a
@@ -114,6 +116,7 @@ create table if not exists public.mensagens (
 -- não as tem, e "create table if not exists" não volta para criá-las
 alter table public.mensagens add column if not exists editada_em timestamptz;
 alter table public.colaboradores add column if not exists cnpj text;
+alter table public.colaboradores add column if not exists ponto_desde date;
 
 -- GRUPOS DE TODOS (grupos-de-todos.sql): quem administra o grupo, e quando
 -- a pessoa saiu — a linha fica, e com ela o histórico até a saída
@@ -604,6 +607,7 @@ begin
   new.cnpj           := old.cnpj;
   new.departamento   := old.departamento;
   new.data_admissao  := old.data_admissao;
+  new.ponto_desde    := old.ponto_desde;
   new.ativo          := old.ativo;
 
   return new;
@@ -3958,7 +3962,7 @@ begin
   revoke select on public.colaboradores from authenticated, anon;
   grant select (
     id, nome, cargo, setor, loja, nivel, foto, presenca, visto_por_ultimo,
-    ramal, responsavel_id, ativo, criado_em
+    ramal, responsavel_id, ativo, criado_em, ponto_desde
   ) on public.colaboradores to authenticated;
 end;
 $$;

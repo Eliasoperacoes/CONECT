@@ -233,6 +233,9 @@ const paraLinha = (c: Colaborador) => ({
   departamento: c.departamento ?? null,
   responsavel_id: c.responsavelId ?? null,
   data_admissao: c.dataAdmissao ?? null,
+  // Só quando a ficha diz algo: sem a coluna no banco (antes de ponto-desde.sql)
+  // a gravação inteira seria recusada. '' na ficha limpa a data.
+  ...(c.pontoDesde !== undefined ? { ponto_desde: c.pontoDesde || null } : {}),
   observacoes: c.observacoes ?? null,
   // Nunca 490 de volta: salvar uma ficha qualquer desfaria a migração que
   // limpou a jornada que ninguém escolheu.
@@ -690,10 +693,18 @@ class PonteNuvem {
    */
   private async lerFichasVisiveis(): Promise<LinhaColaborador[] | null> {
     if (!supabase) return null;
-    const [diretorio, reservadas] = await Promise.all([
-      supabase.from('colaboradores').select(COLUNAS_DO_DIRETORIO).order('nome'),
-      supabase.rpc('fichas_reservadas'),
-    ]);
+    /*
+      O "ponto desde" (ponto-desde.sql, 15/10/2026) vem junto — e, se o banco
+      ainda não tem a coluna (42703) ou não a liberou (42501), a lista vem
+      sem ele. Sem este segundo pedido, publicar o aplicativo antes do SQL
+      deixaria a rede inteira sem a lista de colaboradores.
+    */
+    const lerDiretorio = async () => {
+      const comPonto = await supabase!.from('colaboradores').select(`${COLUNAS_DO_DIRETORIO}, ponto_desde`).order('nome');
+      if (!comPonto.error || !['42703', '42501'].includes(comPonto.error.code)) return comPonto;
+      return supabase!.from('colaboradores').select(COLUNAS_DO_DIRETORIO).order('nome');
+    };
+    const [diretorio, reservadas] = await Promise.all([lerDiretorio(), supabase.rpc('fichas_reservadas')]);
     if (reservadas.error) {
       if (reservadas.error.code !== 'PGRST202' && reservadas.error.code !== '42883') return null;
       const { data, error } = await supabase.from('colaboradores').select('*').order('nome');

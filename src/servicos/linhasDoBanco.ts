@@ -50,6 +50,8 @@ export interface LinhaColaborador {
   departamento: string | null;
   responsavel_id: string | null;
   data_admissao: string | null;
+  /** Ausente até rodar `ponto-desde.sql`. */
+  ponto_desde?: string | null;
   observacoes: string | null;
   carga_horaria_diaria_minutos: number | null;
   turno: string | null;
@@ -86,6 +88,7 @@ export const paraColaboradorDaLinha = (linha: LinhaColaborador, foto: string): C
   departamento: linha.departamento || undefined,
   responsavelId: linha.responsavel_id || undefined,
   dataAdmissao: linha.data_admissao || undefined,
+  pontoDesde: linha.ponto_desde || undefined,
   observacoes: linha.observacoes || undefined,
   // `null` no banco quer dizer "vale o turno". Sem o `?? undefined` ele
   // chega como null e vence o turno valendo ZERO — foi o que zerou o

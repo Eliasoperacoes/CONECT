@@ -36,7 +36,7 @@ import {
   AlertTriangle,
   Clock,
 } from 'lucide-react';
-import { Colaborador, Holerite, RecebimentoHolerite } from '../tipos';
+import { Colaborador, Holerite, RecebimentoHolerite, inicioDoPontoDe } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoPonto, batePonto, dataDeHoje, AssinaturaNoEspelho } from '../servicos/ponto';
 import { mesesFechados, rotuloDoMes, periodoDoMes, ESPELHO_ASSINADO_DESDE } from '../servicos/meuRH';
@@ -131,8 +131,8 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
         .map((c) => ({
           id: c.id,
           nome: c.nome,
-          // Tem espelho no mês quem bate ponto e já estava na casa
-          temEspelho: batePonto(c) && (!c.dataAdmissao || c.dataAdmissao.slice(0, 7) <= mes),
+          // Tem espelho no mês quem bate ponto e já tinha o ponto valendo (`inicioDoPontoDe`)
+          temEspelho: batePonto(c) && inicioDoPontoDe(c).slice(0, 7) <= mes,
         })),
     [mes]
   );

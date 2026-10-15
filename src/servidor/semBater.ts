@@ -32,6 +32,7 @@
  */
 import {
   Colaborador,
+  inicioDoPontoDe,
   ROTULO_MARCACAO,
   TOLERANCIA_POR_MARCACAO_PADRAO_MINUTOS,
   TURNO_SABADO,
@@ -107,6 +108,8 @@ export const planejarAlertasSemBater = (dados: DadosDoAlertaSemBater, agora: Dat
   const alertas: Lembrete[] = [];
   for (const c of dados.colaboradores) {
     if (c.ativo === false || !batePonto(c)) continue;
+    // Antes de o ponto valer para ela, ninguém a cobra de bater (`inicioDoPontoDe`)
+    if (hoje < inicioDoPontoDe(c)) continue;
 
     const feitas = batidasDe.get(c.id) ?? new Map<TipoMarcacao, number>();
     const proxima = marcacoesEsperadas(hoje, c).find((t) => !feitas.has(t));
