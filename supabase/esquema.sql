@@ -3232,6 +3232,88 @@ $$;
 revoke all on function public.tratar_marcacao(bigint, text, text, text, text) from public, anon;
 grant execute on function public.tratar_marcacao(bigint, text, text, text, text) to authenticated;
 
+-- "FOI INTERVALO?" (volta-do-intervalo.sql, 15/10/2026): o líder trata num toque a
+-- saída e a volta de quem não tem intervalo — a saída vira almoço como correção
+-- dele, e a volta e a saída entram pela decisão de sempre. 15 min: CLT, art. 71, §1º.
+create or replace function public.tratar_como_intervalo(
+  p_colaborador text,
+  p_data date,
+  p_justificativa text default null
+) returns integer
+language plpgsql volatile security definer set search_path = public as $$
+declare
+  eu public.colaboradores;
+  s public.registros_ponto;
+  volta public.marcacoes_originais;
+  final public.marcacoes_originais;
+  v_motivo text := coalesce(nullif(trim(p_justificativa), ''), 'Saída e volta no mesmo dia: intervalo');
+  incluidas integer := 1;
+begin
+  select * into eu from public.colaboradores where id = public.meu_colaborador_id();
+  if eu.id is null then
+    raise exception 'Sessão sem cadastro. Saia e entre de novo.' using errcode = 'P0001';
+  end if;
+  if not (public.cuido_de_pessoas() or public.posso_decidir_jornada(p_colaborador)) then
+    raise exception 'Você não responde pela jornada desta pessoa.' using errcode = 'P0001';
+  end if;
+
+  select * into s from public.registros_ponto
+   where colaborador_id = p_colaborador and data = p_data and tipo = 'saida';
+  if s.id is null then
+    raise exception 'Este dia não tem saída para virar intervalo.' using errcode = 'P0001';
+  end if;
+  if exists (
+    select 1 from public.registros_ponto
+     where colaborador_id = p_colaborador and data = p_data and tipo in ('saida_almoco', 'retorno_almoco')
+  ) then
+    raise exception 'Este dia já tem intervalo.' using errcode = 'P0001';
+  end if;
+
+  -- A volta: a primeira marcação fora da jornada, ainda não tratada,
+  -- 15 minutos ou mais depois da saída
+  select o.* into volta from public.marcacoes_originais o
+   where o.colaborador_id = p_colaborador and o.data = p_data
+     and o.fora_da_jornada is not null
+     and o.registrado_em >= s.horario + interval '15 minutes'
+     and not exists (select 1 from public.tratamento_marcacao t where t.cnpj = o.cnpj_empregador and t.nsr = o.nsr)
+   order by o.registrado_em
+   limit 1;
+  if volta.nsr is null then
+    raise exception 'Não há volta 15 minutos ou mais depois da saída: não foi intervalo.' using errcode = 'P0001';
+  end if;
+
+  -- A saída de verdade: a última, 2 minutos ou mais depois da volta (se já houver)
+  select o.* into final from public.marcacoes_originais o
+   where o.colaborador_id = p_colaborador and o.data = p_data
+     and o.fora_da_jornada is not null
+     and o.registrado_em >= volta.registrado_em + interval '2 minutes'
+     and not exists (select 1 from public.tratamento_marcacao t where t.cnpj = o.cnpj_empregador and t.nsr = o.nsr)
+   order by o.registrado_em desc
+   limit 1;
+
+  -- 1. A saída vira saída para almoço, como correção de quem decidiu
+  update public.registros_ponto
+     set tipo = 'saida_almoco',
+         metodo = case when public.cuido_de_pessoas() then 'ajuste_rh' else 'ajuste_lider' end,
+         ajustado_por_id = eu.id,
+         ajustado_por_nome = eu.nome,
+         justificativa = 'Saída das ' || s.hora_formatada || ' tratada como saída para almoço: ' || v_motivo
+   where id = s.id;
+
+  -- 2 e 3. A volta e a saída entram pela decisão de sempre (`tratar_marcacao`)
+  perform public.tratar_marcacao(volta.nsr, 'incluida', 'retorno_almoco', v_motivo, volta.cnpj_empregador);
+  if final.nsr is not null then
+    perform public.tratar_marcacao(final.nsr, 'incluida', 'saida', v_motivo, final.cnpj_empregador);
+    incluidas := 2;
+  end if;
+
+  return incluidas;
+end;
+$$;
+
+revoke all on function public.tratar_como_intervalo(text, date, text) from public, anon;
+grant execute on function public.tratar_como_intervalo(text, date, text) to authenticated;
+
 -- ============================================================
 -- A IDENTIFICAÇÃO DO REP-P (identificacao-do-rep.sql, 07/10/2026) — o
 -- mesmo texto do delta; há teste conferindo. O preenchimento (com o

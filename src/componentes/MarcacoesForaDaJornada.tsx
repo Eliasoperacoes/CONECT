@@ -20,6 +20,7 @@ import { Colaborador, ORDEM_MARCACOES, ROTULO_FORA_DA_JORNADA, ROTULO_MARCACAO, 
 import { servicoPonto, formatarDataBR, formatarDiaCurto, MarcacaoParaTratar } from '../servicos/ponto';
 import { FotoPresenca } from './FotoPresenca';
 import { FolhaInferior } from './FolhaInferior';
+import { sugestoesDeIntervalo, type SugestaoDeIntervalo } from '../servicos/voltaDoIntervalo';
 
 type Decisao = 'incluida' | 'desconsiderada';
 
@@ -38,6 +39,8 @@ export const MarcacoesForaDaJornada: React.FC<{
   const [erro, setErro] = useState<string | null>(null);
   const [gravando, setGravando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  /** O aviso é uma recusa do banco, e não uma confirmação */
+  const [avisoDeErro, setAvisoDeErro] = useState(false);
 
   // Perguntado ao banco, que filtra pela alçada; volta a perguntar quando o ponto muda
   useEffect(() => servicoPonto.assinarAlteracoes(() => setVersao((v) => v + 1)), []);
@@ -65,6 +68,22 @@ export const MarcacoesForaDaJornada: React.FC<{
 
   const pronto = !!justificativa.trim() && (decisao === 'desconsiderada' || !!tipo);
 
+  const sugestoes = sugestoesDeIntervalo(marcacoes, (id, data) => servicoPonto.obterMarcacoesDoDia(id, data));
+  const [tratandoIntervalo, setTratandoIntervalo] = useState<string | null>(null);
+  const confirmarIntervalo = async (s: SugestaoDeIntervalo) => {
+    setTratandoIntervalo(`${s.colaborador.id}|${s.data}`);
+    const res = await servicoPonto.tratarComoIntervalo(s);
+    setTratandoIntervalo(null);
+    setAvisoDeErro(!res.sucesso);
+    setAviso(
+      res.sucesso
+        ? `Intervalo de ${s.colaborador.nome} em ${formatarDataBR(s.data)} confirmado. A hora a mais está em "Aprovar jornadas".`
+        : res.erro || 'Não foi possível tratar como intervalo.'
+    );
+    setTimeout(() => setAviso(null), 6000);
+    if (res.sucesso) setVersao((v) => v + 1);
+  };
+
   const salvar = async () => {
     if (!aberta) return;
     setGravando(true);
@@ -72,6 +91,7 @@ export const MarcacoesForaDaJornada: React.FC<{
     const res = await servicoPonto.tratarMarcacao({ marcacao: aberta, decisao, tipo, justificativa });
     setGravando(false);
     if (!res.sucesso) return setErro(res.erro || 'Não foi possível salvar a decisão.');
+    setAvisoDeErro(false);
     setAviso(
       decisao === 'incluida'
         ? `Marcação de ${aberta.colaborador.nome} incluída como ${ROTULO_MARCACAO[tipo!].toLowerCase()} em ${formatarDataBR(aberta.data)}.`
@@ -93,11 +113,59 @@ export const MarcacoesForaDaJornada: React.FC<{
       </div>
 
       {aviso && (
-        <div role="status" className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-xs font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+        <div
+          role="status"
+          className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
+            avisoDeErro
+              ? 'bg-red-500/10 border-red-500/25 text-red-700 dark:text-red-400'
+              : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-700 dark:text-emerald-400'
+          }`}
+        >
+          {avisoDeErro ? <Inbox className="w-4 h-4 flex-shrink-0" /> : <CheckCircle2 className="w-4 h-4 flex-shrink-0" />}
           {aviso}
         </div>
       )}
+
+      {/*
+        "FOI INTERVALO?" (voltaDoIntervalo.ts): quem não tem intervalo saiu e
+        voltou — a hora extra autorizada com almoço. Um toque arruma o dia
+        inteiro em nome de quem decide; o banco confere tudo de novo.
+      */}
+      {sugestoes.map((s) => {
+        const chave = `${s.colaborador.id}|${s.data}`;
+        return (
+          <div
+            key={chave}
+            id={`sugestao-intervalo-${s.colaborador.id}-${s.data}`}
+            className="p-4 rounded-2xl border border-[var(--c-acento)]/30 bg-[var(--c-acento)]/5 flex flex-col gap-3"
+          >
+            <div className="flex items-center gap-3">
+              <FotoPresenca foto={s.colaborador.foto} nome={s.colaborador.nome} presenca={s.colaborador.presenca} tamanho="w-10 h-10" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-[var(--c-texto)]">Foi intervalo?</p>
+                <p className="text-xs text-[var(--c-texto-2)] leading-relaxed">
+                  <strong>{s.colaborador.nome.split(' ')[0]}</strong> saiu às {s.saida} e voltou às {s.volta.hora}
+                  {s.saidaFinal ? `, e saiu às ${s.saidaFinal.hora}` : ''} · {formatarDiaCurto(s.data)}
+                </p>
+              </div>
+            </div>
+            <p className="text-[11px] text-[var(--c-texto-3)] leading-relaxed">
+              Confirmando, a saída das {s.saida} vira saída para almoço e a volta{s.saidaFinal ? ' e a saída entram' : ' entra'} na
+              jornada, em seu nome. A hora a mais vai para você aprovar em "Aprovar jornadas".
+            </p>
+            <button
+              type="button"
+              id={`confirmar-intervalo-${s.colaborador.id}-${s.data}`}
+              disabled={tratandoIntervalo === chave}
+              onClick={() => confirmarIntervalo(s)}
+              className="self-start h-10 px-4 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold disabled:opacity-50 flex items-center gap-2"
+            >
+              {tratandoIntervalo === chave ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+              Sim, foi intervalo
+            </button>
+          </div>
+        );
+      })}
 
       {carregando && marcacoes.length === 0 ? (
         <div className="py-10 flex items-center justify-center gap-2 text-xs text-[var(--c-texto-3)]">

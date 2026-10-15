@@ -1433,6 +1433,24 @@ class PonteNuvem {
   }
 
   /**
+   * "FOI INTERVALO?" (volta-do-intervalo.sql): a saída vira almoço, e a volta
+   * e a saída entram — tudo de uma vez, em nome de quem decide. O banco
+   * confere a alçada e os 15 minutos de novo.
+   */
+  async tratarComoIntervalo(colaboradorId: string, data: string): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Sem conexão com o banco.' };
+    const { error } = await supabase.rpc('tratar_como_intervalo', {
+      p_colaborador: colaboradorId,
+      p_data: data,
+      p_justificativa: 'Saída e volta no mesmo dia: intervalo confirmado pelo responsável',
+    });
+    if (!error) return { sucesso: true };
+    if (error.code === 'PGRST202') return { sucesso: false, erro: 'Esta função ainda não foi ligada no banco. Rode volta-do-intervalo.sql.' };
+    if (error.code === 'P0001') return { sucesso: false, erro: error.message };
+    return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
+  }
+
+  /**
    * A BATIDA QUE NUNCA É RECUSADA (registrar_marcacao, marcacao-original.sql).
    *
    * A Portaria 671/2021 proíbe restringir a marcação. O banco registra a

@@ -94,6 +94,7 @@ import { fecharCompensacao, mesAnterior, CHAVE_COMPENSACAO } from './compensacao
 import { usandoNuvem } from './supabase';
 import { lerLista } from './cacheDeLeitura';
 import type { DiaDoAej } from './arquivoEletronicoDeJornada';
+import type { SugestaoDeIntervalo } from './voltaDoIntervalo';
 /**
  * As regras do dia moram em `apuracaoDoDia`, para o servidor apurar com as
  * mesmas. As de data continuam exportadas daqui: são dezenas de telas
@@ -1673,6 +1674,27 @@ class ServicoPonto {
         },
       ];
     });
+  }
+
+  /**
+   * "FOI INTERVALO?" — o líder confirma que a pessoa saiu e voltou
+   * (`voltaDoIntervalo.ts`). O banco corrige o dia inteiro em nome dele, e
+   * o dia é reapurado: a hora extra entra na fila para ele aprovar.
+   */
+  async tratarComoIntervalo(sugestao: SugestaoDeIntervalo): Promise<{ sucesso: boolean; erro?: string }> {
+    const atual = bancoDados.obterColaboradorAtual();
+    const res = await nuvem.tratarComoIntervalo(sugestao.colaborador.id, sugestao.data);
+    if (!res.sucesso) return res;
+
+    await nuvem.sincronizarPonto();
+    await this.apurarDia(sugestao.colaborador.id, sugestao.data, undefined, atual);
+    bancoDados.registrarAuditoria(
+      'Tratamento de Ponto',
+      'seguranca',
+      `${atual.nome} confirmou intervalo de ${sugestao.colaborador.nome} em ${formatarDataBR(sugestao.data)}: saída das ${sugestao.saida} virou saída para almoço, volta às ${sugestao.volta.hora}${sugestao.saidaFinal ? ` e saída às ${sugestao.saidaFinal.hora}` : ''}.`
+    );
+    this.notificar();
+    return { sucesso: true };
   }
 
   /**
