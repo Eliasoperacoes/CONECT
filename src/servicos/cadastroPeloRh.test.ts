@@ -57,27 +57,3 @@ test('o gerente não cadastra; o TI cadastra qualquer nível', async () => {
   localStorage.setItem('conecta_v4_colaborador_atual', 'elias');
   expect((await novo('eva', 5)).sucesso).toBe(true);
 });
-
-test('o RH liga a pessoa nova ao responsável, sem passar pelo TI', async () => {
-  localStorage.setItem('conecta_v4_colaborador_atual', 'dani');
-  const r = await novo('gabi', 1);
-  expect(await bancoDados.definirResponsavel(r.colaborador!.id, 'fabio')).toEqual({ sucesso: true });
-  expect(bancoDados.obterColaboradorPorId(r.colaborador!.id)?.responsavelId).toBe('fabio');
-});
-
-test('"Responde a" oferece a loja primeiro e nunca quem fecharia o círculo', async () => {
-  const { candidatosAResponsavel } = await import('./organograma');
-  const gente = [
-    { ...pessoa('ana', 'Balcão', 1), loja: 'Descalvado', responsavelId: 'gil' },
-    { ...pessoa('gil', 'Gerência', 3), loja: 'Descalvado' },
-    pessoa('fabio', 'Gerência', 3),
-    pessoa('lia', 'Balcão', 2),
-    { ...pessoa('ex', 'Balcão', 4), ativo: false },
-  ] as any[];
-  // Cadastro novo em Pirassununga: o gerente de lá no topo, inativo fora
-  expect(candidatosAResponsavel(null, 'Pirassununga', gente).map((c) => c.id)).toEqual(['fabio', 'lia', 'gil', 'ana']);
-  // A Ana responde ao Gil: ela não vira chefe dele, nem ele de si mesmo
-  const doGil = candidatosAResponsavel(gente[1], 'Descalvado', gente).map((c) => c.id);
-  expect(doGil).not.toContain('ana');
-  expect(doGil).not.toContain('gil');
-});

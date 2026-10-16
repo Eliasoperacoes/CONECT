@@ -260,29 +260,6 @@ export const podeSerResponsavelDe = (
 };
 
 /**
- * Quem o cadastro oferece em "Responde a".
- *
- * Os ativos, menos a própria pessoa e quem fecharia o círculo
- * (podeSerResponsavelDe). Primeiro a loja dela, depois a liderança mais
- * alta: o gerente da loja aparece no topo, sem rolar 89 nomes. `alvo`
- * nulo é o cadastro novo — ninguém ainda responde a ela.
- */
-export const candidatosAResponsavel = (
-  alvo: Colaborador | null,
-  loja: string,
-  todos: Colaborador[]
-): Colaborador[] =>
-  todos
-    .filter((c) => c.ativo !== false)
-    .filter((c) => !alvo || podeSerResponsavelDe(c, alvo, todos).pode)
-    .sort(
-      (a, b) =>
-        Number(b.loja === loja) - Number(a.loja === loja) ||
-        b.nivel - a.nivel ||
-        a.nome.localeCompare(b.nome, 'pt-BR')
-    );
-
-/**
  * Monta a árvore de uma loja.
  *
  * Quem aparece na raiz: quem não tem responsável, e também quem tem um
