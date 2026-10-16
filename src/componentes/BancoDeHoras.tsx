@@ -103,6 +103,12 @@ interface PropsBancoDeHoras {
    * funciona em qualquer outro lugar que venha a usá-la.
    */
   abaFixa?: 'banco_horas' | 'qrcodes';
+  /**
+   * O ESPELHO DE UMA PESSOA SÓ, aberto pela busca (FichaRapida, 16/10/2026).
+   * Sem passar por lojas e lista: o Elias corrigia dia a dia pela fila de
+   * pontos incompletos, e o espelho editável já estava aqui. "Voltar" fecha.
+   */
+  soDe?: { colaboradorId: string; aoFechar: () => void };
 }
 
 type AbaRH = 'banco_horas' | 'qrcodes';
@@ -124,6 +130,7 @@ const AssinaturaDoMes: React.FC<{ assinada?: AssinaturaNoEspelho }> = ({ assinad
 export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
   colaboradorAtual,
   abaFixa,
+  soDe,
 }) => {
   /** No computador: o período numa linha, as ações junto da busca e os números no cartão padrão. */
   const embutida = useTelaEmbutida();
@@ -134,7 +141,7 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
   // Navegação em três níveis: lojas -> equipe da loja -> espelho da pessoa.
   // Com mais de 40 colaboradores, a lista única fica impraticável.
   const [lojaSelecionada, setLojaSelecionada] = useState<Loja | null>(null);
-  const [detalheId, setDetalheId] = useState<string | null>(null);
+  const [detalheId, setDetalheId] = useState<string | null>(soDe?.colaboradorId ?? null);
   const [colaboradorEmCadastro, setColaboradorEmCadastro] = useState<Colaborador | null>(null);
 
   // Quem pode abrir o painel de RH também cuida da ficha das pessoas
@@ -1192,11 +1199,11 @@ export const BancoDeHoras: React.FC<PropsBancoDeHoras> = ({
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <button
                 type="button"
-                onClick={() => setDetalheId(null)}
+                onClick={() => (soDe ? soDe.aoFechar() : setDetalheId(null))}
                 className="text-xs font-bold text-[var(--c-acento)] flex items-center gap-1 hover:underline"
               >
                 <ChevronLeft className="w-3.5 h-3.5" />
-                Voltar para a lista
+                {soDe ? 'Fechar' : 'Voltar para a lista'}
               </button>
 
               <div className="flex items-center gap-2">

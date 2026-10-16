@@ -16,7 +16,7 @@
  * abriria vazio, não o dado de outra pessoa.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, MessageSquare, FileClock, Receipt, UserCog, Loader2, Wallet } from 'lucide-react';
+import { X, MessageSquare, FileClock, Receipt, UserCog, Loader2, Wallet, Pencil } from 'lucide-react';
 import { Colaborador, inicioDoPontoDe } from '../tipos';
 import type { TelaId } from '../servicos/telasPorAssunto';
 import { bancoDados } from '../servicos/bancoDados';
@@ -30,6 +30,7 @@ import { usandoNuvem } from '../servicos/supabase';
 import { useVoltar } from '../servicos/voltar';
 import { AvatarSuave } from './PadraoWeb';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
+import { BancoDeHoras } from './BancoDeHoras';
 
 /** Um atalho: ícone, o que faz, e a linha que diz de quê. */
 const Atalho: React.FC<{
@@ -69,15 +70,16 @@ export const FichaRapida: React.FC<{
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [emCadastro, setEmCadastro] = useState(false);
+  const [corrigindoPonto, setCorrigindoPonto] = useState(false);
 
   // Esc fecha, como toda janela
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !emCadastro) aoFechar();
+      if (e.key === 'Escape' && !emCadastro && !corrigindoPonto) aoFechar();
     };
     window.addEventListener('keydown', tecla);
     return () => window.removeEventListener('keydown', tecla);
-  }, [aoFechar, emCadastro]);
+  }, [aoFechar, emCadastro, corrigindoPonto]);
 
   const hoje = dataDeHoje();
   const souEu = pessoa.id === colaboradorAtual.id;
@@ -87,6 +89,11 @@ export const FichaRapida: React.FC<{
   );
   const veFolha = visiveis.has('holerites');
   const editaFicha = bancoDados.podeGerenciarPessoas(colaboradorAtual);
+  /** Corrige batida quem corrige no espelho: o RH e quem responde pela pessoa */
+  const corrigePonto =
+    vePonto &&
+    !souEu &&
+    (servicoPonto.podeAcessarPainelRH(colaboradorAtual) || servicoPonto.podeDecidirSobre(pessoa));
   const saldo = vePonto ? servicoPonto.obterSaldoAcumulado(pessoa.id) : null;
   const mesAtual = hoje.slice(0, 7);
   const ultimoFechado = mesesFechados(hoje, inicioDoPontoDe(pessoa))[0];
@@ -187,6 +194,15 @@ export const FichaRapida: React.FC<{
               aoTocar={() => abrirEspelho(mesAtual, 'espelho-atual')}
             />
           )}
+          {corrigePonto && (
+            <Atalho
+              id="ficha-rapida-corrigir-ponto"
+              icone={<Pencil className="h-4 w-4" />}
+              titulo="Corrigir ponto"
+              detalhe="Espelho editável, dia a dia"
+              aoTocar={() => setCorrigindoPonto(true)}
+            />
+          )}
           {vePonto && ultimoFechado && (
             <Atalho
               id="ficha-rapida-espelho-fechado"
@@ -225,6 +241,23 @@ export const FichaRapida: React.FC<{
       </section>
 
       {emCadastro && <ModalCadastroColaborador colaborador={pessoa} aoFechar={() => setEmCadastro(false)} />}
+
+      {/* O espelho editável desta pessoa, por cima de tudo: o mesmo do Banco de horas */}
+      {corrigindoPonto && (
+        <div
+          id="ficha-rapida-espelho-editavel"
+          className="fixed inset-0 z-[55] flex justify-center bg-black/40 p-0 sm:p-6"
+          onMouseDown={(e) => e.target === e.currentTarget && setCorrigindoPonto(false)}
+        >
+          <div className="w-full max-w-5xl overflow-y-auto bg-[var(--c-canvas)] sm:rounded-2xl sm:border sm:border-[var(--c-borda)] shadow-[var(--s-3)]">
+            <BancoDeHoras
+              colaboradorAtual={colaboradorAtual}
+              abaFixa="banco_horas"
+              soDe={{ colaboradorId: pessoa.id, aoFechar: () => setCorrigindoPonto(false) }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
