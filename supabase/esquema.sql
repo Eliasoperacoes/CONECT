@@ -492,6 +492,24 @@ as $$
     ));
 $$;
 
+/**
+ * Quem eu alcanço na jornada, de uma vez (rls-mais-leve.sql, 16/10/2026):
+ * as políticas de leitura do ponto perguntam a lista, e não
+ * `posso_decidir_jornada` linha a linha. A regra é a mesma, num lugar só.
+ */
+create or replace function public.minha_alcada_de_jornada()
+returns setof text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select c.id from public.colaboradores c where public.posso_decidir_jornada(c.id);
+$$;
+
+revoke execute on function public.minha_alcada_de_jornada() from public, anon;
+grant execute on function public.minha_alcada_de_jornada() to authenticated;
+
 -- ------------------------------------------------------------
 -- REGRAS DE ACESSO (RLS)
 -- Espelham as permissões que já existiam na tela, agora impostas pelo
@@ -1051,22 +1069,23 @@ $$;
 grant execute on function public.dias_com_batida(date, date) to authenticated;
 
 
+-- Quem responde pela pessoa enxerga o ponto dela.
+--
+-- Aqui havia `meu_nivel() >= 3`, que dava a QUALQUER gerente o ponto de
+-- QUALQUER pessoa da rede, inclusive de outra loja. A tela filtrava; o
+-- banco não. Trava que mora só na tela não é trava.
+--
+-- O gerente continua alcançando a loja dele: quem está posicionado no
+-- organograma vem pela cadeia, e quem não está cai na regra automática
+-- de loja — tudo dentro de `posso_decidir_jornada`, que a lista
+-- `minha_alcada_de_jornada` pergunta uma vez por pessoa (rls-mais-leve.sql).
 drop policy if exists ponto_leitura on public.registros_ponto;
 create policy ponto_leitura on public.registros_ponto
   for select to authenticated
   using (
-    colaborador_id = public.meu_colaborador_id()
-    or public.cuido_de_pessoas()
-    -- Quem responde pela pessoa enxerga o ponto dela.
-    --
-    -- Aqui havia `meu_nivel() >= 3`, que dava a QUALQUER gerente o ponto de
-    -- QUALQUER pessoa da rede, inclusive de outra loja. A tela filtrava; o
-    -- banco não. Trava que mora só na tela não é trava.
-    --
-    -- O gerente continua alcançando a loja dele: quem está posicionado no
-    -- organograma vem pela cadeia, e quem não está cai na regra automática
-    -- de loja, que é parte desta mesma função.
-    or public.posso_decidir_jornada(colaborador_id)
+    colaborador_id = (select public.meu_colaborador_id())
+    or (select public.cuido_de_pessoas())
+    or colaborador_id in (select public.minha_alcada_de_jornada())
   );
 
 drop policy if exists ponto_batida on public.registros_ponto;
@@ -1928,8 +1947,9 @@ drop policy if exists compensacao_leitura on public.compensacao_sabado;
 create policy compensacao_leitura on public.compensacao_sabado
   for select to authenticated
   using (
-    colaborador_id = public.meu_colaborador_id()
-    or public.posso_decidir_jornada(colaborador_id)
+    colaborador_id = (select public.meu_colaborador_id())
+    or (select public.cuido_de_pessoas())
+    or colaborador_id in (select public.minha_alcada_de_jornada())
   );
 
 -- LEITURA: cada um vê a própria apuração; quem decide vê a de quem responde
@@ -1937,8 +1957,9 @@ drop policy if exists ajustes_leitura on public.ajustes_jornada;
 create policy ajustes_leitura on public.ajustes_jornada
   for select to authenticated
   using (
-    colaborador_id = public.meu_colaborador_id()
-    or public.posso_decidir_jornada(colaborador_id)
+    colaborador_id = (select public.meu_colaborador_id())
+    or (select public.cuido_de_pessoas())
+    or colaborador_id in (select public.minha_alcada_de_jornada())
   );
 
 -- CRIAÇÃO: nasce do ponto da própria pessoa, sempre pendente. O RH também
@@ -2520,9 +2541,9 @@ drop policy if exists originais_leitura on public.marcacoes_originais;
 create policy originais_leitura on public.marcacoes_originais
   for select to authenticated
   using (
-    colaborador_id = public.meu_colaborador_id()
-    or public.cuido_de_pessoas()
-    or public.posso_decidir_jornada(colaborador_id)
+    colaborador_id = (select public.meu_colaborador_id())
+    or (select public.cuido_de_pessoas())
+    or colaborador_id in (select public.minha_alcada_de_jornada())
   );
 
 -- ------------------------------------------------------------
@@ -2592,9 +2613,9 @@ create policy tratamento_leitura on public.tratamento_marcacao
       select 1 from public.marcacoes_originais o
        where o.nsr = tratamento_marcacao.nsr
          and (
-           o.colaborador_id = public.meu_colaborador_id()
-           or public.cuido_de_pessoas()
-           or public.posso_decidir_jornada(o.colaborador_id)
+           o.colaborador_id = (select public.meu_colaborador_id())
+           or (select public.cuido_de_pessoas())
+           or o.colaborador_id in (select public.minha_alcada_de_jornada())
          )
     )
   );
@@ -3655,11 +3676,11 @@ drop policy if exists justificativas_leitura on public.justificativas_ausencia;
 create policy justificativas_leitura on public.justificativas_ausencia
   for select to authenticated
   using (
-    colaborador_id = public.meu_colaborador_id()
-    or public.cuido_de_pessoas()
+    colaborador_id = (select public.meu_colaborador_id())
+    or (select public.cuido_de_pessoas())
     or (
       tipo in ('folga_sabado', 'ferias')
-      and public.posso_decidir_jornada(colaborador_id)
+      and colaborador_id in (select public.minha_alcada_de_jornada())
     )
   );
 

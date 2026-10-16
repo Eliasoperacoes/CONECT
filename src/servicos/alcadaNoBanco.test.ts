@@ -101,7 +101,9 @@ test('QUEM PODE ESCREVER PRECISA PODER LER', async () => {
       continue;
     }
 
-    if (!leitura.corpo.includes('posso_decidir_jornada')) {
+    // A lista `minha_alcada_de_jornada` é a mesma `posso_decidir_jornada`,
+    // perguntada uma vez por pessoa em vez de por linha (rls-mais-leve.sql)
+    if (!/posso_decidir_jornada|minha_alcada_de_jornada/.test(leitura.corpo)) {
       problemas.push(
         `${tabela}: a gravação conhece o responsável, mas a leitura (${leitura.nome}, em ${leitura.arquivo}) não — ` +
           `é o defeito da correção de ponto se repetindo`

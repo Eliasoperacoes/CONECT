@@ -31,11 +31,29 @@ test('o esquema.sql inteiro roda num banco vazio, sem erro nenhum', () => {
   expect(banco.errosDoEsquema).toEqual([]);
 });
 
+/**
+ * As regras de leitura que rls-mais-leve.sql (16/10/2026) reescreveu: no
+ * esquema vale a versão leve. O trecho do delta antigo é conferido com elas
+ * já trocadas, no lugar onde estavam.
+ */
+const comALeituraLeve = (texto: string): string => {
+  const leve = readFileSync('supabase/rls-mais-leve.sql', 'utf8');
+  for (const nome of ['originais_leitura', 'tratamento_leitura']) {
+    const ini = `create policy ${nome} on`;
+    const i = texto.indexOf(ini);
+    if (i < 0) continue;
+    const j = leve.indexOf(ini);
+    const fimLeve = leve.indexOf(');\n', j) + 3;
+    texto = texto.slice(0, i) + leve.slice(j, fimLeve) + texto.slice(texto.indexOf(');\n', i) + 3);
+  }
+  return texto;
+};
+
 test('o esquema.sql traz o MESMO texto dos deltas (uma regra, um lugar)', () => {
   const esquema = readFileSync('supabase/esquema.sql', 'utf8');
   const SEP = '-- ------------------------------------------------------------\n';
   // Da etapa 1 continuam valendo: a tabela da original, a trava e a regra de quem grava
-  const etapa1 = readFileSync('supabase/marcacao-original.sql', 'utf8');
+  const etapa1 = comALeituraLeve(readFileSync('supabase/marcacao-original.sql', 'utf8'));
   const secao = (n: string, proxima: string) =>
     etapa1.slice(etapa1.lastIndexOf(SEP, etapa1.indexOf(n)), etapa1.lastIndexOf(SEP, etapa1.indexOf(proxima)));
   expect(esquema.includes(secao('-- 1. A TABELA DA MARCAÇÃO ORIGINAL', '-- 2. O CONTADOR DO NSR'))).toBe(true);

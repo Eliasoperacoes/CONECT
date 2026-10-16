@@ -29,7 +29,8 @@ const politica = (sql: string, nome: string): string | null => {
 
 // A versão que vale de cada regra: o último delta, na ordem do OPERACAO.md, que a redefiniu
 const QUE_VALEM: Array<[string, string]> = [
-  ['justificativas_leitura', 'atestado-e-do-rh.sql'],
+  // A mesma regra, leve: a alçada perguntada uma vez por consulta (16/10/2026)
+  ['justificativas_leitura', 'rls-mais-leve.sql'],
   ['justificativas_decisao', 'atestado-e-do-rh.sql'],
   ['justificativas_abertura', 'atestado-e-do-rh.sql'],
   ['justificativas_remocao', 'ponto-tolerancia-justificativas.sql'],

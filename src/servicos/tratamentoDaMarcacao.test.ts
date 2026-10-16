@@ -55,9 +55,27 @@ const marcacaoForaDaAna = async (): Promise<number> => {
   return Number(r.r.original.nsr);
 };
 
+/**
+ * As regras de leitura que rls-mais-leve.sql (16/10/2026) reescreveu: no
+ * esquema vale a versão leve. O trecho do delta antigo é conferido com elas
+ * já trocadas, no lugar onde estavam.
+ */
+const comALeituraLeve = (texto: string): string => {
+  const leve = readFileSync('supabase/rls-mais-leve.sql', 'utf8');
+  for (const nome of ['originais_leitura', 'tratamento_leitura']) {
+    const ini = `create policy ${nome} on`;
+    const i = texto.indexOf(ini);
+    if (i < 0) continue;
+    const j = leve.indexOf(ini);
+    const fimLeve = leve.indexOf(');\n', j) + 3;
+    texto = texto.slice(0, i) + leve.slice(j, fimLeve) + texto.slice(texto.indexOf(');\n', i) + 3);
+  }
+  return texto;
+};
+
 test('o esquema.sql traz o MESMO texto do delta, e roda sem erro num banco vazio', () => {
   expect(banco.errosDoEsquema).toEqual([]);
-  const delta = readFileSync('supabase/tratamento-da-marcacao.sql', 'utf8');
+  const delta = comALeituraLeve(readFileSync('supabase/tratamento-da-marcacao.sql', 'utf8'));
   const esquema = readFileSync('supabase/esquema.sql', 'utf8');
   // Daqui continuam valendo a tabela, a leitura e a trava; a fila e a decisão
   // são as do registrador por estabelecimento (com a chave CNPJ + NSR)
