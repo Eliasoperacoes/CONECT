@@ -10,8 +10,9 @@
  * Quem entra na lista não é decidido aqui: chega pronto do resumo da
  * equipe (`semBaterHoje`, de `obterResumoDoPeriodo`).
  */
-import React from 'react';
-import { MessageSquare } from 'lucide-react';
+import React, { useState } from 'react';
+import { MessageSquare, Loader2 } from 'lucide-react';
+import { chamarQuemNaoBateu } from '../servicos/chamarQuemNaoBateu';
 import { Colaborador } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
 import { GruposDePessoas, detalheNoGrupo } from './GruposDePessoas';
@@ -22,6 +23,17 @@ export const SemBaterHoje: React.FC<{
   pessoas: Colaborador[];
   aoAbrirConversa: (colegaId: string) => void;
 }> = ({ pessoas, aoAbrirConversa }) => {
+  const [chamando, setChamando] = useState<string | null>(null);
+
+  /** Manda o recado do dia (uma vez só) e abre a conversa com ele enviado */
+  const chamar = async (p: Colaborador) => {
+    if (chamando) return;
+    setChamando(p.id);
+    await chamarQuemNaoBateu(p.id);
+    setChamando(null);
+    aoAbrirConversa(p.id);
+  };
+
   if (pessoas.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-[var(--c-texto-3)]">Todo mundo já bateu o ponto hoje.</p>
@@ -32,7 +44,7 @@ export const SemBaterHoje: React.FC<{
     <div className="flex flex-col gap-3">
       <p className="text-xs text-[var(--c-texto-3)] leading-relaxed">
         Pode ser folga, atestado ou esquecimento. Chame a pessoa antes de o dia fechar — depois vira
-        dia sem fechar, e aí é decisão sua.
+        dia sem fechar, e aí é decisão sua. O botão de chat já manda o recado e abre a conversa.
       </p>
 
       <GruposDePessoas
@@ -48,12 +60,13 @@ export const SemBaterHoje: React.FC<{
             </span>
             <button
               type="button"
-              onClick={() => aoAbrirConversa(p.id)}
-              title={`Chamar ${p.nome} no chat`}
-              aria-label={`Chamar ${p.nome} no chat`}
+              onClick={() => chamar(p)}
+              disabled={!!chamando}
+              title={`Mandar o recado a ${p.nome} e abrir a conversa`}
+              aria-label={`Mandar o recado a ${p.nome} e abrir a conversa`}
               className="w-9 h-9 rounded-xl flex items-center justify-center text-[var(--c-acento)] hover:bg-[var(--c-acento)]/10 active:scale-95 transition-all flex-shrink-0"
             >
-              <MessageSquare className="w-4 h-4" />
+              {chamando === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />}
             </button>
           </div>
         )}

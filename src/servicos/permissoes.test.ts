@@ -496,11 +496,14 @@ test('o contador "sem bater hoje" leva a uma lista', async () => {
   expect(gestao).toContain("abrirPendencias('sem_bater')");
   expect(gestao).toContain('semBaterHoje={semBaterHoje.map((r) => r.colaborador)}');
 
-  // E a lista chama a pessoa no chat, uma por uma
+  // E a lista chama a pessoa no chat, uma por uma — com o recado já enviado
+  // (chamarQuemNaoBateu, 16/10/2026)
   const lista = await Bun.file(
     new URL('../componentes/SemBaterHoje.tsx', import.meta.url)
   ).text();
-  expect(lista).toContain('onClick={() => aoAbrirConversa(p.id)}');
+  expect(lista).toContain('onClick={() => chamar(p)}');
+  expect(lista).toContain('await chamarQuemNaoBateu(p.id);');
+  expect(lista).toContain('aoAbrirConversa(p.id);');
 });
 
 /**
