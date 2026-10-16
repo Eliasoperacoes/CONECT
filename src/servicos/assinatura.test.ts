@@ -170,3 +170,28 @@ test('O DELTA DO RESPONSÁVEL É CÓPIA FIEL DA FONTE', async () => {
     expect(trecho(delta, inicio, fim)).toBe(trecho(sql, inicio, fim));
   }
 });
+
+test('A FUNÇÃO QUE FALTOU NO BANCO: o delta de 16/10 é a da fonte, e tira a de três parâmetros', async () => {
+  // Em produção ficou a primeira versão (senha, holerites, espelhos); o
+  // sistema chama a de dois, e a Dani ouviu "ainda não foi ligada no banco"
+  const fonte = await lerSql('assinatura-responsavel.sql');
+  const delta = await lerSql('assinatura-responsavel-so-espelho.sql');
+  const funcao = (texto: string) => {
+    const i = texto.indexOf('create or replace function public.assinar_como_responsavel(');
+    return texto.slice(i, texto.indexOf('$$;', texto.indexOf('$$', i) + 2));
+  };
+  expect(funcao(delta)).toBe(funcao(fonte));
+  expect(delta).toContain('drop function if exists public.assinar_como_responsavel(text, text[], text[]);');
+  expect(delta).toContain("notify pgrst, 'reload schema';");
+});
+
+test('o que o sistema manda é o que a função do banco recebe', async () => {
+  const servico = await Bun.file(new URL('./assinatura.ts', import.meta.url)).text();
+  const chamada = servico.slice(servico.indexOf("supabase.rpc('assinar_como_responsavel'"));
+  const enviados = [...chamada.slice(0, chamada.indexOf('});')).matchAll(/(p_\w+):/g)].map((m) => m[1]).sort();
+  const fonte = await lerSql('assinatura-responsavel.sql');
+  const assinatura = fonte.slice(fonte.indexOf('create or replace function public.assinar_como_responsavel('));
+  const recebidos = [...assinatura.slice(0, assinatura.indexOf(')\nreturns')).matchAll(/^\s+(p_\w+)\s/gm)].map((m) => m[1]).sort();
+  expect(enviados).toEqual(recebidos);
+  expect(enviados).toEqual(['p_espelhos', 'p_senha']);
+});
