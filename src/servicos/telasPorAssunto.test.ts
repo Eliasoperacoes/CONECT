@@ -56,6 +56,8 @@ test('RH: o trabalho do RH, sem a tela de equipe nem as lojas', () => {
       ...DE_TODOS,
       ...QUEM_BATE,
       'painel_rh',
+      // Cadastrar, alterar e desligar colaborador (15/10/2026)
+      'colaboradores',
       'assinaturas',
       'holerites',
       'advertencias',
@@ -137,4 +139,12 @@ test('O RÓTULO "DE QUEM É" não mente: o colaborador comum só vê "Para você
   // E o que só o líder ganha a mais é dele como gestor, nunca "Para você"
   const doLider = ver(2, 'Balcão', true, true).filter((t) => !doColaborador.includes(t));
   for (const t of doLider) expect({ t, rotulo: DE_QUEM_E_A_TELA[t] }).not.toEqual({ t, rotulo: 'Para você' });
+});
+
+test('COLABORADORES: o RH cadastra; líder, gerente e colaborador não (15/10/2026)', () => {
+  expect(ver(2, 'RH', false, true)).toContain('colaboradores');
+  expect(ver(5, 'TI', true, false)).toContain('colaboradores');
+  expect(ver(1, 'Balcão', false, true)).not.toContain('colaboradores');
+  expect(ver(2, 'Balcão', true, true)).not.toContain('colaboradores');
+  expect(ver(3, 'Gerência', true, false)).not.toContain('colaboradores');
 });

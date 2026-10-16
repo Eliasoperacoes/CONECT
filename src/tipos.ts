@@ -143,6 +143,16 @@ export const preenchePeloTurno = (c: { nivel: number; setor: string }): boolean 
   ehDoRh(c) || ehAdministrador(c);
 
 /**
+ * Os níveis que esta pessoa pode DAR a alguém, ao cadastrar ou alterar.
+ *
+ * Só o TI dá qualquer nível; os demais, até o próprio — senão o RH criaria
+ * uma conta nível 5, e o nível 5 é o sistema inteiro. Par de
+ * `nivel_ate_o_meu()` (nivel-ate-o-meu.sql), que é a trava que vale.
+ */
+export const niveisQuePossoDar = (c: { nivel: number }): NivelHierarquico[] =>
+  NIVEIS_EM_ORDEM.filter((n) => c.nivel >= NIVEL_TI || n <= c.nivel);
+
+/**
  * Enxerga o painel de RH & Rede. O líder de setor entra aqui, mas o que ele
  * vê lá dentro é o setor dele, não a rede.
  */

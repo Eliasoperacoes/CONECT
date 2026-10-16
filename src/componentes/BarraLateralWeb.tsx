@@ -21,6 +21,7 @@ import {
   FileText,
   Building2,
   ShieldCheck,
+  UserCog,
   type LucideIcon,
 } from 'lucide-react';
 import type { Assunto, AssuntoId } from '../servicos/telasPorAssunto';
@@ -35,6 +36,7 @@ export const ICONE_DO_ASSUNTO: Record<AssuntoId, LucideIcon> = {
   ausencias: CalendarDays,
   documentos: FileText,
   pessoas: Building2,
+  colaboradores: UserCog,
   administracao: ShieldCheck,
 };
 

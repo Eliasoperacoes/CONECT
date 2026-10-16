@@ -32,6 +32,7 @@ import { AbaAssinaturas } from './AbaAssinaturas';
 import { AbaHolerites } from './AbaHolerites';
 import { AbaAdvertencias } from './AbaAdvertencias';
 import { PainelRede } from './PainelRede';
+import { PainelAdministrativo } from './PainelAdministrativo';
 import { AbaEu } from './AbaEu';
 import type { SecaoDestino } from '../servicos/destinoDoAviso';
 
@@ -287,6 +288,16 @@ export const ConteudoWeb: React.FC<{
         return <AbaHolerites colaboradorAtual={colaboradorAtual} />;
       case 'advertencias':
         return <AbaAdvertencias colaboradorAtual={colaboradorAtual} />;
+      case 'colaboradores':
+        // O mesmo cadastro do ADM, só a aba de pessoas (soColaboradores)
+        return (
+          <PainelAdministrativo
+            colaboradorAtual={colaboradorAtual}
+            aoFechar={() => undefined}
+            aoAbrirConversa={p.aoAbrirConversa}
+            soColaboradores
+          />
+        );
       case 'unidades':
       case 'organograma':
         return (

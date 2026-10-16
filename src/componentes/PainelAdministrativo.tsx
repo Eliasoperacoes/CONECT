@@ -6,7 +6,9 @@ import {
   NIVEIS_EM_ORDEM,
   ROTULO_NIVEL,
   DESCRICAO_NIVEL,
+  niveisQuePossoDar,
 } from '../tipos';
+import { ModalCadastroColaborador } from './ModalCadastroColaborador';
 import {
   ShieldCheck,
   Users,
@@ -64,6 +66,7 @@ import {
   minutosDoTurno,
   SETORES,
   INFORMACOES_LOJAS,
+  cuidaDePessoas,
 } from '../tipos';
 import { nuvemComunicacao, UsoDoBanco } from '../servicos/nuvemComunicacao';
 import { nuvem } from '../servicos/nuvem';
@@ -86,6 +89,15 @@ interface PropsPainelAdministrativo {
   colaboradorAtual: Colaborador;
   aoFechar: () => void;
   aoAbrirConversa: (conversaId: string) => void;
+  /**
+   * O CADASTRO DE COLABORADORES DO RH (15/10/2026): o mesmo painel, só a
+   * aba de colaboradores, embutido na tela "Colaboradores" do menu. A porta
+   * é a regra do banco para cadastrar (`cuidaDePessoas`, a mesma de
+   * `colaboradores_insercao`); o que é só do TI — remover a ficha, os
+   * usuários de teste, as outras abas — não aparece. Um cadastro só para
+   * as duas telas: duas cópias divergiriam, como já divergiram aqui.
+   */
+  soColaboradores?: boolean;
 }
 
 /**
@@ -119,8 +131,12 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   colaboradorAtual,
   aoFechar,
   aoAbrirConversa,
+  soColaboradores = false,
 }) => {
-  useVoltar(true, aoFechar);
+  // Embutido no menu, não há o que fechar: o voltar é o da navegação
+  useVoltar(!soColaboradores, aoFechar);
+  /** Remover a ficha e os usuários de teste: o banco só deixa o TI (`colaboradores_remocao`) */
+  const ehTi = colaboradorAtual.nivel >= NIVEL_TI;
   /** Volta para a aba onde a pessoa parou, e não para Colaboradores. */
   const [abaEscolhida, setAbaAtiva] = useState<AbaAdmin>(() =>
     ondeParei(colaboradorAtual.id, 'admin', ABAS_ADMIN, 'colaboradores')
@@ -167,8 +183,9 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
    * A aba que vale. Nunca uma que a pessoa não tenha — nem por estado
    * antigo, nem por permissão retirada com a tela aberta.
    */
-  const abaAtiva: AbaAdmin =
-    abasPermitidas.some((a) => a.id === abaEscolhida)
+  const abaAtiva: AbaAdmin = soColaboradores
+    ? 'colaboradores'
+    : abasPermitidas.some((a) => a.id === abaEscolhida)
       ? abaEscolhida
       : abasPermitidas[0]?.id ?? 'colaboradores';
 
@@ -202,6 +219,14 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   const [avisoReset, setAvisoReset] = useState<{ ok: boolean; texto: string } | null>(
     null
   );
+  /**
+   * A FICHA FUNCIONAL (CNPJ, admissão, ponto desde, jornada) mora num modal
+   * só, o mesmo do Banco de Horas — este formulário cuida do acesso. Abre
+   * sozinha depois de cadastrar, para o RH não esquecer o CNPJ.
+   */
+  const [fichaAberta, setFichaAberta] = useState<Colaborador | null>(null);
+  /** O acesso de quem acabou de ser cadastrado: login e a senha sorteada */
+  const [acessoCriado, setAcessoCriado] = useState<{ nome: string; login: string; senha: string | null } | null>(null);
   const [formColab, setFormColab] = useState({
     nome: '',
     login: '',
@@ -367,7 +392,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
   // liberadas. A checagem fica DEPOIS dos hooks — sair antes deles mudaria a
   // quantidade de hooks entre renderizações e quebraria o React caso o nível
   // do usuário conectado mudasse com o painel aberto.
-  if (colaboradorAtual.nivel < NIVEL_TI) {
+  if (soColaboradores ? !cuidaDePessoas(colaboradorAtual) : colaboradorAtual.nivel < NIVEL_TI) {
     return (
       <div className="fixed inset-0 z-50 bg-[var(--c-canvas)] flex flex-col items-center justify-center p-6 text-center">
         <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-600 flex items-center justify-center mb-4 border border-red-500/20 shadow-sm">
@@ -568,8 +593,20 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     } else {
       const res = await bancoDados.criarColaborador({ ...formColab, turno });
       if (res.sucesso) {
-        exibirToast(`Colaborador ${formColab.nome} cadastrado com sucesso.`);
         setModalColabAberto(false);
+        /*
+          A senha de primeiro acesso é SORTEADA no banco
+          (guardar_senha_de_ativacao) e só sai pela lista dos cupons. Quem
+          cadastrou precisa dela agora, para entregar.
+        */
+        const lista = usandoNuvem() ? await nuvem.senhasParaEntregar() : null;
+        const daPessoa = lista?.find((c) => c.colaborador_id === res.colaborador?.id);
+        setAcessoCriado({
+          nome: formColab.nome.trim(),
+          login: formColab.login.trim(),
+          senha: daPessoa?.senha ?? (usandoNuvem() ? null : SENHA_PADRAO_PRIMEIRO_ACESSO),
+        });
+        if (res.colaborador) setFichaAberta(res.colaborador);
       } else {
         exibirToast(res.erro || 'Falha ao cadastrar.', true);
       }
@@ -761,7 +798,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
         </div>
       )}
 
-      {/* Topo do Painel Administrativo */}
+      {/* Topo do Painel Administrativo — embutido no menu do RH, a moldura é a da tela */}
+      {!soColaboradores && (<>
       <header className="bg-[var(--c-superficie)] border-b border-[var(--c-borda)] px-4 sm:px-6 py-4 flex-shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-700 flex items-center justify-center text-white shadow-md">
@@ -838,6 +876,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
           );
         })}
       </div>
+      </>)}
 
       {/* Conteúdo Dinâmico da Aba Selecionada */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[var(--c-canvas)]">
@@ -857,6 +896,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* A carga por planilha é outra aba do ADM: no cadastro do RH, não */}
+                  {!soColaboradores && (<>
                   <button
                     type="button"
                     id="botao-ir-para-planilha"
@@ -878,6 +919,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     <Download className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Baixar Modelo (.xlsx)</span>
                   </button>
+                  </>)}
 
                   {usandoNuvem() && (
                     <button
@@ -903,6 +945,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     <span>+ Novo Colaborador</span>
                   </button>
 
+                  {ehTi && (
                   <button
                     type="button"
                     id="botao-resetar-usuarios-teste"
@@ -917,6 +960,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
                     <span>Resetar Usuários Teste</span>
                   </button>
+                  )}
                 </div>
               </div>
 
@@ -1093,7 +1137,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                                     <Edit2 className="w-3.5 h-3.5" />
                                   </button>
 
-                                  {!ehAdminPrincipal && (
+                                  {!ehAdminPrincipal && ehTi && (
                                     <button
                                       type="button"
                                       onClick={() => setColabParaExcluir({ id: colab.id, nome: colab.nome })}
@@ -2211,11 +2255,17 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                       gerente acumula — mas a escolha é de quem cadastra,
                       porque há exceção real: a liderança de Compras atua nas
                       cinco lojas. */}
-                  {NIVEIS_EM_ORDEM.map((n) => (
-                    <option key={n} value={n}>
-                      Nível {n} - {ROTULO_NIVEL[n]} · {DESCRICAO_NIVEL[n]}
-                    </option>
-                  ))}
+                  {/* Só o que esta pessoa pode dar (nivel_ate_o_meu); o nível
+                      atual de quem está acima aparece, mas não se escolhe */}
+                  {NIVEIS_EM_ORDEM.map((n) => {
+                    const posso = niveisQuePossoDar(colaboradorAtual).includes(n);
+                    if (!posso && n !== formColab.nivel) return null;
+                    return (
+                      <option key={n} value={n} disabled={!posso}>
+                        Nível {n} - {ROTULO_NIVEL[n]} · {DESCRICAO_NIVEL[n]}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -2303,6 +2353,26 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                   />
                 </div>
               </div>
+
+              {colabEditando && (
+                <button
+                  type="button"
+                  id="botao-abrir-ficha-funcional"
+                  onClick={() => {
+                    setModalColabAberto(false);
+                    setFichaAberta(bancoDados.obterColaboradorPorId(colabEditando.id) || colabEditando);
+                  }}
+                  className="w-full px-3 py-2.5 rounded-xl border border-[var(--c-borda)] bg-[var(--c-canvas)] hover:border-[var(--c-borda-forte)] text-left flex items-center gap-2.5 transition-colors"
+                >
+                  <FileText className="w-4 h-4 text-violet-600 flex-shrink-0" />
+                  <span className="min-w-0">
+                    <span className="block text-xs font-bold text-[var(--c-texto)]">Ficha funcional</span>
+                    <span className="block text-[11px] text-[var(--c-texto-3)]">
+                      CNPJ, matrícula, admissão, ponto desde e jornada
+                    </span>
+                  </span>
+                </button>
+              )}
 
               <div className="pt-3 border-t border-[var(--c-borda)] flex items-center justify-end gap-2">
                 <button
@@ -2760,6 +2830,54 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                 <span>Excluir Comunicado</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= FICHA FUNCIONAL (o mesmo modal do Banco de Horas) ================= */}
+      <ModalCadastroColaborador
+        colaborador={fichaAberta}
+        aoFechar={() => {
+          setFichaAberta(null);
+          recarregar();
+        }}
+        aoSalvar={(nome) => exibirToast(`Ficha de ${nome} salva.`)}
+      />
+
+      {/* ================= ACESSO DE QUEM ACABOU DE SER CADASTRADO ================= */}
+      {acessoCriado && !fichaAberta && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div
+            id="aviso-acesso-criado"
+            className="bg-[var(--c-superficie)] w-full max-w-sm rounded-2xl border border-[var(--c-borda)] shadow-2xl p-5 flex flex-col gap-3 animate-in zoom-in-95"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                <KeyRound className="w-4.5 h-4.5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-bold text-sm text-[var(--c-texto)] truncate">{acessoCriado.nome} cadastrado</h3>
+                <span className="text-[11px] text-[var(--c-texto-3)]">Entregue o acesso de primeira entrada</span>
+              </div>
+            </div>
+            <div className="rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] p-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-xs">
+              <span className="text-[var(--c-texto-3)]">Login</span>
+              <strong className="font-mono text-[var(--c-texto)] break-all">{acessoCriado.login}</strong>
+              <span className="text-[var(--c-texto-3)]">Senha</span>
+              <strong className="font-mono text-[var(--c-texto)] break-all">
+                {acessoCriado.senha ?? 'sai no cupom de primeiro acesso'}
+              </strong>
+            </div>
+            <p className="text-[11px] text-[var(--c-texto-3)] leading-snug">
+              Na primeira entrada a pessoa cria a própria senha. Esta também sai no cupom de primeiro acesso.
+            </p>
+            <button
+              type="button"
+              onClick={() => setAcessoCriado(null)}
+              className="py-2.5 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-xs font-bold hover:brightness-110"
+            >
+              Pronto
+            </button>
           </div>
         </div>
       )}

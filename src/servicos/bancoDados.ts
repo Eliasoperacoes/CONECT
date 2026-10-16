@@ -16,6 +16,8 @@ import {
   NIVEL_DIRETORIA,
   NIVEL_GERENTE,
   publicaComunicado,
+  cuidaDePessoas,
+  niveisQuePossoDar,
 } from '../tipos';
 import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
@@ -941,8 +943,13 @@ class BancoDadosConecta {
     turno?: string;
   }): Promise<{ sucesso: boolean; colaborador?: Colaborador; erro?: string }> {
     const atual = this.obterColaboradorAtual();
-    if (atual.nivel < NIVEL_TI) {
-      return { sucesso: false, erro: 'Apenas o Administrador de TI possui permissão para cadastrar colaboradores.' };
+    // O mesmo que `colaboradores_insercao` (cuido_de_pessoas) e
+    // `nivel_ate_o_meu()`: RH, Diretoria e TI cadastram; o nível, até o próprio
+    if (!cuidaDePessoas(atual)) {
+      return { sucesso: false, erro: 'Apenas o RH e o TI cadastram colaboradores.' };
+    }
+    if (!niveisQuePossoDar(atual).includes(dados.nivel)) {
+      return { sucesso: false, erro: 'Não é possível dar um nível acima do seu.' };
     }
 
     if (!dados.nome.trim() || !dados.login.trim()) {
@@ -1296,6 +1303,15 @@ class BancoDadosConecta {
     const indice = colaboradores.findIndex((c) => c.id === id);
     if (indice === -1) {
       return { sucesso: false, erro: 'Colaborador não encontrado.' };
+    }
+
+    // Par de `nivel_ate_o_meu()`: mudar o nível de alguém, só até o próprio
+    if (
+      dados.nivel !== undefined &&
+      dados.nivel !== colaboradores[indice].nivel &&
+      !niveisQuePossoDar(atual).includes(dados.nivel)
+    ) {
+      return { sucesso: false, erro: 'Não é possível dar um nível acima do seu.' };
     }
 
     /**

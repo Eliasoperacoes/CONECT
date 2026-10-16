@@ -223,7 +223,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                 Cadastro de {colaborador.nome}
               </h3>
               <span className="text-[11px] text-[var(--c-texto-3)] block truncate">
-                Ficha funcional · nível e senha ficam com o TI
+                Ficha funcional · login, nível e senha ficam no cadastro de Colaboradores
               </span>
             </div>
           </div>
