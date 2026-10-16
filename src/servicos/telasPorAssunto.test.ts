@@ -58,6 +58,8 @@ test('RH: o trabalho do RH, sem a tela de equipe nem as lojas', () => {
       'painel_rh',
       // Cadastrar, alterar e desligar colaborador (15/10/2026)
       'colaboradores',
+      // E quem responde a quem, como aba de Colaboradores
+      'organograma_rh',
       'assinaturas',
       'holerites',
       'advertencias',
@@ -147,4 +149,15 @@ test('COLABORADORES: o RH cadastra; líder, gerente e colaborador não (15/10/20
   expect(ver(1, 'Balcão', false, true)).not.toContain('colaboradores');
   expect(ver(2, 'Balcão', true, true)).not.toContain('colaboradores');
   expect(ver(3, 'Gerência', true, false)).not.toContain('colaboradores');
+});
+
+test('o RH liga a pessoa ao responsável pelo Organograma, aba de Colaboradores', () => {
+  const rh = { id: 'x', nome: 'Teste', nivel: 2, setor: 'RH' } as any;
+  const doRh = assuntosDe(rh, { pode: (k) => podeUsarComMapa(k, rh, mapa), temEquipe: false, batePonto: true });
+  expect(doRh.find((a) => a.id === 'colaboradores')?.telas.map((t) => t.id)).toEqual([
+    'colaboradores',
+    'organograma_rh',
+  ]);
+  // O gerente segue com o Organograma dele, em "Pessoas e lojas", sem a aba do RH
+  expect(ver(3, 'Gerência', true, false)).not.toContain('organograma_rh');
 });

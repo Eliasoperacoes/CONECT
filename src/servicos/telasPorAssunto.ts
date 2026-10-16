@@ -52,6 +52,8 @@ export type TelaId =
   | 'organograma'
   // O cadastro de colaboradores do RH (o mesmo do ADM, só a aba de pessoas)
   | 'colaboradores'
+  // O mesmo Organograma, como aba de Colaboradores: o RH não tem "Pessoas e lojas"
+  | 'organograma_rh'
   // O painel do RH ("Precisa de você", a rede em números) vai para o Início
   | 'painel_rh'
   | 'administracao';
@@ -150,7 +152,7 @@ export const telasQueVejo = (c: Colaborador, ctx: ContextoDoAcesso): Set<TelaId>
     pessoas", a mesma regra que o banco usa para deixar cadastrar
     (`colaboradores_insercao`).
   */
-  se(a.rh, 'colaboradores');
+  se(a.rh, 'colaboradores', 'organograma_rh');
   se(a.unidades, 'unidades');
   se(a.organograma, 'organograma');
   se(a.administracao, 'administracao');
@@ -211,6 +213,7 @@ export const DESCRICAO_DA_TELA: Record<TelaWeb, string> = {
     'O registro disciplinar da rede. A pessoa vê a dela e dá ciência na própria tela — a confirmação é dela, não de quem aplicou.',
   unidades: 'As lojas da rede: equipe, supervisão e quem está online.',
   organograma: 'Quem responde a quem — é o que decide quem aprova as horas de cada um.',
+  organograma_rh: 'Quem responde a quem — é o que decide quem aprova as horas de cada um.',
   painel_rh: 'O que está parado esperando uma decisão do RH.',
   colaboradores:
     'Cadastrar quem chegou, alterar a ficha, desligar quem saiu e redefinir a senha de primeiro acesso — com os cupons de entrega.',
@@ -248,6 +251,7 @@ export const DE_QUEM_E_A_TELA: Record<TelaWeb, string> = {
   organograma: 'Toda a rede',
   painel_rh: 'Gestão de pessoas',
   colaboradores: 'Gestão de pessoas',
+  organograma_rh: 'Gestão de pessoas',
   administracao: 'Administração',
   perfil: 'Para você',
 };
@@ -261,7 +265,7 @@ export const DESCRICAO_DO_ASSUNTO: Record<AssuntoId, string> = {
   ausencias: 'Folgas de sábado, férias e atestados: pedir, acompanhar e planejar.',
   documentos: 'Holerites, advertências e assinaturas — os seus e os que o RH cuida.',
   pessoas: 'As lojas da rede e quem responde a quem.',
-  colaboradores: DESCRICAO_DA_TELA.colaboradores,
+  colaboradores: 'Quem está na rede e a quem cada um responde.',
   administracao: DESCRICAO_DA_TELA.administracao,
 };
 
@@ -322,7 +326,10 @@ export const ASSUNTOS: Assunto[] = [
     id: 'colaboradores',
     rotulo: 'Colaboradores',
     grupo: 'gestao',
-    telas: [{ id: 'colaboradores', rotulo: 'Colaboradores' }],
+    telas: [
+      { id: 'colaboradores', rotulo: 'Cadastro' },
+      { id: 'organograma_rh', rotulo: 'Organograma' },
+    ],
   },
   {
     id: 'administracao',

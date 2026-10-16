@@ -300,6 +300,8 @@ export const ConteudoWeb: React.FC<{
         );
       case 'unidades':
       case 'organograma':
+      // O mesmo Organograma, como aba de Colaboradores do RH
+      case 'organograma_rh':
         return (
           <PainelRede
             colaboradorAtual={colaboradorAtual}
