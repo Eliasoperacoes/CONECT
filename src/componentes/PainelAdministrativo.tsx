@@ -81,6 +81,7 @@ import { ImportacaoPlanilhaFuncionarios } from './ImportacaoPlanilhaFuncionarios
 import { baixarPlanilhaModeloExcel } from '../servicos/planilhaFuncionarios';
 import { useVoltar } from '../servicos/voltar';
 import { formatarMinutos } from '../servicos/ponto';
+import { candidatosAResponsavel } from '../servicos/organograma';
 
 /** O valor do seletor de horário quando a ficha tem carga própria. */
 const CARGA_PROPRIA = 'carga-propria';
@@ -242,6 +243,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     /* Vazio = vale o turno. A carga própria é exceção, não padrão */
     cargaHorariaDiariaMinutos: undefined as number | undefined,
     turno: TURNO_PADRAO as string,
+    /** A quem responde ('' = ninguém). Grava por `definirResponsavel`, a do Organograma */
+    responsavelId: '',
   });
 
   // Modal Novo Canal/Grupo
@@ -433,6 +436,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       foto: FOTO_PADRAO_LOGO_EMPRESA,
       cargaHorariaDiariaMinutos: undefined,
       turno: TURNO_PADRAO,
+      responsavelId: '',
     });
     setModalColabAberto(true);
   };
@@ -527,6 +531,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
        */
       cargaHorariaDiariaMinutos: colab.cargaHorariaDiariaMinutos ?? undefined,
       turno: colab.turno || TURNO_PADRAO,
+      responsavelId: colab.responsavelId || '',
     });
     setModalColabAberto(true);
   };
@@ -547,6 +552,20 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
 
     setFormColab((prev) => ({ ...prev, foto: dataUrl }));
     exibirToast('Foto selecionada e otimizada com sucesso.');
+  };
+
+  /**
+   * A QUEM RESPONDE, no próprio cadastro. O RH não tem o Organograma (tela
+   * própria, telasPorAssunto) e cadastrava gente que ficava sem aprovador
+   * até o TI pendurar. Grava pelo mesmo caminho do Organograma, que confere
+   * o círculo (podeSerResponsavelDe). Só grava quando mudou.
+   */
+  const gravarResponsavel = async (id: string, antes: string | undefined): Promise<boolean> => {
+    const novo = formColab.responsavelId || '';
+    if (novo === (antes || '')) return true;
+    const r = await bancoDados.definirResponsavel(id, novo || null);
+    if (!r.sucesso) exibirToast(`O responsável não foi gravado: ${r.erro || 'motivo não informado'}`, true);
+    return r.sucesso;
   };
 
   // Salva colaborador (criação ou edição)
@@ -585,6 +604,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
         turno,
       });
       if (res.sucesso) {
+        if (!(await gravarResponsavel(colabEditando.id, colabEditando.responsavelId))) return;
         exibirToast(`Colaborador ${formColab.nome} atualizado com sucesso.`);
         setModalColabAberto(false);
       } else {
@@ -593,6 +613,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     } else {
       const res = await bancoDados.criarColaborador({ ...formColab, turno });
       if (res.sucesso) {
+        // Cadastrado já está: se o responsável falhar, o aviso diz e a ficha segue
+        if (res.colaborador) await gravarResponsavel(res.colaborador.id, undefined);
         setModalColabAberto(false);
         /*
           A senha de primeiro acesso é SORTEADA no banco
@@ -2267,6 +2289,32 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                     );
                   })}
                 </select>
+              </div>
+
+              {/* A quem responde: quem aprova a hora dela e vê o saldo */}
+              <div>
+                <label
+                  htmlFor="campo-responsavel"
+                  className="block font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1"
+                >
+                  Responde a
+                </label>
+                <select
+                  id="campo-responsavel"
+                  value={formColab.responsavelId}
+                  onChange={(e) => setFormColab({ ...formColab, responsavelId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] font-semibold"
+                >
+                  <option value="">Ninguém (topo da loja)</option>
+                  {candidatosAResponsavel(colabEditando, formColab.loja, colaboradores).map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome} · {ROTULO_NIVEL[c.nivel]} · {c.loja}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-[var(--c-texto-3)]">
+                  Quem aprova as horas desta pessoa e acompanha o ponto dela.
+                </p>
               </div>
 
               {/*
