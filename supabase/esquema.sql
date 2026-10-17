@@ -54,10 +54,42 @@ create table if not exists public.colaboradores (
 -- é a de `TURNOS` (tipos.ts); um teste confere que as duas batem.
 alter table public.colaboradores
   add column if not exists turno text not null default 'A';
+alter table public.colaboradores
+  add column if not exists horario_proprio jsonb;
 alter table public.colaboradores drop constraint if exists colaboradores_turno_check;
 alter table public.colaboradores
   add constraint colaboradores_turno_check
-  check (turno in ('A', 'B', 'E0', 'E1', 'E2', 'E3'));
+  check (turno in ('A', 'B', 'E0', 'E1', 'E2', 'E3', 'P'));
+
+-- O HORÁRIO PRÓPRIO (horario-proprio.sql, 17/10/2026): o turno 'P' é o
+-- horário que o RH digita, e só vale completo, em HH:MM e na ordem do dia
+-- (o mesmo que `problemaNoHorarioProprio` confere na tela). Intervalo: os
+-- dois ou nenhum.
+alter table public.colaboradores drop constraint if exists colaboradores_horario_proprio_valido;
+alter table public.colaboradores
+  add constraint colaboradores_horario_proprio_valido
+  check (
+    turno <> 'P'
+    -- coalesce: sem horário as comparações dão nulo, e um check nulo PASSA
+    or coalesce((
+      horario_proprio ->> 'entrada' similar to '([01][0-9]|2[0-3]):[0-5][0-9]'
+      and horario_proprio ->> 'saida' similar to '([01][0-9]|2[0-3]):[0-5][0-9]'
+      and (
+        (
+          coalesce(horario_proprio ->> 'intervalo_saida', '') = ''
+          and coalesce(horario_proprio ->> 'intervalo_retorno', '') = ''
+          and horario_proprio ->> 'entrada' < horario_proprio ->> 'saida'
+        )
+        or (
+          horario_proprio ->> 'intervalo_saida' similar to '([01][0-9]|2[0-3]):[0-5][0-9]'
+          and horario_proprio ->> 'intervalo_retorno' similar to '([01][0-9]|2[0-3]):[0-5][0-9]'
+          and horario_proprio ->> 'entrada' < horario_proprio ->> 'intervalo_saida'
+          and horario_proprio ->> 'intervalo_saida' < horario_proprio ->> 'intervalo_retorno'
+          and horario_proprio ->> 'intervalo_retorno' < horario_proprio ->> 'saida'
+        )
+      )
+    ), false)
+  );
 
 -- Quando o turno foi confirmado. Nulo = ainda vale o padrão que ninguém
 -- escolheu, e a primeira batida pergunta. Quem grava é o gatilho
@@ -721,6 +753,8 @@ begin
   new.carga_semanal_minutos        := old.carga_semanal_minutos;
   new.trabalha_sabado              := old.trabalha_sabado;
   new.tem_intervalo                := old.tem_intervalo;
+  -- O horário digitado é do RH, como o turno (horario-proprio.sql)
+  new.horario_proprio              := old.horario_proprio;
 
   estagio := lower(old.setor) like '%está%'
           or lower(old.setor) like '%esta%'
@@ -4041,6 +4075,8 @@ $$;
 -- ponto, `posso_decidir_jornada`) e, para o RH, todos. Nível 3: só a
 -- própria pessoa e o RH — para o líder, essas colunas voltam vazias.
 -- ------------------------------------------------------------
+-- O retorno ganhou o horário próprio (horario-proprio.sql): a antiga sai antes
+drop function if exists public.fichas_reservadas();
 create or replace function public.fichas_reservadas()
 returns table (
   id                            text,
@@ -4054,6 +4090,7 @@ returns table (
   tem_intervalo                 boolean,
   turno                         text,
   turno_confirmado_em           timestamptz,
+  horario_proprio               jsonb,
   telefone                      text,
   email                         text,
   observacoes                   text,
@@ -4069,7 +4106,7 @@ as $$
   select c.id,
          c.matricula, c.cnpj, c.data_admissao, c.departamento,
          c.carga_horaria_diaria_minutos, c.carga_semanal_minutos, c.trabalha_sabado, c.tem_intervalo,
-         c.turno, c.turno_confirmado_em,
+         c.turno, c.turno_confirmado_em, c.horario_proprio,
          case when c.id = eu.id or eu.rh then c.telefone end,
          case when c.id = eu.id or eu.rh then c.email end,
          case when c.id = eu.id or eu.rh then c.observacoes end,

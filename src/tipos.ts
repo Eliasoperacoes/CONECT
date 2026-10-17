@@ -222,6 +222,11 @@ export interface Colaborador {
    */
   turno?: string;
   /**
+   * O HORÁRIO DIGITADO, para quem não cabe em A nem B (turno 'P').
+   * Só o RH e o TI gravam (o banco devolve o antigo a qualquer outro).
+   */
+  horarioProprio?: HorarioProprio;
+  /**
    * Quando o turno foi confirmado — pela própria pessoa, na primeira
    * batida, ou pelo RH/TI ao escolhê-lo. Vazio = ainda vale o padrão que
    * ninguém escolheu, e a batida pergunta. Quem grava é o banco
@@ -577,9 +582,90 @@ export const turnoDe = (colaborador?: {
   turno?: string;
   setor?: string;
   cargo?: string;
+  horarioProprio?: HorarioProprio;
 }): Turno => {
+  if (colaborador?.turno === TURNO_PROPRIO && colaborador.horarioProprio && !problemaNoHorarioProprio(colaborador.horarioProprio)) {
+    return turnoDoHorarioProprio(colaborador.horarioProprio, ehDeEstagio(colaborador));
+  }
   const doPerfil = turnosDoPerfil(ehDeEstagio(colaborador));
   return doPerfil.find((t) => t.chave === colaborador?.turno) || doPerfil[0];
+};
+
+/**
+ * ============================================================
+ * O HORÁRIO PRÓPRIO (Elias, 17/10/2026)
+ * ============================================================
+ *
+ * "Alguns colaboradores têm horários específicos": A e B não bastam. O RH
+ * digita entrada, saída para o intervalo, volta e saída — ou só entrada e
+ * saída, para quem vai direto. É o mesmo de segunda a sexta; o sábado
+ * continua 08:00 às 12:00 (decisões dele).
+ *
+ * Não é uma segunda regra de jornada: `turnoDe` devolve um Turno montado
+ * destes horários, e o espelho, a tolerância de cada batida, o banco de
+ * horas e a apuração da madrugada perguntam a `turnoDe` como sempre.
+ */
+export interface HorarioProprio {
+  entrada: string;
+  saida: string;
+  /** Saída e volta do intervalo; os dois ou nenhum (jornada direta). */
+  intervaloSaida?: string;
+  intervaloRetorno?: string;
+}
+
+/** A chave do turno digitado. O banco aceita 'P' só com o horário completo. */
+export const TURNO_PROPRIO = 'P';
+
+/**
+ * Pausa de até 15 minutos não sai da jornada — é o colchão do estágio
+ * (E1, E3) e não se bate. Acima disso é almoço: sai, e é batido.
+ */
+export const PAUSA_QUE_NAO_DESCONTA_MINUTOS = 15;
+
+const HORA_VALIDA = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** O que está errado no horário digitado, em português; `null` se está certo. */
+export const problemaNoHorarioProprio = (h?: Partial<HorarioProprio>): string | null => {
+  if (!h?.entrada || !HORA_VALIDA.test(h.entrada)) return 'Informe a entrada (HH:MM).';
+  if (!h.saida || !HORA_VALIDA.test(h.saida)) return 'Informe a saída (HH:MM).';
+  const temSaida = !!h.intervaloSaida;
+  const temRetorno = !!h.intervaloRetorno;
+  if (temSaida !== temRetorno) return 'Informe a saída e a volta do intervalo — ou nenhuma das duas.';
+  if (temSaida && (!HORA_VALIDA.test(h.intervaloSaida!) || !HORA_VALIDA.test(h.intervaloRetorno!))) {
+    return 'Horário do intervalo inválido (HH:MM).';
+  }
+  const ordem = [h.entrada, ...(temSaida ? [h.intervaloSaida!, h.intervaloRetorno!] : []), h.saida].map(emMinutos);
+  for (let i = 1; i < ordem.length; i++) {
+    if (ordem[i] <= ordem[i - 1]) {
+      return temSaida
+        ? 'Os horários têm de seguir a ordem: entrada, saída para o intervalo, volta, saída.'
+        : 'A saída tem de ser depois da entrada.';
+    }
+  }
+  return null;
+};
+
+/** O Turno que estes horários formam — o mesmo formato de A e B. */
+export const turnoDoHorarioProprio = (h: HorarioProprio, ehEstagio: boolean): Turno => {
+  const intervalo =
+    h.intervaloSaida && h.intervaloRetorno
+      ? {
+          saida: h.intervaloSaida,
+          retorno: h.intervaloRetorno,
+          desconta: emMinutos(h.intervaloRetorno) - emMinutos(h.intervaloSaida) > PAUSA_QUE_NAO_DESCONTA_MINUTOS,
+        }
+      : undefined;
+  return {
+    chave: TURNO_PROPRIO,
+    nome: `Horário próprio · ${h.entrada} às ${h.saida}`,
+    entrada: h.entrada,
+    saida: h.saida,
+    intervalo,
+    perfil: ehEstagio ? 'estagio' : 'integral',
+    // Como os turnos do perfil: o integral vem ao sábado, o estágio não. A
+    // ficha diz o contrário quando for o caso ("Trabalha aos sábados")
+    sabado: !ehEstagio,
+  };
 };
 
 /**

@@ -45,7 +45,12 @@ beforeAll(async () => {
       ('rita', '${RITA}', 'Rita', 'rita', 'RH', 'Pirassununga', 2, true, '19 4444', 'rita@x', null, 'M4', '05041606000199', 'A', '401');
     update public.colaboradores set responsavel_id = 'bruno' where id = 'ana';
   `);
+  // A ordem da produção: fichas-por-nivel.sql (13/10) e, depois dele,
+  // horario-proprio.sql (17/10), que mudou o retorno de fichas_reservadas —
+  // por isso a versão do esquema sai antes de o delta antigo recriar a dele
+  await banco.db.exec('drop function if exists public.fichas_reservadas();');
   await banco.db.exec(lerSql('fichas-por-nivel.sql').replace("notify pgrst, 'reload schema';", ''));
+  await banco.db.exec(lerSql('horario-proprio.sql').replace("notify pgrst, 'reload schema';", ''));
 }, 120_000);
 
 test('NÍVEL 1: todo logado lê o diretório, e não lê telefone, e-mail nem observações direto', async () => {
@@ -130,7 +135,15 @@ test('o esquema.sql traz o mesmo texto do delta (menos a seção 5, que mora no 
     .trimEnd()
     // A trava ganhou a coluna do "ponto desde" depois (ponto-desde.sql, 15/10/2026):
     // o esquema traz a versão de hoje, no lugar dela
-    .replace('ramal, responsavel_id, ativo, criado_em\n  ) on', 'ramal, responsavel_id, ativo, criado_em, ponto_desde\n  ) on');
+    .replace('ramal, responsavel_id, ativo, criado_em\n  ) on', 'ramal, responsavel_id, ativo, criado_em, ponto_desde\n  ) on')
+    // E as fichas ganharam o horário próprio (horario-proprio.sql, 17/10/2026):
+    // a coluna no retorno e no select, e a função antiga saindo antes
+    .replace('  turno_confirmado_em           timestamptz,\n', '  turno_confirmado_em           timestamptz,\n  horario_proprio               jsonb,\n')
+    .replace('         c.turno, c.turno_confirmado_em,\n', '         c.turno, c.turno_confirmado_em, c.horario_proprio,\n')
+    .replace(
+      'create or replace function public.fichas_reservadas()',
+      '-- O retorno ganhou o horário próprio (horario-proprio.sql): a antiga sai antes\ndrop function if exists public.fichas_reservadas();\ncreate or replace function public.fichas_reservadas()'
+    );
   expect(corpo).toContain('criado_em, ponto_desde');
   expect(esquema.includes(corpo)).toBe(true);
   // E o delta novo diz o mesmo que o esquema

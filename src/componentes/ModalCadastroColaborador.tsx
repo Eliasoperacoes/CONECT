@@ -30,11 +30,81 @@ import {
   trabalhaNoSabado,
   ehDeEstagio,
   MINUTOS_SABADO,
+  TURNO_PROPRIO,
+  HorarioProprio,
+  problemaNoHorarioProprio,
+  turnoDoHorarioProprio,
 } from '../tipos';
 import { formatarMinutos, batePonto } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 import { useVoltar } from '../servicos/voltar';
 import { carregarEstabelecimentos, cnpjDaFichaValido, soDigitos, Estabelecimento } from '../servicos/estabelecimentos';
+
+/**
+ * OS HORÁRIOS DIGITADOS (turno 'P', 17/10/2026): o mesmo de segunda a
+ * sexta. O erro aparece enquanto se digita, e a jornada que o horário
+ * fecha fica à vista — com aviso quando não é a de A e B (8h10), porque
+ * para o Elias "só muda o horário, a carga é a mesma".
+ */
+const HorarioProprioCampos: React.FC<{
+  horario?: HorarioProprio;
+  aoMudar: (h: HorarioProprio) => void;
+  ehEstagio: boolean;
+  campo: string;
+  rotuloCampo: string;
+}> = ({ horario, aoMudar, ehEstagio, campo, rotuloCampo }) => {
+  const h: HorarioProprio = horario || { entrada: '', saida: '' };
+  const [direto, setDireto] = useState(!!horario && !horario.intervaloSaida && !horario.intervaloRetorno);
+  const muda = (campoDoHorario: keyof HorarioProprio, valor: string) => aoMudar({ ...h, [campoDoHorario]: valor || undefined } as HorarioProprio);
+  const problema = problemaNoHorarioProprio(h);
+  const jornada = problema ? null : minutosDoTurno(turnoDoHorarioProprio(h, ehEstagio));
+  const doIntegral = minutosDoTurno(TURNOS[0]);
+
+  const hora = (id: string, rotulo: string, valor: string | undefined, chave: keyof HorarioProprio) => (
+    <div>
+      <label htmlFor={id} className={rotuloCampo}>
+        {rotulo}
+      </label>
+      <input id={id} type="time" value={valor || ''} onChange={(e) => muda(chave, e.target.value)} className={campo} />
+    </div>
+  );
+
+  return (
+    <div id="horario-proprio" className="mt-2 rounded-lg border border-[var(--c-acento)]/40 bg-[var(--c-canvas)] p-3 flex flex-col gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {hora('hp-entrada', 'Entrada', h.entrada, 'entrada')}
+        {!direto && hora('hp-intervalo-saida', 'Sai p/ intervalo', h.intervaloSaida, 'intervaloSaida')}
+        {!direto && hora('hp-intervalo-retorno', 'Volta', h.intervaloRetorno, 'intervaloRetorno')}
+        {hora('hp-saida', 'Saída', h.saida, 'saida')}
+      </div>
+      <label className="flex items-center gap-2 text-[12px] text-[var(--c-texto-2)] cursor-pointer w-fit">
+        <input
+          type="checkbox"
+          checked={direto}
+          onChange={(e) => {
+            setDireto(e.target.checked);
+            if (e.target.checked) aoMudar({ entrada: h.entrada, saida: h.saida });
+          }}
+          className="w-4 h-4 accent-[var(--c-acento)]"
+        />
+        Sem intervalo — vai direto (duas batidas)
+      </label>
+      {problema ? (
+        <p className="text-[11px] text-amber-600">{problema}</p>
+      ) : (
+        <p className="text-[11px] text-[var(--c-texto-2)]">
+          Fecha <strong className="text-[var(--c-texto)]">{formatarMinutos(jornada!)}</strong> por dia, de segunda a sexta. O
+          sábado, quando ela vem, é 08:00 às 12:00.
+          {!ehEstagio && jornada !== doIntegral && (
+            <span className="block text-amber-600 mt-1">
+              Os turnos A e B fecham {formatarMinutos(doIntegral)}. Confira: este horário muda a carga, não só o horário.
+            </span>
+          )}
+        </p>
+      )}
+    </div>
+  );
+};
 
 interface PropsModalCadastroColaborador {
   colaborador: Colaborador | null;
@@ -61,6 +131,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
     matricula: '',
     cnpj: '',
     turno: TURNO_PADRAO,
+    horarioProprio: undefined as HorarioProprio | undefined,
     dataAdmissao: '',
     pontoDesde: '',
     cargaHorariaDiariaMinutos: undefined as number | undefined,
@@ -102,6 +173,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       matricula: colaborador.matricula || '',
       cnpj: colaborador.cnpj || '',
       turno: colaborador.turno || TURNO_PADRAO,
+      horarioProprio: colaborador.horarioProprio,
       dataAdmissao: colaborador.dataAdmissao || '',
       pontoDesde: colaborador.pontoDesde || '',
       cargaHorariaDiariaMinutos: colaborador.cargaHorariaDiariaMinutos,
@@ -135,7 +207,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
    * de Horas derrubava o app inteiro numa tela branca.
    */
   useEffect(() => {
-    if (turnosOferecidos.some((t) => t.chave === form.turno)) return;
+    if (form.turno === TURNO_PROPRIO || turnosOferecidos.some((t) => t.chave === form.turno)) return;
     setForm((atual) => ({ ...atual, turno: turnosOferecidos[0]?.chave || TURNO_PADRAO }));
   }, [form.setor, form.cargo]);
 
@@ -147,6 +219,11 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
 
     if (!form.nome.trim()) {
       setErro('O nome é obrigatório.');
+      return;
+    }
+    const problemaNoHorario = form.turno === TURNO_PROPRIO ? problemaNoHorarioProprio(form.horarioProprio) : null;
+    if (problemaNoHorario) {
+      setErro(problemaNoHorario);
       return;
     }
     if (!cnpjDaFichaValido(form.cnpj, estabelecimentos, batePonto(colaborador))) {
@@ -166,6 +243,7 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
       matricula: form.matricula.trim(),
       cnpj: form.cnpj.trim() ? formatarCnpj(form.cnpj) : undefined,
       turno: form.turno,
+      ...(form.turno === TURNO_PROPRIO ? { horarioProprio: form.horarioProprio } : {}),
       dataAdmissao: form.dataAdmissao.trim(),
       // Só vai ao banco quando diz algo: vazio numa ficha que nunca teve data não
       // mexe na coluna (que pode ainda não existir, antes de ponto-desde.sql)
@@ -317,7 +395,19 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                   {t.nome}
                 </option>
               ))}
+              {/* Quem não cabe em nenhum: o RH digita (horário próprio) */}
+              <option value={TURNO_PROPRIO}>Horário próprio · digitar os horários</option>
             </select>
+
+            {form.turno === TURNO_PROPRIO && (
+              <HorarioProprioCampos
+                horario={form.horarioProprio}
+                aoMudar={(horarioProprio) => setForm((atual) => ({ ...atual, horarioProprio }))}
+                ehEstagio={ehDeEstagio(form)}
+                campo={campo}
+                rotuloCampo={rotuloCampo}
+              />
+            )}
 
             {/*
               O QUE O TURNO ESCOLHIDO IMPLICA, à vista.
@@ -407,6 +497,33 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
               O turno define o horário cobrado na batida e o que o dia prevê. Não é
               enfeite de cadastro: escolher errado desalinha o espelho.
             </span>
+
+            {/*
+              O SÁBADO, JUNTO DO HORÁRIO (17/10/2026). Morava no quadro do
+              banco de horas, mais abaixo, e o Elias não o achou ("alguns não
+              trabalham aos sábados — deve conter a opção"). É a mesma
+              pergunta: quando esta pessoa trabalha.
+            */}
+            <label htmlFor="cad-sabado" className={`${rotuloCampo} mt-3`}>
+              Trabalha aos sábados
+            </label>
+            <select
+              id="cad-sabado"
+              value={form.trabalhaSabado === undefined ? '' : String(form.trabalhaSabado)}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  trabalhaSabado: e.target.value === '' ? undefined : e.target.value === 'true',
+                })
+              }
+              className={campo}
+            >
+              <option value="">
+                Como o turno · {turnoEscolhido.sabado ? 'vem, 08:00 às 12:00' : 'não vem'}
+              </option>
+              <option value="true">Sim · 08:00 às 12:00</option>
+              <option value="false">Não trabalha aos sábados</option>
+            </select>
           </div>
 
           <div>
@@ -709,27 +826,6 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
                 <span className="text-[11px] text-[var(--c-texto-3)] block mt-1">
                   Só preencha se o contrato for diferente do horário.
                 </span>
-              </div>
-
-              <div>
-                <label htmlFor="cad-sabado" className={rotuloCampo}>
-                  Trabalha aos sábados
-                </label>
-                <select
-                  id="cad-sabado"
-                  value={form.trabalhaSabado === undefined ? '' : String(form.trabalhaSabado)}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      trabalhaSabado: e.target.value === '' ? undefined : e.target.value === 'true',
-                    })
-                  }
-                  className={campo}
-                >
-                  <option value="">Padrão do setor</option>
-                  <option value="true">Sim</option>
-                  <option value="false">Não</option>
-                </select>
               </div>
 
             </div>

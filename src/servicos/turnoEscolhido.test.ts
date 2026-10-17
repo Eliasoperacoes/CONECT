@@ -166,10 +166,19 @@ test('o delta é o mesmo bloco do esquema, e termina conferindo', () => {
   const delta = ler('turno-escolhido-uma-vez.sql');
   const ini = esquema.indexOf('-- O HORÁRIO, ESCOLHIDO UMA VEZ.');
   const marca = 'for each row execute function public.turno_escolhido_uma_vez();';
+  // O gatilho ganhou o horário próprio depois (horario-proprio.sql,
+  // 17/10/2026): o delta antigo é conferido sem as duas linhas dele, e o
+  // delta novo traz o gatilho de hoje
+  const LINHAS_DO_HORARIO =
+    '  -- O horário digitado é do RH, como o turno (horario-proprio.sql)\n' +
+    '  new.horario_proprio              := old.horario_proprio;\n';
   const bloco = esquema.slice(ini, esquema.indexOf(marca) + marca.length);
+  const comHorario = bloco.slice(bloco.indexOf('create or replace function'), bloco.indexOf('$$;') + 3);
+  expect(comHorario).toContain(LINHAS_DO_HORARIO);
+  expect(ler('horario-proprio.sql')).toContain(comHorario);
 
   expect(ini).toBeGreaterThan(-1);
-  expect(delta).toContain(bloco);
+  expect(delta).toContain(bloco.split(LINHAS_DO_HORARIO).join(''));
   expect(delta).toContain("notify pgrst, 'reload schema'");
   expect(delta.trim().endsWith(';')).toBe(true);
   expect(delta.lastIndexOf('select')).toBeGreaterThan(delta.indexOf('notify pgrst'));

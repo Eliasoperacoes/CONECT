@@ -57,3 +57,31 @@ test('o gerente não cadastra; o TI cadastra qualquer nível', async () => {
   localStorage.setItem('conecta_v4_colaborador_atual', 'elias');
   expect((await novo('eva', 5)).sucesso).toBe(true);
 });
+
+test('o que o RH muda na ficha é gravado — sábado, carga, nível e horário próprio', async () => {
+  // Eram descartados calados: só o TI gravava (achado em 17/10/2026)
+  localStorage.setItem('conecta_v4_colaborador_atual', 'dani');
+  const r = await novo('heitor', 1);
+  const id = r.colaborador!.id;
+  const horario = { entrada: '09:00', intervaloSaida: '12:00', intervaloRetorno: '13:30', saida: '18:40' };
+  expect(
+    await bancoDados.atualizarColaborador(id, {
+      trabalhaSabado: false,
+      cargaSemanalMinutos: 2400,
+      nivel: 2,
+      turno: 'P',
+      horarioProprio: horario,
+    })
+  ).toEqual({ sucesso: true });
+  const ficha = bancoDados.obterColaboradorPorId(id)!;
+  expect([ficha.trabalhaSabado, ficha.cargaSemanalMinutos, ficha.nivel, ficha.turno]).toEqual([false, 2400, 2, 'P']);
+  expect(ficha.horarioProprio).toEqual(horario);
+});
+
+test('o colaborador comum continua sem mexer na própria jornada', async () => {
+  localStorage.setItem('conecta_v4_colaborador_atual', 'fabio');
+  const antes = bancoDados.obterColaboradorPorId('fabio')!;
+  await bancoDados.atualizarColaborador('fabio', { trabalhaSabado: false, nivel: 1, turno: 'P' });
+  const depois = bancoDados.obterColaboradorPorId('fabio')!;
+  expect([depois.trabalhaSabado, depois.nivel, depois.turno]).toEqual([antes.trabalhaSabado, antes.nivel, antes.turno]);
+});

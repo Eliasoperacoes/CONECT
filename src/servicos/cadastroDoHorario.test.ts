@@ -60,7 +60,7 @@ test('O BANCO ACEITA TODO TURNO QUE A TELA OFERECE', async () => {
    * A, com 8h10 de carga, e foi cobrada como integral. Descoberto quando o
    * SQL que a punha no E3 foi recusado (29/09/2026).
    */
-  const { TURNOS } = await import('../tipos');
+  const { TURNOS, TURNO_PROPRIO } = await import('../tipos');
   const esquema = await Bun.file('supabase/esquema.sql').text();
 
   const travas = [
@@ -73,5 +73,6 @@ test('O BANCO ACEITA TODO TURNO QUE A TELA OFERECE', async () => {
     .map((v) => v.trim().replace(/'/g, ''))
     .sort();
 
-  expect(aceitos).toEqual(TURNOS.map((t) => t.chave).sort());
+  // E o horário digitado (horario-proprio.sql), que não está na lista fixa
+  expect(aceitos).toEqual([...TURNOS.map((t) => t.chave), TURNO_PROPRIO].sort());
 });

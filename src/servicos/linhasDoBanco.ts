@@ -28,9 +28,39 @@ import {
   Setor,
   TipoAjuste,
   TipoMarcacao,
+  HorarioProprio,
 } from '../tipos';
 
 /** Linha da tabela `colaboradores`, como ela vem do banco. */
+/** O horário próprio como o banco guarda (jsonb, horario-proprio.sql). */
+export interface LinhaHorarioProprio {
+  entrada: string;
+  saida: string;
+  intervalo_saida?: string | null;
+  intervalo_retorno?: string | null;
+}
+
+export const deLinhaHorarioProprio = (l?: LinhaHorarioProprio | null): HorarioProprio | undefined =>
+  l?.entrada && l.saida
+    ? {
+        entrada: l.entrada,
+        saida: l.saida,
+        ...(l.intervalo_saida && l.intervalo_retorno
+          ? { intervaloSaida: l.intervalo_saida, intervaloRetorno: l.intervalo_retorno }
+          : {}),
+      }
+    : undefined;
+
+export const paraLinhaHorarioProprio = (h?: HorarioProprio | null): LinhaHorarioProprio | null =>
+  h
+    ? {
+        entrada: h.entrada,
+        saida: h.saida,
+        intervalo_saida: h.intervaloSaida || null,
+        intervalo_retorno: h.intervaloRetorno || null,
+      }
+    : null;
+
 export interface LinhaColaborador {
   id: string;
   nome: string;
@@ -55,6 +85,8 @@ export interface LinhaColaborador {
   observacoes: string | null;
   carga_horaria_diaria_minutos: number | null;
   turno: string | null;
+  /** O horário digitado (turno 'P'). Ausente até rodar `horario-proprio.sql`. */
+  horario_proprio?: LinhaHorarioProprio | null;
   /** Ausente até rodar `turno-escolhido-uma-vez.sql`. */
   turno_confirmado_em?: string | null;
   carga_semanal_minutos: number | null;
@@ -95,6 +127,7 @@ export const paraColaboradorDaLinha = (linha: LinhaColaborador, foto: string): C
   // previsto de todo dia útil da Lyvia.
   cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos ?? undefined,
   turno: linha.turno || undefined,
+  horarioProprio: deLinhaHorarioProprio(linha.horario_proprio),
   turnoConfirmadoEm: linha.turno_confirmado_em || undefined,
   /**
    * A jornada da pessoa. Vazio no banco quer dizer "vale o padrão do

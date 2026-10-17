@@ -68,7 +68,7 @@ const entregar = async (segredo: string, lembretes: Lembrete[]): Promise<number>
  * vez seria quase 1 GB por dia de tráfego por nada (LIMITES-SUPABASE.md).
  */
 const COLUNAS_DO_ALERTA =
-  'id,nome,login,cargo,setor,loja,nivel,responsavel_id,data_admissao,carga_horaria_diaria_minutos,turno,carga_semanal_minutos,trabalha_sabado,tem_intervalo,ativo';
+  'id,nome,login,cargo,setor,loja,nivel,responsavel_id,data_admissao,carga_horaria_diaria_minutos,turno,horario_proprio,carga_semanal_minutos,trabalha_sabado,tem_intervalo,ativo';
 
 const alertarSemBater = async (segredo: string, simular: boolean): Promise<Response> => {
   const { ler } = criarLeitor();

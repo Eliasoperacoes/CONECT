@@ -82,8 +82,50 @@ var minutosDoTurno = (turno) => {
 };
 var turnosDoPerfil = (ehEstagio) => TURNOS.filter((t) => t.perfil === (ehEstagio ? "estagio" : "integral"));
 var turnoDe = (colaborador) => {
+  if (colaborador?.turno === TURNO_PROPRIO && colaborador.horarioProprio && !problemaNoHorarioProprio(colaborador.horarioProprio)) {
+    return turnoDoHorarioProprio(colaborador.horarioProprio, ehDeEstagio(colaborador));
+  }
   const doPerfil = turnosDoPerfil(ehDeEstagio(colaborador));
   return doPerfil.find((t) => t.chave === colaborador?.turno) || doPerfil[0];
+};
+var TURNO_PROPRIO = "P";
+var PAUSA_QUE_NAO_DESCONTA_MINUTOS = 15;
+var HORA_VALIDA = /^([01]\d|2[0-3]):[0-5]\d$/;
+var problemaNoHorarioProprio = (h) => {
+  if (!h?.entrada || !HORA_VALIDA.test(h.entrada))
+    return "Informe a entrada (HH:MM).";
+  if (!h.saida || !HORA_VALIDA.test(h.saida))
+    return "Informe a saída (HH:MM).";
+  const temSaida = !!h.intervaloSaida;
+  const temRetorno = !!h.intervaloRetorno;
+  if (temSaida !== temRetorno)
+    return "Informe a saída e a volta do intervalo — ou nenhuma das duas.";
+  if (temSaida && (!HORA_VALIDA.test(h.intervaloSaida) || !HORA_VALIDA.test(h.intervaloRetorno))) {
+    return "Horário do intervalo inválido (HH:MM).";
+  }
+  const ordem = [h.entrada, ...temSaida ? [h.intervaloSaida, h.intervaloRetorno] : [], h.saida].map(emMinutos);
+  for (let i = 1;i < ordem.length; i++) {
+    if (ordem[i] <= ordem[i - 1]) {
+      return temSaida ? "Os horários têm de seguir a ordem: entrada, saída para o intervalo, volta, saída." : "A saída tem de ser depois da entrada.";
+    }
+  }
+  return null;
+};
+var turnoDoHorarioProprio = (h, ehEstagio) => {
+  const intervalo = h.intervaloSaida && h.intervaloRetorno ? {
+    saida: h.intervaloSaida,
+    retorno: h.intervaloRetorno,
+    desconta: emMinutos(h.intervaloRetorno) - emMinutos(h.intervaloSaida) > PAUSA_QUE_NAO_DESCONTA_MINUTOS
+  } : undefined;
+  return {
+    chave: TURNO_PROPRIO,
+    nome: `Horário próprio · ${h.entrada} às ${h.saida}`,
+    entrada: h.entrada,
+    saida: h.saida,
+    intervalo,
+    perfil: ehEstagio ? "estagio" : "integral",
+    sabado: !ehEstagio
+  };
 };
 var MINUTOS_SABADO = emMinutos(TURNO_SABADO.saida) - emMinutos(TURNO_SABADO.entrada);
 var JORNADA_CLT_DIA_UTIL = 8 * 60;
@@ -949,6 +991,11 @@ var planejarAlertasSemBater = (dados, agora) => {
 };
 
 // src/servicos/linhasDoBanco.ts
+var deLinhaHorarioProprio = (l) => l?.entrada && l.saida ? {
+  entrada: l.entrada,
+  saida: l.saida,
+  ...l.intervalo_saida && l.intervalo_retorno ? { intervaloSaida: l.intervalo_saida, intervaloRetorno: l.intervalo_retorno } : {}
+} : undefined;
 var paraColaboradorDaLinha = (linha, foto) => ({
   id: linha.id,
   nome: linha.nome,
@@ -972,6 +1019,7 @@ var paraColaboradorDaLinha = (linha, foto) => ({
   observacoes: linha.observacoes || undefined,
   cargaHorariaDiariaMinutos: linha.carga_horaria_diaria_minutos ?? undefined,
   turno: linha.turno || undefined,
+  horarioProprio: deLinhaHorarioProprio(linha.horario_proprio),
   turnoConfirmadoEm: linha.turno_confirmado_em || undefined,
   cargaSemanalMinutos: linha.carga_semanal_minutos ?? undefined,
   trabalhaSabado: linha.trabalha_sabado ?? undefined,
@@ -1123,7 +1171,7 @@ var entregar = async (segredo, lembretes) => {
   }
   return entregues;
 };
-var COLUNAS_DO_ALERTA = "id,nome,login,cargo,setor,loja,nivel,responsavel_id,data_admissao,carga_horaria_diaria_minutos,turno,carga_semanal_minutos,trabalha_sabado,tem_intervalo,ativo";
+var COLUNAS_DO_ALERTA = "id,nome,login,cargo,setor,loja,nivel,responsavel_id,data_admissao,carga_horaria_diaria_minutos,turno,horario_proprio,carga_semanal_minutos,trabalha_sabado,tem_intervalo,ativo";
 var alertarSemBater = async (segredo, simular) => {
   const { ler } = criarLeitor();
   const agora = new Date;

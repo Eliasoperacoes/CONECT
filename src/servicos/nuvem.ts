@@ -64,6 +64,7 @@ import {
   paraCompensacao,
   LinhaMarcacaoOriginal,
   comprovanteDaOriginal,
+  paraLinhaHorarioProprio,
 } from './linhasDoBanco';
 import { CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { acompanharCanal, definirRecarga, recarregarAoVoltar } from './reconexao';
@@ -247,6 +248,9 @@ const paraLinha = (c: Colaborador) => ({
    * painel dizia "cadastrado com sucesso" e a pessoa nao existia no banco.
    */
   turno: c.turno || TURNO_PADRAO,
+  // Só quando a ficha tem um: sem a coluna no banco (antes de
+  // horario-proprio.sql) a gravação inteira seria recusada
+  ...(c.horarioProprio !== undefined ? { horario_proprio: paraLinhaHorarioProprio(c.horarioProprio) } : {}),
   /**
    * Null quando não foi definido: é o que diz "siga o padrão do setor".
    * Gravar um número inventado aqui congelaria a pessoa numa jornada que

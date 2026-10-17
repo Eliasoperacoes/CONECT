@@ -1371,8 +1371,8 @@ class BancoDadosConecta {
 
     if (!ehAdmin) {
       // O RH cuida da ficha funcional (cargo, setor, loja, jornada, admissão e
-      // desligamento). Nível hierárquico, login e senha continuam com o TI,
-      // senão o RH poderia se promover ou assumir a conta de outra pessoa.
+      // desligamento) e do nível até o próprio. Login e senha continuam com o
+      // TI, senão o RH poderia assumir a conta de outra pessoa.
       const CAMPOS_RH: Array<keyof Colaborador> = [
         'nome',
         'cargo',
@@ -1399,6 +1399,22 @@ class BancoDadosConecta {
         // O turno decide o horário cobrado e o previsto do dia: é ficha
         // funcional, do mesmo tipo que cargo e jornada
         'turno',
+        // O horário digitado de quem não cabe em A nem B (turno 'P')
+        'horarioProprio',
+        /*
+          A JORNADA DA SEMANA, que a ficha do RH sempre mostrou e esta lista
+          não tinha: "Trabalha aos sábados" e a carga semanal escolhidos pela
+          Dani eram descartados calados — só o TI gravava (achado em
+          17/10/2026, ao fazer o horário próprio).
+        */
+        'trabalhaSabado',
+        'cargaSemanalMinutos',
+        /*
+          O NÍVEL, desde a tela Colaboradores do RH (15/10/2026): até o
+          próprio — `niveisQuePossoDar` acima e `nivel_ate_o_meu()` no banco.
+          Sem ele aqui, a escolha da tela não era gravada.
+        */
+        'nivel',
         'ativo',
       ];
       // Fora do RH, cada pessoa só mexe nos próprios dados de contato e perfil.

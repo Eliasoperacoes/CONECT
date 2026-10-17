@@ -416,8 +416,11 @@ test('a ficha deixa marcar o estagiario que VEM ao sabado', async () => {
    * "30h (estágio)" achando que é o número da categoria — o RH conferiu
    * e os estagiários fecham 27h45, que é o horário deles somado.
    */
-  expect((modal.match(/Padrão do setor/g) || []).length).toBe(1);
+  // E nem no sábado sobrou (17/10/2026): o padrão dele também é o turno
+  // (`trabalhaNoSabado`), e a opção diz qual — "vem" ou "não vem"
+  expect((modal.match(/Padrão do setor/g) || []).length).toBe(0);
   expect(modal).toContain('Padrão do turno ·');
+  expect(modal).toContain("Como o turno · {turnoEscolhido.sabado ? 'vem, 08:00 às 12:00' : 'não vem'}");
 
   /**
    * "TEM INTERVALO" SAIU DO FORMULÁRIO.

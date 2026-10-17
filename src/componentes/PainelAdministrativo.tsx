@@ -64,6 +64,8 @@ import {
   turnosDoPerfil,
   ehDeEstagio,
   minutosDoTurno,
+  turnoDe,
+  TURNO_PROPRIO,
   SETORES,
   INFORMACOES_LOJAS,
   cuidaDePessoas,
@@ -563,7 +565,9 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
      * espelho obedeceria em silêncio ao que a tela não mostra.
      */
     const oferecidos = turnosDoPerfil(ehDeEstagio(formColab));
-    const turno = oferecidos.some((o) => o.chave === formColab.turno)
+    // O horário próprio é editado na ficha funcional; aqui ele só não se perde
+    const mantemProprio = formColab.turno === TURNO_PROPRIO && !!colabEditando?.horarioProprio;
+    const turno = mantemProprio || oferecidos.some((o) => o.chave === formColab.turno)
       ? formColab.turno
       : oferecidos[0]?.chave || TURNO_PADRAO;
 
@@ -2306,6 +2310,12 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                       {turno.nome} · {formatarMinutos(minutosDoTurno(turno))}
                     </option>
                   ))}
+                  {/* O horário digitado (17/10/2026): aparece, e se edita na Ficha funcional */}
+                  {colabEditando?.horarioProprio && (
+                    <option value={TURNO_PROPRIO}>
+                      {turnoDe(colabEditando).nome} · {formatarMinutos(minutosDoTurno(turnoDe(colabEditando)))}
+                    </option>
+                  )}
                   {/*
                     A carga própria de quem JÁ TEM uma não some em silêncio:
                     pode ser um contrato individual de verdade. Ela aparece
