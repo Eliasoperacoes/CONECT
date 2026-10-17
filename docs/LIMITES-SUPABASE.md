@@ -187,6 +187,22 @@ não mudaram nenhuma linha: o que sai de lá é sempre um endereço que o
 
 ---
 
+## Já é hora do Pro? (17/10/2026)
+
+`supabase/medir-plano.sql` responde por limite, com veredito: OK abaixo de
+50 % do gratuito, ATENÇÃO até 80 %, PAGAR acima disso — ou quando o banco,
+no ritmo dos últimos 30 dias, enche em menos de 6 meses. Os três limites
+que o SQL não alcança (tráfego de saída, mensagens de tempo real, chamadas
+de função) ficam em **Organization → Usage**, no painel.
+
+**O que pesa além dos limites: a cópia de segurança.** O ponto é registro
+trabalhista. Pelo que se conhece dos planos, o gratuito não guarda backup
+diário e o Pro guarda 7 dias — conferir em **Database → Backups** no
+painel. Se lá disser que não há backup, esse é o motivo para pagar, antes
+de qualquer limite.
+
+---
+
 ## O que medir antes de decidir qualquer coisa
 
 `supabase/medir-consumo.sql`, quatro consultas, nenhuma altera nada:
