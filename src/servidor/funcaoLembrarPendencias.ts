@@ -31,6 +31,8 @@ import {
   paraFeriado,
   paraJustificativa,
   paraRegistroPonto,
+  paraAfastamento,
+  type LinhaAfastamento,
 } from '../servicos/linhasDoBanco';
 import { chavePublica, criarLeitor, responder } from './bancoNoServidor';
 import { completarPermissoes, podeUsarComMapa, MapaDePermissoes } from '../servicos/permissoes';
@@ -75,7 +77,7 @@ const alertarSemBater = async (segredo: string, simular: boolean): Promise<Respo
   const agora = new Date();
   const hoje = hojeEmBrasilia(agora);
 
-  const [colaboradores, batidas, ausencias, feriados, configuracoes] = await Promise.all([
+  const [colaboradores, batidas, ausencias, feriados, configuracoes, afastamentos] = await Promise.all([
     ler<LinhaColaborador>(`colaboradores?select=${COLUNAS_DO_ALERTA}&ativo=eq.true`),
     ler<LinhaRegistroPonto>(`registros_ponto?select=id,colaborador_id,data,tipo,horario&data=eq.${hoje}`),
     ler<Record<string, unknown>>(
@@ -83,6 +85,8 @@ const alertarSemBater = async (segredo: string, simular: boolean): Promise<Respo
     ),
     ler<Record<string, unknown>>('feriados?select=*', true),
     ler<{ permissoes_ferramentas: MapaDePermissoes | null }>('configuracoes?select=permissoes_ferramentas'),
+    // Afastado não é lembrado de bater (opcional: antes de afastamentos.sql)
+    ler<LinhaAfastamento>(`afastamentos?select=*&inicio=lte.${hoje}&or=(fim.is.null,fim.gte.${hoje})`, true),
   ]);
 
   const alertas = planejarAlertasSemBater(
@@ -92,6 +96,7 @@ const alertarSemBater = async (segredo: string, simular: boolean): Promise<Respo
       ausencias: ausencias.map(paraJustificativa),
       feriados: feriados.map(paraFeriado),
       permissoes: configuracoes[0]?.permissoes_ferramentas ?? null,
+      afastamentos: afastamentos.map(paraAfastamento),
     },
     agora
   );

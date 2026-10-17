@@ -12,6 +12,7 @@
  */
 
 import {
+  Afastamento,
   Colaborador,
   CodigoPontoLoja,
   Loja,
@@ -45,7 +46,7 @@ import { nuvemComunicacao } from './nuvemComunicacao';
  * importa este — o ciclo fechava e o aplicativo não abria
  * ("Cannot access 'nuvem' before initialization", tela branca).
  */
-import { aplicarJustificativasDaNuvem } from './justificativasCache';
+import { aplicarJustificativasDaNuvem, gravarAfastamentos } from './justificativasCache';
 import { aplicarFeriadosDaNuvem } from './feriadosCache';
 import { buscarTodasAsLinhas } from './paginacao';
 import {
@@ -65,6 +66,9 @@ import {
   LinhaMarcacaoOriginal,
   comprovanteDaOriginal,
   paraLinhaHorarioProprio,
+  paraAfastamento,
+  paraLinhaAfastamento,
+  type LinhaAfastamento,
 } from './linhasDoBanco';
 import { CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { acompanharCanal, definirRecarga, recarregarAoVoltar } from './reconexao';
@@ -1753,7 +1757,47 @@ class PonteNuvem {
     if (!data) return false;
 
     aplicarJustificativasDaNuvem(data.map(paraJustificativa));
+    // Os afastamentos vêm junto: mudam a situação do dia como uma ausência
+    await this.sincronizarAfastamentos();
     return true;
+  }
+
+  /**
+   * OS AFASTAMENTOS (afastamentos.sql). A RLS já filtra: os meus, os de quem
+   * eu respondo e, para o RH, todos. Sem a tabela (antes do SQL), ninguém
+   * está afastado — o resto da sincronização segue.
+   */
+  async sincronizarAfastamentos(): Promise<boolean> {
+    if (!supabase) return false;
+    const { data, error } = await supabase.from('afastamentos').select('*').order('inicio', { ascending: false });
+    if (error) return false;
+    gravarAfastamentos(((data || []) as LinhaAfastamento[]).map(paraAfastamento));
+    return true;
+  }
+
+  /**
+   * Grava um afastamento (novo ou alterado). Insert simples e, se já existe,
+   * update — o upsert pede leitura da linha alvo e a RLS o recusa
+   * (supabase-upsert-quebra-rls). O `.select()` revela a gravação que a RLS
+   * barrou calada: zero linhas não é sucesso.
+   */
+  async salvarAfastamento(a: Afastamento): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
+    const linha = paraLinhaAfastamento(a);
+    const novo = await supabase.from('afastamentos').insert(linha).select('id');
+    if (!novo.error) return novo.data?.length ? { sucesso: true } : { sucesso: false, erro: 'O banco não gravou o afastamento.' };
+    if (novo.error.code !== '23505') return { sucesso: false, erro: await explicarRecusaDoBanco(novo.error) };
+    const { id, ...resto } = linha;
+    const alterado = await supabase.from('afastamentos').update(resto).eq('id', id).select('id');
+    if (alterado.error) return { sucesso: false, erro: await explicarRecusaDoBanco(alterado.error) };
+    return alterado.data?.length ? { sucesso: true } : { sucesso: false, erro: 'Só o RH e o TI registram afastamento.' };
+  }
+
+  async removerAfastamento(id: string): Promise<{ sucesso: boolean; erro?: string }> {
+    if (!supabase) return { sucesso: false, erro: 'Banco não configurado.' };
+    const { data, error } = await supabase.from('afastamentos').delete().eq('id', id).select('id');
+    if (error) return { sucesso: false, erro: await explicarRecusaDoBanco(error) };
+    return data?.length ? { sucesso: true } : { sucesso: false, erro: 'Só o RH e o TI removem afastamento.' };
   }
 
   /**

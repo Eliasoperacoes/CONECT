@@ -33,6 +33,8 @@ import {
   paraJustificativa,
   paraLinhaAjuste,
   paraRegistroPonto,
+  paraAfastamento,
+  type LinhaAfastamento,
 } from '../servicos/linhasDoBanco';
 import type { MapaDePermissoes } from '../servicos/permissoes';
 import { chaveDeServico, chavePublica, criarLeitor, responder } from './bancoNoServidor';
@@ -203,7 +205,7 @@ Deno.serve(async (req) => {
     const inicio = paraDataLocal(primeiro) < inicioDoMesFechado ? paraDataLocal(primeiro) : inicioDoMesFechado;
 
     const { ler, gravarAjustes, gravarCompensacoes, ausentes } = banco();
-    const [colaboradores, batidas, ausencias, feriados, ajustes, configuracoes, compensacoes] = await Promise.all([
+    const [colaboradores, batidas, ausencias, feriados, ajustes, configuracoes, compensacoes, afastamentos] = await Promise.all([
       ler<LinhaColaborador>('colaboradores?select=*&ativo=eq.true&order=id'),
       ler<LinhaRegistroPonto>(`registros_ponto?select=*&data=gte.${inicio}&data=lt.${hoje}&order=id`),
       ler<Record<string, unknown>>(`justificativas_ausencia?select=*&estado=eq.aprovada&data_fim=gte.${inicio}&order=id`),
@@ -213,6 +215,8 @@ Deno.serve(async (req) => {
       ler<{ permissoes_ferramentas: MapaDePermissoes | null }>('configuracoes?select=permissoes_ferramentas'),
       // Os dois meses antes de hoje: o fechado agora e o anterior a ele
       ler<LinhaCompensacao>(`compensacao_sabado?select=*&mes=gte.${mesAnterior(mesFechado)}`, true),
+      // Opcional: antes de afastamentos.sql a tabela não existe, e ninguém está afastado
+      ler<LinhaAfastamento>(`afastamentos?select=*&or=(fim.is.null,fim.gte.${inicio})`, true),
     ]);
 
     const plano = planejarApuracao(
@@ -225,6 +229,7 @@ Deno.serve(async (req) => {
         ajustes: ajustes.map(paraAjuste),
         permissoes: configuracoes[0]?.permissoes_ferramentas ?? null,
         compensacoes: compensacoes.map(paraCompensacao),
+        afastamentos: afastamentos.map(paraAfastamento),
       },
       { hoje, agora: new Date().toISOString(), novoId: () => `ajuste-${crypto.randomUUID()}` }
     );

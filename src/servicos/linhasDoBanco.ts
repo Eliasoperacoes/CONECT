@@ -29,9 +29,47 @@ import {
   TipoAjuste,
   TipoMarcacao,
   HorarioProprio,
+  Afastamento,
+  MotivoAfastamento,
 } from '../tipos';
 
 /** Linha da tabela `colaboradores`, como ela vem do banco. */
+/** Um afastamento como o banco guarda (afastamentos.sql). */
+export interface LinhaAfastamento {
+  id: string;
+  colaborador_id: string;
+  inicio: string;
+  fim: string | null;
+  motivo: string;
+  observacao: string | null;
+  registrado_por_id: string | null;
+  registrado_por_nome: string | null;
+  criado_em: string;
+}
+
+export const paraAfastamento = (l: LinhaAfastamento): Afastamento => ({
+  id: l.id,
+  colaboradorId: l.colaborador_id,
+  inicio: l.inicio,
+  fim: l.fim || undefined,
+  motivo: l.motivo as MotivoAfastamento,
+  observacao: l.observacao || undefined,
+  registradoPorId: l.registrado_por_id || undefined,
+  registradoPorNome: l.registrado_por_nome || undefined,
+  criadoEm: l.criado_em,
+});
+
+export const paraLinhaAfastamento = (a: Afastamento) => ({
+  id: a.id,
+  colaborador_id: a.colaboradorId,
+  inicio: a.inicio,
+  fim: a.fim || null,
+  motivo: a.motivo,
+  observacao: a.observacao?.trim() || null,
+  registrado_por_id: a.registradoPorId || null,
+  registrado_por_nome: a.registradoPorNome || null,
+});
+
 /** O horário próprio como o banco guarda (jsonb, horario-proprio.sql). */
 export interface LinhaHorarioProprio {
   entrada: string;

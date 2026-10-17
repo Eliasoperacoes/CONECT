@@ -23,6 +23,7 @@ import {
   LogIn,
   LogOut,
   Receipt,
+  HeartPulse,
 } from 'lucide-react';
 import {
   Colaborador,
@@ -40,7 +41,10 @@ import {
   formatarMinutos,
   formatarSaldo,
   aceitaMarcacaoNoDia,
+  formatarDataBR,
 } from '../servicos/ponto';
+import { afastamentoDoDia, rotuloDoMotivo } from '../servicos/afastamentos';
+import { assinarJustificativas } from '../servicos/justificativasCache';
 import { ModalBaterPonto } from './ModalBaterPonto';
 import { AbaJustificar } from './AbaJustificar';
 import { useTelaEmbutida } from './TelaEmbutida';
@@ -192,6 +196,15 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
   }, []);
 
   const hoje = dataDeHoje();
+
+  // O afastamento chega pela sincronização das ausências: a tela se redesenha com ele
+  useEffect(() => assinarJustificativas(() => setVersaoDados((v) => v + 1)), []);
+
+  /** Afastado hoje (afastamentos.sql): no lugar do botão, o aviso */
+  const afastadoHoje = useMemo(
+    () => afastamentoDoDia(colaboradorAtual.id, hoje),
+    [colaboradorAtual.id, hoje, versaoDados]
+  );
 
   const jornadaHoje: JornadaDia = useMemo(
     () => servicoPonto.obterJornadaDoDia(colaboradorAtual.id, hoje),
@@ -437,41 +450,60 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
           </div>
         </div>
 
-        {/* Ação principal */}
-        <button
-          type="button"
-          id="botao-bater-ponto"
-          onClick={() => setModalAberto(true)}
-          disabled={jornadaCompleta && !marcaForaDaJornada}
-          className={`mt-3 w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all ${
-            jornadaCompleta && !marcaForaDaJornada
-              ? 'bg-[var(--c-superficie-2)] text-[var(--c-texto-3)] border border-[var(--c-borda)] cursor-not-allowed'
-              : jornadaCompleta
-                ? 'bg-[var(--c-superficie)] text-[var(--c-texto)] border border-[var(--c-borda)] hover:bg-[var(--c-superficie-2)] active:scale-[0.99]'
-                : 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-md hover:brightness-110 active:scale-[0.99]'
-          }`}
-        >
-          {marcaForaDaJornada && jornadaCompleta ? (
-            <>
-              <QrCode className="w-5 h-5" />
-              {ehDomingo ? 'Registrar marcação no domingo' : 'Registrar marcação extra'}
-            </>
-          ) : ehDomingo ? (
-            <>Domingo · sem jornada</>
-          ) : jornadaCompleta ? (
-            <>
-              <CheckCircle2 className="w-5 h-5" />
-              Jornada de hoje concluída
-            </>
-          ) : (
-            <>
-              <QrCode className="w-5 h-5" />
-              Registrar {proximaMarcacao ? ROTULO_MARCACAO[proximaMarcacao].toLowerCase() : 'ponto'}
-            </>
-          )}
-        </button>
+        {/* Ação principal — ou o aviso de quem está afastado (afastamentos.sql),
+            que não bate ponto: o banco recusaria a batida de qualquer jeito */}
+        {afastadoHoje ? (
+          <div
+            id="aviso-afastado"
+            className="mt-3 w-full rounded-2xl border border-amber-500/40 bg-amber-500/5 px-4 py-3.5 flex items-start gap-3"
+          >
+            <HeartPulse className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <span className="block text-sm font-bold text-[var(--c-texto)]">
+                Afastamento {afastadoHoje.fim ? `até ${formatarDataBR(afastadoHoje.fim)}` : 'sem data de volta'}
+              </span>
+              <span className="block text-xs text-[var(--c-texto-2)] mt-0.5">
+                {rotuloDoMotivo(afastadoHoje.motivo)}. Não é preciso bater o ponto — os dias não contam falta. Voltou
+                antes? Procure o RH.
+              </span>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            id="botao-bater-ponto"
+            onClick={() => setModalAberto(true)}
+            disabled={jornadaCompleta && !marcaForaDaJornada}
+            className={`mt-3 w-full py-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all ${
+              jornadaCompleta && !marcaForaDaJornada
+                ? 'bg-[var(--c-superficie-2)] text-[var(--c-texto-3)] border border-[var(--c-borda)] cursor-not-allowed'
+                : jornadaCompleta
+                  ? 'bg-[var(--c-superficie)] text-[var(--c-texto)] border border-[var(--c-borda)] hover:bg-[var(--c-superficie-2)] active:scale-[0.99]'
+                  : 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)] shadow-md hover:brightness-110 active:scale-[0.99]'
+            }`}
+          >
+            {marcaForaDaJornada && jornadaCompleta ? (
+              <>
+                <QrCode className="w-5 h-5" />
+                {ehDomingo ? 'Registrar marcação no domingo' : 'Registrar marcação extra'}
+              </>
+            ) : ehDomingo ? (
+              <>Domingo · sem jornada</>
+            ) : jornadaCompleta ? (
+              <>
+                <CheckCircle2 className="w-5 h-5" />
+                Jornada de hoje concluída
+              </>
+            ) : (
+              <>
+                <QrCode className="w-5 h-5" />
+                Registrar {proximaMarcacao ? ROTULO_MARCACAO[proximaMarcacao].toLowerCase() : 'ponto'}
+              </>
+            )}
+          </button>
+        )}
 
-        {!jornadaCompleta && (
+        {!jornadaCompleta && !afastadoHoje && (
           <p className="mt-2 text-center text-[11px] text-[var(--c-texto-3)] leading-relaxed">
             Aponte a câmera para o QR afixado na loja {colaboradorAtual.loja}.
           </p>

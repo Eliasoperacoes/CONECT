@@ -175,8 +175,9 @@ var SITUACAO_POR_TIPO = {
   ferias: "ferias",
   outro: "abonado_outro"
 };
-var SITUACOES_DE_DESCANSO = ["folga", "ferias"];
+var SITUACOES_DE_DESCANSO = ["folga", "ferias", "afastado"];
 var ehDescanso = (situacao) => SITUACOES_DE_DESCANSO.includes(situacao);
+var afastamentoEm = (lista, colaboradorId, data) => lista.find((a) => a.colaboradorId === colaboradorId && data >= a.inicio && (!a.fim || data <= a.fim));
 var minutosComSinal = (ajuste) => {
   if (ajuste.tipo === "dia_incompleto")
     return 0;
@@ -615,7 +616,9 @@ var decidirLevantamento = (pessoa, data, agora) => {
 var cache = new Map;
 
 // src/servicos/justificativasCache.ts
-var situacaoNaLista = (ausencias, colaboradorId, data) => {
+var situacaoNaLista = (ausencias, colaboradorId, data, afastamentos = []) => {
+  if (afastamentoEm(afastamentos, colaboradorId, data))
+    return "afastado";
   const achada = ausencias.find((j) => j.colaboradorId === colaboradorId && j.estado === "aprovada" && data >= j.dataInicio && data <= j.dataFim);
   return achada ? SITUACAO_POR_TIPO[achada.tipo] : "normal";
 };
@@ -1013,7 +1016,7 @@ var ligarFonte = (dados, hoje) => {
   usarFonteDaApuracao({
     colaborador: (id) => porId.get(id),
     marcacoesDoDia: (id, data) => batidasDoDia.get(chave(id, data)) || [],
-    situacaoDoDia: (id, data) => situacaoNaLista(dados.ausencias, id, data),
+    situacaoDoDia: (id, data) => situacaoNaLista(dados.ausencias, id, data, dados.afastamentos ?? []),
     feriadoEm: (data, loja) => feriadoNaLista(dados.feriados, data, loja),
     ajusteDoDia: (id, data) => ajusteDoDia.get(chave(id, data)) ?? null,
     batePonto,
@@ -1108,6 +1111,17 @@ var planejarApuracao = (dados, opcoes) => {
 };
 
 // src/servicos/linhasDoBanco.ts
+var paraAfastamento = (l) => ({
+  id: l.id,
+  colaboradorId: l.colaborador_id,
+  inicio: l.inicio,
+  fim: l.fim || undefined,
+  motivo: l.motivo,
+  observacao: l.observacao || undefined,
+  registradoPorId: l.registrado_por_id || undefined,
+  registradoPorNome: l.registrado_por_nome || undefined,
+  criadoEm: l.criado_em
+});
 var deLinhaHorarioProprio = (l) => l?.entrada && l.saida ? {
   entrada: l.entrada,
   saida: l.saida,
@@ -1421,14 +1435,15 @@ Deno.serve(async (req) => {
     const inicioDoMesFechado = diasDoMes(mesFechado).inicio;
     const inicio = paraDataLocal(primeiro) < inicioDoMesFechado ? paraDataLocal(primeiro) : inicioDoMesFechado;
     const { ler, gravarAjustes, gravarCompensacoes, ausentes } = banco();
-    const [colaboradores, batidas, ausencias, feriados, ajustes, configuracoes, compensacoes] = await Promise.all([
+    const [colaboradores, batidas, ausencias, feriados, ajustes, configuracoes, compensacoes, afastamentos] = await Promise.all([
       ler("colaboradores?select=*&ativo=eq.true&order=id"),
       ler(`registros_ponto?select=*&data=gte.${inicio}&data=lt.${hoje}&order=id`),
       ler(`justificativas_ausencia?select=*&estado=eq.aprovada&data_fim=gte.${inicio}&order=id`),
       ler("feriados?select=*&order=id", true),
       ler(`ajustes_jornada?select=*&data=gte.${inicio}&order=id`),
       ler("configuracoes?select=permissoes_ferramentas"),
-      ler(`compensacao_sabado?select=*&mes=gte.${mesAnterior(mesFechado)}`, true)
+      ler(`compensacao_sabado?select=*&mes=gte.${mesAnterior(mesFechado)}`, true),
+      ler(`afastamentos?select=*&or=(fim.is.null,fim.gte.${inicio})`, true)
     ]);
     const plano = planejarApuracao({
       colaboradores: colaboradores.map((l) => paraColaboradorDaLinha(l, "")),
@@ -1437,7 +1452,8 @@ Deno.serve(async (req) => {
       feriados: feriados.map(paraFeriado),
       ajustes: ajustes.map(paraAjuste),
       permissoes: configuracoes[0]?.permissoes_ferramentas ?? null,
-      compensacoes: compensacoes.map(paraCompensacao)
+      compensacoes: compensacoes.map(paraCompensacao),
+      afastamentos: afastamentos.map(paraAfastamento)
     }, { hoje, agora: new Date().toISOString(), novoId: () => `ajuste-${crypto.randomUUID()}` });
     const simular = new URL(req.url).searchParams.has("simular");
     if (!simular) {

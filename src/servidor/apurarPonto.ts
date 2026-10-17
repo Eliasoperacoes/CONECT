@@ -16,6 +16,7 @@
  */
 import {
   AjusteJornada,
+  Afastamento,
   Colaborador,
   CompensacaoDoMes,
   Feriado,
@@ -55,6 +56,8 @@ export interface DadosDaApuracao {
   permissoes: MapaDePermissoes | null;
   /** Os fechamentos de compensação do sábado já gravados (`compensacao_sabado`). */
   compensacoes?: CompensacaoDoMes[];
+  /** Os afastamentos (afastamentos.sql): o dia afastado prevê zero e não é falta. */
+  afastamentos?: Afastamento[];
 }
 
 export interface PlanoDaApuracao {
@@ -106,7 +109,7 @@ export const ligarFonte = (dados: DadosDaApuracao, hoje: string) => {
   usarFonteDaApuracao({
     colaborador: (id) => porId.get(id),
     marcacoesDoDia: (id, data) => batidasDoDia.get(chave(id, data)) || [],
-    situacaoDoDia: (id, data) => situacaoNaLista(dados.ausencias, id, data),
+    situacaoDoDia: (id, data) => situacaoNaLista(dados.ausencias, id, data, dados.afastamentos ?? []),
     feriadoEm: (data, loja) => feriadoNaLista(dados.feriados, data, loja),
     ajusteDoDia: (id, data) => ajusteDoDia.get(chave(id, data)) ?? null,
     batePonto,

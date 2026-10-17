@@ -24,6 +24,8 @@ import {
   JustificativaAusencia,
   SituacaoDoDia,
   SITUACAO_POR_TIPO,
+  Afastamento,
+  afastamentoEm,
 } from '../tipos';
 import { lerLista } from './cacheDeLeitura';
 
@@ -62,6 +64,24 @@ export const aplicarJustificativasDaNuvem = (lista: JustificativaAusencia[]): vo
   gravarJustificativas(lista);
 
 /**
+ * OS AFASTAMENTOS (afastamentos.sql, 17/10/2026), no mesmo cache e pelos
+ * mesmos ouvintes: mudam a situação do dia como uma ausência aprovada, e a
+ * tela que escuta as ausências se redesenha com eles.
+ */
+export const CHAVE_AFASTAMENTOS = 'conecta_v4_afastamentos';
+
+export const lerAfastamentos = (): Afastamento[] => lerLista<Afastamento>(CHAVE_AFASTAMENTOS);
+
+export const gravarAfastamentos = (lista: Afastamento[]): void => {
+  try {
+    localStorage.setItem(CHAVE_AFASTAMENTOS, JSON.stringify(lista));
+  } catch {
+    // Sem armazenamento: vale só nesta sessão
+  }
+  notificarJustificativas();
+};
+
+/**
  * A situação de um dia, vinda de ausência APROVADA.
  *
  * Mora aqui, e não no serviço, porque `ponto` precisa dela para saber que
@@ -73,7 +93,7 @@ export const aplicarJustificativasDaNuvem = (lista: JustificativaAusencia[]): vo
  * aprovação.
  */
 export const situacaoDoDia = (colaboradorId: string, data: string): SituacaoDoDia =>
-  situacaoNaLista(lerJustificativas(), colaboradorId, data);
+  situacaoNaLista(lerJustificativas(), colaboradorId, data, lerAfastamentos());
 
 /**
  * A MESMA PERGUNTA, sobre uma lista dada — sem ler o aparelho. É o que a
@@ -82,8 +102,11 @@ export const situacaoDoDia = (colaboradorId: string, data: string): SituacaoDoDi
 export const situacaoNaLista = (
   ausencias: JustificativaAusencia[],
   colaboradorId: string,
-  data: string
+  data: string,
+  /** Vale por cima de qualquer ausência: afastado não está de férias nem de atestado */
+  afastamentos: Afastamento[] = []
 ): SituacaoDoDia => {
+  if (afastamentoEm(afastamentos, colaboradorId, data)) return 'afastado';
   const achada = ausencias.find(
     (j) =>
       j.colaboradorId === colaboradorId &&

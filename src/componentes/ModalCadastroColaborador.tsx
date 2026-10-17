@@ -38,6 +38,7 @@ import {
 import { formatarMinutos, batePonto } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
 import { useVoltar } from '../servicos/voltar';
+import { AfastamentoNaFicha } from './AfastamentoNaFicha';
 import { carregarEstabelecimentos, cnpjDaFichaValido, soDigitos, Estabelecimento } from '../servicos/estabelecimentos';
 
 /**
@@ -858,6 +859,9 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
               className={`${campo} resize-none`}
             />
           </div>
+
+          {/* O afastamento (afastamentos.sql): grava na hora, fora do "Salvar cadastro" */}
+          <AfastamentoNaFicha colaboradorId={colaborador.id} nome={colaborador.nome} campo={campo} rotuloCampo={rotuloCampo} />
 
           <label className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)] cursor-pointer">
             <input

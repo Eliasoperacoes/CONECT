@@ -54,7 +54,7 @@ export const JANELA_DO_ALERTA_MIN = 5;
 
 export type DadosDoAlertaSemBater = Pick<
   DadosDaApuracao,
-  'colaboradores' | 'batidas' | 'ausencias' | 'feriados' | 'permissoes'
+  'colaboradores' | 'batidas' | 'ausencias' | 'feriados' | 'permissoes' | 'afastamentos'
 >;
 
 const emMinutos = (hora: string): number => {

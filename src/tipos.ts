@@ -1772,7 +1772,9 @@ export type SituacaoDoDia =
   | 'comparecimento'
   | 'folga'
   | 'ferias'
-  | 'abonado_outro';
+  | 'abonado_outro'
+  /** Afastado pelo RH (afastamentos.sql): vale por cima de qualquer ausência */
+  | 'afastado';
 
 export const SITUACAO_POR_TIPO: Record<TipoAusencia, SituacaoDoDia> = {
   atestado: 'abonado_atestado',
@@ -1802,7 +1804,9 @@ export const SITUACAO_POR_TIPO: Record<TipoAusencia, SituacaoDoDia> = {
  * compensação não é consumida — é assim que o sábado de 26/09 que a
  * Fernanda trabalhou, combinado com o RH, chega a outubro (05/10/2026).
  */
-export const SITUACOES_DE_DESCANSO: readonly SituacaoDoDia[] = ['folga', 'ferias'];
+// O AFASTAMENTO é descanso (17/10/2026): o dia não é de trabalho enquanto
+// a pessoa está afastada — prevê zero, não é falta, e não se cobra batida
+export const SITUACOES_DE_DESCANSO: readonly SituacaoDoDia[] = ['folga', 'ferias', 'afastado'];
 export const ehDescanso = (situacao: SituacaoDoDia): boolean => SITUACOES_DE_DESCANSO.includes(situacao);
 
 /**
@@ -1824,7 +1828,52 @@ export const ROTULO_SITUACAO: Record<SituacaoDoDia, string> = {
   folga: 'Folga',
   ferias: 'Férias',
   abonado_outro: 'Abonado',
+  afastado: 'Afastado',
 };
+
+/**
+ * ============================================================
+ * O AFASTAMENTO (Elias, 17/10/2026)
+ * ============================================================
+ *
+ * "Não temos nada de configuração para colaboradores afastados." O RH
+ * registra na ficha: de quando, até quando (ou sem data de volta) e por
+ * quê. Enquanto durar, o espelho diz "Afastado", o dia prevê zero, não há
+ * falta nem cobrança — e a pessoa não bate ponto (o banco recusa a
+ * batida, `recusar_batida_de_afastado`).
+ *
+ * Não é uma regra à parte: entra como situação do dia
+ * (`situacaoNaLista`), a mesma por onde passam férias e atestado — no
+ * aparelho e na apuração da madrugada.
+ */
+export type MotivoAfastamento = 'doenca' | 'acidente' | 'maternidade' | 'paternidade' | 'militar' | 'outro';
+
+export const MOTIVOS_DE_AFASTAMENTO: Array<{ chave: MotivoAfastamento; rotulo: string }> = [
+  { chave: 'doenca', rotulo: 'Doença (auxílio do INSS)' },
+  { chave: 'acidente', rotulo: 'Acidente de trabalho' },
+  { chave: 'maternidade', rotulo: 'Licença-maternidade' },
+  { chave: 'paternidade', rotulo: 'Licença-paternidade' },
+  { chave: 'militar', rotulo: 'Serviço militar' },
+  { chave: 'outro', rotulo: 'Outro motivo' },
+];
+
+export interface Afastamento {
+  id: string;
+  colaboradorId: string;
+  /** AAAA-MM-DD, o primeiro dia afastado */
+  inicio: string;
+  /** AAAA-MM-DD, o último dia afastado; vazio = sem data de volta */
+  fim?: string;
+  motivo: MotivoAfastamento;
+  observacao?: string;
+  registradoPorId?: string;
+  registradoPorNome?: string;
+  criadoEm?: string;
+}
+
+/** O afastamento que cobre este dia desta pessoa, se houver. */
+export const afastamentoEm = (lista: Afastamento[], colaboradorId: string, data: string): Afastamento | undefined =>
+  lista.find((a) => a.colaboradorId === colaboradorId && data >= a.inicio && (!a.fim || data <= a.fim));
 
 /** Quanto o ajuste soma ou subtrai do banco de horas. */
 /**

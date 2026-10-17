@@ -174,8 +174,9 @@ var SITUACAO_POR_TIPO = {
   ferias: "ferias",
   outro: "abonado_outro"
 };
-var SITUACOES_DE_DESCANSO = ["folga", "ferias"];
+var SITUACOES_DE_DESCANSO = ["folga", "ferias", "afastado"];
 var ehDescanso = (situacao) => SITUACOES_DE_DESCANSO.includes(situacao);
+var afastamentoEm = (lista, colaboradorId, data) => lista.find((a) => a.colaboradorId === colaboradorId && data >= a.inicio && (!a.fim || data <= a.fim));
 var INFORMACOES_LOJAS = [
   {
     nome: "Pirassununga",
@@ -531,7 +532,9 @@ var planejarLembretes = (d, agora) => {
 var cache = new Map;
 
 // src/servicos/justificativasCache.ts
-var situacaoNaLista = (ausencias, colaboradorId, data) => {
+var situacaoNaLista = (ausencias, colaboradorId, data, afastamentos = []) => {
+  if (afastamentoEm(afastamentos, colaboradorId, data))
+    return "afastado";
   const achada = ausencias.find((j) => j.colaboradorId === colaboradorId && j.estado === "aprovada" && data >= j.dataInicio && data <= j.dataFim);
   return achada ? SITUACAO_POR_TIPO[achada.tipo] : "normal";
 };
@@ -911,7 +914,7 @@ var ligarFonte = (dados, hoje) => {
   usarFonteDaApuracao({
     colaborador: (id) => porId.get(id),
     marcacoesDoDia: (id, data) => batidasDoDia.get(chave(id, data)) || [],
-    situacaoDoDia: (id, data) => situacaoNaLista(dados.ausencias, id, data),
+    situacaoDoDia: (id, data) => situacaoNaLista(dados.ausencias, id, data, dados.afastamentos ?? []),
     feriadoEm: (data, loja) => feriadoNaLista(dados.feriados, data, loja),
     ajusteDoDia: (id, data) => ajusteDoDia.get(chave(id, data)) ?? null,
     batePonto,
@@ -991,6 +994,17 @@ var planejarAlertasSemBater = (dados, agora) => {
 };
 
 // src/servicos/linhasDoBanco.ts
+var paraAfastamento = (l) => ({
+  id: l.id,
+  colaboradorId: l.colaborador_id,
+  inicio: l.inicio,
+  fim: l.fim || undefined,
+  motivo: l.motivo,
+  observacao: l.observacao || undefined,
+  registradoPorId: l.registrado_por_id || undefined,
+  registradoPorNome: l.registrado_por_nome || undefined,
+  criadoEm: l.criado_em
+});
 var deLinhaHorarioProprio = (l) => l?.entrada && l.saida ? {
   entrada: l.entrada,
   saida: l.saida,
@@ -1176,19 +1190,21 @@ var alertarSemBater = async (segredo, simular) => {
   const { ler } = criarLeitor();
   const agora = new Date;
   const hoje = hojeEmBrasilia(agora);
-  const [colaboradores, batidas, ausencias, feriados, configuracoes] = await Promise.all([
+  const [colaboradores, batidas, ausencias, feriados, configuracoes, afastamentos] = await Promise.all([
     ler(`colaboradores?select=${COLUNAS_DO_ALERTA}&ativo=eq.true`),
     ler(`registros_ponto?select=id,colaborador_id,data,tipo,horario&data=eq.${hoje}`),
     ler(`justificativas_ausencia?select=*&estado=eq.aprovada&data_inicio=lte.${hoje}&data_fim=gte.${hoje}`),
     ler("feriados?select=*", true),
-    ler("configuracoes?select=permissoes_ferramentas")
+    ler("configuracoes?select=permissoes_ferramentas"),
+    ler(`afastamentos?select=*&inicio=lte.${hoje}&or=(fim.is.null,fim.gte.${hoje})`, true)
   ]);
   const alertas = planejarAlertasSemBater({
     colaboradores: colaboradores.map((c) => paraColaboradorDaLinha(c, "")),
     batidas: batidas.map(paraRegistroPonto),
     ausencias: ausencias.map(paraJustificativa),
     feriados: feriados.map(paraFeriado),
-    permissoes: configuracoes[0]?.permissoes_ferramentas ?? null
+    permissoes: configuracoes[0]?.permissoes_ferramentas ?? null,
+    afastamentos: afastamentos.map(paraAfastamento)
   }, agora);
   if (simular) {
     const nomes = new Map(colaboradores.map((c) => [c.id, c.nome]));
