@@ -196,10 +196,21 @@ que o SQL não alcança (tráfego de saída, mensagens de tempo real, chamadas
 de função) ficam em **Organization → Usage**, no painel.
 
 **O que pesa além dos limites: a cópia de segurança.** O ponto é registro
-trabalhista. Pelo que se conhece dos planos, o gratuito não guarda backup
-diário e o Pro guarda 7 dias — conferir em **Database → Backups** no
-painel. Se lá disser que não há backup, esse é o motivo para pagar, antes
-de qualquer limite.
+trabalhista. **Medido em 17/10/2026:** Database → Backups diz *"Free Plan
+does not include project backups"*; o Pro guarda 7 dias. Recomendação
+dada ao Elias nesse dia: assinar o Pro por isso, com todos os limites
+ainda folgados.
+
+O retrato de 17/10/2026 (ciclo 14/10–14/11, 3 dias): banco 37 MB (7 %),
+Storage 18 MB (2 %), tráfego 0,235 GB (5 %), tempo real 776 mensagens,
+funções 817 chamadas, 35 usuários ativos. Crescimento do banco: 2,8 MB
+por mês.
+
+**Log Query** (logs lidos pelo painel, API ou CLI): 691 GB num ciclo de
+100 GB, quase tudo em 15 e 16/10 — os dias da investigação da lentidão,
+com o painel aberto em telas de log. Não é o sistema (nada no código lê
+logs) e a cota só passa a valer em 2027. Estoura até o Pro: se continuar
+alto sem uso do painel, é origem a desligar, não plano a pagar.
 
 ---
 
