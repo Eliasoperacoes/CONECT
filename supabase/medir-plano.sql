@@ -60,6 +60,11 @@ select limite,
          as uso_do_gratuito,
        round(100 * uso / gratuito, 1) || ' %' as fracao,
        case when 100 * uso / gratuito >= 80 then 'PAGAR'
+            -- Conexões: quase todas são dos serviços do próprio Supabase
+            -- (login, tempo real, arquivos, PostgREST), num número fixo que
+            -- não cresce com as pessoas — 31 de 60 medido em 17/10/2026. Só
+            -- perto do teto dizem algo
+            when ordem = 4 then 'OK'
             when 100 * uso / gratuito >= 50 then 'ATENÇÃO'
             else 'OK' end as veredito
   from limites
