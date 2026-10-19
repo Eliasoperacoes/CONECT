@@ -12,8 +12,8 @@ Comandos de verificação (abreviados abaixo):
 - Verificação: teste. No local, um colaborador de cada setor responde certo.
 - Arquivos: `supabase/cotador-banco.sql`, `src/tipos.ts`, `src/servicos/cotadorNoBanco.test.ts`, `supabase/conferir-cotador-local.sql`. **P**
 
-## Tarefa 2: Fornecedores
-- [ ] `fornecedores_b2b` com `roles`, `pellegrino` e `dpk` ligados. Lê quem cota. Grava só TI.
+## Tarefa 2: Fornecedores ✅
+- [x] `fornecedores_b2b` com `roles`, `pellegrino` e `dpk` ligados. Lê quem cota. Grava só TI.
 - Verificação: teste. No local, o balconista lê as 3 linhas e não consegue desligar nenhuma.
 - Depende de: 1. **P**
 

@@ -37,9 +37,39 @@ $$;
 revoke all on function public.posso_atender_fila() from public, anon;
 grant execute on function public.posso_atender_fila() to authenticated;
 
+-- ------------------------------------------------------------
+-- FORNECEDORES (os B2Bs)
+--
+-- B2B novo = ficha + leitor na extensão + uma linha aqui. Ligar e
+-- desligar é do TI; o cadastro é feito com o Claude.
+-- ------------------------------------------------------------
+
+create table if not exists public.fornecedores_b2b (
+  chave   text primary key check (chave ~ '^[a-z0-9-]+$'),
+  nome    text not null,
+  ativo   boolean not null default true,
+  ordem   smallint not null default 0
+);
+alter table public.fornecedores_b2b enable row level security;
+
+insert into public.fornecedores_b2b (chave, nome, ordem) values
+  ('roles', 'Roles', 1),
+  ('pellegrino', 'Pellegrino', 2),
+  ('dpk', 'DPK', 3)
+on conflict (chave) do nothing;
+
+drop policy if exists fornecedores_b2b_leitura on public.fornecedores_b2b;
+create policy fornecedores_b2b_leitura on public.fornecedores_b2b
+  for select to authenticated using (public.posso_cotar() or public.posso_atender_fila());
+
+drop policy if exists fornecedores_b2b_escrita on public.fornecedores_b2b;
+create policy fornecedores_b2b_escrita on public.fornecedores_b2b
+  for all to authenticated using (public.sou_admin()) with check (public.sou_admin());
+
 notify pgrst, 'reload schema';
 
--- Conferência: as três regras criadas
+-- Conferência: as três regras criadas e os fornecedores ligados
 select proname from pg_proc
  where proname in ('posso_cotar', 'posso_ver_custo', 'posso_atender_fila')
  order by proname;
+select chave, nome, ativo from public.fornecedores_b2b order by ordem;
