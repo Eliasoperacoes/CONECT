@@ -127,6 +127,23 @@ export const ehDoRh = (c: { setor: string }): boolean => c.setor === 'RH';
 export const ehAdministrador = (c: { nivel: number }): boolean => c.nivel >= NIVEL_TI;
 
 /**
+ * COTADOR B2B (docs/cotador/MAPA.md, Elias 19/10/2026). Pares de
+ * `posso_cotar`, `posso_ver_custo` e `posso_atender_fila`
+ * (supabase/cotador-banco.sql); a do banco é a que vale.
+ */
+/** Cota peça nos B2Bs: Balcão, Callcenter e Gerente para cima. */
+export const podeCotar = (c: { nivel: number; setor: string }): boolean =>
+  c.setor === 'Balcão' || c.setor === 'Callcenter' || c.nivel >= NIVEL_GERENTE;
+
+/** Vê o custo do fornecedor: Callcenter, Compras e Gerente para cima. O Balcão vê só a venda. */
+export const podeVerCusto = (c: { nivel: number; setor: string }): boolean =>
+  c.setor === 'Callcenter' || c.setor === 'Compras' || c.nivel >= NIVEL_GERENTE;
+
+/** Atende a fila de cotação no PC de compras: Compras e TI. */
+export const podeAtenderFila = (c: { nivel: number; setor: string }): boolean =>
+  c.setor === 'Compras' || c.nivel >= NIVEL_TI;
+
+/**
  * PREENCHE DIAS VAZIOS PELO TURNO: só o RH e o TI (Elias, 14/10/2026).
  *
  * É escrever registro de ponto por dedução, em lote. Antes valia para

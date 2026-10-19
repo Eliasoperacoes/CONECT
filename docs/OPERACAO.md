@@ -90,6 +90,7 @@ esquema.
 
 | Arquivo | Quando usar |
 |---|---|
+| `cotador-banco.sql` | **Ainda não rodar na produção** (em construção no Supabase local, 19/10/2026). O banco do cotador B2B: quem cota (Balcão, Callcenter, Gerente+), quem vê custo (Callcenter, Compras, Gerente+) e quem atende a fila (Compras, TI). Especificação em [cotador/SPEC-banco-cotacao.md](cotador/SPEC-banco-cotacao.md). Conferência: as regras criadas |
 | `conferir-central.sql` | **Não altera nada.** Publicar na Central falhou — diz se a causa é coluna faltando, política ou nível |
 | `aparelhos-para-push.sql` | **Rode uma vez, antes de distribuir o APK.** Cria a tabela dos aparelhos que recebem aviso com o app fechado. Sem ela o aplicativo não consegue guardar o endereço de entrega, e o aviso nativo não chega |
 | `aparelho-troca-de-dono.sql` | **Rode uma vez, depois do anterior.** Cria `registrar_aparelho()`, que o aplicativo usa para guardar o endereço de entrega. Sem ela, o celular que troca de dono (o do balcão, de turno em turno) seguiria recebendo o chat de quem saiu — a política de UPDATE esconde a linha do dono anterior, e o update antigo afetava zero linhas calado |
