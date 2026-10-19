@@ -18,6 +18,9 @@ import {
   publicaComunicado,
   cuidaDePessoas,
   niveisQuePossoDar,
+  TURNO_PROPRIO,
+  HorarioProprio,
+  problemaNoHorarioProprio,
 } from '../tipos';
 import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
@@ -941,6 +944,10 @@ class BancoDadosConecta {
     cargaHorariaDiariaMinutos?: number;
     /** O horário da escala. Sem ele, o padrão da rede. */
     turno?: string;
+    /** O horário digitado, quando o turno é 'P' (horario-proprio.sql) */
+    horarioProprio?: HorarioProprio;
+    /** "Trabalha aos sábados" — vazio segue o turno */
+    trabalhaSabado?: boolean;
   }): Promise<{ sucesso: boolean; colaborador?: Colaborador; erro?: string }> {
     const atual = this.obterColaboradorAtual();
     // O mesmo que `colaboradores_insercao` (cuido_de_pessoas) e
@@ -951,6 +958,10 @@ class BancoDadosConecta {
     if (!niveisQuePossoDar(atual).includes(dados.nivel)) {
       return { sucesso: false, erro: 'Não é possível dar um nível acima do seu.' };
     }
+
+    // O mesmo que o banco confere (colaboradores_horario_proprio_valido)
+    const problemaNoHorario = dados.turno === TURNO_PROPRIO ? problemaNoHorarioProprio(dados.horarioProprio) : null;
+    if (problemaNoHorario) return { sucesso: false, erro: problemaNoHorario };
 
     if (!dados.nome.trim() || !dados.login.trim()) {
       return { sucesso: false, erro: 'Nome e login são obrigatórios.' };
@@ -1039,6 +1050,8 @@ class BancoDadosConecta {
        * abrir a ficha de novo.
        */
       turno: dados.turno || TURNO_PADRAO,
+      ...(dados.turno === TURNO_PROPRIO ? { horarioProprio: dados.horarioProprio } : {}),
+      ...(dados.trabalhaSabado !== undefined ? { trabalhaSabado: dados.trabalhaSabado } : {}),
       ativo: true,
       criadoEm: new Date().toISOString(),
     };

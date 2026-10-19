@@ -9,6 +9,8 @@ import {
   niveisQuePossoDar,
 } from '../tipos';
 import { ModalCadastroColaborador } from './ModalCadastroColaborador';
+import { SeletorDeHorario, SeletorDeSabado } from './HorarioDaFicha';
+import { AfastamentoNaFicha } from './AfastamentoNaFicha';
 import {
   ShieldCheck,
   Users,
@@ -66,6 +68,8 @@ import {
   minutosDoTurno,
   turnoDe,
   TURNO_PROPRIO,
+  HorarioProprio,
+  problemaNoHorarioProprio,
   SETORES,
   INFORMACOES_LOJAS,
   cuidaDePessoas,
@@ -85,7 +89,10 @@ import { useVoltar } from '../servicos/voltar';
 import { formatarMinutos } from '../servicos/ponto';
 
 /** O valor do seletor de horário quando a ficha tem carga própria. */
-const CARGA_PROPRIA = 'carga-propria';
+/** Os campos do formulário, no estilo do painel, para os componentes compartilhados */
+const CAMPO_DO_PAINEL =
+  'w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] font-semibold';
+const ROTULO_DO_PAINEL = 'block font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1';
 
 interface PropsPainelAdministrativo {
   colaboradorAtual: Colaborador;
@@ -244,6 +251,9 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
     /* Vazio = vale o turno. A carga própria é exceção, não padrão */
     cargaHorariaDiariaMinutos: undefined as number | undefined,
     turno: TURNO_PADRAO as string,
+    /** O horário digitado (turno 'P') e o sábado: os mesmos campos da ficha (HorarioDaFicha) */
+    horarioProprio: undefined as HorarioProprio | undefined,
+    trabalhaSabado: undefined as boolean | undefined,
   });
 
   // Modal Novo Canal/Grupo
@@ -435,6 +445,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
       foto: FOTO_PADRAO_LOGO_EMPRESA,
       cargaHorariaDiariaMinutos: undefined,
       turno: TURNO_PADRAO,
+      horarioProprio: undefined,
+      trabalhaSabado: undefined,
     });
     setModalColabAberto(true);
   };
@@ -529,6 +541,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
        */
       cargaHorariaDiariaMinutos: colab.cargaHorariaDiariaMinutos ?? undefined,
       turno: colab.turno || TURNO_PADRAO,
+      horarioProprio: colab.horarioProprio,
+      trabalhaSabado: colab.trabalhaSabado,
     });
     setModalColabAberto(true);
   };
@@ -565,11 +579,17 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
      * espelho obedeceria em silêncio ao que a tela não mostra.
      */
     const oferecidos = turnosDoPerfil(ehDeEstagio(formColab));
-    // O horário próprio é editado na ficha funcional; aqui ele só não se perde
-    const mantemProprio = formColab.turno === TURNO_PROPRIO && !!colabEditando?.horarioProprio;
-    const turno = mantemProprio || oferecidos.some((o) => o.chave === formColab.turno)
+    const proprio = formColab.turno === TURNO_PROPRIO;
+    const problemaNoHorario = proprio ? problemaNoHorarioProprio(formColab.horarioProprio) : null;
+    if (problemaNoHorario) {
+      exibirToast(problemaNoHorario, true);
+      return;
+    }
+    const turno = proprio || oferecidos.some((o) => o.chave === formColab.turno)
       ? formColab.turno
       : oferecidos[0]?.chave || TURNO_PADRAO;
+    // O horário só viaja quando é o turno: trocar para A não apaga o digitado
+    const horario = proprio ? { horarioProprio: formColab.horarioProprio } : {};
 
     if (colabEditando) {
       const res = await bancoDados.atualizarColaborador(colabEditando.id, {
@@ -587,6 +607,8 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
         // Vazio limpa a carga própria no banco: o turno volta a mandar
         cargaHorariaDiariaMinutos: formColab.cargaHorariaDiariaMinutos,
         turno,
+        ...horario,
+        trabalhaSabado: formColab.trabalhaSabado,
       });
       if (res.sucesso) {
         exibirToast(`Colaborador ${formColab.nome} atualizado com sucesso.`);
@@ -595,7 +617,7 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
         exibirToast(res.erro || 'Falha ao atualizar.', true);
       }
     } else {
-      const res = await bancoDados.criarColaborador({ ...formColab, turno });
+      const res = await bancoDados.criarColaborador({ ...formColab, turno, ...horario });
       if (res.sucesso) {
         setModalColabAberto(false);
         /*
@@ -2285,55 +2307,49 @@ export const PainelAdministrativo: React.FC<PropsPainelAdministrativo> = ({
                 (`ModalCadastroColaborador`), com a mesma lista.
               */}
               <div>
-                <label
-                  htmlFor="campo-turno"
-                  className="block font-bold text-[var(--c-texto-2)] uppercase tracking-wider mb-1"
-                >
-                  Horário (turno da escala)
-                </label>
-                <select
+                <SeletorDeHorario
                   id="campo-turno"
-                  value={formColab.cargaHorariaDiariaMinutos != null ? CARGA_PROPRIA : formColab.turno}
-                  onChange={(e) => {
-                    if (e.target.value === CARGA_PROPRIA) return;
-                    // Escolher um turno tira a carga própria: o turno manda
-                    setFormColab({
-                      ...formColab,
-                      turno: e.target.value,
-                      cargaHorariaDiariaMinutos: undefined,
-                    });
-                  }}
-                  className="w-full px-3 py-2 rounded-xl bg-[var(--c-canvas)] border border-[var(--c-borda)] text-[var(--c-texto)] focus:outline-none focus:ring-2 focus:ring-[var(--c-acento)] font-semibold"
-                >
-                  {turnosDoPerfil(ehDeEstagio(formColab)).map((turno) => (
-                    <option key={turno.chave} value={turno.chave}>
-                      {turno.nome} · {formatarMinutos(minutosDoTurno(turno))}
-                    </option>
-                  ))}
-                  {/* O horário digitado (17/10/2026): aparece, e se edita na Ficha funcional */}
-                  {colabEditando?.horarioProprio && (
-                    <option value={TURNO_PROPRIO}>
-                      {turnoDe(colabEditando).nome} · {formatarMinutos(minutosDoTurno(turnoDe(colabEditando)))}
-                    </option>
-                  )}
-                  {/*
-                    A carga própria de quem JÁ TEM uma não some em silêncio:
-                    pode ser um contrato individual de verdade. Ela aparece
-                    como opção, e sai quando alguém escolhe um turno.
-                  */}
-                  {formColab.cargaHorariaDiariaMinutos != null && (
-                    <option value={CARGA_PROPRIA}>
-                      Carga própria da ficha · {formatarMinutos(formColab.cargaHorariaDiariaMinutos)}{' '}
-                      (sem horário: só o limite do dia)
-                    </option>
-                  )}
-                </select>
+                  turno={formColab.turno}
+                  horarioProprio={formColab.horarioProprio}
+                  ehEstagio={ehDeEstagio(formColab)}
+                  cargaPropriaMinutos={formColab.cargaHorariaDiariaMinutos}
+                  // Escolher um turno tira a carga própria: o turno manda
+                  aoMudar={({ turno, horarioProprio }) =>
+                    setFormColab((atual) => ({ ...atual, turno, horarioProprio, cargaHorariaDiariaMinutos: undefined }))
+                  }
+                  campo={CAMPO_DO_PAINEL}
+                  rotuloCampo={ROTULO_DO_PAINEL}
+                />
                 <p className="mt-1 text-[11px] text-[var(--c-texto-3)]">
                   {formColab.cargaHorariaDiariaMinutos != null
                     ? 'Com carga própria o sistema não conhece o horário de cada batida: a tolerância vale só pelo total do dia. Escolha o turno para a regra completa.'
                     : 'O previsto do dia e o horário de cada batida saem deste turno. A tolerância de entrada, saída e almoço é medida contra ele.'}
                 </p>
               </div>
+
+              <SeletorDeSabado
+                id="campo-sabado"
+                trabalhaSabado={formColab.trabalhaSabado}
+                turnoEscolhido={turnoDe(formColab)}
+                aoMudar={(trabalhaSabado) => setFormColab((atual) => ({ ...atual, trabalhaSabado }))}
+                campo={CAMPO_DO_PAINEL}
+                rotuloCampo={ROTULO_DO_PAINEL}
+              />
+
+              {/* O afastamento: na pessoa que já existe. No cadastro novo, a
+                  ficha funcional abre sozinha depois de gravar, com ele */}
+              {colabEditando ? (
+                <AfastamentoNaFicha
+                  colaboradorId={colabEditando.id}
+                  nome={colabEditando.nome}
+                  campo={CAMPO_DO_PAINEL}
+                  rotuloCampo={ROTULO_DO_PAINEL}
+                />
+              ) : (
+                <p className="text-[11px] text-[var(--c-texto-3)]">
+                  Afastamento, CNPJ e admissão: na ficha funcional, que abre logo depois de cadastrar.
+                </p>
+              )}
 
               {/* Telefone e Email */}
               <div className="grid grid-cols-2 gap-3">

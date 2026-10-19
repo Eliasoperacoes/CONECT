@@ -20,9 +20,15 @@ test('o Painel ADM escolhe o HORÁRIO (turno), com a mesma lista da ficha do RH'
   expect(painel).not.toContain('id="campo-carga-horaria"');
   expect(painel).not.toContain('<option value={480}>');
 
-  // A lista de turnos é a mesma nas duas telas: A e B, ou os de estágio
-  expect(painel).toContain('turnosDoPerfil(ehDeEstagio(formColab))');
-  expect(ficha).toContain('turnosDoPerfil(ehDeEstagio(form))');
+  // A lista de turnos é a mesma nas duas telas porque o SELETOR é o mesmo
+  // (HorarioDaFicha, 19/10/2026): A e B, os de estágio e o horário próprio
+  expect(painel).toContain('<SeletorDeHorario');
+  expect(ficha).toContain('<SeletorDeHorario');
+  expect(painel).toContain('<SeletorDeSabado');
+  expect(ficha).toContain('<SeletorDeSabado');
+  const seletor = semComentarios(await ler('../componentes/HorarioDaFicha.tsx'));
+  expect(seletor).toContain('turnosDoPerfil(ehEstagio)');
+  expect(seletor).toContain('<option value={TURNO_PROPRIO}>');
 });
 
 test('abrir e salvar uma ficha NÃO grava 8h00 de carga própria', async () => {
@@ -30,7 +36,7 @@ test('abrir e salvar uma ficha NÃO grava 8h00 de carga própria', async () => {
   expect(painel).not.toContain('?? CARGA_HORARIA_PADRAO_MINUTOS');
   expect(painel).toContain('cargaHorariaDiariaMinutos: colab.cargaHorariaDiariaMinutos ?? undefined');
   // E o turno vai junto na gravação
-  expect(painel).toContain('bancoDados.criarColaborador({ ...formColab, turno })');
+  expect(painel).toContain('bancoDados.criarColaborador({ ...formColab, turno, ...horario })');
 });
 
 test('o cadastro novo nasce no turno escolhido, e não sempre no A', async () => {

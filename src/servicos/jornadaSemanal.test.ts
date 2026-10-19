@@ -420,7 +420,10 @@ test('a ficha deixa marcar o estagiario que VEM ao sabado', async () => {
   // (`trabalhaNoSabado`), e a opção diz qual — "vem" ou "não vem"
   expect((modal.match(/Padrão do setor/g) || []).length).toBe(0);
   expect(modal).toContain('Padrão do turno ·');
-  expect(modal).toContain("Como o turno · {turnoEscolhido.sabado ? 'vem, 08:00 às 12:00' : 'não vem'}");
+  // O seletor do sábado é o compartilhado (HorarioDaFicha, 19/10/2026)
+  const seletor = await Bun.file(new URL('../componentes/HorarioDaFicha.tsx', import.meta.url)).text();
+  expect(modal).toContain('<SeletorDeSabado');
+  expect(seletor).toContain("Como o turno · {turnoEscolhido.sabado ? 'vem, 08:00 às 12:00' : 'não vem'}");
 
   /**
    * "TEM INTERVALO" SAIU DO FORMULÁRIO.

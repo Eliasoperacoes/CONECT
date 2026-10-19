@@ -85,3 +85,21 @@ test('o colaborador comum continua sem mexer na própria jornada', async () => {
   const depois = bancoDados.obterColaboradorPorId('fabio')!;
   expect([depois.trabalhaSabado, depois.nivel, depois.turno]).toEqual([antes.trabalhaSabado, antes.nivel, antes.turno]);
 });
+
+test('o cadastro novo já nasce com horário próprio e sábado (19/10/2026)', async () => {
+  localStorage.setItem('conecta_v4_colaborador_atual', 'dani');
+  const horario = { entrada: '10:00', intervaloSaida: '13:00', intervaloRetorno: '14:30', saida: '19:40' };
+  const r = await bancoDados.criarColaborador({
+    nome: 'iris', login: 'iris', cargo: 'Balconista', setor: 'Balcão', loja: 'Pirassununga', nivel: 1,
+    turno: 'P', horarioProprio: horario, trabalhaSabado: false,
+  });
+  expect(r.sucesso).toBe(true);
+  const ficha = bancoDados.obterColaboradorPorId(r.colaborador!.id)!;
+  expect([ficha.turno, ficha.trabalhaSabado]).toEqual(['P', false]);
+  expect(ficha.horarioProprio).toEqual(horario);
+  // 'P' sem horário não entra: o banco recusaria do mesmo jeito
+  const semHorario = await bancoDados.criarColaborador({
+    nome: 'joao', login: 'joao', cargo: 'Balconista', setor: 'Balcão', loja: 'Pirassununga', nivel: 1, turno: 'P',
+  });
+  expect(semHorario).toEqual({ sucesso: false, erro: 'Informe a entrada (HH:MM).' });
+});
