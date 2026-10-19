@@ -17,10 +17,10 @@ Comandos de verificação (abreviados abaixo):
 - Verificação: teste. No local, o balconista lê as 3 linhas e não consegue desligar nenhuma.
 - Depende de: 1. **P**
 
-## Tarefa 3: Preços, similares e histórico fechados
-- [ ] `precos_b2b`, `similares_b2b` e `historico_precos_b2b`, com as chaves únicas da especificação.
-- [ ] Lê só quem vê custo. Ninguém grava direto.
-- [ ] O teste morde se uma regra de leitura deixar passar quem só cota.
+## Tarefa 3: Preços, similares e histórico fechados ✅
+- [x] `precos_b2b`, `similares_b2b` e `historico_precos_b2b`, com as chaves únicas da especificação.
+- [x] Lê só quem vê custo. Ninguém grava direto.
+- [x] O teste morde se uma regra de leitura deixar passar quem só cota.
 - Verificação: teste. No local, com uma linha semeada, o balconista recebe **vazio** e o gerente recebe a linha.
 - Depende de: 1. **P**
 

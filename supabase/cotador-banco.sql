@@ -66,6 +66,66 @@ drop policy if exists fornecedores_b2b_escrita on public.fornecedores_b2b;
 create policy fornecedores_b2b_escrita on public.fornecedores_b2b
   for all to authenticated using (public.sou_admin()) with check (public.sou_admin());
 
+-- ------------------------------------------------------------
+-- PREÇO DO DIA, SIMILARES E HISTÓRICO
+--
+-- O CUSTO DO FORNECEDOR NÃO CHEGA A QUEM SÓ VENDE. Lê só quem vê custo;
+-- o Balcão recebe vazio e verá a venda por uma função de `precificacao`.
+-- Ninguém grava direto: só `gravar_cotacao` (security definer), que exige
+-- quem atende a fila. Por isso não há regra de escrita nestas tabelas.
+-- ------------------------------------------------------------
+
+-- O último preço de cada fornecedor, peça e local (CD/filial). Sobrescrito.
+create table if not exists public.precos_b2b (
+  fornecedor        text not null references public.fornecedores_b2b(chave),
+  codigo            text not null,
+  local             text not null,
+  em_sp             boolean not null,
+  custo             numeric(12,2),
+  quantidade        integer,            -- nulo quando o site não informa
+  disponivel        boolean not null,
+  proximidade       smallint,
+  marca             text,
+  descricao         text,
+  grupo_fornecedor  text,
+  consultado_em     timestamptz not null default now(),
+  primary key (fornecedor, codigo, local)
+);
+alter table public.precos_b2b enable row level security;
+
+create table if not exists public.similares_b2b (
+  fornecedor      text not null references public.fornecedores_b2b(chave),
+  codigo          text not null,
+  codigo_similar  text not null,
+  marca_similar   text,
+  consultado_em   timestamptz not null default now(),
+  primary key (fornecedor, codigo, codigo_similar)
+);
+alter table public.similares_b2b enable row level security;
+
+-- O melhor preço do dia (Brasília), uma linha por dia, fornecedor e peça
+create table if not exists public.historico_precos_b2b (
+  dia         date not null,
+  fornecedor  text not null references public.fornecedores_b2b(chave),
+  codigo      text not null,
+  local       text,
+  custo       numeric(12,2),
+  situacao    text not null check (situacao in ('SP', 'FORA DO ESTADO', 'SEM ESTOQUE')),
+  primary key (dia, fornecedor, codigo)
+);
+alter table public.historico_precos_b2b enable row level security;
+
+drop policy if exists precos_b2b_leitura on public.precos_b2b;
+create policy precos_b2b_leitura on public.precos_b2b
+  for select to authenticated using (public.posso_ver_custo());
+drop policy if exists similares_b2b_leitura on public.similares_b2b;
+create policy similares_b2b_leitura on public.similares_b2b
+  for select to authenticated using (public.posso_ver_custo());
+
+drop policy if exists historico_precos_b2b_leitura on public.historico_precos_b2b;
+create policy historico_precos_b2b_leitura on public.historico_precos_b2b
+  for select to authenticated using (public.posso_ver_custo());
+
 notify pgrst, 'reload schema';
 
 -- Conferência: as três regras criadas e os fornecedores ligados

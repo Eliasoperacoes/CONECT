@@ -131,3 +131,53 @@ test('fornecedores: só o TI liga e desliga', async () => {
   expect(await como(uidDe('TI', 5), desligar)).toEqual([{ chave: 'dpk' }]);
   await banco.db.exec("update public.fornecedores_b2b set ativo = true where chave = 'dpk'");
 });
+
+// ------------------------------------------------------------
+// Preço do dia, similares e histórico: o custo fechado
+// ------------------------------------------------------------
+
+const TABELAS_DE_CUSTO = ['precos_b2b', 'similares_b2b', 'historico_precos_b2b'];
+
+const semearPreco = () =>
+  banco.db.exec(`
+    insert into public.precos_b2b (fornecedor, codigo, local, em_sp, custo, quantidade, disponivel, proximidade)
+      values ('dpk', 'OC90', 'RIB PRETO', true, 9.65, 228, true, 1) on conflict do nothing;
+    insert into public.similares_b2b (fornecedor, codigo, codigo_similar, marca_similar)
+      values ('dpk', 'OC90', 'W7122', 'MANN') on conflict do nothing;
+    insert into public.historico_precos_b2b (dia, fornecedor, codigo, local, custo, situacao)
+      values ('2026-10-19', 'dpk', 'OC90', 'RIB PRETO', 9.65, 'SP') on conflict do nothing;
+  `);
+
+test('custo: o Balcão consulta direto e recebe vazio; quem vê custo recebe as linhas', async () => {
+  await semearPreco();
+  for (const tabela of TABELAS_DE_CUSTO) {
+    expect(await como(uidDe('Balcão', 2), `select * from public.${tabela}`)).toEqual([]);
+    expect(await como(uidDe('Estoque', 1), `select * from public.${tabela}`)).toEqual([]);
+    for (const uid of [uidDe('Gerência', 3), uidDe('Callcenter', 1), uidDe('Compras', 1)]) {
+      expect(await como(uid, `select codigo from public.${tabela}`)).toEqual([{ codigo: 'OC90' }]);
+    }
+  }
+});
+
+test('custo: ninguém grava direto, nem quem atende a fila nem o TI', async () => {
+  for (const uid of [uidDe('Compras', 1), uidDe('TI', 5)]) {
+    expect(
+      await como(uid, "insert into public.precos_b2b (fornecedor, codigo, local, em_sp, disponivel) values ('dpk', 'X1', 'BH', false, true)")
+    ).toContain('row-level security');
+    expect(await como(uid, "update public.precos_b2b set custo = 0.01 where codigo = 'OC90' returning codigo")).toEqual([]);
+    expect(await como(uid, "delete from public.historico_precos_b2b where codigo = 'OC90' returning codigo")).toEqual([]);
+  }
+});
+
+test('custo: a única regra destas tabelas é a de leitura por posso_ver_custo', async () => {
+  const r = await banco.db.query<{ tabela: string; cmd: string; regra: string }>(`
+    select tablename as tabela, cmd, coalesce(qual, '') || coalesce(with_check, '') as regra
+      from pg_policies where tablename in ('precos_b2b', 'similares_b2b', 'historico_precos_b2b')
+     order by tablename
+  `);
+  expect(r.rows.map((x) => `${x.tabela} ${x.cmd} ${x.regra}`)).toEqual([
+    'historico_precos_b2b SELECT posso_ver_custo()',
+    'precos_b2b SELECT posso_ver_custo()',
+    'similares_b2b SELECT posso_ver_custo()',
+  ]);
+});
