@@ -24,9 +24,9 @@ Comandos de verificação (abreviados abaixo):
 - Verificação: teste. No local, com uma linha semeada, o balconista recebe **vazio** e o gerente recebe a linha.
 - Depende de: 1. **P**
 
-## Tarefa 4: Estação
-- [ ] `estacoes_cotacao` e `sinal_da_estacao(estacao, sites, versao)`: grava `visto_em`, os sites e quem está atendendo. Mais de 3 min sem sinal conta como fora.
-- [ ] Só quem atende a fila dá sinal. Quem cota lê se a estação está online.
+## Tarefa 4: Estação ✅
+- [x] `estacoes_cotacao` e `sinal_da_estacao(estacao, sites, versao)`: grava `visto_em`, os sites e quem está atendendo. Mais de 3 min sem sinal conta como fora (`estacao_online`).
+- [x] Só quem atende a fila dá sinal. Quem cota lê se a estação está online.
 - Verificação: teste. No local: o usuário de Compras dá sinal, o balconista vê "online" e recebe erro ao tentar dar sinal.
 - Depende de: 1. **P**
 

@@ -26,7 +26,10 @@ beforeAll(async () => {
   await banco.db.exec(lerSql('cotador-banco.sql'));
   // Como no Supabase (privilégio padrão): toda tabela nova alcança o logado,
   // e quem decide é a regra (RLS)
-  await banco.db.exec('grant all on all tables in schema public to authenticated;');
+  await banco.db.exec(`
+    grant all on all tables in schema public to authenticated;
+    grant execute on all functions in schema public to authenticated;
+  `);
   await banco.db.exec(`
     alter table auth.users disable trigger all;
     insert into auth.users (id) values ${PESSOAS.map((p) => `('${p.uid}')`).join(', ')};
@@ -180,4 +183,36 @@ test('custo: a única regra destas tabelas é a de leitura por posso_ver_custo',
     'precos_b2b SELECT posso_ver_custo()',
     'similares_b2b SELECT posso_ver_custo()',
   ]);
+});
+
+// ------------------------------------------------------------
+// Estação: sem login próprio, o sinal vem de quem atende a fila
+// ------------------------------------------------------------
+
+const SINAL = `select public.sinal_da_estacao('compras-matriz', '{"roles":"ok","pellegrino":"ok","dpk":"deslogado"}', '0.3.0')`;
+
+test('estação: Compras dá sinal; o Balcão vê a estação no ar e os sites', async () => {
+  expect(await como(uidDe('Compras', 1), SINAL)).not.toBeTypeOf('string');
+  const vista = await como<{ nome: string; online: boolean; dpk: string; atendida_por: string }>(
+    uidDe('Balcão', 1),
+    `select nome, public.estacao_online(visto_em) as online, sites->>'dpk' as dpk, atendida_por from public.estacoes_cotacao`
+  );
+  expect(vista).toEqual([{ nome: 'compras-matriz', online: true, dpk: 'deslogado', atendida_por: `c-${uidDe('Compras', 1)}` }]);
+});
+
+test('estação: quem não atende a fila não dá sinal nem grava direto', async () => {
+  for (const uid of [uidDe('Balcão', 1), uidDe('Gerência', 4)]) {
+    expect(await como(uid, SINAL)).toContain('Compras ou TI');
+    expect(await como(uid, "update public.estacoes_cotacao set visto_em = now() returning nome")).toEqual([]);
+  }
+  expect(await como(uidDe('Estoque', 1), 'select nome from public.estacoes_cotacao')).toEqual([]);
+});
+
+test('estação: mais de 3 minutos sem sinal conta como fora', async () => {
+  const r = await banco.db.query<{ agora: boolean; dois: boolean; quatro: boolean }>(`
+    select public.estacao_online(now()) as agora,
+           public.estacao_online(now() - interval '2 minutes') as dois,
+           public.estacao_online(now() - interval '4 minutes') as quatro
+  `);
+  expect(r.rows[0]).toEqual({ agora: true, dois: true, quatro: false });
 });

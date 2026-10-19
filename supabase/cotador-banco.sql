@@ -126,6 +126,57 @@ drop policy if exists historico_precos_b2b_leitura on public.historico_precos_b2
 create policy historico_precos_b2b_leitura on public.historico_precos_b2b
   for select to authenticated using (public.posso_ver_custo());
 
+-- ------------------------------------------------------------
+-- ESTAÇÃO (o PC de compras)
+--
+-- Não tem login próprio: é o CONECTA aberto no PC de compras, logado por
+-- alguém que atende a fila. A cada minuto a página dá sinal com os sites
+-- logados. Mais de 3 minutos sem sinal = fora (estacao_online).
+-- ------------------------------------------------------------
+
+create table if not exists public.estacoes_cotacao (
+  nome             text primary key check (nome ~ '^[a-z0-9-]+$'),
+  atendida_por     text references public.colaboradores(id) on delete set null,
+  visto_em         timestamptz not null default now(),
+  sites            jsonb not null default '{}'::jsonb check (jsonb_typeof(sites) = 'object'),
+  versao_extensao  text
+);
+alter table public.estacoes_cotacao enable row level security;
+
+-- Quem cota vê se a estação está no ar; ninguém grava direto (só o sinal)
+drop policy if exists estacoes_cotacao_leitura on public.estacoes_cotacao;
+create policy estacoes_cotacao_leitura on public.estacoes_cotacao
+  for select to authenticated using (public.posso_cotar() or public.posso_atender_fila());
+
+-- A regra de "no ar", num lugar só
+create or replace function public.estacao_online(visto timestamptz)
+returns boolean language sql stable set search_path = public as $$
+  select visto > now() - interval '3 minutes';
+$$;
+
+create or replace function public.sinal_da_estacao(estacao text, sites jsonb, versao text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.posso_atender_fila() then
+    raise exception 'Só Compras ou TI atendem a fila de cotação' using errcode = '42501';
+  end if;
+
+  insert into public.estacoes_cotacao (nome, atendida_por, visto_em, sites, versao_extensao)
+  values (
+    estacao,
+    (select id from public.colaboradores where auth_user_id = auth.uid() limit 1),
+    now(), coalesce(sites, '{}'::jsonb), versao
+  )
+  on conflict (nome) do update
+    set atendida_por = excluded.atendida_por,
+        visto_em = excluded.visto_em,
+        sites = excluded.sites,
+        versao_extensao = excluded.versao_extensao;
+end;
+$$;
+revoke all on function public.sinal_da_estacao(text, jsonb, text) from public, anon;
+grant execute on function public.sinal_da_estacao(text, jsonb, text) to authenticated;
+
 notify pgrst, 'reload schema';
 
 -- Conferência: as três regras criadas e os fornecedores ligados
