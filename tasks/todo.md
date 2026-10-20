@@ -45,7 +45,7 @@ Comandos de verificação (abreviados abaixo):
 ## Tarefa 6: Pegar o próximo pedido ✅
 - [x] `pegar_proxima_cotacao`: o mais antigo `na_fila` vira `cotando`, com `for update skip locked`. Pedido `cotando` há mais de 5 minutos volta para a fila.
 - [x] Só quem atende a fila chama.
-- [ ] Concorrência de verdade (duas sessões) no Supabase do Docker: o PGlite tem uma conexão só. Fica para o checkpoint B.
+- [x] Concorrência de verdade no Supabase do Docker (20/10): a sessão A segurou o CONC1 por 4 s; a B pegou o CONC2 sem esperar.
 - Verificação: teste (morde sem o `skip locked`). No local: duas sessões ao mesmo tempo pegam pedidos diferentes, e o balconista recebe erro de permissão.
 - Depende de: 5. **P**
 
@@ -56,7 +56,7 @@ Comandos de verificação (abreviados abaixo):
 - Depende de: 6. **M**
 
 ### Checkpoint B
-- [ ] Todos os critérios de pronto da especificação provados no local.
+- [x] Todos os critérios de pronto da especificação provados no local (ciclo Bia → Caio → Gil no Docker, 20/10).
 - [ ] Elias viu e decide subir para a produção.
 
 ## Tarefa 8: Levar à produção
