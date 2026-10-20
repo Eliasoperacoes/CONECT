@@ -73,6 +73,70 @@
  * `storage` cobre a gravação feita por outra aba. O texto ainda é
  * conferido na primeira leitura depois de cada gravação.
  */
+import { deflateSync, inflateSync, strToU8, strFromU8 } from 'fflate';
+
+/*
+ * ===================================================================
+ * AS LISTAS GRANDES VÃO COMPRIMIDAS (20/10/2026)
+ * ===================================================================
+ *
+ * O armazenamento do navegador cabe ~5,2 milhões de caracteres (medido no
+ * Chrome). As batidas de 62 dias da rede inteira, com NSR e código de
+ * verificação, dão 6,7 milhões — não cabiam: o aparelho do RH ficaria com a
+ * janela velha, sem aviso. Comprimidas: 0,66 milhão (10%), 127 ms para
+ * gravar e 32 ms para abrir, e a leitura em memória acima evita abrir de
+ * novo a cada pergunta.
+ *
+ * O texto comprimido vai em caracteres de 15 bits, de U+0800 a U+87FF:
+ * nenhum é metade de par (U+D800–DFFF) nem caractere de controle, que o
+ * navegador poderia trocar ao guardar. O prefixo diz que está comprimido;
+ * sem ele, é o JSON de antes — quem já tinha dados guardados não perde nada.
+ */
+export const PREFIXO_COMPRIMIDO = 'conecta-z1:';
+export const CHAVES_COMPRIMIDAS = new Set(['conecta_v4_registros_ponto', 'conecta_v4_ajustes_jornada']);
+
+const BASE = 0x0800;
+
+export const comprimirTexto = (texto: string): string => {
+  const bytes = deflateSync(strToU8(texto), { level: 6 });
+  let saida = PREFIXO_COMPRIMIDO + String(bytes.length) + ':';
+  let acumulado = 0;
+  let bits = 0;
+  const partes: number[] = [];
+  for (const b of bytes) {
+    acumulado = (acumulado << 8) | b;
+    bits += 8;
+    while (bits >= 15) {
+      bits -= 15;
+      partes.push(BASE + ((acumulado >> bits) & 0x7fff));
+    }
+    acumulado &= (1 << bits) - 1;
+  }
+  if (bits > 0) partes.push(BASE + ((acumulado << (15 - bits)) & 0x7fff));
+  for (let i = 0; i < partes.length; i += 8192) saida += String.fromCharCode(...partes.slice(i, i + 8192));
+  return saida;
+};
+
+export const descomprimirTexto = (guardado: string): string => {
+  const corpo = guardado.slice(PREFIXO_COMPRIMIDO.length);
+  const separador = corpo.indexOf(':');
+  const tamanho = Number(corpo.slice(0, separador));
+  const bytes = new Uint8Array(tamanho);
+  let acumulado = 0;
+  let bits = 0;
+  let n = 0;
+  for (let i = separador + 1; i < corpo.length && n < tamanho; i++) {
+    acumulado = (acumulado << 15) | (corpo.charCodeAt(i) - BASE);
+    bits += 15;
+    while (bits >= 8 && n < tamanho) {
+      bits -= 8;
+      bytes[n++] = (acumulado >> bits) & 0xff;
+    }
+    acumulado &= (1 << bits) - 1;
+  }
+  return strFromU8(inflateSync(bytes));
+};
+
 interface Guardado {
   bruto: string;
   valor: unknown[];
@@ -155,7 +219,7 @@ const listaConferida = (chave: string): unknown[] => {
       return guardado.valor;
     }
 
-    const valor = JSON.parse(bruto);
+    const valor = JSON.parse(bruto.startsWith(PREFIXO_COMPRIMIDO) ? descomprimirTexto(bruto) : bruto);
     if (!Array.isArray(valor)) return [];
 
     cache.set(chave, { bruto, valor, confiavel: true });
@@ -166,6 +230,21 @@ const listaConferida = (chave: string): unknown[] => {
 };
 
 export const lerLista = <T>(chave: string): T[] => [...listaConferida(chave)] as T[];
+
+/**
+ * GRAVA UMA LISTA — comprimida, se for das grandes (`CHAVES_COMPRIMIDAS`).
+ * Toda gravação das batidas e das apurações passa por aqui. Lança como o
+ * `setItem` quando não cabe: quem grava decide o que fazer (a sincronização
+ * do ponto não grava pela metade).
+ */
+export const gravarLista = (chave: string, lista: unknown[]): void => {
+  const json = JSON.stringify(lista);
+  const texto = CHAVES_COMPRIMIDAS.has(chave) ? comprimirTexto(json) : json;
+  vigiar(localStorage);
+  localStorage.setItem(chave, texto);
+  // Já sabemos o que foi gravado: a próxima leitura não precisa abrir de novo
+  cache.set(chave, { bruto: texto, valor: JSON.parse(json), confiavel: true });
+};
 
 /**
  * A LISTA AGRUPADA POR UMA CHAVE — as batidas por pessoa e dia, por

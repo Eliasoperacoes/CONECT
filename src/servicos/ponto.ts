@@ -92,7 +92,7 @@ import { pedirAvisoDoComprovante } from './envioDeAviso';
 import { nuvem } from './nuvem';
 import { fecharCompensacao, mesAnterior, CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { usandoNuvem } from './supabase';
-import { lerLista, lerIndicePor } from './cacheDeLeitura';
+import { lerLista, lerIndicePor, gravarLista } from './cacheDeLeitura';
 import type { DiaDoAej } from './arquivoEletronicoDeJornada';
 import type { SugestaoDeIntervalo } from './voltaDoIntervalo';
 /**
@@ -952,7 +952,8 @@ class ServicoPonto {
   }
 
   private gravarRegistros(registros: RegistroPonto[]): void {
-    localStorage.setItem(CHAVE_REGISTROS_PONTO, JSON.stringify(registros));
+    // Comprimidas (gravarLista): 62 dias da rede não cabiam no navegador
+    gravarLista(CHAVE_REGISTROS_PONTO, registros);
   }
 
   /** Uma batida pelo id — a do comprovante pedido pelo aviso. */
@@ -1860,7 +1861,7 @@ class ServicoPonto {
   }
 
   private gravarAjustes(ajustes: AjusteJornada[]): void {
-    localStorage.setItem(CHAVE_AJUSTES, JSON.stringify(ajustes));
+    gravarLista(CHAVE_AJUSTES, ajustes);
   }
 
   /** Apuração de um dia, se já existir. */

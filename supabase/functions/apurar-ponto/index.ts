@@ -613,6 +613,7 @@ var decidirLevantamento = (pessoa, data, agora) => {
 };
 
 // src/servicos/cacheDeLeitura.ts
+var CHAVES_COMPRIMIDAS = new Set(["conecta_v4_registros_ponto", "conecta_v4_ajustes_jornada"]);
 var cache = new Map;
 var indices = new Map;
 var vigiados = new WeakSet;

@@ -6,6 +6,10 @@
  * estourariam o aparelho de quem cuida de pessoas.
  */
 import { test, expect, mock, beforeEach } from 'bun:test';
+import { PREFIXO_COMPRIMIDO, descomprimirTexto } from './cacheDeLeitura';
+
+/** O que está guardado: as batidas vão comprimidas (cacheDeLeitura, 20/10/2026) */
+const lido = (texto: string) => JSON.parse(texto.startsWith(PREFIXO_COMPRIMIDO) ? descomprimirTexto(texto) : texto);
 
 class ArmazenamentoFalso {
   private dados = new Map<string, string>();
@@ -85,7 +89,7 @@ test('soma ao cache sem tirar o mês corrente de ninguém', async () => {
 
   expect(await nuvem.trazerMarcacoesDe('maria', AGOSTO)).toBe(true);
 
-  const ids = JSON.parse(armazenamento.getItem(CHAVE)!).map((r: any) => r.id).sort();
+  const ids = lido(armazenamento.getItem(CHAVE)!).map((r: any) => r.id).sort();
   expect(ids).toEqual(['a1', 's1', 's2']);
 });
 
@@ -96,7 +100,7 @@ test('o mês vem inteiro do banco: batida apagada lá não sobra aqui', async ()
 
   await nuvem.trazerMarcacoesDe('maria', AGOSTO);
 
-  const ids = JSON.parse(armazenamento.getItem(CHAVE)!).map((r: any) => r.id);
+  const ids = lido(armazenamento.getItem(CHAVE)!).map((r: any) => r.id);
   expect(ids).toEqual(['a1']);
 });
 
@@ -105,5 +109,5 @@ test('o banco falhou: devolve falha e o cache fica como estava', async () => {
   falhar = true;
 
   expect(await nuvem.trazerMarcacoesDe('maria', AGOSTO)).toBe(false);
-  expect(JSON.parse(armazenamento.getItem(CHAVE)!)).toHaveLength(1);
+  expect(lido(armazenamento.getItem(CHAVE)!)).toHaveLength(1);
 });

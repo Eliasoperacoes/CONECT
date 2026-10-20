@@ -33,6 +33,10 @@
  * de cada vez.
  */
 import { test, expect, mock, beforeEach } from 'bun:test';
+import { PREFIXO_COMPRIMIDO, descomprimirTexto } from './cacheDeLeitura';
+
+/** O que está guardado: as batidas vão comprimidas (cacheDeLeitura, 20/10/2026) */
+const lido = (texto: string) => JSON.parse(texto.startsWith(PREFIXO_COMPRIMIDO) ? descomprimirTexto(texto) : texto);
 
 class ArmazenamentoFalso {
   dados = new Map<string, string>();
@@ -71,7 +75,9 @@ const consulta = () => {
       return encadeado;
     },
     order: () => encadeado,
-    range: () => Promise.resolve({ data: linhasDoBanco, error: null }),
+    // A página pedida, como o Supabase: devolver tudo em cada página faria a
+    // busca paginada juntar a mesma lista dezenas de vezes
+    range: (de: number, ate: number) => Promise.resolve({ data: linhasDoBanco.slice(de, ate + 1), error: null }),
     limit: () => encadeado,
     then: (f: any) => Promise.resolve({ data: linhasDoBanco, error: null }).then(f),
   };
@@ -256,5 +262,37 @@ test('cabendo, o cache é atualizado e a função confirma', async () => {
   const coube = await nuvem.sincronizarPonto();
 
   expect(coube).toBe(true);
-  expect(JSON.parse(armazenamento.getItem(CHAVE)!)).toHaveLength(2);
+  expect(lido(armazenamento.getItem(CHAVE)!)).toHaveLength(2);
+});
+
+test('A JANELA DA REDE INTEIRA CABE no limite do navegador (20/10/2026)', async () => {
+  /**
+   * Medido no Chrome: o armazenamento aguenta ~5,2 milhões de caracteres.
+   * 62 dias das 89 pessoas, com NSR e código de verificação, davam 6,7
+   * milhões em JSON — o aparelho do RH ficaria com a janela velha, sem
+   * aviso. Comprimidas (gravarLista), cabem com folga.
+   */
+  armazenamento.limite = 5_200_000;
+  const LOJAS = ['Pirassununga', 'Porto Ferreira', 'Palmeiras', 'Descalvado', 'Santa Rita'];
+  const rede: ReturnType<typeof linha>[] = [];
+  for (let p = 0; p < 89; p++)
+    for (let d = 0; d < 53; d++)
+      for (const [tipo, hora] of [['entrada', '07:30'], ['saida_almoco', '12:30'], ['retorno_almoco', '14:00'], ['saida', '17:10']])
+        rede.push({
+          ...linha(rede.length),
+          id: `ponto-${crypto.randomUUID().replace(/-/g, '')}`,
+          colaborador_id: `colab-${p}`,
+          data: `2026-${d < 30 ? '09' : '10'}-${String((d % 30) + 1).padStart(2, '0')}`,
+          tipo,
+          hora_formatada: hora,
+          loja: LOJAS[p % 5],
+          nsr: 100000 + rede.length,
+          codigo_verificacao: crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, ''),
+        } as ReturnType<typeof linha>);
+  linhasDoBanco = rede;
+  // Sem compressão não caberia: é o que este teste protege
+  expect(JSON.stringify(rede).length).toBeGreaterThan(armazenamento.limite);
+
+  expect(await nuvem.sincronizarPonto()).toBe(true);
+  expect(lido(armazenamento.getItem(CHAVE)!)).toHaveLength(rede.length);
 });

@@ -235,5 +235,7 @@ test('o cache é FOLHA: não importa ninguém', async () => {
    * ninguém. É essa a permissão, e ela tem de continuar verdadeira.
    */
   const fonte = await Bun.file('src/servicos/cacheDeLeitura.ts').text();
-  expect([...fonte.matchAll(/from\s+'([^']+)'/g)]).toHaveLength(0);
+  // Só o fflate (a compressão, 20/10/2026): pacote de fora não importa nada
+  // do sistema de volta, então não fecha ciclo. Arquivo do projeto, nenhum
+  expect([...fonte.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1])).toEqual(['fflate']);
 });

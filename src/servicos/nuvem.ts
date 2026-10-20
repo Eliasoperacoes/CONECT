@@ -37,6 +37,8 @@ import {
   normalizarLogin,
 } from './supabase';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
+import { lerLista, gravarLista } from './cacheDeLeitura';
+import { registrarErro } from './registroDeErros';
 import { coletorDaMarcacao } from './aplicativo';
 import { ehCaminhoDeFotoPerfil, esquecerAssinaturas, resolverCaminhos } from './anexos';
 import { apagarSenhaGuardada, limparAoSair } from './limpezaDoAparelho';
@@ -1092,16 +1094,19 @@ class PonteNuvem {
      * cache fica como estava e a função diz que falhou.
      */
     try {
-      localStorage.setItem(
-        CHAVE_REGISTROS_PONTO,
-        JSON.stringify(registros.map(paraRegistroPonto))
-      );
+      gravarLista(CHAVE_REGISTROS_PONTO, registros.map(paraRegistroPonto));
     } catch (erro) {
       console.error(
         `Não coube no aparelho a janela ${janela.inicio} a ${janela.fim} ` +
           `(${registros.length} marcações):`,
         erro
       );
+      // Chega ao TI (erros_do_app): aparelho cheio mostra dado velho sem avisar ninguém
+      registrarErro({
+        tela: 'armazenamento',
+        mensagem: `Não coube no aparelho a janela do ponto (${registros.length} marcações)`,
+        pilha: erro instanceof Error ? `${erro.name}: ${erro.message}` : String(erro),
+      });
       return false;
     }
 
@@ -1194,7 +1199,8 @@ class PonteNuvem {
     const novas = linhas.map(paraRegistroPonto);
     let atuais: RegistroPonto[] = [];
     try {
-      atuais = JSON.parse(localStorage.getItem(CHAVE_REGISTROS_PONTO) || '[]');
+      // Pela leitura central: o texto guardado pode estar comprimido
+      atuais = lerLista<RegistroPonto>(CHAVE_REGISTROS_PONTO);
     } catch {
       atuais = [];
     }
@@ -1208,9 +1214,14 @@ class PonteNuvem {
     );
 
     try {
-      localStorage.setItem(CHAVE_REGISTROS_PONTO, JSON.stringify([...mantidas, ...novas]));
+      gravarLista(CHAVE_REGISTROS_PONTO, [...mantidas, ...novas]);
     } catch (erro) {
       console.error('Não coube no aparelho o mês pedido para o espelho:', erro);
+      registrarErro({
+        tela: 'armazenamento',
+        mensagem: 'Não coube no aparelho o mês pedido para o espelho',
+        pilha: erro instanceof Error ? `${erro.name}: ${erro.message}` : String(erro),
+      });
       return false;
     }
     return true;
@@ -1873,7 +1884,7 @@ class PonteNuvem {
 
     if (!data) return false;
 
-    localStorage.setItem(CHAVE_AJUSTES, JSON.stringify(data.map(paraAjuste)));
+    gravarLista(CHAVE_AJUSTES, data.map(paraAjuste));
 
     /*
       O SALDO DE COMPENSAÇÃO DO SÁBADO vem junto: uma linha por pessoa por

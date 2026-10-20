@@ -176,6 +176,8 @@ test('O CACHE SÓ IMPORTA FOLHAS', async () => {
       (m) => m[1]
     );
 
-    expect(deQuemImporta.filter((i) => i !== '../tipos')).toEqual([]);
+    // Pacote de fora (o fflate do cache) não importa o sistema de volta: o que
+    // não pode é arquivo do projeto
+    expect(deQuemImporta.filter((i) => i.startsWith('.') && i !== '../tipos')).toEqual([]);
   }
 });

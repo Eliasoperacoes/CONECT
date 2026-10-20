@@ -73,7 +73,8 @@ test('o cache das ausências não importa NADA além de tipos', async () => {
     new URL('./cacheDeLeitura.ts', import.meta.url)
   ).text();
 
-  expect([...doCache.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1])).toEqual([]);
+  // Só o fflate, pacote de fora (a compressão das listas grandes): não volta ao sistema
+  expect([...doCache.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1])).toEqual(['fflate']);
 });
 
 test('quem entrega dado do banco não importa serviço de regra', async () => {
