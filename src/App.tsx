@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { NIVEL_TI, NIVEL_GERENTE, vePainelDeRede } from './tipos';
+import { ProtecaoDaTela } from './componentes/ProtecaoDaTela';
 import {
   MessageSquare,
   User,
@@ -76,6 +77,7 @@ import { pedirComprovante } from './servicos/comprovantePedido';
 import { ModalNovaConversa } from './componentes/ModalNovaConversa';
 import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
+import { AvisoEstacaoCotacao } from './componentes/AvisoEstacaoCotacao';
 import { vigiarVersao } from './servicos/versao';
 import { IndicadorNuvem } from './componentes/IndicadorNuvem';
 import { TelaLogin } from './componentes/TelaLogin';
@@ -1696,6 +1698,7 @@ export default function App() {
   return (
     <div className="w-full h-[100dvh] flex flex-col bg-[var(--c-canvas)] text-[var(--c-texto)] overflow-hidden">
       <IndicadorOffline />
+      <AvisoEstacaoCotacao colaborador={autenticado ? colaboradorAtual : null} />
 
       {/*
         VERSÃO NOVA NO AR.
@@ -1899,34 +1902,40 @@ export default function App() {
             */}
             {abaAtiva === 'central' && (
               <div className="block md:hidden h-full overflow-y-auto">
-                <CentralAvisos
-                  colaboradorAtual={colaboradorAtual}
-                  publicacaoAAbrir={telaDoCelular ? publicacaoAAbrir : null}
-                  aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}
-                />
+                <ProtecaoDaTela nome="central (celular)">
+                  <CentralAvisos
+                    colaboradorAtual={colaboradorAtual}
+                    publicacaoAAbrir={telaDoCelular ? publicacaoAAbrir : null}
+                    aoConsumirPublicacao={() => setPublicacaoAAbrir(null)}
+                  />
+                </ProtecaoDaTela>
               </div>
             )}
 
             {abaAtiva === 'ponto' && (
               <div className="block md:hidden h-full">
-                <AbaPonto
-                  colaboradorAtual={colaboradorAtual}
-                  codigoDoEndereco={telaDoCelular ? codigoDoCartaz : null}
-                  aoConsumirCodigo={() => setCodigoDoCartaz(null)}
-                  pedidoDeBater={telaDoCelular && pedidoDeBater}
-                  aoAtenderPedido={() => setPedidoDeBater(false)}
-                />
+                <ProtecaoDaTela nome="ponto (celular)">
+                  <AbaPonto
+                    colaboradorAtual={colaboradorAtual}
+                    codigoDoEndereco={telaDoCelular ? codigoDoCartaz : null}
+                    aoConsumirCodigo={() => setCodigoDoCartaz(null)}
+                    pedidoDeBater={telaDoCelular && pedidoDeBater}
+                    aoAtenderPedido={() => setPedidoDeBater(false)}
+                  />
+                </ProtecaoDaTela>
               </div>
             )}
 
             {abaAtiva === 'eu' && (
               <div className="block md:hidden h-full">
-                <AbaEu
-                  colaboradorAtual={colaboradorAtual}
-                  aoTrocarColaborador={lidarTrocarColaborador}
-                  aoSair={lidarDeslogar}
-                  aoAbrirAdmin={() => setPainelAdminAberto(true)}
-                />
+                <ProtecaoDaTela nome="eu (celular)">
+                  <AbaEu
+                    colaboradorAtual={colaboradorAtual}
+                    aoTrocarColaborador={lidarTrocarColaborador}
+                    aoSair={lidarDeslogar}
+                    aoAbrirAdmin={() => setPainelAdminAberto(true)}
+                  />
+                </ProtecaoDaTela>
               </div>
             )}
 

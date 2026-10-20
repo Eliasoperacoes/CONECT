@@ -193,6 +193,8 @@ const ARQUIVOS_QUE_ESCREVEM = [
   'src/servicos/supabase.ts',
   /* Guarda o endereço de entrega do aviso nativo em `aparelhos` */
   'src/servicos/pushNativo.ts',
+  /* Grava os erros de tela em `erros_do_app` (erros-do-app.sql) */
+  'src/servicos/registroDeErros.ts',
 ];
 
 /**

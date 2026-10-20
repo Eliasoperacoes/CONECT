@@ -34,6 +34,7 @@ import { AbaAdvertencias } from './AbaAdvertencias';
 import { PainelRede } from './PainelRede';
 import { PainelAdministrativo } from './PainelAdministrativo';
 import { AbaEu } from './AbaEu';
+import { ProtecaoDaTela } from './ProtecaoDaTela';
 import type { SecaoDestino } from '../servicos/destinoDoAviso';
 
 
@@ -401,7 +402,8 @@ export const ConteudoWeb: React.FC<{
         <div key={tela} className="max-w-7xl mx-auto w-full px-2 pb-28">
           <ContextoTelaEmbutida.Provider value={true}>
             <ContextoAcaoDaTela.Provider value={tela === 'inicio' ? null : vagaDaAcao}>
-              {telaDoAssunto()}
+              {/* Erro numa tela fica nela: o resto do sistema segue (ProtecaoDaTela) */}
+              <ProtecaoDaTela nome={tela}>{telaDoAssunto()}</ProtecaoDaTela>
             </ContextoAcaoDaTela.Provider>
           </ContextoTelaEmbutida.Provider>
         </div>

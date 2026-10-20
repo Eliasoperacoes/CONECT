@@ -171,6 +171,7 @@ operacoes (tabela, comando) as (values
   ('ajustes_jornada', 'UPDATE'),
   ('aparelhos', 'DELETE'),
   ('auditoria', 'INSERT'),
+  ('erros_do_app', 'INSERT'),
   ('auditoria', 'SELECT'),
   ('avisos_leitura', 'INSERT'),
   ('avisos_leitura', 'SELECT'),
