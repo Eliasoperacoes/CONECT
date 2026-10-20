@@ -216,3 +216,86 @@ test('estação: mais de 3 minutos sem sinal conta como fora', async () => {
   `);
   expect(r.rows[0]).toEqual({ agora: true, dois: true, quatro: false });
 });
+
+// ------------------------------------------------------------
+// Fila: pedir cotação
+// ------------------------------------------------------------
+
+type Pedido = { codigo: string; cotacao_id: string | null; ja_tem_preco: boolean };
+
+const pedir = (uid: string, codigos: string[], similares = false, forcar = false) =>
+  como<Pedido>(
+    uid,
+    `select * from public.pedir_cotacao(array[${codigos.map((c) => `'${c}'`).join(',')}]::text[], ${similares}, ${forcar})`
+  );
+
+test('fila: o mesmo código digitado de dois jeitos vira um pedido só', async () => {
+  const r = (await pedir(uidDe('Balcão', 1), ['oc-90', ' OC 90 '])) as Pedido[];
+  expect(r.map((x) => x.codigo)).toEqual(['OC90', 'OC90']);
+  expect(r[0].cotacao_id).not.toBeNull();
+  expect(r[1].cotacao_id).toBe(r[0].cotacao_id);
+  // Outro balconista pedindo depois também reaproveita
+  const outro = (await pedir(uidDe('Balcão', 2), ['OC90'])) as Pedido[];
+  expect(outro[0].cotacao_id).toBe(r[0].cotacao_id);
+  const n = await banco.db.query<{ n: number }>("select count(*)::int as n from public.cotacoes_b2b where codigo = 'OC90'");
+  expect(n.rows[0].n).toBe(1);
+});
+
+test('fila: pedido de quem pediu similares depois passa a trazê-los', async () => {
+  const [a] = (await pedir(uidDe('Balcão', 1), ['LB1'])) as Pedido[];
+  await pedir(uidDe('Callcenter', 1), ['LB1'], true);
+  const r = await banco.db.query<{ s: boolean }>(`select incluir_similares as s from public.cotacoes_b2b where id = '${a.cotacao_id}'`);
+  expect(r.rows[0].s).toBe(true);
+});
+
+test('fila: com preço de hoje em todos os fornecedores não entra na fila; com forçar, entra', async () => {
+  await banco.db.exec(`
+    insert into public.historico_precos_b2b (dia, fornecedor, codigo, situacao)
+    select public.hoje_brasilia(), chave, 'HG5170', 'SEM ESTOQUE' from public.fornecedores_b2b
+    on conflict do nothing;
+  `);
+  expect(await pedir(uidDe('Balcão', 1), ['HG5170'])).toEqual([{ codigo: 'HG5170', cotacao_id: null, ja_tem_preco: true }]);
+  const [f] = (await pedir(uidDe('Balcão', 1), ['HG5170'], false, true)) as Pedido[];
+  expect(f.cotacao_id).not.toBeNull();
+});
+
+test('fila: preço de ontem ou de só um fornecedor não conta como pronto', async () => {
+  await banco.db.exec(`
+    insert into public.historico_precos_b2b (dia, fornecedor, codigo, situacao)
+    select public.hoje_brasilia() - 1, chave, 'PSL100', 'SP' from public.fornecedores_b2b;
+    insert into public.historico_precos_b2b (dia, fornecedor, codigo, situacao)
+    values (public.hoje_brasilia(), 'dpk', 'PSL100', 'SP');
+  `);
+  expect(await como(uidDe('Balcão', 1), "select * from public.preco_de_hoje('psl-100')")).toEqual([
+    { fornecedor: 'roles', tem_preco: false },
+    { fornecedor: 'pellegrino', tem_preco: false },
+    { fornecedor: 'dpk', tem_preco: true },
+  ]);
+  const [p] = (await pedir(uidDe('Balcão', 1), ['PSL100'])) as Pedido[];
+  expect(p.ja_tem_preco).toBe(false);
+  expect(p.cotacao_id).not.toBeNull();
+});
+
+test('fila: quem não cota não pede; ninguém grava direto', async () => {
+  expect(await pedir(uidDe('Estoque', 1), ['X9'])).toContain('cotam');
+  expect(await pedir(uidDe('Compras', 1), ['X9'])).toContain('cotam');
+  expect(
+    await como(uidDe('Balcão', 1), "insert into public.cotacoes_b2b (codigo, codigo_digitado) values ('X9', 'X9')")
+  ).toContain('row-level security');
+});
+
+test('fila: o balconista vê o próprio pedido; o gerente e compras veem todos', async () => {
+  const [p] = (await pedir(uidDe('Balcão', 3), ['MEUPEDIDO1'])) as Pedido[];
+  const ver = (uid: string) => como(uid, `select codigo from public.cotacoes_b2b where id = '${p.cotacao_id}'`);
+  expect(await ver(uidDe('Balcão', 3))).toEqual([{ codigo: 'MEUPEDIDO1' }]);
+  expect(await ver(uidDe('Balcão', 1))).toEqual([]);
+  expect(await ver(uidDe('Gerência', 3))).toEqual([{ codigo: 'MEUPEDIDO1' }]);
+  expect(await ver(uidDe('Compras', 1))).toEqual([{ codigo: 'MEUPEDIDO1' }]);
+});
+
+test('"hoje" é o dia de Brasília, numa função só', () => {
+  const sql = lerSql('cotador-banco.sql').replace(/--.*$/gm, '');
+  expect(sql).toContain("(now() at time zone 'America/Sao_Paulo')::date");
+  // Nenhum outro "hoje" solto: current_date e now()::date viram o dia em UTC
+  expect(sql).not.toMatch(/current_date|now\(\)::date/);
+});

@@ -34,9 +34,11 @@ Comandos de verificação (abreviados abaixo):
 - [ ] `bun run test` e `bun run lint` passando.
 - [ ] Conferência local mostrando balconista, gerente e compras, cada um com o seu acesso.
 
-## Tarefa 5: Fila e pedido
-- [ ] `cotacoes_b2b` e `pedir_cotacao(codigos, incluir_similares, forcar)`, com código normalizado. Reaproveita pedido igual que ainda está na fila. Não cria pedido se todos os fornecedores ligados têm preço de hoje, a menos que `forcar` seja verdadeiro.
-- [ ] Quem pede vê o próprio pedido; quem vê custo vê todos.
+## Tarefa 5: Fila e pedido ✅
+- [x] `cotacoes_b2b` e `pedir_cotacao(codigos, incluir_similares, forcar)`, com código normalizado. Reaproveita pedido igual que ainda está na fila. Não cria pedido se todos os fornecedores ligados têm preço de hoje, a menos que `forcar` seja verdadeiro.
+- [x] Quem pede vê o próprio pedido; quem vê custo vê todos.
+- [x] Adiantados da tarefa 7, porque o pedido depende deles: `hoje_brasilia()`, `normalizar_codigo()` e `preco_de_hoje()`.
+- [ ] Pendente: apagar pedidos com mais de 90 dias (entra na tarefa 7).
 - Verificação: teste. No local: pedir duas vezes cria 1 pedido; com preço de hoje, 0; com `forcar`, 1.
 - Depende de: 4. **P**
 

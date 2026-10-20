@@ -164,7 +164,7 @@ begin
   insert into public.estacoes_cotacao (nome, atendida_por, visto_em, sites, versao_extensao)
   values (
     estacao,
-    (select id from public.colaboradores where auth_user_id = auth.uid() limit 1),
+    public.meu_colaborador_id(),
     now(), coalesce(sites, '{}'::jsonb), versao
   )
   on conflict (nome) do update
@@ -176,6 +176,131 @@ end;
 $$;
 revoke all on function public.sinal_da_estacao(text, jsonb, text) from public, anon;
 grant execute on function public.sinal_da_estacao(text, jsonb, text) to authenticated;
+
+-- ------------------------------------------------------------
+-- "HOJE" E O CÓDIGO DA PEÇA, cada um num lugar só
+--
+-- O preço vale o dia todo no calendário de Brasília. Em UTC o dia viraria
+-- às 21h e a cotação da tarde "venceria" antes de a loja fechar.
+-- ------------------------------------------------------------
+
+create or replace function public.hoje_brasilia()
+returns date language sql stable set search_path = public as $$
+  select (now() at time zone 'America/Sao_Paulo')::date;
+$$;
+
+-- O mesmo da extensão (correspondencia.js): maiúsculas, só letras e números
+create or replace function public.normalizar_codigo(codigo text)
+returns text language sql immutable set search_path = public as $$
+  select upper(regexp_replace(coalesce(codigo, ''), '[^A-Za-z0-9]', '', 'g'));
+$$;
+
+-- Cada fornecedor ligado já foi consultado hoje para este código? Não
+-- devolve custo: quem só cota pode perguntar.
+create or replace function public.preco_de_hoje(codigo text)
+returns table (fornecedor text, tem_preco boolean)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not (public.posso_cotar() or public.posso_atender_fila()) then
+    raise exception 'Sem permissão para cotar' using errcode = '42501';
+  end if;
+  return query
+    select f.chave, exists (
+      select 1 from public.historico_precos_b2b h
+       where h.dia = public.hoje_brasilia()
+         and h.fornecedor = f.chave
+         and h.codigo = public.normalizar_codigo(preco_de_hoje.codigo)
+    )
+    from public.fornecedores_b2b f
+   where f.ativo
+   order by f.ordem;
+end;
+$$;
+revoke all on function public.preco_de_hoje(text) from public, anon;
+grant execute on function public.preco_de_hoje(text) to authenticated;
+
+-- ------------------------------------------------------------
+-- FILA DE COTAÇÃO: um pedido por código
+-- ------------------------------------------------------------
+
+create table if not exists public.cotacoes_b2b (
+  id                 uuid primary key default gen_random_uuid(),
+  codigo             text not null check (codigo ~ '^[A-Z0-9]+$'),
+  codigo_digitado    text not null,
+  incluir_similares  boolean not null default false,
+  pedida_por         text references public.colaboradores(id) on delete set null,
+  loja               text,
+  situacao           text not null default 'na_fila' check (situacao in ('na_fila', 'cotando', 'pronta', 'erro')),
+  estacao            text references public.estacoes_cotacao(nome) on delete set null,
+  pegada_por         text references public.colaboradores(id) on delete set null,
+  criada_em          timestamptz not null default now(),
+  pegada_em          timestamptz,
+  pronta_em          timestamptz,
+  erro               text
+);
+alter table public.cotacoes_b2b enable row level security;
+create index if not exists cotacoes_b2b_fila on public.cotacoes_b2b (situacao, criada_em);
+
+-- Quem pediu vê o próprio pedido; quem vê custo e quem atende a fila veem
+-- todos. Ninguém grava direto: só as funções da fila.
+drop policy if exists cotacoes_b2b_leitura on public.cotacoes_b2b;
+create policy cotacoes_b2b_leitura on public.cotacoes_b2b
+  for select to authenticated using (
+    pedida_por = public.meu_colaborador_id() or public.posso_ver_custo() or public.posso_atender_fila()
+  );
+
+-- Pede a cotação de uma lista de códigos. Para cada um: se todo fornecedor
+-- ligado já tem preço de hoje (e não é para forçar), não cria nada; se já
+-- há um pedido igual esperando, reaproveita; senão, entra na fila.
+create or replace function public.pedir_cotacao(codigos text[], incluir_similares boolean default false, forcar boolean default false)
+returns table (codigo text, cotacao_id uuid, ja_tem_preco boolean)
+language plpgsql security definer set search_path = public as $$
+declare
+  digitado text;
+  normal   text;
+  pronto   boolean;
+  id_achado uuid;
+begin
+  if not public.posso_cotar() then
+    raise exception 'Só Balcão, Callcenter e Gerente cotam' using errcode = '42501';
+  end if;
+
+  foreach digitado in array coalesce(codigos, '{}') loop
+    normal := public.normalizar_codigo(digitado);
+    continue when normal = '';
+
+    select bool_and(p.tem_preco) into pronto from public.preco_de_hoje(normal) p;
+    pronto := coalesce(pronto, false);
+
+    if pronto and not forcar then
+      codigo := normal; cotacao_id := null; ja_tem_preco := true;
+      return next;
+      continue;
+    end if;
+
+    select c.id into id_achado
+      from public.cotacoes_b2b c
+     where c.codigo = normal and c.situacao in ('na_fila', 'cotando')
+     order by c.criada_em
+     limit 1;
+
+    if id_achado is null then
+      insert into public.cotacoes_b2b (codigo, codigo_digitado, incluir_similares, pedida_por, loja)
+      values (normal, trim(digitado), pedir_cotacao.incluir_similares, public.meu_colaborador_id(),
+              (select loja from public.colaboradores where id = public.meu_colaborador_id()))
+      returning id into id_achado;
+    elsif pedir_cotacao.incluir_similares then
+      -- Quem chegou depois pediu similares: o pedido que espera passa a trazê-los
+      update public.cotacoes_b2b set incluir_similares = true where id = id_achado and situacao = 'na_fila';
+    end if;
+
+    codigo := normal; cotacao_id := id_achado; ja_tem_preco := pronto;
+    return next;
+  end loop;
+end;
+$$;
+revoke all on function public.pedir_cotacao(text[], boolean, boolean) from public, anon;
+grant execute on function public.pedir_cotacao(text[], boolean, boolean) to authenticated;
 
 notify pgrst, 'reload schema';
 
