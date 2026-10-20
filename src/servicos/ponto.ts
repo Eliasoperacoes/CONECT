@@ -92,7 +92,7 @@ import { pedirAvisoDoComprovante } from './envioDeAviso';
 import { nuvem } from './nuvem';
 import { fecharCompensacao, mesAnterior, CHAVE_COMPENSACAO } from './compensacaoDoSabado';
 import { usandoNuvem } from './supabase';
-import { lerLista } from './cacheDeLeitura';
+import { lerLista, lerIndicePor } from './cacheDeLeitura';
 import type { DiaDoAej } from './arquivoEletronicoDeJornada';
 import type { SugestaoDeIntervalo } from './voltaDoIntervalo';
 /**
@@ -962,8 +962,12 @@ class ServicoPonto {
 
   /** Marcações de um colaborador num dia, na ordem da jornada. */
   obterMarcacoesDoDia(colaboradorId: string, data: string): RegistroPonto[] {
-    return this.lerRegistros()
-      .filter((r) => r.colaboradorId === colaboradorId && r.data === data)
+    // Pelo índice pessoa+dia (20/10/2026): perguntada milhares de vezes por
+    // tela, percorria as 16 mil batidas da rede a cada vez
+    const doDia = lerIndicePor<RegistroPonto>(CHAVE_REGISTROS_PONTO, 'pessoa-dia', (r) => `${r.colaboradorId}|${r.data}`).get(
+      `${colaboradorId}|${data}`
+    );
+    return [...(doDia || [])]
       .sort(
         (a, b) => ORDEM_MARCACOES.indexOf(a.tipo) - ORDEM_MARCACOES.indexOf(b.tipo)
       );

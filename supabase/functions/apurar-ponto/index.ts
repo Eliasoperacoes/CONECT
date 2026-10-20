@@ -614,6 +614,8 @@ var decidirLevantamento = (pessoa, data, agora) => {
 
 // src/servicos/cacheDeLeitura.ts
 var cache = new Map;
+var indices = new Map;
+var vigiados = new WeakSet;
 
 // src/servicos/justificativasCache.ts
 var situacaoNaLista = (ausencias, colaboradorId, data, afastamentos = []) => {
