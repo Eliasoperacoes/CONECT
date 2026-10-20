@@ -302,10 +302,156 @@ $$;
 revoke all on function public.pedir_cotacao(text[], boolean, boolean) from public, anon;
 grant execute on function public.pedir_cotacao(text[], boolean, boolean) to authenticated;
 
+-- A estação pega o pedido mais antigo da fila. Duas abas pegando ao mesmo
+-- tempo nunca levam o mesmo (skip locked). Pedido "cotando" há mais de 5
+-- minutos é de uma estação que caiu no meio: volta para a fila.
+create or replace function public.pegar_proxima_cotacao(estacao text)
+returns setof public.cotacoes_b2b
+language plpgsql security definer set search_path = public as $$
+declare
+  alvo uuid;
+begin
+  if not public.posso_atender_fila() then
+    raise exception 'Só Compras ou TI atendem a fila de cotação' using errcode = '42501';
+  end if;
+
+  update public.cotacoes_b2b
+     set situacao = 'na_fila', pegada_em = null, pegada_por = null, estacao = null
+   where situacao = 'cotando' and pegada_em < now() - interval '5 minutes';
+
+  select c.id into alvo
+    from public.cotacoes_b2b c
+   where c.situacao = 'na_fila'
+   order by c.criada_em
+   limit 1
+   for update skip locked;
+
+  if alvo is null then
+    return;
+  end if;
+
+  return query
+    update public.cotacoes_b2b c
+       set situacao = 'cotando',
+           pegada_em = now(),
+           pegada_por = public.meu_colaborador_id(),
+           estacao = (select e.nome from public.estacoes_cotacao e where e.nome = pegar_proxima_cotacao.estacao)
+     where c.id = alvo
+    returning c.*;
+end;
+$$;
+revoke all on function public.pegar_proxima_cotacao(text) from public, anon;
+grant execute on function public.pegar_proxima_cotacao(text) to authenticated;
+
+-- Grava o que a estação cotou. `resultados` é uma lista, um item por
+-- fornecedor, no formato dos leitores da extensão:
+--   {"fornecedor":"dpk","peca":{"codigo","marca","descricao","grupo"}|null,
+--    "ofertas":[{"local","emSP","preco","quantidade","disponivel","proximidade"}],
+--    "similares":[{"codigo","marca"}],"erro":null}
+-- Numa transação: troca o preço do dia e os similares daquele código e
+-- fornecedor, grava o histórico do dia e fecha o pedido. Peça que o
+-- fornecedor não tem também é gravada (SEM ESTOQUE), para não perguntar de
+-- novo no mesmo dia. Fornecedor que deu erro mantém o preço anterior.
+create or replace function public.gravar_cotacao(cotacao uuid, resultados jsonb)
+returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  pedido   public.cotacoes_b2b%rowtype;
+  item     jsonb;
+  forn     text;
+  falhas   text[] := '{}';
+  gravados int := 0;
+  melhor   record;
+begin
+  if not public.posso_atender_fila() then
+    raise exception 'Só Compras ou TI atendem a fila de cotação' using errcode = '42501';
+  end if;
+
+  select * into pedido from public.cotacoes_b2b where id = cotacao for update;
+  if pedido.id is null then
+    raise exception 'Cotação % não existe', cotacao;
+  end if;
+  if pedido.situacao <> 'cotando' then
+    raise exception 'Cotação % não está sendo cotada (situação: %)', cotacao, pedido.situacao;
+  end if;
+  if jsonb_typeof(resultados) is distinct from 'array' then
+    raise exception 'resultados precisa ser uma lista, um item por fornecedor';
+  end if;
+
+  for item in select * from jsonb_array_elements(resultados) loop
+    forn := item ->> 'fornecedor';
+    if not exists (select 1 from public.fornecedores_b2b where chave = forn) then
+      raise exception 'Fornecedor desconhecido: %', forn;
+    end if;
+
+    if nullif(item ->> 'erro', '') is not null then
+      falhas := falhas || (forn || ': ' || (item ->> 'erro'));
+      continue;
+    end if;
+
+    delete from public.precos_b2b where fornecedor = forn and codigo = pedido.codigo;
+    insert into public.precos_b2b (fornecedor, codigo, local, em_sp, custo, quantidade, disponivel, proximidade,
+                                   marca, descricao, grupo_fornecedor, consultado_em)
+    select forn, pedido.codigo, o ->> 'local', coalesce((o ->> 'emSP')::boolean, false),
+           (o ->> 'preco')::numeric, (o ->> 'quantidade')::integer, coalesce((o ->> 'disponivel')::boolean, false),
+           (o ->> 'proximidade')::smallint,
+           item #>> '{peca,marca}', item #>> '{peca,descricao}', item #>> '{peca,grupo}', now()
+      from jsonb_array_elements(coalesce(item -> 'ofertas', '[]'::jsonb)) o
+     where nullif(o ->> 'local', '') is not null
+    on conflict (fornecedor, codigo, local) do update
+      set em_sp = excluded.em_sp, custo = excluded.custo, quantidade = excluded.quantidade,
+          disponivel = excluded.disponivel, proximidade = excluded.proximidade, marca = excluded.marca,
+          descricao = excluded.descricao, grupo_fornecedor = excluded.grupo_fornecedor, consultado_em = excluded.consultado_em;
+
+    -- Similares só quando vieram (o pedido pode ter sido sem eles)
+    if item ? 'similares' then
+      delete from public.similares_b2b where fornecedor = forn and codigo = pedido.codigo;
+      insert into public.similares_b2b (fornecedor, codigo, codigo_similar, marca_similar, consultado_em)
+      select forn, pedido.codigo, public.normalizar_codigo(s ->> 'codigo'), s ->> 'marca', now()
+        from jsonb_array_elements(coalesce(item -> 'similares', '[]'::jsonb)) s
+       where public.normalizar_codigo(s ->> 'codigo') <> ''
+      on conflict do nothing;
+    end if;
+
+    -- O melhor do dia: o menor preço em SP; sem SP, o menor de fora; sem
+    -- nada disponível, SEM ESTOQUE. (A regra completa, com empate por
+    -- proximidade, é a da extensão: escolha.js. Aqui só o custo importa.)
+    select p.local, p.custo, case when p.em_sp then 'SP' else 'FORA DO ESTADO' end as situacao
+      into melhor
+      from public.precos_b2b p
+     where p.fornecedor = forn and p.codigo = pedido.codigo and p.disponivel and p.custo is not null
+     order by p.em_sp desc, p.custo, p.proximidade nulls last, p.quantidade desc nulls last
+     limit 1;
+
+    insert into public.historico_precos_b2b (dia, fornecedor, codigo, local, custo, situacao)
+    values (public.hoje_brasilia(), forn, pedido.codigo, melhor.local, melhor.custo, coalesce(melhor.situacao, 'SEM ESTOQUE'))
+    on conflict (dia, fornecedor, codigo) do update
+      set local = excluded.local, custo = excluded.custo, situacao = excluded.situacao;
+
+    gravados := gravados + 1;
+  end loop;
+
+  update public.cotacoes_b2b
+     set situacao = case when gravados = 0 then 'erro' else 'pronta' end,
+         pronta_em = now(),
+         erro = nullif(array_to_string(falhas, ' | '), '')
+   where id = cotacao;
+
+  -- A fila não cresce para sempre: pedido com mais de 90 dias sai
+  delete from public.cotacoes_b2b where criada_em < now() - interval '90 days';
+
+  return case when gravados = 0 then 'erro' else 'pronta' end;
+end;
+$$;
+revoke all on function public.gravar_cotacao(uuid, jsonb) from public, anon;
+grant execute on function public.gravar_cotacao(uuid, jsonb) to authenticated;
+
 notify pgrst, 'reload schema';
 
--- Conferência: as três regras criadas e os fornecedores ligados
+-- Conferência: as funções criadas (9) e os fornecedores ligados
 select proname from pg_proc
- where proname in ('posso_cotar', 'posso_ver_custo', 'posso_atender_fila')
+ where pronamespace = 'public'::regnamespace
+   and proname in ('posso_cotar', 'posso_ver_custo', 'posso_atender_fila', 'sinal_da_estacao', 'hoje_brasilia',
+                   'preco_de_hoje', 'pedir_cotacao', 'pegar_proxima_cotacao', 'gravar_cotacao')
  order by proname;
 select chave, nome, ativo from public.fornecedores_b2b order by ordem;

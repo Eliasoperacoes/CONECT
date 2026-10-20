@@ -38,19 +38,20 @@ Comandos de verificação (abreviados abaixo):
 - [x] `cotacoes_b2b` e `pedir_cotacao(codigos, incluir_similares, forcar)`, com código normalizado. Reaproveita pedido igual que ainda está na fila. Não cria pedido se todos os fornecedores ligados têm preço de hoje, a menos que `forcar` seja verdadeiro.
 - [x] Quem pede vê o próprio pedido; quem vê custo vê todos.
 - [x] Adiantados da tarefa 7, porque o pedido depende deles: `hoje_brasilia()`, `normalizar_codigo()` e `preco_de_hoje()`.
-- [ ] Pendente: apagar pedidos com mais de 90 dias (entra na tarefa 7).
+- [x] Apagar pedidos com mais de 90 dias: feito na tarefa 7 (`gravar_cotacao`).
 - Verificação: teste. No local: pedir duas vezes cria 1 pedido; com preço de hoje, 0; com `forcar`, 1.
 - Depende de: 4. **P**
 
-## Tarefa 6: Pegar o próximo pedido
-- [ ] `pegar_proxima_cotacao`: o mais antigo `na_fila` vira `cotando`, com `for update skip locked`. Pedido `cotando` há mais de 5 minutos volta para a fila.
-- [ ] Só quem atende a fila chama.
+## Tarefa 6: Pegar o próximo pedido ✅
+- [x] `pegar_proxima_cotacao`: o mais antigo `na_fila` vira `cotando`, com `for update skip locked`. Pedido `cotando` há mais de 5 minutos volta para a fila.
+- [x] Só quem atende a fila chama.
+- [ ] Concorrência de verdade (duas sessões) no Supabase do Docker: o PGlite tem uma conexão só. Fica para o checkpoint B.
 - Verificação: teste (morde sem o `skip locked`). No local: duas sessões ao mesmo tempo pegam pedidos diferentes, e o balconista recebe erro de permissão.
 - Depende de: 5. **P**
 
-## Tarefa 7: Gravar e "preço de hoje"
-- [ ] `gravar_cotacao(id, resultado)` no formato da especificação. Numa transação: troca preços e similares, grava o histórico do dia (o melhor preço) e marca o pedido `pronta` ou `erro`. Peça que o fornecedor não tem também é gravada.
-- [ ] `preco_de_hoje(codigo)` em `America/Sao_Paulo`, por uma função única de "hoje".
+## Tarefa 7: Gravar e "preço de hoje" ✅
+- [x] `gravar_cotacao(id, resultados)`: uma lista, um item por fornecedor, no formato dos leitores. Numa transação: troca preços e similares, grava o histórico do dia (o melhor preço) e marca o pedido `pronta` ou `erro`. Peça que o fornecedor não tem também é gravada. Fornecedor com erro mantém o preço anterior.
+- [x] `preco_de_hoje(codigo)` em `America/Sao_Paulo`, por uma função única de "hoje" (feito na tarefa 5).
 - Verificação: teste. No local, gravar o JSON da OC90 (DPK, RIB PRETO, R$ 9,65): o gerente vê o preço, o pedido fica pronto e `preco_de_hoje` diz sim.
 - Depende de: 6. **M**
 

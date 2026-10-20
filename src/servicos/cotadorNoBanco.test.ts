@@ -299,3 +299,143 @@ test('"hoje" é o dia de Brasília, numa função só', () => {
   // Nenhum outro "hoje" solto: current_date e now()::date viram o dia em UTC
   expect(sql).not.toMatch(/current_date|now\(\)::date/);
 });
+
+// ------------------------------------------------------------
+// Fila: a estação pega o próximo
+// ------------------------------------------------------------
+
+type Pegado = { id: string; codigo: string; situacao: string; estacao: string | null; pegada_por: string | null };
+
+const pegar = (uid: string) => como<Pegado>(uid, "select * from public.pegar_proxima_cotacao('compras-matriz')");
+
+test('pegar: o mais antigo primeiro, um de cada vez, e marca quem pegou', async () => {
+  await banco.db.exec('delete from public.cotacoes_b2b');
+  await pedir(uidDe('Balcão', 1), ['PRIMEIRO1']);
+  await pedir(uidDe('Balcão', 1), ['SEGUNDO2']);
+
+  const [a] = (await pegar(uidDe('Compras', 1))) as Pegado[];
+  const [b] = (await pegar(uidDe('Compras', 2))) as Pegado[];
+  expect([a.codigo, b.codigo]).toEqual(['PRIMEIRO1', 'SEGUNDO2']);
+  expect(a).toMatchObject({ situacao: 'cotando', estacao: 'compras-matriz', pegada_por: `c-${uidDe('Compras', 1)}` });
+  // Fila vazia: não devolve nada
+  expect(await pegar(uidDe('Compras', 1))).toEqual([]);
+});
+
+test('pegar: pedido parado em "cotando" há mais de 5 minutos volta para a fila', async () => {
+  await banco.db.exec("update public.cotacoes_b2b set pegada_em = now() - interval '6 minutes' where codigo = 'PRIMEIRO1'");
+  await banco.db.exec("update public.cotacoes_b2b set pegada_em = now() - interval '4 minutes' where codigo = 'SEGUNDO2'");
+  const r = (await pegar(uidDe('TI', 5))) as Pegado[];
+  expect(r.map((x) => x.codigo)).toEqual(['PRIMEIRO1']);
+  expect(await pegar(uidDe('TI', 5))).toEqual([]);
+});
+
+test('pegar: só quem atende a fila', async () => {
+  await pedir(uidDe('Balcão', 1), ['TERCEIRO3']);
+  for (const uid of [uidDe('Balcão', 1), uidDe('Gerência', 4), uidDe('Callcenter', 1)]) {
+    expect(await pegar(uid)).toContain('Compras ou TI');
+  }
+});
+
+test('pegar: duas estações ao mesmo tempo nunca levam o mesmo pedido (skip locked)', () => {
+  const sql = lerSql('cotador-banco.sql').replace(/--.*$/gm, '');
+  const funcao = sql.slice(sql.indexOf('function public.pegar_proxima_cotacao'));
+  expect(funcao.slice(0, funcao.indexOf('$$;'))).toMatch(/for update skip locked/);
+});
+
+// ------------------------------------------------------------
+// Gravar o que a estação cotou
+// ------------------------------------------------------------
+
+const RESULTADO_OC90 = [
+  {
+    fornecedor: 'dpk',
+    peca: { codigo: 'OC90', marca: 'MAHLE METAL LEVE', descricao: 'FILTRO OLEO', grupo: 'FILTRO' },
+    ofertas: [
+      { local: 'RIB PRETO', emSP: true, preco: 9.65, quantidade: 228, disponivel: true, proximidade: 1 },
+      { local: 'P PRUDENTE', emSP: true, preco: 9.65, quantidade: 279, disponivel: true, proximidade: 4 },
+      { local: 'LIMOEIRO', emSP: false, preco: 7.6, quantidade: 1, disponivel: true, proximidade: 9 },
+      { local: 'HUB CPS', emSP: true, preco: null, quantidade: 0, disponivel: false, proximidade: 2 },
+    ],
+    similares: [{ codigo: 'w-712/2', marca: 'MANN' }],
+    erro: null,
+  },
+  { fornecedor: 'roles', peca: null, ofertas: [], similares: [], erro: null },
+  { fornecedor: 'pellegrino', peca: null, ofertas: [], erro: 'sessão vencida' },
+];
+
+/** Pede, pega e grava como a estação; devolve o id do pedido e a resposta. */
+const cotarDeVerdade = async (codigo: string, resultados: unknown) => {
+  await banco.db.exec('delete from public.cotacoes_b2b');
+  const [p] = (await pedir(uidDe('Balcão', 1), [codigo], false, true)) as Pedido[];
+  await pegar(uidDe('Compras', 1));
+  const r = await como<{ g: string }>(
+    uidDe('Compras', 1),
+    `select public.gravar_cotacao('${p.cotacao_id}', '${JSON.stringify(resultados)}'::jsonb) as g`
+  );
+  return { id: p.cotacao_id!, resposta: r };
+};
+
+test('gravar: o gerente vê o preço, o histórico fica com o menor de SP e o pedido fica pronto', async () => {
+  await banco.db.exec("delete from public.precos_b2b where codigo = 'OC90'; delete from public.historico_precos_b2b where codigo = 'OC90'");
+  const { id, resposta } = await cotarDeVerdade('OC90', RESULTADO_OC90);
+  expect(resposta).toEqual([{ g: 'pronta' }]);
+
+  expect(await como(uidDe('Gerência', 3), "select local, custo::float as custo from public.precos_b2b where codigo = 'OC90' order by local")).toEqual([
+    { local: 'HUB CPS', custo: null },
+    { local: 'LIMOEIRO', custo: 7.6 },
+    { local: 'P PRUDENTE', custo: 9.65 },
+    { local: 'RIB PRETO', custo: 9.65 },
+  ]);
+  // LIMOEIRO é mais barato, mas fora de SP: o melhor do dia é o de SP mais perto
+  expect(
+    await como(uidDe('Gerência', 3), "select fornecedor, local, custo::float as custo, situacao from public.historico_precos_b2b where codigo = 'OC90' order by fornecedor")
+  ).toEqual([
+    { fornecedor: 'dpk', local: 'RIB PRETO', custo: 9.65, situacao: 'SP' },
+    { fornecedor: 'roles', local: null, custo: null, situacao: 'SEM ESTOQUE' },
+  ]);
+  expect(await como(uidDe('Gerência', 3), "select codigo_similar, marca_similar from public.similares_b2b where codigo = 'OC90'")).toEqual([
+    { codigo_similar: 'W7122', marca_similar: 'MANN' },
+  ]);
+  // Pellegrino deu erro: o pedido fica pronto, com o aviso guardado
+  expect(await como(uidDe('Balcão', 1), `select situacao, erro from public.cotacoes_b2b where id = '${id}'`)).toEqual([
+    { situacao: 'pronta', erro: 'pellegrino: sessão vencida' },
+  ]);
+  // E "já tem preço de hoje?" responde por fornecedor
+  expect(await como(uidDe('Balcão', 1), "select * from public.preco_de_hoje('OC90')")).toEqual([
+    { fornecedor: 'roles', tem_preco: true },
+    { fornecedor: 'pellegrino', tem_preco: false },
+    { fornecedor: 'dpk', tem_preco: true },
+  ]);
+  // O Balcão, mesmo depois de gravado, continua sem ver custo
+  expect(await como(uidDe('Balcão', 1), "select * from public.precos_b2b where codigo = 'OC90'")).toEqual([]);
+});
+
+test('gravar: cotar de novo troca o preço do dia, não acumula', async () => {
+  const novo = [{ ...RESULTADO_OC90[0], ofertas: [{ local: 'BH', emSP: false, preco: 8.95, quantidade: 12, disponivel: true, proximidade: 8 }] }];
+  await cotarDeVerdade('OC90', novo);
+  expect(await como(uidDe('Gerência', 3), "select local from public.precos_b2b where codigo = 'OC90' and fornecedor = 'dpk'")).toEqual([
+    { local: 'BH' },
+  ]);
+  expect(
+    await como(uidDe('Gerência', 3), "select situacao, custo::float as custo from public.historico_precos_b2b where codigo = 'OC90' and fornecedor = 'dpk'")
+  ).toEqual([{ situacao: 'FORA DO ESTADO', custo: 8.95 }]);
+});
+
+test('gravar: todos os fornecedores com erro = pedido em erro, e o preço anterior fica', async () => {
+  const { id, resposta } = await cotarDeVerdade('OC90', [{ fornecedor: 'dpk', peca: null, ofertas: [], erro: 'fora do ar' }]);
+  expect(resposta).toEqual([{ g: 'erro' }]);
+  expect(await como(uidDe('Gerência', 3), `select situacao from public.cotacoes_b2b where id = '${id}'`)).toEqual([{ situacao: 'erro' }]);
+  expect(await como(uidDe('Gerência', 3), "select local from public.precos_b2b where codigo = 'OC90' and fornecedor = 'dpk'")).toEqual([
+    { local: 'BH' },
+  ]);
+});
+
+test('gravar: só quem atende a fila, e só pedido que está sendo cotado', async () => {
+  await banco.db.exec('delete from public.cotacoes_b2b');
+  const [p] = (await pedir(uidDe('Balcão', 1), ['ZZ1'], false, true)) as Pedido[];
+  const gravar = (uid: string) => como(uid, `select public.gravar_cotacao('${p.cotacao_id}', '[]'::jsonb)`);
+  expect(await gravar(uidDe('Compras', 1))).toContain('não está sendo cotada');
+  await pegar(uidDe('Compras', 1));
+  expect(await gravar(uidDe('Gerência', 3))).toContain('Compras ou TI');
+  expect(await gravar(uidDe('Balcão', 1))).toContain('Compras ou TI');
+});
