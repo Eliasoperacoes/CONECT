@@ -77,7 +77,6 @@ import { pedirComprovante } from './servicos/comprovantePedido';
 import { ModalNovaConversa } from './componentes/ModalNovaConversa';
 import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
-import { AvisoEstacaoCotacao } from './componentes/AvisoEstacaoCotacao';
 import { vigiarVersao } from './servicos/versao';
 import { IndicadorNuvem } from './componentes/IndicadorNuvem';
 import { TelaLogin } from './componentes/TelaLogin';
@@ -1698,7 +1697,6 @@ export default function App() {
   return (
     <div className="w-full h-[100dvh] flex flex-col bg-[var(--c-canvas)] text-[var(--c-texto)] overflow-hidden">
       <IndicadorOffline />
-      <AvisoEstacaoCotacao colaborador={autenticado ? colaboradorAtual : null} />
 
       {/*
         VERSÃO NOVA NO AR.
