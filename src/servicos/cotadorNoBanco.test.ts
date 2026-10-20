@@ -23,13 +23,14 @@ const PESSOAS = SETORES.flatMap((setor, s) =>
 
 beforeAll(async () => {
   banco = await montarBancoLocal();
-  await banco.db.exec(lerSql('cotador-banco.sql'));
-  // Como no Supabase (privilégio padrão): toda tabela nova alcança o logado,
-  // e quem decide é a regra (RLS)
+  // Como no Supabase (privilégio padrão, que vale ANTES do delta): toda
+  // tabela e função nova alcança o logado, e quem decide é a regra (RLS) ou
+  // o `revoke` do próprio delta
   await banco.db.exec(`
-    grant all on all tables in schema public to authenticated;
-    grant execute on all functions in schema public to authenticated;
+    alter default privileges in schema public grant all on tables to authenticated;
+    alter default privileges in schema public grant execute on functions to authenticated;
   `);
+  await banco.db.exec(lerSql('cotador-banco.sql'));
   await banco.db.exec(`
     alter table auth.users disable trigger all;
     insert into auth.users (id) values ${PESSOAS.map((p) => `('${p.uid}')`).join(', ')};
@@ -438,4 +439,50 @@ test('gravar: só quem atende a fila, e só pedido que está sendo cotado', asyn
   await pegar(uidDe('Compras', 1));
   expect(await gravar(uidDe('Gerência', 3))).toContain('Compras ou TI');
   expect(await gravar(uidDe('Balcão', 1))).toContain('Compras ou TI');
+});
+
+// ------------------------------------------------------------
+// Similares com preço (SPEC-estacao, aprovado 20/10)
+// ------------------------------------------------------------
+
+test('similar que vem com ofertas ganha preço com o próprio código', async () => {
+  await banco.db.exec("delete from public.precos_b2b where codigo in ('KL1', 'W7122'); delete from public.historico_precos_b2b where codigo in ('KL1', 'W7122')");
+  const resultados = [
+    {
+      fornecedor: 'roles',
+      peca: { codigo: 'KL1', marca: 'X', descricao: 'FILTRO', grupo: null },
+      ofertas: [{ local: 'GOIANIA', emSP: false, preco: 30, quantidade: 2, disponivel: true, proximidade: 9 }],
+      similares: [
+        {
+          codigo: 'W-712/2', marca: 'MANN', descricao: 'FILTRO OLEO',
+          ofertas: [{ local: 'RIB PRETO', emSP: true, preco: 21.5, quantidade: 7, disponivel: true, proximidade: 1 }],
+        },
+        { codigo: 'PSL55', marca: 'TECFIL' }, // sem ofertas: só o vínculo
+        { codigo: 'kl-1', marca: 'X' }, // a própria peça não é similar dela mesma
+      ],
+      erro: null,
+    },
+  ];
+  await cotarDeVerdade('KL1', resultados);
+
+  const gil = uidDe('Gerência', 3);
+  expect(await como(gil, "select codigo_similar from public.similares_b2b where fornecedor = 'roles' and codigo = 'KL1' order by 1")).toEqual([
+    { codigo_similar: 'PSL55' },
+    { codigo_similar: 'W7122' },
+  ]);
+  expect(await como(gil, "select local, custo::float as custo, marca from public.precos_b2b where fornecedor = 'roles' and codigo = 'W7122'")).toEqual([
+    { local: 'RIB PRETO', custo: 21.5, marca: 'MANN' },
+  ]);
+  expect(await como(gil, "select situacao from public.historico_precos_b2b where fornecedor = 'roles' and codigo = 'W7122'")).toEqual([
+    { situacao: 'SP' },
+  ]);
+  // O similar sem ofertas não inventa preço nem "SEM ESTOQUE"
+  expect(await como(gil, "select * from public.historico_precos_b2b where codigo = 'PSL55'")).toEqual([]);
+});
+
+test('a função interna de gravar ofertas não é chamável por quem está logado', async () => {
+  const r = await banco.db.query<{ pode: boolean }>(
+    "select has_function_privilege('authenticated', 'public.gravar_ofertas(text, text, jsonb, jsonb)', 'execute') as pode"
+  );
+  expect(r.rows[0].pode).toBe(false);
 });

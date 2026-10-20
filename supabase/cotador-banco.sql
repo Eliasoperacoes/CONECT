@@ -343,11 +343,55 @@ $$;
 revoke all on function public.pegar_proxima_cotacao(text) from public, anon;
 grant execute on function public.pegar_proxima_cotacao(text) to authenticated;
 
+-- Troca o preço do dia de UM código num fornecedor e grava o melhor do dia
+-- no histórico. Serve à peça pedida e a cada similar, para a regra de
+-- gravar não existir duas vezes. Interna: só gravar_cotacao chama (roda
+-- como quem chama, e quem está logado não grava nestas tabelas).
+create or replace function public.gravar_ofertas(forn text, cod text, peca jsonb, ofertas jsonb)
+returns void
+language plpgsql set search_path = public as $$
+declare
+  melhor record;
+begin
+  delete from public.precos_b2b where fornecedor = forn and codigo = cod;
+  insert into public.precos_b2b (fornecedor, codigo, local, em_sp, custo, quantidade, disponivel, proximidade,
+                                 marca, descricao, grupo_fornecedor, consultado_em)
+  select forn, cod, o ->> 'local', coalesce((o ->> 'emSP')::boolean, false),
+         (o ->> 'preco')::numeric, (o ->> 'quantidade')::integer, coalesce((o ->> 'disponivel')::boolean, false),
+         (o ->> 'proximidade')::smallint,
+         peca ->> 'marca', peca ->> 'descricao', peca ->> 'grupo', now()
+    from jsonb_array_elements(coalesce(ofertas, '[]'::jsonb)) o
+   where nullif(o ->> 'local', '') is not null
+  on conflict (fornecedor, codigo, local) do update
+    set em_sp = excluded.em_sp, custo = excluded.custo, quantidade = excluded.quantidade,
+        disponivel = excluded.disponivel, proximidade = excluded.proximidade, marca = excluded.marca,
+        descricao = excluded.descricao, grupo_fornecedor = excluded.grupo_fornecedor, consultado_em = excluded.consultado_em;
+
+  -- O melhor do dia: o menor preço em SP; sem SP, o menor de fora; sem
+  -- nada disponível, SEM ESTOQUE. (A regra completa, com empate por
+  -- proximidade, é a da extensão: escolha.js. Aqui só o custo importa.)
+  select p.local, p.custo, case when p.em_sp then 'SP' else 'FORA DO ESTADO' end as situacao
+    into melhor
+    from public.precos_b2b p
+   where p.fornecedor = forn and p.codigo = cod and p.disponivel and p.custo is not null
+   order by p.em_sp desc, p.custo, p.proximidade nulls last, p.quantidade desc nulls last
+   limit 1;
+
+  insert into public.historico_precos_b2b (dia, fornecedor, codigo, local, custo, situacao)
+  values (public.hoje_brasilia(), forn, cod, melhor.local, melhor.custo, coalesce(melhor.situacao, 'SEM ESTOQUE'))
+  on conflict (dia, fornecedor, codigo) do update
+    set local = excluded.local, custo = excluded.custo, situacao = excluded.situacao;
+end;
+$$;
+revoke all on function public.gravar_ofertas(text, text, jsonb, jsonb) from public, anon, authenticated;
+
 -- Grava o que a estação cotou. `resultados` é uma lista, um item por
 -- fornecedor, no formato dos leitores da extensão:
 --   {"fornecedor":"dpk","peca":{"codigo","marca","descricao","grupo"}|null,
 --    "ofertas":[{"local","emSP","preco","quantidade","disponivel","proximidade"}],
---    "similares":[{"codigo","marca"}],"erro":null}
+--    "similares":[{"codigo","marca","descricao","ofertas":[...]}],"erro":null}
+-- O similar que vem com `ofertas` ganha preço com o próprio código, para o
+-- balconista ver quanto custa quando a peça não tem em SP.
 -- Numa transação: troca o preço do dia e os similares daquele código e
 -- fornecedor, grava o histórico do dia e fecha o pedido. Peça que o
 -- fornecedor não tem também é gravada (SEM ESTOQUE), para não perguntar de
@@ -361,7 +405,8 @@ declare
   forn     text;
   falhas   text[] := '{}';
   gravados int := 0;
-  melhor   record;
+  sim      jsonb;
+  cod_sim  text;
 begin
   if not public.posso_atender_fila() then
     raise exception 'Só Compras ou TI atendem a fila de cotação' using errcode = '42501';
@@ -389,44 +434,22 @@ begin
       continue;
     end if;
 
-    delete from public.precos_b2b where fornecedor = forn and codigo = pedido.codigo;
-    insert into public.precos_b2b (fornecedor, codigo, local, em_sp, custo, quantidade, disponivel, proximidade,
-                                   marca, descricao, grupo_fornecedor, consultado_em)
-    select forn, pedido.codigo, o ->> 'local', coalesce((o ->> 'emSP')::boolean, false),
-           (o ->> 'preco')::numeric, (o ->> 'quantidade')::integer, coalesce((o ->> 'disponivel')::boolean, false),
-           (o ->> 'proximidade')::smallint,
-           item #>> '{peca,marca}', item #>> '{peca,descricao}', item #>> '{peca,grupo}', now()
-      from jsonb_array_elements(coalesce(item -> 'ofertas', '[]'::jsonb)) o
-     where nullif(o ->> 'local', '') is not null
-    on conflict (fornecedor, codigo, local) do update
-      set em_sp = excluded.em_sp, custo = excluded.custo, quantidade = excluded.quantidade,
-          disponivel = excluded.disponivel, proximidade = excluded.proximidade, marca = excluded.marca,
-          descricao = excluded.descricao, grupo_fornecedor = excluded.grupo_fornecedor, consultado_em = excluded.consultado_em;
+    perform public.gravar_ofertas(forn, pedido.codigo, item -> 'peca', item -> 'ofertas');
 
     -- Similares só quando vieram (o pedido pode ter sido sem eles)
     if item ? 'similares' then
       delete from public.similares_b2b where fornecedor = forn and codigo = pedido.codigo;
-      insert into public.similares_b2b (fornecedor, codigo, codigo_similar, marca_similar, consultado_em)
-      select forn, pedido.codigo, public.normalizar_codigo(s ->> 'codigo'), s ->> 'marca', now()
-        from jsonb_array_elements(coalesce(item -> 'similares', '[]'::jsonb)) s
-       where public.normalizar_codigo(s ->> 'codigo') <> ''
-      on conflict do nothing;
+      for sim in select * from jsonb_array_elements(coalesce(item -> 'similares', '[]'::jsonb)) loop
+        cod_sim := public.normalizar_codigo(sim ->> 'codigo');
+        continue when cod_sim = '' or cod_sim = pedido.codigo;
+        insert into public.similares_b2b (fornecedor, codigo, codigo_similar, marca_similar, consultado_em)
+        values (forn, pedido.codigo, cod_sim, sim ->> 'marca', now())
+        on conflict do nothing;
+        if sim ? 'ofertas' then
+          perform public.gravar_ofertas(forn, cod_sim, sim, sim -> 'ofertas');
+        end if;
+      end loop;
     end if;
-
-    -- O melhor do dia: o menor preço em SP; sem SP, o menor de fora; sem
-    -- nada disponível, SEM ESTOQUE. (A regra completa, com empate por
-    -- proximidade, é a da extensão: escolha.js. Aqui só o custo importa.)
-    select p.local, p.custo, case when p.em_sp then 'SP' else 'FORA DO ESTADO' end as situacao
-      into melhor
-      from public.precos_b2b p
-     where p.fornecedor = forn and p.codigo = pedido.codigo and p.disponivel and p.custo is not null
-     order by p.em_sp desc, p.custo, p.proximidade nulls last, p.quantidade desc nulls last
-     limit 1;
-
-    insert into public.historico_precos_b2b (dia, fornecedor, codigo, local, custo, situacao)
-    values (public.hoje_brasilia(), forn, pedido.codigo, melhor.local, melhor.custo, coalesce(melhor.situacao, 'SEM ESTOQUE'))
-    on conflict (dia, fornecedor, codigo) do update
-      set local = excluded.local, custo = excluded.custo, situacao = excluded.situacao;
 
     gravados := gravados + 1;
   end loop;
