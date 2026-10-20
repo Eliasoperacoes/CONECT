@@ -76,7 +76,7 @@ test('Compras com a extensão: liga, dá sinal com os sites e atende o pedido', 
   estacao = criarEstacao({ colaborador: COMPRAS, extensao, banco, temporizador: nunca });
   expect(await estacao.iniciar()).toBe(true);
   expect(chamadas[0]).toBe(`sinal ${NOME_DA_ESTACAO} ${JSON.stringify(SITES)} 0.3.0`);
-  expect(estacao.situacao()).toEqual({ ativa: true, sites: SITES });
+  expect(estacao.situacao()).toEqual({ ativa: true, sites: SITES, precisaRecarregar: false });
 
   expect(await estacao.atenderFila()).toBe('pronta');
   expect(extensao.pedidos).toEqual(['OC90 true']);
@@ -123,4 +123,23 @@ test('extensão muda por 90 s: grava erro em todos os fornecedores (o pedido nã
       })),
     },
   ]);
+});
+
+test('extensão recarregada: a estação para e pede F5, sem gastar o pedido como erro (20/10)', async () => {
+  const { banco, chamadas, gravados } = bancoFalso([
+    { id: 'p1', codigo: 'OC90', incluir_similares: true },
+    { id: 'p2', codigo: 'HG5170', incluir_similares: false },
+  ]);
+  const extensao = extensaoFalsa(async () => {
+    throw new Error('Extension context invalidated.');
+  });
+  estacao = criarEstacao({ colaborador: COMPRAS, extensao, banco, temporizador: nunca });
+  await estacao.iniciar();
+
+  expect(await estacao.atenderFila()).toBe('extensao-falhou');
+  expect(gravados).toEqual([]); // p1 fica "cotando" e volta sozinho para a fila em 5 min
+  expect(estacao.situacao()).toMatchObject({ ativa: false, precisaRecarregar: true });
+  // Parada, não pega o próximo
+  expect(await estacao.atenderFila()).toBe('vazia');
+  expect(chamadas.filter((c) => c.startsWith('pegar'))).toHaveLength(1);
 });

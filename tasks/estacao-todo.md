@@ -34,8 +34,17 @@ As tarefas do `banco-cotacao` continuam em [todo.md](todo.md); falta só levar �
 - Verificação: teste com banco falso e extensão falsa (morde). Mais `bun run test` e `bun run lint`.
 - Arquivos: `src/servicos/estacaoCotacao.ts` e o teste. **P**
 
-## E5: Ligar e provar ponta a ponta
-- [ ] Ligar no `App.tsx`, com um aviso discreto para quem atende a fila ("Estação de cotação ativa · 3 sites ok").
-- [ ] Os critérios de pronto da especificação no local: Docker, `bun run dev`, a extensão recarregada e as abas dos B2Bs logadas.
+## Depois (pedido do Elias, 20/10)
+- [ ] Avisar qual site específico está fora do ar ou deslogado, conferindo a sessão de cada B2B junto com o sinal de cada minuto, e não só quando uma cotação falha.
+- [ ] Uma aba própria da estação no CONECTA, com tudo num lugar: sites, fila, últimos pedidos e erros.
+- [ ] Ao recarregar a extensão, avisar que as abas dos B2Bs também precisam de F5.
+
+## E5: Ligar e provar ponta a ponta ✅ (no local, 20/10)
+- [x] Ligar no `App.tsx`, com um aviso discreto para quem atende a fila ("Estação de cotação ativa · 3 sites ok").
+- [x] Os critérios de pronto da especificação no local: a Bia pediu a OC90 e o pedido ficou pronto em 15 s com os 3 B2Bs, sem erro (DPK R$ 8,69, Roles R$ 9,06, Pellegrino R$ 10,25).
+- [x] Achados na prova e corrigidos:
+  - preço zero da DPK contava como disponível (WEGA WO130);
+  - extensão recarregada fazia a estação gastar o pedido como erro: agora ela para e pede F5.
+- **Não enviar ao main** (Elias, 20/10): tudo 100% local até subir a estrutura completa junto com o banco da produção.
 - Depende de: E1–E4. **Checkpoint com o Elias**: ele vê a OC90 ficar pronta sozinha.
 - Arquivos: `src/App.tsx` e um componente pequeno do aviso. **P**

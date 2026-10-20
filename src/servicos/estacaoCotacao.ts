@@ -54,9 +54,9 @@ export const PRAZO_OLA_MS = 2_000;
 
 const esperar = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-/** A promessa, ou erro se passar do prazo. */
+/** A promessa, ou erro (marcado `prazo`) se passar do prazo. */
 const comPrazo = <T>(p: Promise<T>, prazo: Promise<void>, mensagem: string): Promise<T> =>
-  Promise.race([p, prazo.then(() => Promise.reject(new Error(mensagem)))]);
+  Promise.race([p, prazo.then(() => Promise.reject(Object.assign(new Error(mensagem), { prazo: true })))]);
 
 export interface Estacao {
   /** Liga se puder; devolve se ligou. */
@@ -65,7 +65,14 @@ export interface Estacao {
   /** Uma volta da fila (o temporizador chama; o teste também). */
   atenderFila(): Promise<'vazia' | 'ocupada' | string>;
   darSinal(): Promise<void>;
-  situacao(): { ativa: boolean; sites: Record<string, SituacaoSite> };
+  situacao(): SituacaoDaEstacao;
+}
+
+export interface SituacaoDaEstacao {
+  ativa: boolean;
+  sites: Record<string, SituacaoSite>;
+  /** A extensão foi recarregada (ou caiu): a página precisa de F5. */
+  precisaRecarregar: boolean;
 }
 
 export const criarEstacao = (opcoes: {
@@ -81,7 +88,15 @@ export const criarEstacao = (opcoes: {
   let ativa = false;
   let cotando = false;
   let ola: Ola | null = null;
+  let precisaRecarregar = false;
   let relogios: ReturnType<typeof setInterval>[] = [];
+
+  const parar = () => {
+    relogios.forEach(clearInterval);
+    relogios = [];
+    ativa = false;
+    aoMudar?.();
+  };
 
   const darSinal = async () => {
     if (!ativa) return;
@@ -105,7 +120,15 @@ export const criarEstacao = (opcoes: {
           'a extensão não respondeu em 90 s'
         ));
       } catch (e) {
-        // Sem resposta: erro em todos, e o balconista fica sabendo logo
+        if (!(e as { prazo?: boolean }).prazo) {
+          // A PRÓPRIA EXTENSÃO falhou (recarregada, desligada): o defeito é
+          // deste PC, não dos sites. A estação para e pede F5; o pedido não
+          // vira erro e volta sozinho para a fila em 5 min (20/10/2026).
+          precisaRecarregar = true;
+          parar();
+          return 'extensao-falhou';
+        }
+        // Extensão muda por 90 s: erro em todos, e o balconista fica sabendo logo
         const fornecedores = Object.keys(ola?.sites ?? {});
         resultados = fornecedores.map((fornecedor) => ({ fornecedor, peca: null, ofertas: [], erro: (e as Error).message }));
       }
@@ -133,15 +156,10 @@ export const criarEstacao = (opcoes: {
       aoMudar?.();
       return true;
     },
-    parar() {
-      relogios.forEach(clearInterval);
-      relogios = [];
-      ativa = false;
-      aoMudar?.();
-    },
+    parar,
     atenderFila,
     darSinal,
-    situacao: () => ({ ativa, sites: ola?.sites ?? {} }),
+    situacao: () => ({ ativa, sites: ola?.sites ?? {}, precisaRecarregar }),
   };
 };
 

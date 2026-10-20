@@ -370,10 +370,11 @@ begin
   -- O melhor do dia: o menor preço em SP; sem SP, o menor de fora; sem
   -- nada disponível, SEM ESTOQUE. (A regra completa, com empate por
   -- proximidade, é a da extensão: escolha.js. Aqui só o custo importa.)
+  -- Preço zero é peça sem preço (WEGA WO130 na DPK, 20/10): não vale.
   select p.local, p.custo, case when p.em_sp then 'SP' else 'FORA DO ESTADO' end as situacao
     into melhor
     from public.precos_b2b p
-   where p.fornecedor = forn and p.codigo = cod and p.disponivel and p.custo is not null
+   where p.fornecedor = forn and p.codigo = cod and p.disponivel and p.custo > 0
    order by p.em_sp desc, p.custo, p.proximidade nulls last, p.quantidade desc nulls last
    limit 1;
 

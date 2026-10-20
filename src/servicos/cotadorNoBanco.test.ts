@@ -486,3 +486,16 @@ test('a função interna de gravar ofertas não é chamável por quem está loga
   );
   expect(r.rows[0].pode).toBe(false);
 });
+
+test('preço zero não é o melhor do dia, mesmo marcado como disponível (WEGA WO130, 20/10)', async () => {
+  const comZero = (ofertas: unknown[]) => [{ fornecedor: 'dpk', peca: { codigo: 'WO130', marca: 'WEGA' }, ofertas, erro: null }];
+  const zeroEmSP = { local: 'HUB CPS', emSP: true, preco: 0, quantidade: 50, disponivel: true, proximidade: 2 };
+
+  await cotarDeVerdade('WO130', comZero([zeroEmSP, { local: 'BH', emSP: false, preco: 12.4, quantidade: 3, disponivel: true, proximidade: 8 }]));
+  const historico = () =>
+    como(uidDe('Gerência', 3), "select local, custo::float as custo, situacao from public.historico_precos_b2b where codigo = 'WO130'");
+  expect(await historico()).toEqual([{ local: 'BH', custo: 12.4, situacao: 'FORA DO ESTADO' }]);
+
+  await cotarDeVerdade('WO130', comZero([zeroEmSP]));
+  expect(await historico()).toEqual([{ local: null, custo: null, situacao: 'SEM ESTOQUE' }]);
+});
