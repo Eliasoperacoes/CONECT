@@ -94,30 +94,39 @@ export const ModalCadastroColaborador: React.FC<PropsModalCadastroColaborador> =
     };
   }, [colaborador?.id]);
 
-  // Recarrega o formulário sempre que outro colaborador é aberto
+  /**
+   * A FICHA COMO ESTÁ GRAVADA, e não como estava quando a tela abriu.
+   *
+   * Quem chama passa a pessoa que tinha na mão — a busca guarda a de quando
+   * foi clicada. O Elias digitou o horário próprio, salvou, reabriu pela
+   * busca e viu o turno A de volta (19/10/2026): a ficha reabria a cópia
+   * velha, e salvar de novo gravaria o A por cima. Aqui ela é relida do
+   * cadastro a cada abertura, venha de onde vier.
+   */
   useEffect(() => {
     if (!colaborador) return;
+    const gravado = bancoDados.obterColaboradorPorId(colaborador.id) || colaborador;
     setErro(null);
     setForm({
-      nome: colaborador.nome,
-      cargo: colaborador.cargo,
-      setor: colaborador.setor,
-      loja: colaborador.loja,
-      ramal: colaborador.ramal || '',
-      telefone: colaborador.telefone || '',
-      email: colaborador.email || '',
-      matricula: colaborador.matricula || '',
-      cnpj: colaborador.cnpj || '',
-      turno: colaborador.turno || TURNO_PADRAO,
-      horarioProprio: colaborador.horarioProprio,
-      dataAdmissao: colaborador.dataAdmissao || '',
-      pontoDesde: colaborador.pontoDesde || '',
-      cargaHorariaDiariaMinutos: colaborador.cargaHorariaDiariaMinutos,
-      cargaSemanalMinutos: colaborador.cargaSemanalMinutos,
-      trabalhaSabado: colaborador.trabalhaSabado,
-      temIntervalo: colaborador.temIntervalo,
-      observacoes: colaborador.observacoes || '',
-      ativo: colaborador.ativo,
+      nome: gravado.nome,
+      cargo: gravado.cargo,
+      setor: gravado.setor,
+      loja: gravado.loja,
+      ramal: gravado.ramal || '',
+      telefone: gravado.telefone || '',
+      email: gravado.email || '',
+      matricula: gravado.matricula || '',
+      cnpj: gravado.cnpj || '',
+      turno: gravado.turno || TURNO_PADRAO,
+      horarioProprio: gravado.horarioProprio,
+      dataAdmissao: gravado.dataAdmissao || '',
+      pontoDesde: gravado.pontoDesde || '',
+      cargaHorariaDiariaMinutos: gravado.cargaHorariaDiariaMinutos,
+      cargaSemanalMinutos: gravado.cargaSemanalMinutos,
+      trabalhaSabado: gravado.trabalhaSabado,
+      temIntervalo: gravado.temIntervalo,
+      observacoes: gravado.observacoes || '',
+      ativo: gravado.ativo,
     });
   }, [colaborador]);
 

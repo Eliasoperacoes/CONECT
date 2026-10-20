@@ -82,3 +82,13 @@ test('O BANCO ACEITA TODO TURNO QUE A TELA OFERECE', async () => {
   // E o horário digitado (horario-proprio.sql), que não está na lista fixa
   expect(aceitos).toEqual([...TURNOS.map((t) => t.chave), TURNO_PROPRIO].sort());
 });
+
+test('a ficha reabre como está GRAVADA, e não a cópia de quando a tela abriu (19/10/2026)', async () => {
+  // Pela busca, a ficha recebia a pessoa do momento do clique: salvar o
+  // horário próprio e reabrir mostrava o turno A — e salvar de novo o gravava
+  const ficha = semComentarios(await ler('../componentes/ModalCadastroColaborador.tsx'));
+  expect(ficha).toContain('const gravado = bancoDados.obterColaboradorPorId(colaborador.id) || colaborador;');
+  expect(ficha).toContain('turno: gravado.turno || TURNO_PADRAO,');
+  expect(ficha).toContain('horarioProprio: gravado.horarioProprio,');
+  expect(ficha).not.toContain('turno: colaborador.turno || TURNO_PADRAO');
+});
