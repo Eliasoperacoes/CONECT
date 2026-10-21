@@ -18,8 +18,11 @@ import {
   Clock,
   ClipboardList,
   Megaphone,
+  LayoutGrid,
 } from 'lucide-react';
 import { ABAS_PRINCIPAIS, AbaPrincipal, Colaborador, Conversa, Mensagem } from './tipos';
+import { ferramentasDe } from './servicos/ferramentasInternas';
+import { TelaFerramentas } from './componentes/TelaFerramentas';
 
 /**
  * As medidas das janelas de conversa, num lugar só.
@@ -1215,10 +1218,19 @@ export default function App() {
    * a pessoa clicava, e o filtro abaixo a devolvia para o painel —
    * porque `podeUsar('central', ...)` é `false` por a chave não existir.
    */
-  const ABAS_SEM_FERRAMENTA: AbaPrincipal[] = ['painel', 'central'];
+  // Ferramentas (20/10/2026): é a soma dos aplicativos internos, como o painel
+  const ABAS_SEM_FERRAMENTA: AbaPrincipal[] = ['painel', 'central', 'ferramentas'];
+
+  /** A seção Ferramentas existe para esta pessoa? (a mesma lista do computador) */
+  const temFerramentas = ferramentasDe(colaboradorAtual, (chave) => podeUsar(chave, colaboradorAtual)).length > 0;
 
   const abaAtiva: AbaPrincipal = (() => {
     if (abaAtivaEscolhida === 'painel' && !podeVerRede) return 'eu';
+    // Ferramentas não tem chave própria: vale quando a pessoa tem algum bloco
+    if (abaAtivaEscolhida === 'ferramentas') {
+      if (temFerramentas) return 'ferramentas';
+      return podeVerRede ? 'painel' : 'eu';
+    }
 
     if (
       !ABAS_SEM_FERRAMENTA.includes(abaAtivaEscolhida) &&
@@ -1618,6 +1630,11 @@ export default function App() {
       classeFixa: 'text-indigo-600 hover:text-indigo-700 font-bold',
     },
     {
+      // Os aplicativos internos (Cotar, Margens…), só para quem tem algum
+      id: 'ferramentas', rotulo: 'Ferramentas', icone: LayoutGrid,
+      visivel: temFerramentas, alvo: 'ferramentas',
+    },
+    {
       id: 'eu', rotulo: 'Eu', icone: User,
       // "Eu" é a saída de emergência da navegação: se tudo o mais for
       // desligado, ainda há uma tela com o próprio perfil e o botão de sair.
@@ -1922,6 +1939,14 @@ export default function App() {
                     pedidoDeBater={telaDoCelular && pedidoDeBater}
                     aoAtenderPedido={() => setPedidoDeBater(false)}
                   />
+                </ProtecaoDaTela>
+              </div>
+            )}
+
+            {abaAtiva === 'ferramentas' && (
+              <div className="block md:hidden h-full">
+                <ProtecaoDaTela nome="ferramentas (celular)">
+                  <TelaFerramentas colaboradorAtual={colaboradorAtual} />
                 </ProtecaoDaTela>
               </div>
             )}

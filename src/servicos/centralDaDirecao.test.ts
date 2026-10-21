@@ -484,8 +484,9 @@ test('CLICAR NA CENTRAL LEVA À CENTRAL', async () => {
    */
   const app = semComentarios(await Bun.file('src/App.tsx').text());
 
+  // 'ferramentas' entrou em 20/10/2026: a seção dos aplicativos internos
   expect(app).toContain(
-    "const ABAS_SEM_FERRAMENTA: AbaPrincipal[] = ['painel', 'central'];"
+    "const ABAS_SEM_FERRAMENTA: AbaPrincipal[] = ['painel', 'central', 'ferramentas'];"
   );
   expect(app).toContain('!ABAS_SEM_FERRAMENTA.includes(abaAtivaEscolhida)');
 
@@ -502,8 +503,8 @@ test('CLICAR NA CENTRAL LEVA À CENTRAL', async () => {
   for (const aba of semFerramenta) {
     expect(app).toContain(`'${aba}'`);
     expect(
-      app.includes(`ABAS_SEM_FERRAMENTA: AbaPrincipal[] = ['painel', 'central']`) &&
-        (['painel', 'central'] as string[]).includes(aba)
+      app.includes(`ABAS_SEM_FERRAMENTA: AbaPrincipal[] = ['painel', 'central', 'ferramentas']`) &&
+        (['painel', 'central', 'ferramentas'] as string[]).includes(aba)
     ).toBe(true);
   }
 });

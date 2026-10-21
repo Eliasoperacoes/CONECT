@@ -5,9 +5,7 @@
  */
 import { test, expect } from 'bun:test';
 import { lerFator, mostrarFator, cuidaDasMargens } from './margens';
-import { telasQueVejo, type ContextoDoAcesso } from './telasPorAssunto';
 import { lerSql } from '../../scripts/bancoLocal';
-import type { Colaborador } from '../tipos';
 
 test('o fator digitado: vírgula ou ponto, de 1,00 a 5,00, até 2 casas', () => {
   expect(['1,80', '1.83', ' 2,55 ', '1', '5,00'].map(lerFator)).toEqual([1.8, 1.83, 2.55, 1, 5]);
@@ -24,14 +22,4 @@ test('quem cuida das margens na tela é o mesmo que grava no banco: nível ≥ 3
   expect(sql.match(/meu_nivel\(\) < 3/g)?.length).toBe(3); // salvar_fator, apontar_apelido, marcas_sem_margem
 });
 
-const pessoa = (setor: string, nivel: number) => ({ id: 'x', nome: 'X', setor, nivel, loja: 'Pirassununga' }) as unknown as Colaborador;
-const todasAsPermissoes: ContextoDoAcesso = { pode: () => true, temEquipe: false, batePonto: true };
-
-test('a tela de margens aparece para Gerente para cima, e não para Balcão nem Compras', () => {
-  expect(telasQueVejo(pessoa('Gerência', 3), todasAsPermissoes).has('margens')).toBe(true);
-  expect(telasQueVejo(pessoa('TI', 5), todasAsPermissoes).has('margens')).toBe(true);
-  expect(telasQueVejo(pessoa('Balcão', 1), todasAsPermissoes).has('margens')).toBe(false);
-  expect(telasQueVejo(pessoa('Compras', 2), todasAsPermissoes).has('margens')).toBe(false);
-  // E a permissão do catálogo desligada tira a tela, mesmo do gerente
-  expect(telasQueVejo(pessoa('Gerência', 3), { ...todasAsPermissoes, pode: (c) => c !== 'margens_cotador' }).has('margens')).toBe(false);
-});
+// Quem vê o bloco "Margens por marca": ferramentasInternas.test.ts

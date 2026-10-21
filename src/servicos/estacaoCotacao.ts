@@ -44,6 +44,11 @@ export interface BancoDaEstacao {
   sinal(estacao: string, sites: Record<string, SituacaoSite>, versao: string): Promise<void>;
   pegar(estacao: string): Promise<PedidoDaFila | null>;
   gravar(cotacao: string, resultados: ResultadoFornecedor[]): Promise<string>;
+  /**
+   * Avisa quando a fila muda (pedido novo, pedido que voltou), em tempo
+   * real. Devolve como parar de ouvir. Sem ele, só o relógio de 5 s.
+   */
+  ouvirFila?(aoMudar: () => void): () => void;
 }
 
 export const NOME_DA_ESTACAO = 'compras';
@@ -62,8 +67,10 @@ export interface Estacao {
   /** Liga se puder; devolve se ligou. */
   iniciar(): Promise<boolean>;
   parar(): void;
-  /** Uma volta da fila (o temporizador chama; o teste também). */
+  /** Uma volta da fila: um pedido (o teste chama). */
   atenderFila(): Promise<'vazia' | 'ocupada' | string>;
+  /** Atende até a fila ficar vazia — o que o aviso do banco e o relógio chamam. */
+  esvaziarFila(): Promise<void>;
   darSinal(): Promise<void>;
   situacao(): SituacaoDaEstacao;
 }
@@ -82,6 +89,13 @@ export const criarEstacao = (opcoes: {
   /** Espera de `ms`; o teste troca por uma que resolve na hora. */
   temporizador?: (ms: number) => Promise<void>;
   aoMudar?: () => void;
+  /**
+   * Pede ao navegador para não congelar esta aba enquanto ela é estação;
+   * devolve como soltar. Medido em 21/10/2026: com a aba em segundo plano,
+   * o Chrome desacelerou (ou congelou) o relógio e um pedido esperou 7 min
+   * na fila, para 8 s de cotação.
+   */
+  manterAcordado?: () => () => void;
 }): Estacao => {
   const { colaborador, extensao, banco, aoMudar } = opcoes;
   const temporizador = opcoes.temporizador ?? esperar;
@@ -90,10 +104,15 @@ export const criarEstacao = (opcoes: {
   let ola: Ola | null = null;
   let precisaRecarregar = false;
   let relogios: ReturnType<typeof setInterval>[] = [];
+  let soltar: (() => void)[] = [];
+  /** Chegou aviso enquanto cotava: dar mais uma volta ao terminar. */
+  let deNovo = false;
 
   const parar = () => {
     relogios.forEach(clearInterval);
     relogios = [];
+    soltar.forEach((s) => s());
+    soltar = [];
     ativa = false;
     aoMudar?.();
   };
@@ -138,6 +157,21 @@ export const criarEstacao = (opcoes: {
     }
   };
 
+  /** Um pedido atrás do outro até a fila ficar vazia — sem esperar o relógio entre eles. */
+  const esvaziarFila = async (): Promise<void> => {
+    if (cotando) {
+      deNovo = true;
+      return;
+    }
+    do {
+      deNovo = false;
+      let r: string;
+      do {
+        r = await atenderFila();
+      } while (ativa && r !== 'vazia' && r !== 'ocupada' && r !== 'extensao-falhou');
+    } while (ativa && deNovo);
+  };
+
   return {
     async iniciar() {
       if (ativa) return true;
@@ -151,13 +185,20 @@ export const criarEstacao = (opcoes: {
       await banco.sinal(NOME_DA_ESTACAO, ola.sites, ola.versao).catch(() => {});
       relogios = [
         setInterval(() => void darSinal().catch(() => {}), INTERVALO_SINAL_MS),
-        setInterval(() => void atenderFila().catch(() => {}), INTERVALO_FILA_MS),
+        // A reserva: se o aviso em tempo real cair, o relógio ainda atende
+        setInterval(() => void esvaziarFila().catch(() => {}), INTERVALO_FILA_MS),
       ];
+      // O aviso do banco: o pedido é pego na hora, mesmo com a aba atrás de outras
+      if (banco.ouvirFila) soltar.push(banco.ouvirFila(() => void esvaziarFila().catch(() => {})));
+      if (opcoes.manterAcordado) soltar.push(opcoes.manterAcordado());
       aoMudar?.();
+      // O que já estava esperando antes de a estação ligar
+      void esvaziarFila().catch(() => {});
       return true;
     },
     parar,
     atenderFila,
+    esvaziarFila,
     darSinal,
     situacao: () => ({ ativa, sites: ola?.sites ?? {}, precisaRecarregar }),
   };
@@ -207,4 +248,29 @@ export const bancoPeloSupabase = (supabase: SupabaseClient): BancoDaEstacao => (
     if (error) throw error;
     return data as string;
   },
+  // Tempo real (Supabase Realtime): pedido novo ou que voltou para a fila.
+  // A regra de leitura vale aqui também: só quem atende a fila recebe.
+  ouvirFila(aoMudar) {
+    const canal = supabase
+      .channel('fila-de-cotacao')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cotacoes_b2b' }, (m) => {
+        const nova = (m.new ?? {}) as { situacao?: string };
+        if (nova.situacao === 'na_fila') aoMudar();
+      })
+      .subscribe();
+    return () => void supabase.removeChannel(canal);
+  },
 });
+
+/**
+ * Não congelar a aba da estação: enquanto a página segura uma trava (Web
+ * Locks), o Chrome não a congela em segundo plano. Solta ao parar.
+ */
+export const manterAcordadoPeloNavegador = (): (() => void) => {
+  const travas = (globalThis.navigator as Navigator | undefined)?.locks;
+  if (!travas) return () => {};
+  let soltar: () => void = () => {};
+  const solta = new Promise<void>((r) => (soltar = r));
+  void travas.request('estacao-de-cotacao', () => solta).catch(() => {});
+  return soltar;
+};

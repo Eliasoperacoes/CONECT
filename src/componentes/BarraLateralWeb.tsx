@@ -22,7 +22,7 @@ import {
   Building2,
   ShieldCheck,
   UserCog,
-  ShoppingCart,
+  LayoutGrid,
   type LucideIcon,
 } from 'lucide-react';
 import type { Assunto, AssuntoId } from '../servicos/telasPorAssunto';
@@ -38,7 +38,7 @@ export const ICONE_DO_ASSUNTO: Record<AssuntoId, LucideIcon> = {
   documentos: FileText,
   pessoas: Building2,
   colaboradores: UserCog,
-  cotacao: ShoppingCart,
+  ferramentas: LayoutGrid,
   administracao: ShieldCheck,
 };
 

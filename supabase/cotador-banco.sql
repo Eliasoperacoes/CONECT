@@ -58,6 +58,27 @@ insert into public.fornecedores_b2b (chave, nome, ordem) values
   ('dpk', 'DPK', 3)
 on conflict (chave) do nothing;
 
+-- FRETE E ENTREGA (Elias, 21/10/2026):
+--   frete_por_peca: valor fixo somado ao custo antes do fator, para quem
+--     não dá frete grátis (DPK e Pellegrino: R$ 10; Roles: grátis). Compras
+--     muda pela ferramenta "Fretes" (alterar_frete).
+--   lojas_entrega_direta: onde o fornecedor entrega sem transferência
+--     interna, e o prazo é o da matriz (2–3 dias). A Pellegrino entrega
+--     direto em Palmeiras.
+alter table public.fornecedores_b2b
+  add column if not exists frete_por_peca numeric(8,2) not null default 0 check (frete_por_peca between 0 and 500),
+  add column if not exists lojas_entrega_direta text[] not null default '{Pirassununga}',
+  add column if not exists frete_atualizado_em timestamptz,
+  add column if not exists frete_atualizado_por text references public.colaboradores(id) on delete set null;
+
+-- Os valores de partida, uma vez só: quem já foi ajustado não volta
+update public.fornecedores_b2b set frete_por_peca = 10, frete_atualizado_em = now()
+ where chave in ('dpk', 'pellegrino') and frete_atualizado_em is null;
+update public.fornecedores_b2b set frete_atualizado_em = now()
+ where chave = 'roles' and frete_atualizado_em is null;
+update public.fornecedores_b2b set lojas_entrega_direta = '{Pirassununga,Palmeiras}'
+ where chave = 'pellegrino' and lojas_entrega_direta = '{Pirassununga}';
+
 drop policy if exists fornecedores_b2b_leitura on public.fornecedores_b2b;
 create policy fornecedores_b2b_leitura on public.fornecedores_b2b
   for select to authenticated using (public.posso_cotar() or public.posso_atender_fila());
@@ -189,6 +210,22 @@ returns date language sql stable set search_path = public as $$
   select (now() at time zone 'America/Sao_Paulo')::date;
 $$;
 
+-- O PRAZO, num lugar só (Elias, 20 e 21/10/2026): CD em SP chega em 2–3
+-- dias onde o fornecedor entrega direto (a matriz; a Pellegrino também em
+-- Palmeiras) e em 3–4 nas outras lojas, que recebem por transferência
+-- interna; fora de SP, 7–10 dias. Sem oferta disponível, sem prazo.
+-- (Antes era só por loja: a versão de 2 parâmetros sai, para não haver duas.)
+drop function if exists public.prazo_de_entrega(boolean, text);
+create or replace function public.prazo_de_entrega(em_sp boolean, loja text, lojas_entrega_direta text[] default '{Pirassununga}')
+returns text language sql immutable set search_path = public as $$
+  select case
+    when em_sp is null then null
+    when not em_sp then '7–10 dias'
+    when loja = any (coalesce(lojas_entrega_direta, '{Pirassununga}')) then '2–3 dias'
+    else '3–4 dias'
+  end;
+$$;
+
 -- O mesmo da extensão (correspondencia.js): maiúsculas, só letras e números
 create or replace function public.normalizar_codigo(codigo text)
 returns text language sql immutable set search_path = public as $$
@@ -241,6 +278,18 @@ create table if not exists public.cotacoes_b2b (
 alter table public.cotacoes_b2b enable row level security;
 create index if not exists cotacoes_b2b_fila on public.cotacoes_b2b (situacao, criada_em);
 
+-- TEMPO REAL: a estação é avisada na hora em que um pedido entra na fila.
+-- Medido em 21/10/2026: só com o relógio de 5 s, a aba da estação em
+-- segundo plano foi desacelerada pelo Chrome e um pedido esperou 7 min.
+-- (Num Postgres sem o Supabase não há a publicação: nada a fazer.)
+do $$ begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables
+                      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'cotacoes_b2b') then
+    alter publication supabase_realtime add table public.cotacoes_b2b;
+  end if;
+end $$;
+
 -- Quem pediu vê o próprio pedido; quem vê custo e quem atende a fila veem
 -- todos. Ninguém grava direto: só as funções da fila.
 drop policy if exists cotacoes_b2b_leitura on public.cotacoes_b2b;
@@ -248,6 +297,83 @@ create policy cotacoes_b2b_leitura on public.cotacoes_b2b
   for select to authenticated using (
     pedida_por = public.meu_colaborador_id() or public.posso_ver_custo() or public.posso_atender_fila()
   );
+
+-- "MINHAS COTAÇÕES DO DIA" (SPEC-cotar): cada código que a pessoa pediu
+-- hoje, inclusive o que já tinha preço e não gerou pedido. Cada um lê só os
+-- próprios; quem grava é o pedir_cotacao.
+create table if not exists public.cotacoes_do_dia (
+  colaborador_id  text not null references public.colaboradores(id) on delete cascade,
+  codigo          text not null,
+  dia             date not null,
+  ultima          timestamptz not null default now(),
+  primary key (colaborador_id, codigo, dia)
+);
+alter table public.cotacoes_do_dia enable row level security;
+
+drop policy if exists cotacoes_do_dia_leitura on public.cotacoes_do_dia;
+create policy cotacoes_do_dia_leitura on public.cotacoes_do_dia
+  for select to authenticated using (colaborador_id = public.meu_colaborador_id());
+
+-- O que a pessoa cotou hoje, do mais recente ao mais antigo (roda como quem
+-- chama: a regra de leitura acima vale)
+create or replace function public.minhas_cotacoes_do_dia()
+returns table (codigo text, ultima timestamptz)
+language sql stable set search_path = public as $$
+  select d.codigo, d.ultima from public.cotacoes_do_dia d
+   where d.colaborador_id = public.meu_colaborador_id() and d.dia = public.hoje_brasilia()
+   order by d.ultima desc;
+$$;
+revoke all on function public.minhas_cotacoes_do_dia() from public, anon;
+grant execute on function public.minhas_cotacoes_do_dia() to authenticated;
+
+-- Os nomes dos fornecedores ligados, para a tela (roda como quem chama)
+create or replace function public.fornecedores_para_cotar()
+returns table (chave text, nome text)
+language sql stable set search_path = public as $$
+  select f.chave, f.nome from public.fornecedores_b2b f where f.ativo order by f.ordem;
+$$;
+revoke all on function public.fornecedores_para_cotar() from public, anon;
+grant execute on function public.fornecedores_para_cotar() to authenticated;
+
+-- O frete por peça de cada fornecedor, para a ferramenta "Fretes" de
+-- Compras. Quem altera é quem atende a fila (Compras e TI), como pediu o
+-- Elias: "uma opção para Compras alterar esse valor".
+create or replace function public.fretes_dos_fornecedores()
+returns table (chave text, nome text, frete_por_peca numeric, atualizado_em timestamptz, atualizado_por text)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.posso_atender_fila() then
+    raise exception 'Só Compras ou TI cuidam do frete' using errcode = '42501';
+  end if;
+  return query
+    select f.chave, f.nome, f.frete_por_peca, f.frete_atualizado_em,
+           (select c.nome from public.colaboradores c where c.id = f.frete_atualizado_por)
+      from public.fornecedores_b2b f where f.ativo order by f.ordem;
+end;
+$$;
+revoke all on function public.fretes_dos_fornecedores() from public, anon;
+grant execute on function public.fretes_dos_fornecedores() to authenticated;
+
+create or replace function public.alterar_frete(fornecedor text, valor numeric)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.posso_atender_fila() then
+    raise exception 'Só Compras ou TI cuidam do frete' using errcode = '42501';
+  end if;
+  if valor is null or valor < 0 or valor > 500 then
+    raise exception 'Frete de R$ 0,00 a R$ 500,00';
+  end if;
+  update public.fornecedores_b2b
+     set frete_por_peca = round(valor, 2), frete_atualizado_em = now(),
+         frete_atualizado_por = public.meu_colaborador_id()
+   where chave = alterar_frete.fornecedor;
+  if not found then
+    raise exception 'Fornecedor desconhecido: %', alterar_frete.fornecedor;
+  end if;
+end;
+$$;
+revoke all on function public.alterar_frete(text, numeric) from public, anon;
+grant execute on function public.alterar_frete(text, numeric) to authenticated;
 
 -- Pede a cotação de uma lista de códigos. Para cada um: se todo fornecedor
 -- ligado já tem preço de hoje (e não é para forçar), não cria nada; se já
@@ -268,6 +394,10 @@ begin
   foreach digitado in array coalesce(codigos, '{}') loop
     normal := public.normalizar_codigo(digitado);
     continue when normal = '';
+
+    insert into public.cotacoes_do_dia (colaborador_id, codigo, dia, ultima)
+    values (public.meu_colaborador_id(), normal, public.hoje_brasilia(), now())
+    on conflict on constraint cotacoes_do_dia_pkey do update set ultima = now();
 
     select bool_and(p.tem_preco) into pronto from public.preco_de_hoje(normal) p;
     pronto := coalesce(pronto, false);
@@ -301,6 +431,43 @@ end;
 $$;
 revoke all on function public.pedir_cotacao(text[], boolean, boolean) from public, anon;
 grant execute on function public.pedir_cotacao(text[], boolean, boolean) to authenticated;
+
+-- O ANDAMENTO que a tela de cotar confere a cada 3 s: para cada código, o
+-- pedido mais recente de hoje (de qualquer pessoa: o pedido é reaproveitado)
+-- ou, sem pedido, se já há preço de hoje. E se a estação está no ar, para a
+-- tela avisar "fica aguardando" em vez de girar à toa.
+create or replace function public.andamento_da_cotacao(codigos text[])
+returns table (codigo text, situacao text, erro text, desde timestamptz, estacao_no_ar boolean)
+language plpgsql stable security definer set search_path = public as $$
+declare
+  no_ar boolean;
+begin
+  if not (public.posso_cotar() or public.posso_atender_fila()) then
+    raise exception 'Sem permissão para cotar' using errcode = '42501';
+  end if;
+  select coalesce(bool_or(public.estacao_online(e.visto_em)), false) into no_ar from public.estacoes_cotacao e;
+
+  return query
+    select n.cod,
+           coalesce(c.situacao,
+                    case when (select bool_and(p.tem_preco) from public.preco_de_hoje(n.cod) p) then 'pronta' else 'sem_pedido' end),
+           c.erro,
+           c.criada_em,
+           no_ar
+      from (select distinct public.normalizar_codigo(x) as cod from unnest(coalesce(codigos, '{}')) x) n
+      left join lateral (
+        select c2.situacao, c2.erro, c2.criada_em
+          from public.cotacoes_b2b c2
+         where c2.codigo = n.cod
+           and (c2.criada_em at time zone 'America/Sao_Paulo')::date = public.hoje_brasilia()
+         order by c2.criada_em desc
+         limit 1
+      ) c on true
+     where n.cod <> '';
+end;
+$$;
+revoke all on function public.andamento_da_cotacao(text[]) from public, anon;
+grant execute on function public.andamento_da_cotacao(text[]) to authenticated;
 
 -- A estação pega o pedido mais antigo da fila. Duas abas pegando ao mesmo
 -- tempo nunca levam o mesmo (skip locked). Pedido "cotando" há mais de 5

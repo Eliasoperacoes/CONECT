@@ -24,7 +24,6 @@ import {
   ShieldCheck,
   LayoutGrid,
   UserCog,
-  Percent,
   type LucideIcon,
 } from 'lucide-react';
 import type { TelaId } from '../servicos/telasPorAssunto';
@@ -49,7 +48,7 @@ export const ICONE_DA_TELA: Partial<Record<TelaId, LucideIcon>> = {
   unidades: Store,
   organograma: Network,
   colaboradores: UserCog,
-  margens: Percent,
+  ferramentas: LayoutGrid,
   administracao: ShieldCheck,
 };
 

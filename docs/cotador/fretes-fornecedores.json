@@ -1,0 +1,15 @@
+[
+  { "grupo": "Peças em geral", "fornecedor": "Barros", "prazo_pirassununga_dias": 2, "prazo_demais_lojas_dias": 3, "frete": "Grátis", "frete_valor_reais": 0, "frete_observacao": "", "pedido_minimo_reais": 0 },
+  { "grupo": "Peças em geral", "fornecedor": "DPK", "prazo_pirassununga_dias": 2, "prazo_demais_lojas_dias": 3, "frete": "R$40", "frete_valor_reais": 40, "frete_observacao": "Grátis acima de R$1.200", "pedido_minimo_reais": 150 },
+  { "grupo": "Peças em geral", "fornecedor": "Disape", "prazo_pirassununga_dias": 2, "prazo_demais_lojas_dias": 3, "frete": "R$45", "frete_valor_reais": 45, "frete_observacao": "", "pedido_minimo_reais": 150 },
+  { "grupo": "Peças em geral", "fornecedor": "Furacão", "prazo_pirassununga_dias": 2, "prazo_demais_lojas_dias": 3, "frete": "Grátis", "frete_valor_reais": 0, "frete_observacao": "", "pedido_minimo_reais": 200 },
+  { "grupo": "Peças em geral", "fornecedor": "Haifer", "prazo_pirassununga_dias": 2, "prazo_demais_lojas_dias": 3, "frete": "R$42", "frete_valor_reais": 42, "frete_observacao": "", "pedido_minimo_reais": 250 },
+  { "grupo": "Peças em geral", "fornecedor": "Lucios", "prazo_pirassununga_dias": 2, "prazo_demais_lojas_dias": 3, "frete": "R$40", "frete_valor_reais": 40, "frete_observacao": "", "pedido_minimo_reais": 0 },
+  { "grupo": "Peças em geral", "fornecedor": "Pellegrino", "prazo_pirassununga_dias": 2, "prazo_demais_lojas_dias": 3, "frete": "R$42,60", "frete_valor_reais": 42.6, "frete_observacao": "Entrega direta em Palmeiras; demais lojas recebem por transferência interna", "pedido_minimo_reais": 150 },
+  { "grupo": "Peças em geral", "fornecedor": "Rolemar", "prazo_pirassununga_dias": 2, "prazo_demais_lojas_dias": 3, "frete": "R$50", "frete_valor_reais": 50, "frete_observacao": "", "pedido_minimo_reais": 600 },
+  { "grupo": "Peças em geral", "fornecedor": "Roles", "prazo_pirassununga_dias": 2, "prazo_demais_lojas_dias": 3, "frete": "Grátis", "frete_valor_reais": 0, "frete_observacao": "R$30 quando cobrado", "pedido_minimo_reais": 150 },
+  { "grupo": "Peças em geral", "fornecedor": "Sky Peças", "prazo_pirassununga_dias": 2, "prazo_demais_lojas_dias": 3, "frete": "Grátis acima de R$500", "frete_valor_reais": null, "frete_observacao": "Grátis acima de R$500", "pedido_minimo_reais": 500 },
+  { "grupo": "Acessórios", "fornecedor": "Center Parts", "prazo_pirassununga_dias": 5, "prazo_demais_lojas_dias": 5, "frete": "R$40", "frete_valor_reais": 40, "frete_observacao": "", "pedido_minimo_reais": 250 },
+  { "grupo": "Acessórios", "fornecedor": "Universal", "prazo_pirassununga_dias": 5, "prazo_demais_lojas_dias": 5, "frete": "R$40", "frete_valor_reais": 40, "frete_observacao": "", "pedido_minimo_reais": 700 },
+  { "grupo": "Lataria", "fornecedor": "Rufato", "prazo_pirassununga_dias": 5, "prazo_demais_lojas_dias": 5, "frete": "R$60", "frete_valor_reais": 60, "frete_observacao": "", "pedido_minimo_reais": 600 }
+]

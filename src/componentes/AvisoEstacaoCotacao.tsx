@@ -11,6 +11,7 @@ import {
   criarEstacao,
   extensaoPelaJanela,
   bancoPeloSupabase,
+  manterAcordadoPeloNavegador,
   type SituacaoSite,
   type SituacaoDaEstacao,
 } from '../servicos/estacaoCotacao';
@@ -30,6 +31,7 @@ export function AvisoEstacaoCotacao({ colaborador }: { colaborador: { id: string
       colaborador: { nivel, setor },
       extensao: extensaoPelaJanela(window),
       banco: bancoPeloSupabase(supabase),
+      manterAcordado: manterAcordadoPeloNavegador,
       aoMudar: () => setSituacao(estacao.situacao()),
     });
     void estacao.iniciar();

@@ -139,20 +139,27 @@ $$;
 -- avisa e mostra todas as possibilidades (`variantes` > 1); a que a
 -- descrição cita vem marcada `variante_provavel`.
 --
--- custo e fator só para quem vê custo. Para os outros, nulos.
+-- VENDA = (custo + frete por peça do fornecedor) × fator da marca, para
+-- cima em ,90 (Elias, 21/10/2026: "VALOR DA PEÇA + FRETE × MARGEM").
+--
+-- custo, frete e fator só para quem vê custo. Para os outros, nulos.
 -- ------------------------------------------------------------
 
+-- Mudou o formato da resposta (prazo e frete entraram, SPEC-cotar): o
+-- Postgres não troca colunas de função com create or replace
+drop function if exists public.resultado_da_cotacao(text);
 create or replace function public.resultado_da_cotacao(codigo text)
 returns table (
   tipo text, codigo_peca text, fornecedor text, marca text, descricao text,
-  local text, em_sp boolean, quantidade integer, situacao text,
+  local text, em_sp boolean, quantidade integer, situacao text, prazo text,
   variante text, variantes integer, variante_provavel boolean, fator_padrao boolean,
-  venda numeric, custo numeric, fator numeric
+  venda numeric, custo numeric, fator numeric, frete numeric
 )
 language plpgsql stable security definer set search_path = public as $$
 declare
   alvo text := public.normalizar_codigo(codigo);
   ve_custo boolean := public.posso_ver_custo();
+  minha_loja text := (select c.loja from public.colaboradores c where c.id = public.meu_colaborador_id());
 begin
   if not (public.posso_cotar() or public.posso_atender_fila() or ve_custo) then
     raise exception 'Sem permissão para cotar' using errcode = '42501';
@@ -187,19 +194,22 @@ begin
          coalesce(m.descricao, (select p2.descricao from public.precos_b2b p2
                                  where p2.fornecedor = m.fornecedor and p2.codigo = m.cod limit 1)),
          m.local, m.em_sp, m.quantidade, m.situacao,
+         public.prazo_de_entrega(m.em_sp, minha_loja, fb.lojas_entrega_direta),
          f.variante,
          (count(*) over (partition by m.cod, m.fornecedor))::integer,
          f.variante <> '' and position(public.normalizar_marca(f.variante) in public.normalizar_marca(m.descricao)) > 0,
          f.padrao,
-         public.preco_de_venda(m.custo, f.fator),
+         public.preco_de_venda(m.custo + fb.frete_por_peca, f.fator),
          case when ve_custo then m.custo end,
-         case when ve_custo then f.fator end
+         case when ve_custo then f.fator end,
+         case when ve_custo then fb.frete_por_peca end
     from melhor m
+    join public.fornecedores_b2b fb on fb.chave = m.fornecedor
     cross join lateral public.fatores_da_marca(
       coalesce(m.marca, (select p2.marca from public.precos_b2b p2
                           where p2.fornecedor = m.fornecedor and p2.codigo = m.cod limit 1))
     ) f
-   order by (m.tipo <> 'peca'), m.cod, public.preco_de_venda(m.custo, f.fator) nulls last, m.fornecedor, f.variante;
+   order by (m.tipo <> 'peca'), m.cod, public.preco_de_venda(m.custo + fb.frete_por_peca, f.fator) nulls last, m.fornecedor, f.variante;
 end;
 $$;
 revoke all on function public.resultado_da_cotacao(text) from public, anon;

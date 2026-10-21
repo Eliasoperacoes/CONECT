@@ -848,9 +848,23 @@ var FERRAMENTAS = [
     cuidado: "Gerar um código novo invalida o cartaz antigo na hora — quem estiver com a foto dele não bate mais."
   },
   {
+    chave: "cotar_b2b",
+    nome: "Cotar peça (B2B)",
+    descricao: "Preço de venda, prazo e similares da peça nos fornecedores B2B, na seção Ferramentas.",
+    area: "principal",
+    nivelPadrao: NIVEL_COLABORADOR
+  },
+  {
+    chave: "fretes_cotador",
+    nome: "Fretes dos fornecedores (cotador)",
+    descricao: "O frete por peça de cada B2B, somado ao custo antes da margem, na seção Ferramentas. Quem altera é Compras.",
+    area: "gestao",
+    nivelPadrao: NIVEL_COLABORADOR
+  },
+  {
     chave: "margens_cotador",
     nome: "Margens por marca (cotador)",
-    descricao: "O fator de cada marca que transforma o custo do B2B em preço de venda (custo × fator, para cima em ,90).",
+    descricao: "O fator de cada marca que transforma o custo do B2B em preço de venda (custo × fator, para cima em ,90), na seção Ferramentas.",
     area: "gestao",
     nivelPadrao: NIVEL_GERENTE,
     cuidado: "O fator junto com a venda revela o custo do fornecedor."

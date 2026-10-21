@@ -21,8 +21,15 @@ const DE_TODOS: TelaId[] = ['central', 'conversas', 'inicio', 'meus_documentos']
 const QUEM_BATE: TelaId[] = ['meu_ponto', 'pedir_ausencia'];
 const ordenar = (lista: TelaId[]) => [...lista].sort();
 
+/**
+ * QUEM COTA GANHA A SEÇÃO FERRAMENTAS (SPEC-cotar, Elias 20/10/2026): o
+ * Balcão passa a ver o bloco "Cotar peça". É tela nova pedida, não
+ * reorganização — por isso entra nas listas abaixo.
+ */
+const QUEM_COTA: TelaId[] = ['ferramentas'];
+
 test('COLABORADOR: só o que é dele — nada de equipe, rede ou RH', () => {
-  expect(ver(1, 'Balcão', false, true)).toEqual(ordenar([...DE_TODOS, ...QUEM_BATE]));
+  expect(ver(1, 'Balcão', false, true)).toEqual(ordenar([...DE_TODOS, ...QUEM_BATE, ...QUEM_COTA]));
   expect(ver(1, 'Estágio', false, true)).toEqual(ordenar([...DE_TODOS, ...QUEM_BATE]));
 });
 
@@ -31,6 +38,7 @@ test('LÍDER COM EQUIPE: o dele, mais a equipe — sem RH, sem lojas', () => {
     ordenar([
       ...DE_TODOS,
       ...QUEM_BATE,
+      ...QUEM_COTA,
       'equipe_banco',
       'equipe_pendencias',
       'escala_folgas',
@@ -96,7 +104,7 @@ test('UMA TELA, UMA PORTA: cada tela está em um assunto só', () => {
 test('assunto sem tela não aparece: o colaborador não vê "Pessoas e lojas" vazio', () => {
   const c = { id: 'x', nome: 'Teste', nivel: 1, setor: 'Balcão' } as any;
   const assuntos = assuntosDe(c, { pode: (k) => podeUsarComMapa(k, c, mapa), temEquipe: false, batePonto: true });
-  expect(assuntos.map((a) => a.id)).toEqual(['inicio', 'conversas', 'central', 'ponto', 'ausencias', 'documentos']);
+  expect(assuntos.map((a) => a.id)).toEqual(['inicio', 'conversas', 'central', 'ferramentas', 'ponto', 'ausencias', 'documentos']);
   // E dentro de Ponto, só o dele
   expect(assuntos.find((a) => a.id === 'ponto')!.telas.map((t) => t.id)).toEqual(['meu_ponto']);
 });

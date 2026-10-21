@@ -25,7 +25,7 @@ import {
   vePainelDeRede,
   NIVEL_TI,
 } from '../tipos';
-import { cuidaDasMargens } from './margens';
+import { ferramentasDe } from './ferramentasInternas';
 
 export type TelaId =
   | 'inicio'
@@ -57,8 +57,8 @@ export type TelaId =
   | 'organograma_rh'
   // O painel do RH ("Precisa de você", a rede em números) vai para o Início
   | 'painel_rh'
-  // Cotação B2B (docs/cotador)
-  | 'margens'
+  // Os aplicativos internos (Cotar, Margens…): a grade de ferramentasInternas.ts
+  | 'ferramentas'
   | 'administracao';
 
 export interface ContextoDoAcesso {
@@ -123,8 +123,8 @@ export const acessoDe = (c: Colaborador, ctx: ContextoDoAcesso) => {
     escala: rh || escalaDaEquipe,
     unidades: gerencia && !ehDoRh(c) && pode('visao_lojas'),
     organograma: gerencia && !ehDoRh(c) && pode('organograma'),
-    /** As margens do cotador: a permissão da tela E o nível que o banco exige para gravar. */
-    margens: pode('margens_cotador') && cuidaDasMargens(c),
+    /** A seção Ferramentas: aparece quando a pessoa tem ao menos um bloco. */
+    ferramentas: ferramentasDe(c, pode).length > 0,
     /** O botão "Painel ADM" (App: `ehAdmin`). */
     administracao: c.nivel >= NIVEL_TI,
   };
@@ -160,7 +160,7 @@ export const telasQueVejo = (c: Colaborador, ctx: ContextoDoAcesso): Set<TelaId>
   se(a.rh, 'colaboradores', 'organograma_rh');
   se(a.unidades, 'unidades');
   se(a.organograma, 'organograma');
-  se(a.margens, 'margens');
+  se(a.ferramentas, 'ferramentas');
   se(a.administracao, 'administracao');
   return telas;
 };
@@ -174,7 +174,7 @@ export type AssuntoId =
   | 'documentos'
   | 'pessoas'
   | 'colaboradores'
-  | 'cotacao'
+  | 'ferramentas'
   | 'administracao';
 
 export interface Assunto {
@@ -224,8 +224,7 @@ export const DESCRICAO_DA_TELA: Record<TelaWeb, string> = {
   painel_rh: 'O que está parado esperando uma decisão do RH.',
   colaboradores:
     'Cadastrar quem chegou, alterar a ficha, desligar quem saiu e redefinir a senha de primeiro acesso — com os cupons de entrega.',
-  margens:
-    'O fator de cada marca: preço de venda = custo do B2B × fator, arredondado para cima em ,90. O balconista vê só a venda.',
+  ferramentas: 'Os aplicativos internos do CONECTA. Toque num bloco para usar.',
   administracao: 'Cadastro, permissões e configurações do sistema.',
   perfil: 'Os seus dados, a sua presença e as preferências deste aparelho.',
 };
@@ -261,7 +260,7 @@ export const DE_QUEM_E_A_TELA: Record<TelaWeb, string> = {
   painel_rh: 'Gestão de pessoas',
   colaboradores: 'Gestão de pessoas',
   organograma_rh: 'Gestão de pessoas',
-  margens: 'Toda a rede',
+  ferramentas: 'Para você',
   administracao: 'Administração',
   perfil: 'Para você',
 };
@@ -276,7 +275,7 @@ export const DESCRICAO_DO_ASSUNTO: Record<AssuntoId, string> = {
   documentos: 'Holerites, advertências e assinaturas — os seus e os que o RH cuida.',
   pessoas: 'As lojas da rede e quem responde a quem.',
   colaboradores: 'Quem está na rede e a quem cada um responde.',
-  cotacao: 'Cotação de peças nos B2Bs: preço de venda, margens e pedidos para compras.',
+  ferramentas: DESCRICAO_DA_TELA.ferramentas,
   administracao: DESCRICAO_DA_TELA.administracao,
 };
 
@@ -289,6 +288,8 @@ export const ASSUNTOS: Assunto[] = [
   { id: 'inicio', rotulo: 'Início', grupo: 'principal', telas: [{ id: 'inicio', rotulo: 'Início' }] },
   { id: 'conversas', rotulo: 'Conversas', grupo: 'principal', telas: [{ id: 'conversas', rotulo: 'Conversas' }] },
   { id: 'central', rotulo: 'Central', grupo: 'principal', telas: [{ id: 'central', rotulo: 'Central' }] },
+  // Os aplicativos internos, de uso diário: no grupo principal, perto do topo
+  { id: 'ferramentas', rotulo: 'Ferramentas', grupo: 'principal', telas: [{ id: 'ferramentas', rotulo: 'Ferramentas' }] },
   {
     id: 'ponto',
     rotulo: 'Ponto',
@@ -341,12 +342,6 @@ export const ASSUNTOS: Assunto[] = [
       { id: 'colaboradores', rotulo: 'Cadastro' },
       { id: 'organograma_rh', rotulo: 'Organograma' },
     ],
-  },
-  {
-    id: 'cotacao',
-    rotulo: 'Cotação B2B',
-    grupo: 'gestao',
-    telas: [{ id: 'margens', rotulo: 'Margens por marca' }],
   },
   {
     id: 'administracao',

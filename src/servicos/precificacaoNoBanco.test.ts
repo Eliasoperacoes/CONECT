@@ -36,6 +36,10 @@ beforeAll(async () => {
       ('ISAPA', 'MECANISMOS', 1.87), ('ISAPA', 'MOLAS', 1.87), ('ISAPA', 'PISTÃO', 2.55), ('ISAPA', 'SAPATA', 1.97);
     insert into public.apelidos_de_marca (apelido, marca) values ('MAHLEMETALLEVE', 'METAL LEVE');
 
+    -- Estes testes são do FATOR: sem frete, para a conta ficar só custo × fator.
+    -- O frete por peça tem os testes dele em cotarNoBanco.test.ts.
+    update public.fornecedores_b2b set frete_por_peca = 0;
+
     -- A OC90 cotada hoje: DPK em SP; Roles sem a peça; similar Tecfil
     insert into public.precos_b2b (fornecedor, codigo, local, em_sp, custo, quantidade, disponivel, proximidade, marca, descricao) values
       ('dpk', 'OC90', 'RIB PRETO', true, 8.69, 228, true, 1, 'MAHLE METAL LEVE', 'FILTRO OLEO LUBRIFICANTE'),

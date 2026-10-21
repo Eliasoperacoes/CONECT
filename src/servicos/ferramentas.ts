@@ -203,10 +203,28 @@ export const FERRAMENTAS: Ferramenta[] = [
       'Gerar um código novo invalida o cartaz antigo na hora — quem estiver com a foto dele não bate mais.',
   },
   {
+    chave: 'cotar_b2b',
+    nome: 'Cotar peça (B2B)',
+    descricao: 'Preço de venda, prazo e similares da peça nos fornecedores B2B, na seção Ferramentas.',
+    area: 'principal',
+    // Quem cota de fato é Balcão, Callcenter e Gerente para cima (podeCotar,
+    // par de posso_cotar no banco); aqui só a porta, ligada para todos
+    nivelPadrao: NIVEL_COLABORADOR,
+  },
+  {
+    chave: 'fretes_cotador',
+    nome: 'Fretes dos fornecedores (cotador)',
+    descricao:
+      'O frete por peça de cada B2B, somado ao custo antes da margem, na seção Ferramentas. Quem altera é Compras.',
+    area: 'gestao',
+    // Quem altera de fato é Compras e TI (podeAtenderFila, par de alterar_frete)
+    nivelPadrao: NIVEL_COLABORADOR,
+  },
+  {
     chave: 'margens_cotador',
     nome: 'Margens por marca (cotador)',
     descricao:
-      'O fator de cada marca que transforma o custo do B2B em preço de venda (custo × fator, para cima em ,90).',
+      'O fator de cada marca que transforma o custo do B2B em preço de venda (custo × fator, para cima em ,90), na seção Ferramentas.',
     area: 'gestao',
     // Gravar continua exigindo nível ≥ 3 no banco, mesmo para quem enxerga
     nivelPadrao: NIVEL_GERENTE,

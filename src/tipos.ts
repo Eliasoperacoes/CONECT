@@ -1112,6 +1112,8 @@ export const ABAS_PRINCIPAIS = [
   'central',
   'ponto',
   'painel',
+  // Os aplicativos internos (Cotar, Margens…): ferramentasInternas.ts
+  'ferramentas',
   'eu',
 ] as const;
 
