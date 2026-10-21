@@ -38,6 +38,10 @@ import {
 } from './supabase';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
 import { lerLista, gravarLista } from './cacheDeLeitura';
+import { aplicarEventosNaLista, type EventoAoVivo } from './pontoAoVivo';
+
+/** Quanto a fila ao vivo do ponto espera para juntar a rajada de eventos */
+const ESPERA_DA_FILA_AO_VIVO_MS = 1500;
 import { registrarErro } from './registroDeErros';
 import { coletorDaMarcacao } from './aplicativo';
 import { ehCaminhoDeFotoPerfil, esquecerAssinaturas, resolverCaminhos } from './anexos';
@@ -1054,7 +1058,19 @@ class PonteNuvem {
    * vigor — é o que as chamadas de rotina fazem, inclusive a que roda
    * antes de cada batida.
    */
+  /** Cargas completas do ponto em curso: a fila ao vivo espera elas terminarem */
+  private cargasDoPontoEmCurso = 0;
+
   async sincronizarPonto(periodo?: JanelaDoPonto): Promise<boolean> {
+    this.cargasDoPontoEmCurso++;
+    try {
+      return await this.cargaCompletaDoPonto(periodo);
+    } finally {
+      this.cargasDoPontoEmCurso--;
+    }
+  }
+
+  private async cargaCompletaDoPonto(periodo?: JanelaDoPonto): Promise<boolean> {
     if (!supabase) return false;
 
     if (periodo) this.janelaDoPonto = periodo;
@@ -1875,6 +1891,83 @@ class PonteNuvem {
   }
 
   async sincronizarAjustes(): Promise<boolean> {
+    this.cargasDoPontoEmCurso++;
+    try {
+      return await this.cargaCompletaDosAjustes();
+    } finally {
+      this.cargasDoPontoEmCurso--;
+    }
+  }
+
+  /** Só os códigos do QR das lojas (o evento de `codigos_ponto_loja`) */
+  async sincronizarCodigos(): Promise<boolean> {
+    if (!supabase) return false;
+    const { data, error } = await supabase.from('codigos_ponto_loja').select('*');
+    if (error || !data) return false;
+    localStorage.setItem(CHAVE_CODIGOS_PONTO, JSON.stringify((data as LinhaCodigoPonto[]).map(paraCodigoPonto)));
+    this.avisar();
+    return true;
+  }
+
+  /*
+   * A FILA AO VIVO DO PONTO (21/10/2026, pontoAoVivo.ts). Os eventos de uma
+   * rajada — o pico das 07:30 — juntam-se por 1,5 s e são aplicados de uma
+   * vez: uma gravação comprimida por rajada, e não uma por batida. Enquanto
+   * uma carga completa corre, a fila espera ela terminar e é aplicada depois
+   * (aplicar o mesmo evento duas vezes não muda nada: é troca pelo id).
+   */
+  private filaAoVivo: { ponto: EventoAoVivo<LinhaRegistroPonto>[]; ajustes: EventoAoVivo<LinhaAjuste>[] } = {
+    ponto: [],
+    ajustes: [],
+  };
+  private esvaziarFila: ReturnType<typeof setTimeout> | null = null;
+
+  private receberAoVivo(tipo: 'ponto' | 'ajustes', evento: EventoAoVivo<any>): void {
+    this.filaAoVivo[tipo].push(evento);
+    if (!this.esvaziarFila) this.esvaziarFila = setTimeout(() => this.aplicarFilaAoVivo(), ESPERA_DA_FILA_AO_VIVO_MS);
+  }
+
+  private aplicarFilaAoVivo(): void {
+    this.esvaziarFila = null;
+    if (this.cargasDoPontoEmCurso > 0) {
+      this.esvaziarFila = setTimeout(() => this.aplicarFilaAoVivo(), ESPERA_DA_FILA_AO_VIVO_MS);
+      return;
+    }
+    const { ponto, ajustes } = this.filaAoVivo;
+    this.filaAoVivo = { ponto: [], ajustes: [] };
+    try {
+      if (ponto.length > 0) {
+        const janela = this.obterJanelaDoPonto();
+        const r = aplicarEventosNaLista(
+          lerLista<RegistroPonto>(CHAVE_REGISTROS_PONTO),
+          ponto,
+          (linha) => paraRegistroPonto(linha as LinhaRegistroPonto),
+          (batida) => batida.data >= janela.inicio && batida.data <= janela.fim
+        );
+        if (r.recarregar) void this.sincronizarPonto();
+        else if (r.mudou) gravarLista(CHAVE_REGISTROS_PONTO, r.lista);
+      }
+      if (ajustes.length > 0) {
+        const r = aplicarEventosNaLista(lerLista<AjusteJornada>(CHAVE_AJUSTES), ajustes, (linha) =>
+          paraAjuste(linha as LinhaAjuste)
+        );
+        if (r.recarregar) void this.sincronizarAjustes();
+        else if (r.mudou) gravarLista(CHAVE_AJUSTES, r.lista);
+      }
+      this.avisar();
+    } catch (erro) {
+      // Não coube, ou o cache estava ilegível: a carga completa decide
+      registrarErro({
+        tela: 'ponto ao vivo',
+        mensagem: erro instanceof Error ? erro.message : String(erro),
+        pilha: erro instanceof Error ? erro.stack : undefined,
+      });
+      if (ponto.length > 0) void this.sincronizarPonto();
+      if (ajustes.length > 0) void this.sincronizarAjustes();
+    }
+  }
+
+  private async cargaCompletaDosAjustes(): Promise<boolean> {
     if (!supabase) return false;
 
     const data = await buscarTodasAsLinhas<LinhaAjuste>(
@@ -2001,16 +2094,8 @@ class PonteNuvem {
     if (!supabase || this.canalAberto) return;
     this.canalAberto = true;
 
-    supabase
-      .channel('conecta-colaboradores')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'colaboradores' },
-        () => {
-          this.sincronizarColaboradores();
-        }
-      )
-      .subscribe(acompanharCanal('colaboradores'));
+    // A escuta de `colaboradores` saiu (21/10/2026): a tabela deixou o tempo
+    // real em fichas-por-nivel.sql (13/10), e o sinal é `colaboradores_versao`
 
     /*
       O CANAL NÃO TRANSMITE MAIS A FICHA (fichas-por-nivel.sql): mandava a
@@ -2038,23 +2123,20 @@ class PonteNuvem {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'registros_ponto' },
-        () => {
-          this.sincronizarPonto();
-        }
+        (evento) => this.receberAoVivo('ponto', evento as EventoAoVivo<LinhaRegistroPonto>)
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'codigos_ponto_loja' },
+        // Só os códigos: trocar um QR não precisa baixar a janela de batidas
         () => {
-          this.sincronizarPonto();
+          this.sincronizarCodigos();
         }
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'ajustes_jornada' },
-        () => {
-          this.sincronizarAjustes();
-        }
+        (evento) => this.receberAoVivo('ajustes', evento as EventoAoVivo<LinhaAjuste>)
       )
       /**
        * A DECISÃO SOBRE UMA AUSÊNCIA PRECISA CHEGAR NOS OUTROS APARELHOS.
