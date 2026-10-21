@@ -172,6 +172,10 @@ operacoes (tabela, comando) as (values
   ('aparelhos', 'DELETE'),
   ('auditoria', 'INSERT'),
   ('erros_do_app', 'INSERT'),
+  -- Cotador B2B: a tela de margens (margens.ts; gravar é por função)
+  ('margens_por_marca', 'SELECT'),
+  ('apelidos_de_marca', 'SELECT'),
+  ('apelidos_de_marca', 'DELETE'),
   ('auditoria', 'SELECT'),
   ('avisos_leitura', 'INSERT'),
   ('avisos_leitura', 'SELECT'),

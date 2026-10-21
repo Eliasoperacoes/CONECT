@@ -203,6 +203,16 @@ export const FERRAMENTAS: Ferramenta[] = [
       'Gerar um código novo invalida o cartaz antigo na hora — quem estiver com a foto dele não bate mais.',
   },
   {
+    chave: 'margens_cotador',
+    nome: 'Margens por marca (cotador)',
+    descricao:
+      'O fator de cada marca que transforma o custo do B2B em preço de venda (custo × fator, para cima em ,90).',
+    area: 'gestao',
+    // Gravar continua exigindo nível ≥ 3 no banco, mesmo para quem enxerga
+    nivelPadrao: NIVEL_GERENTE,
+    cuidado: 'O fator junto com a venda revela o custo do fornecedor.',
+  },
+  {
     chave: 'rh_pessoal',
     nome: 'RH · Pessoas e documentos',
     descricao: 'Indicadores, holerite, atestado, advertência, escala e espelho.',

@@ -35,6 +35,7 @@ import { PainelRede } from './PainelRede';
 import { PainelAdministrativo } from './PainelAdministrativo';
 import { AbaEu } from './AbaEu';
 import { ProtecaoDaTela } from './ProtecaoDaTela';
+import { TelaMargens } from './TelaMargens';
 import type { SecaoDestino } from '../servicos/destinoDoAviso';
 
 
@@ -265,6 +266,8 @@ export const ConteudoWeb: React.FC<{
         return <BancoDeHoras colaboradorAtual={colaboradorAtual} abaFixa="banco_horas" />;
       case 'qr_ponto':
         return <BancoDeHoras colaboradorAtual={colaboradorAtual} abaFixa="qrcodes" />;
+      case 'margens':
+        return <TelaMargens colaboradorAtual={colaboradorAtual} />;
       case 'pedir_ausencia':
         return <AbaJustificar colaboradorAtual={colaboradorAtual} />;
       case 'minhas_ausencias':

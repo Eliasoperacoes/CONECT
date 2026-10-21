@@ -8,7 +8,7 @@ especificação nesta pasta (`SPEC-<módulo>.md`); este mapa é o índice.
 |---|---|---|---|
 | `banco-cotacao` | Fornecedores (liga/desliga), fila de cotações, preço do dia, histórico; acesso com usuário próprio da estação | CONECTA `supabase/` | — |
 | `estacao` | Extensão no PC de compras: escuta a fila, cota com os leitores, grava, informa online e sites logados | `ef/cotador-b2b` | banco-cotacao |
-| `precificacao` | Venda = custo + margem por grupo/linha; tradução de grupo do fornecedor → grupo Malachias; margem padrão | CONECTA `src/servicos/` + tabela | banco-cotacao |
+| `precificacao` | Venda = custo + margem **por marca** (Elias, 20/10: não é por grupo); apelidos da marca em cada B2B; margem padrão; arredonda para cima em ,90 | CONECTA `src/servicos/` + tabelas + tela de margens | banco-cotacao |
 | `orcamento` | Tela "Cotar": orçamento com peças, resultado por perfil (custo em outra cor), aguardando cotação, Atualizar agora, estado da estação | CONECTA tela + serviço | banco-cotacao, precificacao |
 | `pedidos-compras` | Orçamento aprovado → pedido para compras; estados pedido feito / a caminho / chegou | CONECTA tela + serviço + tabela | orcamento |
 | `avisos-cotacao` | "Peça X chegou" e mudanças de estado ao vendedor; estação caiu / site deslogado a compras e ao Elias | CONECTA `src/servicos/` (central de notificações e push existentes) | pedidos-compras, estacao |

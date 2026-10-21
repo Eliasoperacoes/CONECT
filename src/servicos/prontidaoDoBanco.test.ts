@@ -195,6 +195,8 @@ const ARQUIVOS_QUE_ESCREVEM = [
   'src/servicos/pushNativo.ts',
   /* Grava os erros de tela em `erros_do_app` (erros-do-app.sql) */
   'src/servicos/registroDeErros.ts',
+  /* Lê as margens do cotador e remove apelido (cotador-precificacao.sql) */
+  'src/servicos/margens.ts',
 ];
 
 /**

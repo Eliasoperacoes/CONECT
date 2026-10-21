@@ -90,6 +90,8 @@ esquema.
 
 | Arquivo | Quando usar |
 |---|---|
+| `cotador-precificacao.sql` | **Ainda não rodar na produção** (cotador, construído 100% no local). Venda = custo × fator da marca, arredondada para cima em ,90; fatores por marca e apelidos; o resultado da cotação para a tela, com custo e fator só para quem vê custo. Depende de `cotador-banco.sql`. Especificação em [cotador/SPEC-precificacao.md](cotador/SPEC-precificacao.md) |
+| `cotador-margens-carga.sql` | **Ainda não rodar na produção.** Os fatores por marca da lista do Elias (20/10/2026), gerados de `docs/cotador/margens-por-marca.csv`. Pode rodar de novo: atualiza os fatores. Depende de `cotador-precificacao.sql` |
 | `cotador-banco.sql` | **Ainda não rodar na produção** (em construção no Supabase local, 19/10/2026). O banco do cotador B2B: quem cota (Balcão, Callcenter, Gerente+), quem vê custo (Callcenter, Compras, Gerente+) e quem atende a fila (Compras, TI). Especificação em [cotador/SPEC-banco-cotacao.md](cotador/SPEC-banco-cotacao.md). Conferência: as regras criadas |
 | `conferir-central.sql` | **Não altera nada.** Publicar na Central falhou — diz se a causa é coluna faltando, política ou nível |
 | `aparelhos-para-push.sql` | **Rode uma vez, antes de distribuir o APK.** Cria a tabela dos aparelhos que recebem aviso com o app fechado. Sem ela o aplicativo não consegue guardar o endereço de entrega, e o aviso nativo não chega |
