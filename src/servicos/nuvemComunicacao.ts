@@ -171,6 +171,16 @@ export const juntarConversasEmTransito = (
   return subindo.length > 0 ? [...corrigidas, ...subindo] : corrigidas;
 };
 
+const lerMensagensDoAparelho = (): Mensagem[] => {
+  try {
+    const bruto = localStorage.getItem(CHAVE_MENSAGENS);
+    const lista = bruto ? JSON.parse(bruto) : [];
+    return Array.isArray(lista) ? lista : [];
+  } catch {
+    return [];
+  }
+};
+
 const lerConversasDoAparelho = (): Conversa[] => {
   try {
     const bruto = localStorage.getItem(CHAVE_CONVERSAS);
@@ -257,6 +267,158 @@ interface LinhaMensagem {
   criado_em: string;
 }
 
+
+/**
+ * A LINHA DO BANCO COMO A MENSAGEM QUE A TELA LÊ — um lugar só, para a carga
+ * completa e para o evento ao vivo (21/10/2026). Duas montagens divergiriam:
+ * uma mensagem chegaria ao vivo de um jeito e voltaria na carga de outro.
+ */
+export const paraMensagemDaLinha = (linha: LinhaMensagem, lidaPor: string[]): Mensagem => ({
+  id: linha.id,
+  conversaId: linha.conversa_id,
+  remetenteId: linha.remetente_id,
+  tipo: linha.tipo as TipoMensagem,
+  texto: linha.texto || undefined,
+  audioUrl: linha.audio_url || undefined,
+  audioDuracao: linha.audio_duracao ?? undefined,
+  arquivoNome: linha.arquivo_nome || undefined,
+  arquivoTamanho: linha.arquivo_tamanho || undefined,
+  arquivoUrl: linha.arquivo_url || undefined,
+  imagemUrl: linha.imagem_url || undefined,
+  legenda: linha.legenda || undefined,
+  criadoEm: linha.criado_em,
+  horaFormatada: horaDe(linha.criado_em),
+  // "Lida" para o remetente significa que mais alguém abriu
+  lida: lidaPor.some((id) => id !== linha.remetente_id),
+  lidaPor,
+  ehEncaminhada: linha.eh_encaminhada || undefined,
+  respondendoA: linha.responde_a || undefined,
+  ehAvisoDirecao: linha.eh_aviso_direcao || undefined,
+  publicacaoId: linha.publicacao_id || undefined,
+  editadaEm: linha.editada_em || undefined,
+  fixadaEm: linha.fixada_em || undefined,
+  fixadaPorId: linha.fixada_por_id || undefined,
+  anexoCaminho: linha.anexo_caminho || undefined,
+  reacoes: linha.reacoes || undefined,
+});
+
+/*
+ * ===================================================================
+ * O EVENTO AO VIVO APLICADO, E NÃO A RECARGA DE TUDO (21/10/2026)
+ * ===================================================================
+ *
+ * Cada mensagem, edição, reação ou "lida" disparava, em cada aparelho que
+ * a recebia, a carga completa: conversas, participantes, TODAS as mensagens
+ * e TODAS as leituras. medir-lentidao.sql de 21/10/2026: mensagens e
+ * leituras a ~175 ms cada, quase 2 mil vezes — e crescendo com o uso.
+ *
+ * O evento já traz a linha que mudou. Aqui ela é aplicada ao que o aparelho
+ * tem. A carga completa continua na abertura e na reconexão, e volta quando
+ * o evento não basta: conversa que este aparelho não conhece, ou evento sem
+ * a linha. Na dúvida, recarrega — nunca adivinha.
+ */
+export interface EventoAoVivo<L> {
+  eventType: string;
+  new?: Partial<L> | null;
+  old?: Partial<L> | null;
+}
+
+/** A conversa com a última mensagem dela recalculada (a prévia da lista) */
+const comAUltimaDaConversa = (conversas: Conversa[], mensagens: Mensagem[], conversaId: string): Conversa[] => {
+  let ultima: Mensagem | undefined;
+  for (const m of mensagens) {
+    if (m.conversaId === conversaId && (!ultima || m.criadoEm >= ultima.criadoEm)) ultima = m;
+  }
+  return conversas.map((c) =>
+    c.id !== conversaId
+      ? c
+      : ultima
+      ? {
+          ...c,
+          atualizadoEm: ultima.criadoEm,
+          ultimaMensagem: {
+            texto: montarPreviaDaMensagem(ultima),
+            hora: ultima.horaFormatada,
+            remetenteId: ultima.remetenteId,
+            tipo: ultima.tipo,
+          },
+        }
+      : { ...c, ultimaMensagem: undefined }
+  );
+};
+
+export const aplicarMensagemAoVivo = (
+  mensagens: Mensagem[],
+  conversas: Conversa[],
+  evento: EventoAoVivo<LinhaMensagem>
+): { mensagens: Mensagem[]; conversas: Conversa[]; recarregar: boolean; anexoParaAssinar?: string } => {
+  const recarregar = { mensagens, conversas, recarregar: true };
+
+  if (evento.eventType === 'DELETE') {
+    const id = evento.old?.id;
+    if (!id) return recarregar;
+    const removida = mensagens.find((m) => m.id === id);
+    if (!removida) return { mensagens, conversas, recarregar: false };
+    const restantes = mensagens.filter((m) => m.id !== id);
+    return {
+      mensagens: restantes,
+      conversas: comAUltimaDaConversa(conversas, restantes, removida.conversaId),
+      recarregar: false,
+    };
+  }
+  if (evento.eventType !== 'INSERT' && evento.eventType !== 'UPDATE') return recarregar;
+
+  const linha = evento.new as LinhaMensagem | undefined | null;
+  if (!linha?.id || !linha.conversa_id || !linha.criado_em || !linha.remetente_id) return recarregar;
+  // Conversa que este aparelho ainda não conhece (acabou de entrar nela): carga completa
+  if (!conversas.some((c) => c.id === linha.conversa_id)) return recarregar;
+
+  const atual = mensagens.find((m) => m.id === linha.id);
+  let mensagem = paraMensagemDaLinha(linha, atual?.lidaPor || []);
+  let anexoParaAssinar: string | undefined;
+  if (mensagem.anexoCaminho) {
+    // O mesmo anexo já assinado fica; um novo precisa de endereço
+    if (atual?.anexoCaminho === mensagem.anexoCaminho) {
+      mensagem = { ...mensagem, imagemUrl: atual.imagemUrl, audioUrl: atual.audioUrl, arquivoUrl: atual.arquivoUrl };
+    } else {
+      anexoParaAssinar = mensagem.anexoCaminho;
+    }
+  }
+  // A que estava "enviando" com o mesmo id é esta: o banco confirmou
+  const lista = atual ? mensagens.map((m) => (m.id === mensagem.id ? mensagem : m)) : [...mensagens, mensagem];
+  return {
+    mensagens: lista,
+    conversas: comAUltimaDaConversa(conversas, lista, mensagem.conversaId),
+    recarregar: false,
+    anexoParaAssinar,
+  };
+};
+
+export const aplicarLeituraAoVivo = (
+  mensagens: Mensagem[],
+  evento: EventoAoVivo<{ mensagem_id: string; colaborador_id: string }>
+): { mensagens: Mensagem[]; recarregar: boolean } => {
+  const linha = evento.eventType === 'DELETE' ? evento.old : evento.new;
+  if (!linha?.mensagem_id || !linha.colaborador_id) return { mensagens, recarregar: true };
+  const quem = linha.colaborador_id;
+  const alvo = mensagens.find((m) => m.id === linha.mensagem_id);
+  // Leitura de mensagem que este aparelho não tem (de outra conversa, ou já apagada): nada a fazer
+  if (!alvo) return { mensagens, recarregar: false };
+  const antes = alvo.lidaPor || [];
+  const lidaPor =
+    evento.eventType === 'DELETE'
+      ? antes.filter((id) => id !== quem)
+      : antes.includes(quem)
+      ? antes
+      : [...antes, quem];
+  if (lidaPor.length === antes.length) return { mensagens, recarregar: false };
+  return {
+    mensagens: mensagens.map((m) =>
+      m.id === alvo.id ? { ...m, lidaPor, lida: lidaPor.some((id) => id !== m.remetenteId) } : m
+    ),
+    recarregar: false,
+  };
+};
 
 const paraLinhaMensagem = (m: Mensagem) => ({
   publicacao_id: m.publicacaoId ?? null,
@@ -461,6 +623,50 @@ class PonteComunicacao {
     }, espera);
   }
 
+  /**
+   * Um evento ao vivo das conversas, aplicado ao que o aparelho tem
+   * (aplicarMensagemAoVivo, aplicarLeituraAoVivo). Na dúvida — carga em curso,
+   * evento sem a linha, conversa desconhecida, erro — a carga completa.
+   */
+  private aplicarAoVivo(tabela: 'mensagens' | 'leituras_mensagem', evento: EventoAoVivo<any>): void {
+    if (this.cargasEmCurso > 0 || this.sincronizando || this.sincronizacaoAgendada) {
+      this.agendarSincronizacao();
+      return;
+    }
+    try {
+      const mensagens = lerMensagensDoAparelho();
+      if (tabela === 'leituras_mensagem') {
+        const r = aplicarLeituraAoVivo(mensagens, evento);
+        if (r.recarregar) return this.agendarSincronizacao();
+        if (r.mensagens === mensagens) return;
+        localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(r.mensagens));
+        this.avisar();
+        return;
+      }
+      const r = aplicarMensagemAoVivo(mensagens, lerConversasDoAparelho(), evento);
+      if (r.recarregar) return this.agendarSincronizacao();
+      localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(r.mensagens));
+      localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(r.conversas));
+      this.avisar();
+      if (r.anexoParaAssinar) {
+        const caminho = r.anexoParaAssinar;
+        // O endereço do anexo novo chega depois; até lá a mensagem aparece sem ele
+        void resolverCaminhos([caminho]).then((enderecos) => {
+          const endereco = enderecos.get(caminho);
+          if (!endereco) return;
+          const atuais = lerMensagensDoAparelho();
+          localStorage.setItem(
+            CHAVE_MENSAGENS,
+            JSON.stringify(atuais.map((m) => (m.anexoCaminho === caminho ? aplicarEnderecoDoAnexo(m, endereco) : m)))
+          );
+          this.avisar();
+        });
+      }
+    } catch {
+      this.agendarSincronizacao();
+    }
+  }
+
   assinarAtualizacoes(ouvinte: Ouvinte): () => void {
     this.ouvintes.push(ouvinte);
     return () => {
@@ -479,7 +685,23 @@ class PonteComunicacao {
    * remonta o cache. Vem tudo junto porque a conversa só fica completa com a
    * prévia da última mensagem, e a mensagem só fica completa com quem já leu.
    */
+  /**
+   * Quantas cargas completas estão em curso. Evento ao vivo que chega no meio
+   * de uma NÃO é aplicado: a carga, buscada antes dele, o apagaria ao gravar.
+   * Ele vira uma carga nova ao final (agendarSincronizacao).
+   */
+  private cargasEmCurso = 0;
+
   async sincronizarConversas(): Promise<boolean> {
+    this.cargasEmCurso++;
+    try {
+      return await this.cargaCompletaDasConversas();
+    } finally {
+      this.cargasEmCurso--;
+    }
+  }
+
+  private async cargaCompletaDasConversas(): Promise<boolean> {
     if (!supabase) return false;
 
     /**
@@ -525,37 +747,9 @@ class PonteComunicacao {
       lidaPorMensagem.set(l.mensagem_id, atual);
     });
 
-    const listaMensagens: Mensagem[] = mensagens.map((linha) => {
-      const lidaPor = lidaPorMensagem.get(linha.id) || [];
-      return {
-        id: linha.id,
-        conversaId: linha.conversa_id,
-        remetenteId: linha.remetente_id,
-        tipo: linha.tipo as TipoMensagem,
-        texto: linha.texto || undefined,
-        audioUrl: linha.audio_url || undefined,
-        audioDuracao: linha.audio_duracao ?? undefined,
-        arquivoNome: linha.arquivo_nome || undefined,
-        arquivoTamanho: linha.arquivo_tamanho || undefined,
-        arquivoUrl: linha.arquivo_url || undefined,
-        imagemUrl: linha.imagem_url || undefined,
-        legenda: linha.legenda || undefined,
-        criadoEm: linha.criado_em,
-        horaFormatada: horaDe(linha.criado_em),
-        // "Lida" para o remetente significa que mais alguém abriu
-        lida: lidaPor.some((id) => id !== linha.remetente_id),
-        lidaPor,
-        ehEncaminhada: linha.eh_encaminhada || undefined,
-        respondendoA: linha.responde_a || undefined,
-        ehAvisoDirecao: linha.eh_aviso_direcao || undefined,
-        publicacaoId: linha.publicacao_id || undefined,
-        editadaEm: linha.editada_em || undefined,
-        fixadaEm: linha.fixada_em || undefined,
-        fixadaPorId: linha.fixada_por_id || undefined,
-        anexoCaminho: linha.anexo_caminho || undefined,
-        reacoes: linha.reacoes || undefined,
-      };
-    });
+    const listaMensagens: Mensagem[] = mensagens.map((linha) =>
+      paraMensagemDaLinha(linha, lidaPorMensagem.get(linha.id) || [])
+    );
 
     // Um pedido só para todos os anexos da conversa, em vez de um por
     // mensagem: abrir uma conversa com trinta fotos não pode virar trinta
@@ -1359,17 +1553,17 @@ class PonteComunicacao {
 
     supabase
       .channel('conecta-conversas')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mensagens' }, recarregarConversas)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mensagens' }, (evento) =>
+        this.aplicarAoVivo('mensagens', evento as EventoAoVivo<any>)
+      )
       .on('postgres_changes', { event: '*', schema: 'public', table: 'conversas' }, recarregarConversas)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'participantes' },
         recarregarConversas
       )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'leituras_mensagem' },
-        recarregarConversas
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leituras_mensagem' }, (evento) =>
+        this.aplicarAoVivo('leituras_mensagem', evento as EventoAoVivo<any>)
       )
       .subscribe(acompanharCanal('conversas'));
 
