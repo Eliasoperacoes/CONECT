@@ -190,6 +190,18 @@ export const escolherNoticias = (
       Number(b.daSuaArea) - Number(a.daSuaArea) ||
       b.publicadaEm.localeCompare(a.publicadaEm)
   );
-  const noticias = ordenadas.slice(0, limite);
+  const escolhidas = ordenadas.slice(0, limite);
+  /*
+    O DESTAQUE TEM IMAGEM (21/10/2026). A primeira da lista é a notícia
+    grande do Início, e a Agência Brasil às vezes publica sem imagem — a do
+    Bolsa Família de outubro veio sem <imagem-destaque> no RSS, e o destaque
+    ficou com o ícone. A primeira que tem imagem sobe para o destaque; as
+    outras seguem na mesma ordem, e as sem imagem vão para a lista ao lado.
+  */
+  const comImagem = escolhidas.findIndex((n) => !!n.imagem);
+  const noticias =
+    comImagem > 0
+      ? [escolhidas[comImagem], ...escolhidas.slice(0, comImagem), ...escolhidas.slice(comImagem + 1)]
+      : escolhidas;
   return { daArea: noticias.some((n) => n.daSuaArea), noticias };
 };

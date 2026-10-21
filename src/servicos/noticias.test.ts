@@ -112,3 +112,17 @@ ${item('Veículos elétricos ganham espaço', 'https://agenciabrasil.ebc.com.br/
   const amanha = escolherNoticias(lerFeed(feed), 'automotivo', 4, '2026-10-05').noticias.map((n) => n.titulo);
   expect(amanha).not.toContain('Inflação de setembro surpreende');
 });
+
+test('o destaque é a primeira com imagem; a sem imagem desce para a lista (21/10/2026)', () => {
+  const dia = '2026-10-21';
+  const m = (link: string, hora: string, imagem?: string) => ({
+    titulo: link, link, editoria: 'economia', publicadaEm: `${dia}T${hora}:00.000Z`, resumo: 'x', imagem,
+  });
+  // A do Bolsa Família veio sem <imagem-destaque> e é a mais nova
+  const todas = [m('bolsa', '13:00'), m('dolar', '12:00', 'https://imagens.ebc.com.br/d.jpg'), m('juros', '11:00', 'https://imagens.ebc.com.br/j.jpg')];
+  const { noticias } = escolherNoticias(todas as any, areaDoSetor('Balcão'), 4, dia);
+  expect(noticias.map((n) => n.link)).toEqual(['dolar', 'bolsa', 'juros']);
+  // Nenhuma com imagem: a ordem fica como estava
+  const semNenhuma = escolherNoticias([m('a', '13:00'), m('b', '12:00')] as any, areaDoSetor('Balcão'), 4, dia);
+  expect(semNenhuma.noticias.map((n) => n.link)).toEqual(['a', 'b']);
+});
