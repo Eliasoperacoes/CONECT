@@ -21,7 +21,16 @@ import {
   RegistroAuditoria,
   TipoConversa,
   TipoMensagem,
+  Colaborador,
+  leAuditoria,
 } from '../tipos';
+import { lerLista } from './cacheDeLeitura';
+
+/** Quem está no aparelho, pelo cache — para saber se ele lê a auditoria */
+const euNoAparelho = (): Colaborador | undefined => {
+  const id = localStorage.getItem('conecta_v4_colaborador_atual');
+  return id ? lerLista<Colaborador>('conecta_v4_colaboradores').find((c) => c.id === id) : undefined;
+};
 import { supabase } from './supabase';
 import { pedirAvisoDaMensagem } from './envioDeAviso';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
@@ -1300,6 +1309,8 @@ class PonteComunicacao {
 
   async sincronizarAuditoria(): Promise<boolean> {
     if (!supabase) return false;
+    // Quem não lê a auditoria (só TI e RH leem) não a pede: nada a buscar
+    if (!leAuditoria(euNoAparelho())) return true;
 
     // A auditoria cresce sem parar; a tela mostra o histórico recente
     const { data, error } = await supabase
@@ -1373,10 +1384,22 @@ class PonteComunicacao {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracoes' }, () => {
         this.sincronizarConfiguracoes();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'auditoria' }, () => {
-        this.sincronizarAuditoria();
-      })
       .subscribe(acompanharCanal('rede'));
+
+    /*
+      A AUDITORIA AO VIVO, SÓ PARA QUEM A LÊ (21/10/2026). Escutá-la em todos
+      os aparelhos fazia cada registro novo disparar a leitura da auditoria
+      em todos eles — os que não são TI nem RH recebiam zero linhas, e o
+      banco pagava a conta inteira por cada um.
+    */
+    if (leAuditoria(euNoAparelho())) {
+      supabase
+        .channel('conecta-auditoria')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'auditoria' }, () => {
+          this.sincronizarAuditoria();
+        })
+        .subscribe(acompanharCanal('auditoria'));
+    }
   }
 
   /** Tudo que veio do banco sai do aparelho quando a pessoa sai do sistema. */

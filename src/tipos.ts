@@ -160,6 +160,16 @@ export const preenchePeloTurno = (c: { nivel: number; setor: string }): boolean 
   ehDoRh(c) || ehAdministrador(c);
 
 /**
+ * QUEM LÊ A AUDITORIA: o TI e o RH. Par de `auditoria_leitura` (esquema.sql),
+ * que é a trava que vale. Existe na tela para os outros aparelhos nem
+ * PEDIREM a auditoria: eles recebiam zero linhas, mas o banco fazia a conta
+ * inteira para cada um a cada registro novo — 409 ms, 1.327 vezes, a
+ * consulta mais cara do banco em 21/10/2026.
+ */
+export const leAuditoria = (c?: { nivel: number; setor: string } | null): boolean =>
+  !!c && (c.nivel >= NIVEL_TI || c.setor === 'RH');
+
+/**
  * Os níveis que esta pessoa pode DAR a alguém, ao cadastrar ou alterar.
  *
  * Só o TI dá qualquer nível; os demais, até o próprio — senão o RH criaria

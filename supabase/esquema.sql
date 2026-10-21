@@ -376,6 +376,22 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
+-- As conversas de que participo, de uma vez (auditoria-leve.sql, 21/10/2026):
+-- a regra de leitura de `participantes` pergunta a lista, e não
+-- `participo_da_conversa` linha a linha. A mesma pergunta, feita uma vez.
+create or replace function public.minhas_conversas()
+returns setof text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.conversa_id from public.participantes p where p.colaborador_id = public.meu_colaborador_id();
+$$;
+
+revoke execute on function public.minhas_conversas() from public, anon;
+grant execute on function public.minhas_conversas() to authenticated;
+
 -- Lê a mensagem: participa agora, ou ela é de ANTES de a pessoa sair
 -- O grupo criado por gente (e não conversa individual nem canal oficial)
 create or replace function public.eh_grupo_de_pessoas(alvo text)
@@ -860,7 +876,10 @@ create policy conversas_remocao on public.conversas
 drop policy if exists participantes_leitura on public.participantes;
 create policy participantes_leitura on public.participantes
   for select to authenticated
-  using (colaborador_id = public.meu_colaborador_id() or public.participo_da_conversa(conversa_id));
+  using (
+    colaborador_id = (select public.meu_colaborador_id())
+    or conversa_id in (select public.minhas_conversas())
+  );
 
 /*
   QUEM PODE INSCREVER QUEM:
@@ -1269,7 +1288,7 @@ create policy config_escrita on public.configuracoes
 -- Não há política de update nem delete: o registro é imutável.
 drop policy if exists auditoria_leitura on public.auditoria;
 create policy auditoria_leitura on public.auditoria
-  for select to authenticated using (public.sou_admin() or public.meu_setor() = 'RH');
+  for select to authenticated using ((select public.sou_admin()) or (select public.meu_setor()) = 'RH');
 
 drop policy if exists auditoria_registro on public.auditoria;
 create policy auditoria_registro on public.auditoria
