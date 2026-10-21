@@ -57,7 +57,7 @@ import { ehTelaDeCelular } from './servicos/tela';
 import { lerPreferencia, deveBloquear, biometriaDisponivel, ouvirEstadoDoAplicativo } from './servicos/desbloqueio';
 import { TelaDeBloqueio } from './componentes/TelaDeBloqueio';
 import { OfertaDeBiometria } from './componentes/OfertaDeBiometria';
-import { caminhoDaTela, telaDoCaminho } from './servicos/enderecoDaTela';
+import { caminhoDaTela, telaDoCaminho, caminhoEstaNaTela } from './servicos/enderecoDaTela';
 import {
   ondeParei,
   lembrarOndeParei,
@@ -81,6 +81,7 @@ import { ModalNovaConversa } from './componentes/ModalNovaConversa';
 import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
 import { AvisoEstacaoCotacao } from './componentes/AvisoEstacaoCotacao';
+import { AvisosDeCotacao } from './componentes/AvisosDeCotacao';
 import { vigiarVersao } from './servicos/versao';
 import { IndicadorNuvem } from './componentes/IndicadorNuvem';
 import { TelaLogin } from './componentes/TelaLogin';
@@ -1355,7 +1356,8 @@ export default function App() {
     const caminho = caminhoDaTela(telaQueAbre(telaWeb, acessoWeb.visiveis));
     const daPessoa = trocaPelaPessoa.current;
     trocaPelaPessoa.current = false;
-    if (window.location.pathname === caminho) return;
+    // Já está nela — inclusive com o lugar de dentro (/ferramentas/cotador/margens), que a tela cuida
+    if (caminhoEstaNaTela(window.location.pathname, telaQueAbre(telaWeb, acessoWeb.visiveis))) return;
     const novo = `${caminho}${window.location.search}${window.location.hash}`;
     if (daPessoa) window.history.pushState(null, '', novo);
     else window.history.replaceState(window.history.state, '', novo);
@@ -1716,6 +1718,7 @@ export default function App() {
     <div className="w-full h-[100dvh] flex flex-col bg-[var(--c-canvas)] text-[var(--c-texto)] overflow-hidden">
       <IndicadorOffline />
       <AvisoEstacaoCotacao colaborador={autenticado ? colaboradorAtual : null} />
+      <AvisosDeCotacao colaborador={autenticado ? colaboradorAtual : null} />
 
       {/*
         VERSÃO NOVA NO AR.

@@ -128,7 +128,7 @@ export const ehAdministrador = (c: { nivel: number }): boolean => c.nivel >= NIV
 
 /**
  * COTADOR B2B (docs/cotador/MAPA.md, Elias 19/10/2026). Pares de
- * `posso_cotar`, `posso_ver_custo` e `posso_atender_fila`
+ * `posso_cotar`, `posso_ver_custo`, `posso_atender_fila` e `posso_ver_historico_de_todos`
  * (supabase/cotador-banco.sql); a do banco é a que vale.
  */
 /** Cota peça nos B2Bs: Balcão, Callcenter e Gerente para cima. */
@@ -138,6 +138,10 @@ export const podeCotar = (c: { nivel: number; setor: string }): boolean =>
 /** Vê o custo do fornecedor: Callcenter, Compras e Gerente para cima. O Balcão vê só a venda. */
 export const podeVerCusto = (c: { nivel: number; setor: string }): boolean =>
   c.setor === 'Callcenter' || c.setor === 'Compras' || c.nivel >= NIVEL_GERENTE;
+
+/** Vê o histórico de cotação de todos (SPEC-historico): Compras e Gerência (nível ≥ 3). O vendedor vê o dele. */
+export const podeVerHistoricoDeTodos = (c: { nivel: number; setor: string }): boolean =>
+  c.setor === 'Compras' || c.nivel >= NIVEL_GERENTE;
 
 /** Atende a fila de cotação no PC de compras: Compras e TI. */
 export const podeAtenderFila = (c: { nivel: number; setor: string }): boolean =>

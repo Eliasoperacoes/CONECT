@@ -212,6 +212,15 @@ export const FERRAMENTAS: Ferramenta[] = [
     nivelPadrao: NIVEL_COLABORADOR,
   },
   {
+    chave: 'solicitacoes_cotador',
+    nome: 'Solicitações de cotação (cotador)',
+    descricao:
+      'O painel do comprador: as peças que o vendedor pediu para cotar por fora do B2B, para responder com fornecedor, venda e prazo.',
+    area: 'gestao',
+    // Quem responde de fato é Compras e TI (podeAtenderFila, par de responder_solicitacao)
+    nivelPadrao: NIVEL_COLABORADOR,
+  },
+  {
     chave: 'fretes_cotador',
     nome: 'Fretes dos fornecedores (cotador)',
     descricao:

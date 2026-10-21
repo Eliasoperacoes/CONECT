@@ -469,6 +469,322 @@ $$;
 revoke all on function public.andamento_da_cotacao(text[]) from public, anon;
 grant execute on function public.andamento_da_cotacao(text[]) to authenticated;
 
+-- ------------------------------------------------------------
+-- COTAÇÃO HUMANA (docs/cotador/SPEC-cotacao-humana.md, Elias 21/10/2026)
+--
+-- O B2B não tem a peça, ou o cliente não quer o similar: o vendedor pede
+-- ao comprador, que cota por fora e responde. Fora do B2B o comprador já
+-- soma frete e margem: ele informa a VENDA; o custo é opcional, e só quem
+-- vê custo o enxerga.
+-- ------------------------------------------------------------
+
+create table if not exists public.solicitacoes_cotacao (
+  id              uuid primary key default gen_random_uuid(),
+  codigo          text not null check (codigo ~ '^[A-Z0-9]+$'),
+  veiculo         text,
+  observacao      text,
+  pedida_por      text references public.colaboradores(id) on delete set null,
+  loja            text,
+  situacao        text not null default 'aberta' check (situacao in ('aberta', 'respondida', 'nao_encontrada')),
+  motivo          text,  -- o "não encontrei" do comprador
+  criada_em       timestamptz not null default now(),
+  respondida_por  text references public.colaboradores(id) on delete set null,
+  respondida_em   timestamptz,
+  -- Quando o vendedor abriu o resultado: os lembretes (avisos-cotacao) param aqui
+  vista_em        timestamptz
+);
+alter table public.solicitacoes_cotacao enable row level security;
+create index if not exists solicitacoes_cotacao_abertas on public.solicitacoes_cotacao (situacao, criada_em);
+
+create table if not exists public.respostas_cotacao (
+  id              uuid primary key default gen_random_uuid(),
+  solicitacao_id  uuid not null references public.solicitacoes_cotacao(id) on delete cascade,
+  fornecedor      text not null check (btrim(fornecedor) <> ''),
+  marca           text,
+  venda           numeric(12,2) not null check (venda > 0),
+  custo           numeric(12,2) check (custo is null or custo > 0),
+  prazo           text,
+  observacao      text,
+  criada_em       timestamptz not null default now()
+);
+alter table public.respostas_cotacao enable row level security;
+
+-- Quem pediu vê as próprias; quem atende a fila (Compras, TI) vê todas.
+-- As respostas não têm regra de leitura: o custo sai só pela função abaixo.
+drop policy if exists solicitacoes_cotacao_leitura on public.solicitacoes_cotacao;
+create policy solicitacoes_cotacao_leitura on public.solicitacoes_cotacao
+  for select to authenticated using (pedida_por = public.meu_colaborador_id() or public.posso_atender_fila());
+
+-- O painel do comprador e o cartão do vendedor mudam na hora (tempo real)
+do $$ begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables
+                      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'solicitacoes_cotacao') then
+    alter publication supabase_realtime add table public.solicitacoes_cotacao;
+  end if;
+end $$;
+
+create or replace function public.pedir_ao_comprador(codigo text, veiculo text, observacao text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  novo uuid;
+  normal text := public.normalizar_codigo(codigo);
+begin
+  if not public.posso_cotar() then
+    raise exception 'Só Balcão, Callcenter e Gerente cotam' using errcode = '42501';
+  end if;
+  if normal = '' then
+    raise exception 'Informe o código da peça';
+  end if;
+  insert into public.solicitacoes_cotacao (codigo, veiculo, observacao, pedida_por, loja)
+  values (normal, nullif(btrim(veiculo), ''), nullif(btrim(observacao), ''), public.meu_colaborador_id(),
+          (select c.loja from public.colaboradores c where c.id = public.meu_colaborador_id()))
+  returning id into novo;
+  return novo;
+end;
+$$;
+revoke all on function public.pedir_ao_comprador(text, text, text) from public, anon;
+grant execute on function public.pedir_ao_comprador(text, text, text) to authenticated;
+
+-- O comprador responde: uma ou mais opções [{fornecedor, marca, venda,
+-- custo, prazo, observacao}], ou "não encontrei" com o motivo.
+create or replace function public.responder_solicitacao(solicitacao uuid, opcoes jsonb, nao_encontrei boolean, motivo text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  s public.solicitacoes_cotacao%rowtype;
+  o jsonb;
+begin
+  if not public.posso_atender_fila() then
+    raise exception 'Só Compras ou TI respondem a solicitação de cotação' using errcode = '42501';
+  end if;
+  select * into s from public.solicitacoes_cotacao where id = solicitacao for update;
+  if s.id is null then
+    raise exception 'Solicitação não existe';
+  end if;
+
+  if nao_encontrei then
+    update public.solicitacoes_cotacao
+       set situacao = 'nao_encontrada', motivo = nullif(btrim(responder_solicitacao.motivo), ''),
+           respondida_por = public.meu_colaborador_id(), respondida_em = now(), vista_em = null
+     where id = s.id;
+    return;
+  end if;
+
+  if jsonb_typeof(opcoes) is distinct from 'array' or jsonb_array_length(opcoes) = 0 then
+    raise exception 'Informe ao menos uma opção (fornecedor, venda e prazo)';
+  end if;
+  -- Responder de novo troca as opções (o comprador corrigiu)
+  delete from public.respostas_cotacao where solicitacao_id = s.id;
+  for o in select * from jsonb_array_elements(opcoes) loop
+    insert into public.respostas_cotacao (solicitacao_id, fornecedor, marca, venda, custo, prazo, observacao)
+    values (s.id, btrim(o ->> 'fornecedor'), nullif(btrim(o ->> 'marca'), ''), (o ->> 'venda')::numeric,
+            nullif(o ->> 'custo', '')::numeric, nullif(btrim(o ->> 'prazo'), ''), nullif(btrim(o ->> 'observacao'), ''));
+  end loop;
+  update public.solicitacoes_cotacao
+     set situacao = 'respondida', motivo = null, respondida_por = public.meu_colaborador_id(),
+         respondida_em = now(), vista_em = null
+   where id = s.id;
+end;
+$$;
+revoke all on function public.responder_solicitacao(uuid, jsonb, boolean, text) from public, anon;
+grant execute on function public.responder_solicitacao(uuid, jsonb, boolean, text) to authenticated;
+
+-- As solicitações com as respostas, para o painel do comprador (todas as
+-- abertas e as dos últimos 7 dias) e para o cartão do vendedor (as dele).
+-- Uma linha por opção de resposta (ou uma linha só, sem resposta ainda).
+-- O custo só para quem vê custo.
+create or replace function public.solicitacoes_de_cotacao(codigo text default null)
+returns table (
+  id uuid, codigo_peca text, veiculo text, observacao text, situacao text, motivo text,
+  pedida_por text, nome_de_quem_pediu text, loja text, criada_em timestamptz,
+  respondida_por text, nome_de_quem_respondeu text, respondida_em timestamptz, vista_em timestamptz,
+  fornecedor text, marca text, venda numeric, custo numeric, prazo text, observacao_da_resposta text
+)
+language plpgsql stable security definer set search_path = public as $$
+declare
+  eu text := public.meu_colaborador_id();
+  compras boolean := public.posso_atender_fila();
+  ve_custo boolean := public.posso_ver_custo();
+begin
+  if not (public.posso_cotar() or compras) then
+    raise exception 'Sem permissão para cotar' using errcode = '42501';
+  end if;
+  return query
+    select s.id, s.codigo, s.veiculo, s.observacao, s.situacao, s.motivo,
+           s.pedida_por, (select c.nome from public.colaboradores c where c.id = s.pedida_por), s.loja, s.criada_em,
+           s.respondida_por, (select c.nome from public.colaboradores c where c.id = s.respondida_por), s.respondida_em, s.vista_em,
+           r.fornecedor, r.marca, r.venda, case when ve_custo then r.custo end, r.prazo, r.observacao
+      from public.solicitacoes_cotacao s
+      left join public.respostas_cotacao r on r.solicitacao_id = s.id
+     where (s.pedida_por = eu or compras)
+       and (solicitacoes_de_cotacao.codigo is null or s.codigo = public.normalizar_codigo(solicitacoes_de_cotacao.codigo))
+       -- Os painéis mostram o recente; pelo código (o Histórico reabrindo), tudo
+       and (s.situacao = 'aberta' or s.criada_em > now() - interval '7 days' or solicitacoes_de_cotacao.codigo is not null)
+     order by (s.situacao <> 'aberta'), s.criada_em, r.venda nulls last;
+end;
+$$;
+revoke all on function public.solicitacoes_de_cotacao(text) from public, anon;
+grant execute on function public.solicitacoes_de_cotacao(text) to authenticated;
+
+-- ------------------------------------------------------------
+-- HISTÓRICO (docs/cotador/SPEC-historico.md, Elias 21/10/2026)
+--
+-- Tudo o que foi cotado e pedido ao comprador, guardado PARA SEMPRE (base
+-- dos insights). O vendedor vê o dele; Compras e Gerência (nível ≥ 3), o de
+-- todos. Par em tipos.ts: podeVerHistoricoDeTodos.
+-- ------------------------------------------------------------
+
+create or replace function public.posso_ver_historico_de_todos()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.meu_setor() = 'Compras' or public.meu_nivel() >= 3;
+$$;
+revoke all on function public.posso_ver_historico_de_todos() from public, anon;
+grant execute on function public.posso_ver_historico_de_todos() to authenticated;
+
+-- A FOTO de uma cotação B2B, como o vendedor a viu: o melhor fornecedor, a
+-- venda, o custo, o prazo e a situação daquele momento. Mudar a margem ou o
+-- frete depois não muda a foto. Uma por pessoa, código e cotação (base_em =
+-- quando os sites foram consultados): reabrir não duplica; cotar de novo, sim.
+create table if not exists public.consultas_cotacao (
+  id              uuid primary key default gen_random_uuid(),
+  colaborador_id  text not null references public.colaboradores(id) on delete cascade,
+  loja            text,
+  codigo          text not null,
+  criada_em       timestamptz not null default now(),
+  base_em         timestamptz not null,
+  situacao        text not null check (situacao in ('SP', 'FORA DO ESTADO', 'SEM ESTOQUE')),
+  fornecedor      text,
+  local           text,
+  venda           numeric(12,2),
+  custo           numeric(12,2),
+  prazo           text,
+  similares       integer not null default 0,
+  unique (colaborador_id, codigo, base_em)
+);
+alter table public.consultas_cotacao enable row level security;
+create index if not exists consultas_cotacao_quando on public.consultas_cotacao (criada_em desc);
+
+-- Lê pela função do histórico (que esconde o custo de quem não vê custo).
+-- Direto na tabela, só o próprio — e sem o custo não há como, então nada.
+drop policy if exists consultas_cotacao_leitura on public.consultas_cotacao;
+
+-- Guarda a foto do código para quem acabou de ver o resultado. O melhor é
+-- o mesmo da tela (cotar.ts, ordenarOfertas): em SP pela menor venda;
+-- sem SP, a menor de fora; sem nada, SEM ESTOQUE. A venda vem de
+-- resultado_da_cotacao (cotador-precificacao.sql), a conta única do preço.
+create or replace function public.registrar_consulta(codigo text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  alvo text := public.normalizar_codigo(codigo);
+  eu text := public.meu_colaborador_id();
+  base timestamptz;
+  m record;
+  n_similares integer;
+begin
+  if not public.posso_cotar() then
+    raise exception 'Só Balcão, Callcenter e Gerente cotam' using errcode = '42501';
+  end if;
+  -- Sem cotação de hoje não há o que fotografar
+  if not exists (select 1 from public.historico_precos_b2b h where h.codigo = alvo and h.dia = public.hoje_brasilia()) then
+    return;
+  end if;
+  base := coalesce(
+    (select max(p.consultado_em) from public.precos_b2b p where p.codigo = alvo),
+    (select max(c.pronta_em) from public.cotacoes_b2b c where c.codigo = alvo),
+    public.hoje_brasilia()::timestamptz
+  );
+
+  select r.fornecedor, r.local, r.em_sp, r.venda, r.prazo into m
+    from public.resultado_da_cotacao(alvo) r
+   where r.tipo = 'peca' and r.venda is not null
+   order by r.em_sp desc nulls last, r.venda
+   limit 1;
+  select count(distinct s.codigo_similar) into n_similares from public.similares_b2b s where s.codigo = alvo;
+
+  insert into public.consultas_cotacao (colaborador_id, loja, codigo, base_em, situacao, fornecedor, local, venda, custo, prazo, similares)
+  values (
+    eu, (select c.loja from public.colaboradores c where c.id = eu), alvo, base,
+    case when m.fornecedor is null then 'SEM ESTOQUE' when m.em_sp then 'SP' else 'FORA DO ESTADO' end,
+    m.fornecedor, m.local, m.venda,
+    -- O custo daquela oferta, guardado sempre; quem não vê custo não o lê
+    (select p.custo from public.precos_b2b p where p.fornecedor = m.fornecedor and p.codigo = alvo and p.local = m.local),
+    m.prazo, coalesce(n_similares, 0)
+  )
+  on conflict on constraint consultas_cotacao_colaborador_id_codigo_base_em_key do nothing;
+end;
+$$;
+revoke all on function public.registrar_consulta(text) from public, anon;
+grant execute on function public.registrar_consulta(text) to authenticated;
+
+-- O HISTÓRICO numa lista só: as consultas B2B e as solicitações ao
+-- comprador, com os filtros da tela. Nulo em qualquer filtro = sem filtro.
+create or replace function public.historico_de_cotacao(
+  de date default null, ate date default null, codigo text default null,
+  tipo text default null, situacao text default null, vendedor text default null, loja text default null
+)
+returns table (
+  tipo_linha text, id uuid, quando timestamptz, codigo_peca text, situacao_linha text,
+  fornecedor text, venda numeric, custo numeric, prazo text, similares integer, opcoes integer,
+  veiculo text, observacao text, colaborador_id text, nome text, loja_linha text,
+  respondida_por text, respondida_em timestamptz
+)
+language plpgsql stable security definer set search_path = public as $$
+declare
+  eu text := public.meu_colaborador_id();
+  todos boolean := public.posso_ver_historico_de_todos();
+  ve_custo boolean := public.posso_ver_custo();
+  alvo text := nullif(public.normalizar_codigo(historico_de_cotacao.codigo), '');
+begin
+  if not (public.posso_cotar() or public.posso_atender_fila()) then
+    raise exception 'Sem permissão para cotar' using errcode = '42501';
+  end if;
+  return query
+  with linhas as (
+    select 'b2b'::text as t, c.id, c.criada_em as q, c.codigo as cod, c.situacao as sit,
+           c.fornecedor as forn, c.venda as v, c.custo as cu, c.prazo as pr, c.similares as sim, null::integer as ops,
+           null::text as vei, null::text as obs, c.colaborador_id as quem, c.loja as lj,
+           null::text as resp, null::timestamptz as resp_em
+      from public.consultas_cotacao c
+    union all
+    select 'comprador', s.id, s.criada_em, s.codigo, s.situacao,
+           r.fornecedor, r.venda, r.custo, r.prazo, null, (select count(*)::integer from public.respostas_cotacao x where x.solicitacao_id = s.id),
+           s.veiculo, s.observacao, s.pedida_por, s.loja,
+           (select c2.nome from public.colaboradores c2 where c2.id = s.respondida_por), s.respondida_em
+      from public.solicitacoes_cotacao s
+      -- A opção mais barata resume a resposta; o cartão mostra todas
+      left join lateral (
+        select x.fornecedor, x.venda, x.custo, x.prazo from public.respostas_cotacao x
+         where x.solicitacao_id = s.id order by x.venda limit 1
+      ) r on true
+  )
+  select l.t, l.id, l.q, l.cod, l.sit, l.forn, l.v, case when ve_custo then l.cu end, l.pr, l.sim, l.ops,
+         l.vei, l.obs, l.quem, (select c3.nome from public.colaboradores c3 where c3.id = l.quem), l.lj, l.resp, l.resp_em
+    from linhas l
+   where (l.quem = eu or todos)
+     and (historico_de_cotacao.de is null or (l.q at time zone 'America/Sao_Paulo')::date >= historico_de_cotacao.de)
+     and (historico_de_cotacao.ate is null or (l.q at time zone 'America/Sao_Paulo')::date <= historico_de_cotacao.ate)
+     and (alvo is null or l.cod = alvo)
+     and (historico_de_cotacao.tipo is null or l.t = historico_de_cotacao.tipo)
+     and (historico_de_cotacao.situacao is null or l.sit = historico_de_cotacao.situacao)
+     and (historico_de_cotacao.vendedor is null or l.quem = historico_de_cotacao.vendedor)
+     and (historico_de_cotacao.loja is null or l.lj = historico_de_cotacao.loja)
+   -- O que espera o comprador vem primeiro; depois, do mais recente
+   order by (l.sit = 'aberta') desc, l.q desc
+   limit 500;
+end;
+$$;
+revoke all on function public.historico_de_cotacao(date, date, text, text, text, text, text) from public, anon;
+grant execute on function public.historico_de_cotacao(date, date, text, text, text, text, text) to authenticated;
+
+-- O vendedor abriu o resultado: os lembretes param (avisos-cotacao)
+create or replace function public.marcar_solicitacao_vista(solicitacao uuid)
+returns void language sql security definer set search_path = public as $$
+  update public.solicitacoes_cotacao set vista_em = coalesce(vista_em, now())
+   where id = solicitacao and pedida_por = public.meu_colaborador_id() and situacao <> 'aberta';
+$$;
+revoke all on function public.marcar_solicitacao_vista(uuid) from public, anon;
+grant execute on function public.marcar_solicitacao_vista(uuid) to authenticated;
+
 -- A estação pega o pedido mais antigo da fila. Duas abas pegando ao mesmo
 -- tempo nunca levam o mesmo (skip locked). Pedido "cotando" há mais de 5
 -- minutos é de uma estação que caiu no meio: volta para a fila.

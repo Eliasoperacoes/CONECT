@@ -50,11 +50,14 @@ Os aplicativos internos do CONECTA, num lugar só:
   ferramentas, editável no painel ADM, e o banco continua sendo a trava.
 - **Tocar no bloco abre a ferramenta em tela cheia**, com "voltar" para a
   grade.
-- **Ferramenta nova** = um bloco na lista das ferramentas internas, com a
-  chave de permissão. Nenhuma outra navegação muda.
+- **Um bloco por sistema, e as partes dele em abas** (Elias, 21/10/2026:
+  "é tudo dentro do mesmo lugar, de maneira organizada"). Sistema novo = um
+  bloco; parte nova de um sistema = uma aba dele. Cada pessoa vê só as
+  abas que pode usar; bloco sem aba não aparece.
 
-Primeiros blocos: **Cotar** (quem cota) e **Margens por marca** (Gerente
-para cima).
+O cotador é **um bloco só, "Cotação de peças"**, com as abas **Cotar** (quem
+cota), **Fretes** (Compras e TI) e **Margens** (Gerente para cima); a
+cotação humana entra como mais uma aba (**Solicitações**).
 
 ## A tela "Cotar"
 

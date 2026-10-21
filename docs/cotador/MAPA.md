@@ -10,11 +10,15 @@ tem a sua especificação nesta pasta (`SPEC-<módulo>.md`); este mapa é o índ
 | `estacao` ✅ | O CONECTA aberto no PC de compras, logado por Compras, com a extensão: escuta a fila, cota com os leitores, grava, informa se está no ar e quais sites estão logados. Sem login próprio (Elias, 19/10) | `ef/cotador-b2b` + CONECTA | banco-cotacao |
 | `precificacao` ✅ | Venda = custo × fator **da marca** (Elias, 20/10: não é por grupo); apelidos da marca em cada B2B; fator padrão 1,80; arredonda para cima em ,90; tela de margens | CONECTA `supabase/` + tela | banco-cotacao |
 | `cotar` | Tela "Cotar" (computador e celular): códigos, andamento ao vivo, venda (custo em outra cor para quem vê), similares, prazo, Atualizar agora, estação fora do ar, "Minhas cotações do dia". **Sem orçamento e sem dados do cliente** (Elias, 20/10). Era `orcamento` | CONECTA tela + serviço | banco-cotacao, precificacao |
+| `cotacao-humana` | Quando o B2B não tem a peça ou o cliente não quer o similar: "Pedir ao comprador" (código, veículo, observação); Compras responde fornecedor, preço e prazo; avisos "Nova solicitação de cotação" e "Cotação respondida" (Elias, 21/10) | CONECTA tela + serviço + tabelas | cotar |
+| `historico-cotacao` | Aba "Histórico": tudo o que foi cotado (B2B, com a foto do preço da hora) e pedido ao comprador, guardado para sempre; o vendedor vê o dele, Compras e Gerência veem todos; filtros (Elias, 21/10) | CONECTA tela + serviço + tabela | cotar, cotacao-humana |
 | `pedidos-compras` | Botão "Pedir à Compras" na cotação (peça, fornecedor, quantidade); Compras marca pedido feito / a caminho / chegou | CONECTA tela + serviço + tabela | cotar |
+| `insights-cotacao` | Quem cota e encomenda mais, valores, peças mais pedidas, tempo de resposta do comprador (Elias, 21/10) | CONECTA tela + consultas | historico-cotacao, pedidos-compras |
 | `avisos-cotacao` | "Peça X chegou" e mudanças de estado ao vendedor; estação caiu / site deslogado a compras e ao Elias | CONECTA `src/servicos/` (central de notificações e push existentes) | pedidos-compras, estacao |
 
 Ordem: `banco-cotacao` → `estacao` e `precificacao` → `cotar` →
-`pedidos-compras` → `avisos-cotacao`.
+`cotacao-humana` → `historico-cotacao` → `pedidos-compras` →
+`insights-cotacao` e `avisos-cotacao`.
 
 Tudo é construído **100% no local** (pasta `CONECTA-cotador`, ramo `cotador`)
 e sobe para a produção de uma vez, quando a estrutura completa estiver pronta

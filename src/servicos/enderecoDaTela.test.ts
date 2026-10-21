@@ -39,3 +39,15 @@ test('o que se digita à mão também serve; caminho desconhecido não é tela n
   expect(telaDoCaminho('/ponto/meu_ponto')).toBeNull();
   expect(telaDoCaminho('/api/noticias')).toBeNull();
 });
+
+test('FERRAMENTAS TEM LUGAR DENTRO: recarregar volta à ferramenta e à aba (Elias, 21/10/2026)', async () => {
+  const { lugarDentroDaTela, caminhoEstaNaTela } = await import('./enderecoDaTela');
+  expect(telaDoCaminho('/ferramentas/cotador/margens')).toBe('ferramentas');
+  expect(lugarDentroDaTela('/Ferramentas/Cotador/Margens/', 'ferramentas')).toEqual(['cotador', 'margens']);
+  expect(lugarDentroDaTela('/ferramentas', 'ferramentas')).toEqual([]);
+  // O App não reescreve o endereço que já está na tela, com o lugar de dentro
+  expect(caminhoEstaNaTela('/ferramentas/cotador/fretes', 'ferramentas')).toBe(true);
+  // As outras telas não ganham "lugar dentro": endereço com resto não é delas
+  expect(telaDoCaminho('/ponto/meu-ponto/qualquer-coisa')).toBeNull();
+  expect(caminhoEstaNaTela('/ponto/meu-ponto/x', 'meu_ponto')).toBe(false);
+});

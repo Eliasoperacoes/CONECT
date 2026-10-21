@@ -24,6 +24,95 @@ import {
   type Oferta,
 } from '../servicos/cotar';
 import { EstadoVazio, classeDoBotao } from './PadraoWeb';
+import { cotacaoHumanaPeloSupabase, type Solicitacao } from '../servicos/cotacaoHumana';
+import { historicoPeloSupabase } from '../servicos/historico';
+import { UserRound } from 'lucide-react';
+
+/**
+ * PEDIR AO COMPRADOR (cotação humana, Elias 21/10/2026): o B2B não tem a
+ * peça, ou o cliente não quer o similar. O vendedor manda o veículo e uma
+ * observação; a resposta volta neste mesmo cartão.
+ */
+const PedirAoComprador: React.FC<{ aoEnviar: (veiculo: string, observacao: string) => Promise<void> }> = ({ aoEnviar }) => {
+  const [aberto, setAberto] = useState(false);
+  const [veiculo, setVeiculo] = useState('');
+  const [observacao, setObservacao] = useState('');
+  const [erro, setErro] = useState('');
+  if (!aberto) {
+    return (
+      <button type="button" onClick={() => setAberto(true)} className={`${classeDoBotao.secundario} h-9`}>
+        <UserRound className="h-4 w-4" /> Pedir ao comprador
+      </button>
+    );
+  }
+  const campo =
+    'h-9 min-w-0 flex-1 rounded-lg border border-[var(--c-borda)] bg-[var(--c-superficie)] px-2.5 text-xs text-[var(--c-texto)] outline-none placeholder:text-[var(--c-texto-3)] focus:border-[var(--c-acento)]';
+  return (
+    <div className="flex w-full flex-col gap-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        <input className={campo} placeholder="Veículo / aplicação (ex.: Gol 1.0 2012)" value={veiculo} onChange={(e) => setVeiculo(e.target.value)} />
+        <input className={campo} placeholder="Observação (ex.: cliente não quer o similar)" value={observacao} onChange={(e) => setObservacao(e.target.value)} />
+      </div>
+      {erro && <span className="text-[11px] text-[var(--c-erro)]">{erro}</span>}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={() => setAberto(false)} className={`${classeDoBotao.secundario} h-9`}>
+          Cancelar
+        </button>
+        <button
+          type="button"
+          className={`${classeDoBotao.principal} h-9`}
+          onClick={async () => {
+            try {
+              await aoEnviar(veiculo, observacao);
+              setAberto(false);
+            } catch (e) {
+              setErro((e as Error).message);
+            }
+          }}
+        >
+          Enviar ao comprador
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/** A solicitação ao comprador, dentro do cartão: aguardando, a resposta, ou "não encontrada". */
+const RespostaDoComprador: React.FC<{ s: Solicitacao; mostraCusto: boolean }> = ({ s, mostraCusto }) => (
+  <div className="border-t border-[var(--c-borda)] bg-[color-mix(in_srgb,var(--c-acento)_5%,transparent)] px-3 py-2.5">
+    <span className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-[var(--c-acento)]">
+      <UserRound className="h-3.5 w-3.5" /> COTADO PELO COMPRADOR
+      {s.veiculo && <span className="font-normal text-[var(--c-texto-3)]">· {s.veiculo}</span>}
+    </span>
+    {s.situacao === 'aberta' && (
+      <span className="mt-1 flex items-center gap-1.5 text-xs text-[var(--c-texto-2)]">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Aguardando o comprador…
+      </span>
+    )}
+    {s.situacao === 'nao_encontrada' && (
+      <p className="mt-1 text-xs text-[var(--c-erro)]">
+        {s.nomeDeQuemRespondeu ?? 'O comprador'} não encontrou{s.motivo ? `: ${s.motivo}` : '.'}
+      </p>
+    )}
+    {s.opcoes.map((o, i) => (
+      <div key={i} className="mt-1.5 flex items-baseline justify-between gap-3 border-l-4 border-l-[var(--c-acento)] pl-2">
+        <span className="min-w-0">
+          <span className="block text-xs font-bold text-[var(--c-texto)]">
+            {o.fornecedor}
+            {o.marca && <span className="font-normal text-[var(--c-texto-2)]"> · {o.marca}</span>}
+          </span>
+          <span className="block text-[11px] text-[var(--c-texto-3)]">
+            {o.prazo ?? 'prazo a confirmar'} · por {s.nomeDeQuemRespondeu ?? 'Compras'}
+          </span>
+          {mostraCusto && o.custo != null && (
+            <span className="block text-[11px] font-semibold text-[var(--c-acento)]">custo {brl(o.custo)}</span>
+          )}
+        </span>
+        <span className="text-base font-extrabold tabular-nums text-[var(--c-texto)]">{brl(o.venda)}</span>
+      </div>
+    ))}
+  </div>
+);
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -149,6 +238,37 @@ export const TelaCotar: React.FC<{ colaboradorAtual: Colaborador }> = ({ colabor
   const [doDia, setDoDia] = useState<string[]>([]);
   const [erro, setErro] = useState('');
   const paradas = useRef<(() => void)[]>([]);
+  const humana = useMemo(() => (supabase ? cotacaoHumanaPeloSupabase(supabase) : null), []);
+  /** A solicitação ao comprador mais recente de cada código (as minhas, dos últimos 7 dias) */
+  const [aoComprador, setAoComprador] = useState<Record<string, Solicitacao>>({});
+
+  const carregarSolicitacoes = useCallback(async () => {
+    if (!humana) return;
+    try {
+      const minhas = await humana.listar();
+      const porCodigo: Record<string, Solicitacao> = {};
+      for (const s of minhas) porCodigo[s.codigo] = s; // a lista vem da mais antiga: fica a mais recente
+      setAoComprador(porCodigo);
+    } catch {
+      /* sem as solicitações a cotação continua funcionando */
+    }
+  }, [humana]);
+
+  // A resposta do comprador aparece no cartão na hora em que ele responde
+  useEffect(() => {
+    void carregarSolicitacoes();
+    return humana?.ouvir(() => void carregarSolicitacoes());
+  }, [humana, carregarSolicitacoes]);
+
+  // Resposta na tela = vista: os lembretes (avisos-cotacao) param
+  useEffect(() => {
+    for (const codigo of ordem) {
+      const s = aoComprador[codigo];
+      if (s && s.situacao !== 'aberta' && !s.vistaEm) {
+        void humana?.marcarVista(s.id).then(carregarSolicitacoes).catch(() => {});
+      }
+    }
+  }, [ordem, aoComprador, humana, carregarSolicitacoes]);
 
   const carregarDoDia = useCallback(() => {
     servico?.minhasDoDia().then(setDoDia).catch(() => {});
@@ -168,6 +288,8 @@ export const TelaCotar: React.FC<{ colaboradorAtual: Colaborador }> = ({ colabor
       try {
         const cartao = await servico.resultado(codigo);
         setEstados((e) => ({ ...e, [codigo]: { ...e[codigo], cartao } }));
+        // A foto do que o vendedor viu, para o Histórico (o banco calcula; reabrir não duplica)
+        if (supabase) void historicoPeloSupabase(supabase).registrarConsulta(codigo).catch(() => {});
       } catch (e) {
         setErro((e as Error).message);
       }
@@ -319,12 +441,25 @@ export const TelaCotar: React.FC<{ colaboradorAtual: Colaborador }> = ({ colabor
                     ))}
                   </>
                 )}
-                <div className="flex justify-end border-t border-[var(--c-borda)] px-3 py-2">
-                  <button type="button" disabled title="Chega no próximo módulo (pedidos para compras)" className={`${classeDoBotao.secundario} h-9`}>
-                    <ShoppingCart className="h-4 w-4" /> Pedir à Compras (em breve)
-                  </button>
-                </div>
               </>
+            )}
+
+            {aoComprador[codigo] && <RespostaDoComprador s={aoComprador[codigo]} mostraCusto={mostraCusto} />}
+
+            {(cartao || situacao === 'erro') && (
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--c-borda)] px-3 py-2">
+                {(!aoComprador[codigo] || aoComprador[codigo].situacao !== 'aberta') && humana && (
+                  <PedirAoComprador
+                    aoEnviar={async (veiculo, observacao) => {
+                      await humana.pedir(codigo, veiculo, observacao);
+                      await carregarSolicitacoes();
+                    }}
+                  />
+                )}
+                <button type="button" disabled title="Chega no próximo módulo (pedidos para compras)" className={`${classeDoBotao.secundario} h-9`}>
+                  <ShoppingCart className="h-4 w-4" /> Pedir à Compras (em breve)
+                </button>
+              </div>
             )}
           </section>
         );
