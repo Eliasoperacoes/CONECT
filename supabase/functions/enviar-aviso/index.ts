@@ -9,8 +9,8 @@
  * A função acha quem participa da conversa, pega os aparelhos dessas
  * pessoas na tabela `aparelhos`, e pede ao Firebase para acordá-los.
  *
- * Os caminhos: a mensagem enviada pelo aplicativo, a resposta vinda da
- * notificação (o vale), o PONTO — ajuste de jornada, ausência e folga
+ * Os caminhos: a mensagem enviada pelo aplicativo, a REAÇÃO a ela (avisa
+ * só o autor), a resposta vinda da notificação (o vale), o PONTO — ajuste de jornada, ausência e folga
  * quando entram na fila e quando são decididos (`avisosDePonto.ts`) —, a
  * PUBLICAÇÃO DIRIGIDA, que avisa só quem ela alcança, o DOCUMENTO DO RH
  * (holerite publicado, advertência registrada) e a ENTREGA AGENDADA dos
@@ -1015,6 +1015,64 @@ Deno.serve(async (req) => {
       texto: 'Adicionou você ao grupo',
       conversa: conversa.nome as string,
       ehGrupo: 'true',
+    });
+    return responder(aviso, aviso.erro ? 503 : 200);
+  }
+
+  // =============================================================
+  // CAMINHO 7 — "FULANO REAGIU 👍 À SUA MENSAGEM" (21/10/2026)
+  //
+  // Elias: "as reações não chegam notificação". Reagir só alterava a
+  // linha da mensagem, e nada pedia aviso.
+  //
+  //  · SÓ QUEM REAGIU PEDE — a reação tem de estar na linha, tirada do
+  //    banco, com o id de quem chama naquele emoji.
+  //  · SÓ O AUTOR RECEBE, e só se ainda está na conversa e não a tirou da
+  //    lista: é a mensagem dele. Os outros do grupo não são avisados.
+  // =============================================================
+  if (pedido.reacao && typeof pedido.reacao === 'object') {
+    const p = pedido.reacao as Record<string, unknown>;
+    const mensagemId = String(p.mensagemId || '');
+    const emoji = String(p.emoji || '').slice(0, 16);
+    const previa = String(p.previa || '').trim().slice(0, 240);
+    if (!mensagemId || !emoji) return responder({ erro: 'Pedido de aviso da reação incompleto.' }, 400);
+
+    const { data: mensagem } = await banco
+      .from('mensagens')
+      .select('id, conversa_id, remetente_id, reacoes')
+      .eq('id', mensagemId)
+      .maybeSingle();
+    if (!mensagem) return responder({ erro: 'Mensagem não encontrada.' }, 404);
+    const quemReagiu = (mensagem.reacoes ?? {})[emoji];
+    if (!Array.isArray(quemReagiu) || !quemReagiu.includes(eu.id)) {
+      return responder({ erro: 'Só quem reagiu avisa da reação.' }, 403);
+    }
+    if (mensagem.remetente_id === eu.id) return responder({ entregues: 0 });
+
+    const { data: conversa } = await banco
+      .from('conversas')
+      .select(COLUNAS_DA_CONVERSA)
+      .eq('id', mensagem.conversa_id)
+      .maybeSingle();
+    if (!conversa) return responder({ erro: 'Conversa não encontrada.' }, 404);
+
+    const { data: doAutor } = await banco
+      .from('participantes')
+      .select('*')
+      .eq('conversa_id', conversa.id)
+      .eq('colaborador_id', mensagem.remetente_id)
+      .maybeSingle();
+    if (!doAutor || doAutor.removida === true || doAutor.saiu_em) return responder({ entregues: 0 });
+
+    const aviso = await entregarAosAparelhos(banco, [mensagem.remetente_id as string], {
+      tipo: 'conversa',
+      conversaId: conversa.id as string,
+      mensagemId: `reacao-${mensagemId}`,
+      remetente: eu.nome,
+      texto: previa ? `Reagiu ${emoji} à sua mensagem: "${previa}"` : `Reagiu ${emoji} à sua mensagem`,
+      conversa: conversa.nome as string,
+      ehGrupo: conversa.tipo === 'grupo' ? 'true' : 'false',
+      ...(await enderecoDaFoto(banco, eu.id)),
     });
     return responder(aviso, aviso.erro ? 503 : 200);
   }

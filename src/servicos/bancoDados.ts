@@ -25,7 +25,7 @@ import {
 import { nuvem } from './nuvem';
 import { podeSerResponsavelDe } from './organograma';
 import { alcanca, podeEditarPublicacao, destinosDe, publicoAlvo } from './mural';
-import { pedirAvisoDaPublicacao, pedirAvisoDeEntradaNoGrupo } from './envioDeAviso';
+import { pedirAvisoDaPublicacao, pedirAvisoDeEntradaNoGrupo, pedirAvisoDaReacao } from './envioDeAviso';
 import { lerLista } from './cacheDeLeitura';
 import { semFormatacao, pessoasCitadas, citadosNovos } from './textoRico';
 import {
@@ -33,6 +33,7 @@ import {
   conversaJaEstaNoBanco,
   esquecerConversaDoBanco,
   montarPreviaDaMensagem,
+  comoApagada,
   carimboDeAuditoria,
 } from './nuvemComunicacao';
 import { enviarAnexo, apagarAnexos, enviarFotoDePerfil } from './anexos';
@@ -3035,19 +3036,21 @@ class BancoDadosConecta {
       }
 
       if (usandoNuvem()) {
-        const res = await nuvemComunicacao.removerMensagem(mensagemId);
+        const res = await nuvemComunicacao.apagarMensagem(mensagemId);
         if (!res.sucesso) {
           return { sucesso: false, erro: 'Falha ao apagar a mensagem no banco.' };
         }
         // O arquivo sai junto: sem isto a foto apagada ficava no armazenamento
         // para sempre (exclusao-nas-conversas.sql deixa quem enviou apagar)
-        if (alvo.anexoCaminho) await apagarAnexos([alvo.anexoCaminho]);
+        const caminho = res.caminho || alvo.anexoCaminho;
+        if (caminho) await apagarAnexos([caminho]);
       }
 
-      const restantes = todas.filter((m) => m.id !== mensagemId);
+      // O lugar fica, como no WhatsApp: "Você apagou esta mensagem"
+      const restantes = todas.map((m) => (m.id === mensagemId ? comoApagada(m, new Date().toISOString()) : m));
       localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(restantes));
 
-      // Atualiza a prévia da conversa com a última mensagem que sobrou
+      // A prévia da conversa: se a apagada era a última, a lista diz que foi apagada
       const conversas = this.obterTodasConversas();
       const indice = conversas.findIndex((c) => c.id === alvo.conversaId);
       if (indice !== -1) {
@@ -3161,7 +3164,8 @@ class BancoDadosConecta {
     const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
 
     return todas.filter((m) => {
-      if (!mensagensIds.includes(m.id)) return false;
+      // A apagada não tem mais o que encaminhar
+      if (!mensagensIds.includes(m.id) || m.apagadaEm) return false;
       const convOrigem = todasConversas.find((c) => c.id === m.conversaId);
       return convOrigem ? convOrigem.participantesIds.includes(atual.id) : false;
     });
@@ -3247,7 +3251,8 @@ class BancoDadosConecta {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
       const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
       const indice = todas.findIndex((m) => m.id === mensagemId);
-      if (indice !== -1) {
+      // A apagada não ganha reação (o banco também ignora: mensagem-apagada.sql)
+      if (indice !== -1 && !todas[indice].apagadaEm) {
         const reacoes = todas[indice].reacoes || {};
         const usuariosNoEmoji = reacoes[emoji] || [];
 
@@ -3262,7 +3267,17 @@ class BancoDadosConecta {
         localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(todas));
 
         if (usandoNuvem()) {
-          nuvemComunicacao.atualizarMensagem(todas[indice]).catch(() => {});
+          const reagida = todas[indice];
+          const reagiu = reacoes[emoji]?.includes(atual.id) === true;
+          // O aviso ao autor sai depois de a reação estar no banco: o servidor confere nela
+          nuvemComunicacao
+            .atualizarMensagem(reagida)
+            .then((r) => {
+              if (r.sucesso && reagiu && reagida.remetenteId !== atual.id) {
+                pedirAvisoDaReacao(reagida.id, emoji, montarPreviaDaMensagem(reagida));
+              }
+            })
+            .catch(() => {});
         }
 
         this.notificar();

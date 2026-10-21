@@ -1027,6 +1027,8 @@ export interface Mensagem {
   visualizadaEm?: string; // Data/hora da confirmação de visualização
   ehEncaminhada?: boolean; // Indicador de mensagem encaminhada
   editadaEm?: string; // Quando foi alterada pelo autor, se foi
+  /** Apagada (mensagem-apagada.sql): o lugar fica, o conteúdo já saiu no banco */
+  apagadaEm?: string;
   // Caminho do anexo no armazenamento. As URLs acima trazem o conteudo
   // pronto para exibir; este campo e o endereco permanente dele no banco.
   anexoCaminho?: string;

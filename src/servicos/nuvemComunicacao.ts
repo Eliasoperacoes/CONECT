@@ -33,6 +33,7 @@ const euNoAparelho = (): Colaborador | undefined => {
 };
 import { supabase } from './supabase';
 import { pedirAvisoDaMensagem } from './envioDeAviso';
+import { reacoesNovasDeOutros, avisarReacoesNoNavegador } from './avisoDeReacao';
 import { explicarRecusaDoBanco } from './recusaDoBanco';
 import { buscarTodasAsLinhas } from './paginacao';
 import { resolverCaminhos } from './anexos';
@@ -206,7 +207,25 @@ export const carimboDeAuditoria = (iso: string): string => {
  * Texto curto que aparece na lista de conversas. Precisa ser o mesmo para
  * quem enviou e para quem recebeu, por isso mora aqui e não na tela.
  */
+/**
+ * A mensagem como fica depois de apagada: só o lugar dela — quem, onde e
+ * quando. É o que o gatilho do banco grava (mensagem-apagada.sql); aqui é o
+ * aparelho de quem apagou mostrando o mesmo antes do evento voltar.
+ */
+export const comoApagada = (m: Mensagem, quando: string): Mensagem => ({
+  id: m.id,
+  conversaId: m.conversaId,
+  remetenteId: m.remetenteId,
+  tipo: m.tipo,
+  criadoEm: m.criadoEm,
+  horaFormatada: m.horaFormatada,
+  lida: m.lida,
+  lidaPor: m.lidaPor,
+  apagadaEm: quando,
+});
+
 export const montarPreviaDaMensagem = (m: Mensagem): string => {
+  if (m.apagadaEm) return '🚫 Mensagem apagada';
   if (m.tipo === 'recado_voz') return '🎤 Recado de voz';
   if (m.tipo === 'arquivo') return `📎 ${m.arquivoNome || 'Arquivo'}`;
   if (m.tipo === 'imagem') return `📷 Foto${m.legenda ? ` · ${m.legenda}` : ''}`;
@@ -260,6 +279,8 @@ interface LinhaMensagem {
   responde_a: string | null;
   reacoes: Record<string, string[]> | null;
   editada_em: string | null;
+  /** Antes de mensagem-apagada.sql a coluna não existe */
+  apagada_em?: string | null;
   fixada_em: string | null;
   fixada_por_id: string | null;
   anexo_caminho: string | null;
@@ -296,6 +317,7 @@ export const paraMensagemDaLinha = (linha: LinhaMensagem, lidaPor: string[]): Me
   ehAvisoDirecao: linha.eh_aviso_direcao || undefined,
   publicacaoId: linha.publicacao_id || undefined,
   editadaEm: linha.editada_em || undefined,
+  apagadaEm: linha.apagada_em || undefined,
   fixadaEm: linha.fixada_em || undefined,
   fixadaPorId: linha.fixada_por_id || undefined,
   anexoCaminho: linha.anexo_caminho || undefined,
@@ -648,6 +670,22 @@ class PonteComunicacao {
       localStorage.setItem(CHAVE_MENSAGENS, JSON.stringify(r.mensagens));
       localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(r.conversas));
       this.avisar();
+      // Reagiram à minha mensagem: o aviso do navegador (avisoDeReacao.ts)
+      const eu = euNoAparelho();
+      const id = (evento.new as Partial<LinhaMensagem> | null | undefined)?.id;
+      if (eu && id && evento.eventType === 'UPDATE') {
+        const depois = r.mensagens.find((m) => m.id === id);
+        const novas = reacoesNovasDeOutros(mensagens.find((m) => m.id === id), depois, eu.id);
+        if (depois && novas.length > 0) {
+          avisarReacoesNoNavegador(
+            novas,
+            depois,
+            montarPreviaDaMensagem(depois),
+            r.conversas.find((c) => c.id === depois.conversaId),
+            lerLista<Colaborador>('conecta_v4_colaboradores')
+          );
+        }
+      }
       if (r.anexoParaAssinar) {
         const caminho = r.anexoParaAssinar;
         // O endereço do anexo novo chega depois; até lá a mensagem aparece sem ele
@@ -1130,6 +1168,23 @@ class PonteComunicacao {
    * afeta zero linhas e responde SUCESSO — a mensagem sumiria da tela e
    * voltaria na próxima sincronização, sem ninguém entender por quê.
    */
+  /**
+   * APAGAR DEIXA O LUGAR (mensagem-apagada.sql, 21/10/2026): a linha fica, e
+   * o banco tira o conteúdo — os outros veem "Esta mensagem foi apagada" pelo
+   * evento ao vivo. Devolve o caminho do anexo, que sai do armazenamento.
+   * Sem a função no banco ainda, apaga a linha, como antes.
+   */
+  async apagarMensagem(id: string): Promise<{ sucesso: boolean; caminho?: string; erro?: string }> {
+    if (!supabase) return { sucesso: true };
+    const { data, error } = await supabase.rpc('apagar_mensagem', { p_mensagem: id });
+    if (error?.code === 'PGRST202') return this.removerMensagem(id);
+    if (error) {
+      console.error('Falha ao apagar mensagem:', error.message);
+      return { sucesso: false, erro: error.message };
+    }
+    return { sucesso: true, caminho: (data as string | null) || undefined };
+  }
+
   async removerMensagem(id: string): Promise<{ sucesso: boolean; erro?: string }> {
     if (!supabase) return { sucesso: true };
     const { data, error } = await supabase.from('mensagens').delete().eq('id', id).select('id');

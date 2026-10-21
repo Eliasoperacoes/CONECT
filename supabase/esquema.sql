@@ -187,6 +187,22 @@ create index if not exists mensagens_fixadas_por_conversa
   on public.mensagens (conversa_id, fixada_em desc)
   where fixada_em is not null;
 
+-- RESPONDER A UMA MENSAGEM (responder-mensagem.sql): a citação no alto do
+-- balão. Faltava aqui, e o banco já a tinha.
+alter table public.mensagens add column if not exists responde_a text;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'mensagens_responde_a_fkey') then
+    alter table public.mensagens
+      add constraint mensagens_responde_a_fkey
+      foreign key (responde_a) references public.mensagens(id) on delete set null;
+  end if;
+end $$;
+
+-- "ESTA MENSAGEM FOI APAGADA" (mensagem-apagada.sql, 21/10/2026): a linha
+-- fica, o conteúdo sai (gatilho `apenas_autor_reescreve`)
+alter table public.mensagens add column if not exists apagada_em timestamptz;
+
 -- ORGANOGRAMA: o responsável direto de cada pessoa.
 --
 -- É esta coluna que decide quem aprova hora de quem. Preenchida, manda; em
@@ -969,7 +985,34 @@ security definer
 set search_path = public
 as $$
 begin
-  if (new.texto is distinct from old.texto)
+  -- A apagada fica como está: não volta, não ganha reação, não é editada
+  if old.apagada_em is not null then
+    return old;
+  end if;
+
+  -- APAGAR (mensagem-apagada.sql): só o autor ou o TI, e o conteúdo sai
+  -- junto — o banco garante que o texto apagado não fica guardado
+  if new.apagada_em is not null then
+    if old.remetente_id is distinct from public.meu_colaborador_id() and not public.sou_admin() then
+      raise exception 'Apenas o autor apaga a propria mensagem';
+    end if;
+    new.apagada_em      := now();
+    new.texto           := null;
+    new.legenda         := null;
+    new.audio_url       := null;
+    new.audio_duracao   := null;
+    new.arquivo_nome    := null;
+    new.arquivo_tamanho := null;
+    new.arquivo_url     := null;
+    new.imagem_url      := null;
+    new.anexo_caminho   := null;
+    new.responde_a      := null;
+    new.eh_encaminhada  := false;
+    new.reacoes         := '{}'::jsonb;
+    new.editada_em      := null;
+    new.fixada_em       := null;
+    new.fixada_por_id   := null;
+  elsif (new.texto is distinct from old.texto)
      or (new.legenda is distinct from old.legenda)
      or (new.editada_em is distinct from old.editada_em) then
     if old.remetente_id is distinct from public.meu_colaborador_id() then
@@ -996,6 +1039,33 @@ drop policy if exists mensagens_remocao on public.mensagens;
 create policy mensagens_remocao on public.mensagens
   for delete to authenticated
   using (remetente_id = public.meu_colaborador_id() or public.sou_admin());
+
+-- APAGAR PELO APARELHO (mensagem-apagada.sql): vale também para o autor que
+-- saiu do grupo e para o TI, que a política de edição não alcança. Devolve o
+-- caminho do anexo, que o aparelho tira do armazenamento.
+create or replace function public.apagar_mensagem(p_mensagem text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  alvo public.mensagens%rowtype;
+begin
+  select * into alvo from public.mensagens where id = p_mensagem;
+  if not found then
+    raise exception 'Mensagem nao encontrada' using errcode = 'P0002';
+  end if;
+  if alvo.remetente_id is distinct from public.meu_colaborador_id() and not public.sou_admin() then
+    raise exception 'Apenas o autor apaga a propria mensagem' using errcode = '42501';
+  end if;
+  update public.mensagens set apagada_em = now() where id = p_mensagem;
+  return alvo.anexo_caminho;
+end;
+$$;
+
+revoke execute on function public.apagar_mensagem(text) from public, anon;
+grant execute on function public.apagar_mensagem(text) to authenticated;
 
 -- LEITURAS: cada um marca as próprias
 -- Vê quem leu quem pode ver a mensagem (leituras-so-das-minhas-conversas.sql,

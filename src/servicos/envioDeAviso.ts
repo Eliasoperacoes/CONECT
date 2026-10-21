@@ -67,6 +67,28 @@ export const pedirAvisoDaMensagem = (mensagemId: string, previa: string): void =
 };
 
 /**
+ * "FULANO REAGIU 👍 À SUA MENSAGEM" (21/10/2026) — o aviso vai só ao autor.
+ * O servidor confere na linha que quem chama reagiu com esse emoji; a
+ * prévia é da mensagem reagida, que quem chama já lê.
+ */
+export const pedirAvisoDaReacao = (mensagemId: string, emoji: string, previa: string): void => {
+  if (!supabase || !usandoNuvem()) return;
+
+  try {
+    supabase.functions
+      .invoke(FUNCAO_DE_AVISO, {
+        body: { reacao: { mensagemId, emoji, previa: previa.slice(0, LIMITE_DA_PREVIA) } },
+      })
+      .then(({ error }) => {
+        if (error) console.warn('Aviso da reação não saiu:', error.message);
+      })
+      .catch(() => {});
+  } catch {
+    /* sem cliente de funções (teste, modo local): sem aviso, sem erro */
+  }
+};
+
+/**
  * AVISA QUEM UMA PUBLICAÇÃO DIRIGIDA ALCANÇA.
  *
  * Quem recebe é calculado por quem chama, com `publicoAlvo` — a mesma
