@@ -65,6 +65,7 @@ mock.module('./envioDeAviso', () => ({
   pedirAvisoDaPublicacao: (...args: any[]) => avisosDePublicacao.push(args),
   // Faltando aqui, o arquivo de teste inteiro deixa de carregar
   pedirAvisoDeEntradaNoGrupo: () => {},
+  pedirAvisoDaReacao: () => {},
 }));
 
 let anexosEnviados: { conteudo: string; caminho: string }[] = [];
@@ -132,6 +133,19 @@ const recusaDaMensagem = {
 /** Conversas que o banco falso ja conhece. */
 const conversasNoBancoFalso = new Set<string>();
 
+/** A mesma de nuvemComunicacao.ts — o módulo inteiro está simulado aqui */
+const comoApagadaReal = (m: any, quando: string) => ({
+  id: m.id,
+  conversaId: m.conversaId,
+  remetenteId: m.remetenteId,
+  tipo: m.tipo,
+  criadoEm: m.criadoEm,
+  horaFormatada: m.horaFormatada,
+  lida: m.lida,
+  lidaPor: m.lidaPor,
+  apagadaEm: quando,
+});
+
 mock.module('./nuvemComunicacao', () => ({
   // O registro de conversas ja gravadas: no teste ele comeca vazio, entao
   // a primeira mensagem de cada conversa exercita o caminho completo
@@ -145,6 +159,7 @@ mock.module('./nuvemComunicacao', () => ({
     return m.ehEncaminhada ? `↪ ${m.texto || 'Mensagem encaminhada'}` : m.texto || '';
   },
   carimboDeAuditoria: (iso: string) => `carimbo:${iso}`,
+  comoApagada: (m: any, quando: string) => comoApagadaReal(m, quando),
   nuvemComunicacao: {
     assinarAtualizacoes: () => () => {},
     sincronizarConversas: async () => true,
@@ -190,6 +205,14 @@ mock.module('./nuvemComunicacao', () => ({
       if (recusarEscrita) return recusa;
       bancoMensagens = bancoMensagens.filter((x) => x.id !== id);
       return { sucesso: true };
+    },
+    // Como `apagar_mensagem` (mensagem-apagada.sql): a linha fica, o conteúdo sai
+    apagarMensagem: async (id: string) => {
+      if (recusarEscrita) return recusa;
+      const i = bancoMensagens.findIndex((x) => x.id === id);
+      const caminho = i !== -1 ? bancoMensagens[i].anexoCaminho : undefined;
+      if (i !== -1) bancoMensagens[i] = comoApagadaReal(bancoMensagens[i], '2026-10-21T12:00:00Z');
+      return { sucesso: true, caminho };
     },
     marcarLeitura: async (ids: string[], colaboradorId: string) => {
       ids.forEach((mensagemId) => bancoLeituras.push({ mensagemId, colaboradorId }));
@@ -475,14 +498,15 @@ test('só o autor edita — nem o Administrador', async () => {
   expect(bancoMensagens[0].texto).toBe('da Ana');
 });
 
-test('exclusão tira a mensagem do banco', async () => {
+test('exclusão deixa o lugar e tira o conteúdo, no banco e no aparelho (mensagem-apagada.sql)', async () => {
   await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'apagar' });
   const id = bancoMensagens[0].id;
 
   const res = await bancoDados.excluirMensagem(id);
   expect(res.sucesso).toBe(true);
-  expect(bancoMensagens).toHaveLength(0);
-  expect(lerCacheMensagens()).toHaveLength(0);
+  expect(bancoMensagens.map((m) => [m.id, m.texto, !!m.apagadaEm])).toEqual([[id, undefined, true]]);
+  const noAparelho = lerCacheMensagens().find((m: any) => m.id === id);
+  expect([noAparelho?.texto, !!noAparelho?.apagadaEm]).toEqual([undefined, true]);
 });
 
 test('exclusão recusada pelo banco mantém a mensagem nos dois lados', async () => {
