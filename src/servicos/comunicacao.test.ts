@@ -1292,3 +1292,24 @@ test('o estado do envio NÃO vai para o banco', async () => {
   const mapa = ponte.slice(inicio, inicio + 1200);
   expect(mapa).not.toContain('envio');
 });
+
+test('GRUPO OFICIAL: o aparelho inscreve só a própria pessoa, nunca os outros (26/10/2026)', async () => {
+  /*
+    Quem saiu de um grupo oficial segue no banco com a data de saída e fica
+    fora da lista do aparelho. O aparelho do Elias via a Ana "faltando",
+    empurrava todos os grupos oficiais, o banco dizia "já existe" e o
+    sucesso disparava outra carga do chat — 14.143 vezes em 5 dias.
+  */
+  comGrupoDaRede(['colab-elias']);
+  bancoDados.garantirGruposDoSistemaPara('colab-ana');
+  await new Promise((ok) => setTimeout(ok, 0));
+  expect(bancoConversas.map((c) => c.id)).not.toContain('grupo-avisos-da-rede');
+  const noAparelho = JSON.parse(armazenamento.getItem(CHAVE_CONVERSAS) || '[]').find((c: any) => c.id === 'grupo-avisos-da-rede');
+  expect(noAparelho.participantesIds).toEqual(['colab-elias']);
+
+  // A própria pessoa que falta entra, como antes
+  comGrupoDaRede(['colab-ana']);
+  bancoDados.garantirGruposDoSistemaPara('colab-elias');
+  await new Promise((ok) => setTimeout(ok, 0));
+  expect(bancoConversas.find((c) => c.id === 'grupo-avisos-da-rede')?.participantesIds).toContain('colab-elias');
+});

@@ -2267,6 +2267,17 @@ class BancoDadosConecta {
 
   // Garante os grupos do sistema para qualquer colaborador
   garantirGruposDoSistemaPara(colaboradorId: string): void {
+    /*
+      NO BANCO, CADA UM INSCREVE SÓ A SI MESMO (26/10/2026). Rodava para
+      cada colaborador a cada carga dos cadastros. Quem SAIU de um grupo
+      oficial segue inscrito no banco, com a data de saída, e fica fora da
+      lista do aparelho: o aparelho o via "faltando", empurrava todos os
+      grupos oficiais (3 idas por grupo), o banco dizia "já existe", e o
+      sucesso disparava outra carga completa do chat — 14.143 vezes em
+      5 dias (medir-trafego.sql). Cada pessoa entra nos próprios grupos
+      quando abre o sistema; os outros, no aparelho deles.
+    */
+    if (usandoNuvem() && colaboradorId !== this.obterColaboradorAtual().id) return;
     const colab = this.obterColaboradorPorId(colaboradorId);
     if (!colab) return;
 
