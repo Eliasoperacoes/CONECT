@@ -136,14 +136,31 @@ const simplificar = (texto: string) =>
 export const diaDeBrasilia = (iso: string | number | Date): string =>
   new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
-/** Quantos dias de calendário separam dois AAAA-MM-DD. */
-const diasEntre = (de: string, ate: string): number =>
-  Math.round((Date.parse(`${ate}T12:00:00Z`) - Date.parse(`${de}T12:00:00Z`)) / 86400000);
+/**
+ * Quantos DIAS ÚTEIS se passaram de um AAAA-MM-DD a outro: os dias depois
+ * de `de` até `ate`, sem sábado e domingo. Sexta → segunda = 1. Negativo
+ * quando `de` vem depois de `ate`.
+ */
+export const diasUteisEntre = (de: string, ate: string): number => {
+  const inicio = Date.parse(`${de}T12:00:00Z`);
+  const fim = Date.parse(`${ate}T12:00:00Z`);
+  if (fim < inicio) return -1;
+  let uteis = 0;
+  for (let t = inicio + 86400000; t <= fim; t += 86400000) {
+    const semana = new Date(t).getUTCDay();
+    if (semana !== 0 && semana !== 6) uteis++;
+  }
+  return uteis;
+};
 
 /**
- * Até quantos dias atrás uma matéria ainda entra. Logo cedo a agência quase
- * não publicou (06/10/2026, 9h39: nenhuma de economia, seis no total, de
- * cultura e ciência) — as de ontem completam; as de semana passada, não.
+ * Até quantos DIAS ÚTEIS atrás uma matéria ainda entra. Logo cedo a agência
+ * quase não publicou (06/10/2026, 9h39: nenhuma de economia, seis no total,
+ * de cultura e ciência) — as de ontem completam; as de semana passada, não.
+ *
+ * Úteis, e não de calendário (26/10/2026): a economia da agência parou na
+ * sexta às 19h31 e só voltou depois das 9h de segunda. Em dias de calendário
+ * a sexta já tinha três dias, e o Início abriu a segunda sem notícia nenhuma.
  */
 export const DIAS_DE_VALIDADE = 2;
 
@@ -171,7 +188,7 @@ export const escolherNoticias = (
   const unicas = todas
     .filter((n) => !vistas.has(n.link) && vistas.add(n.link))
     .filter((n) => {
-      const atras = diasEntre(diaDeBrasilia(n.publicadaEm), hoje);
+      const atras = diasUteisEntre(diaDeBrasilia(n.publicadaEm), hoje);
       return atras >= 0 && atras <= DIAS_DE_VALIDADE;
     })
     .sort((a, b) => b.publicadaEm.localeCompare(a.publicadaEm));

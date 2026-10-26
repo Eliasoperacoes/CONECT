@@ -3,7 +3,7 @@
  * fonte, e cada área com as suas.
  */
 import { test, expect } from 'bun:test';
-import { lerFeed, escolherNoticias, areaDoSetor, textoPuro, AREA_DO_SETOR } from './noticias';
+import { lerFeed, escolherNoticias, areaDoSetor, textoPuro, AREA_DO_SETOR, diasUteisEntre } from './noticias';
 import { SETORES } from '../tipos';
 
 /** Um item no formato do feed da Agência Brasil (conferido em 05/10/2026). */
@@ -125,4 +125,22 @@ test('o destaque é a primeira com imagem; a sem imagem desce para a lista (21/1
   // Nenhuma com imagem: a ordem fica como estava
   const semNenhuma = escolherNoticias([m('a', '13:00'), m('b', '12:00')] as any, areaDoSetor('Balcão'), 4, dia);
   expect(semNenhuma.noticias.map((n) => n.link)).toEqual(['a', 'b']);
+});
+
+test('a validade conta DIAS ÚTEIS: na segunda de manhã, as da sexta ainda entram (26/10/2026)', () => {
+  /*
+    A economia da agência parou na sexta às 19h31; na segunda às 9h57 o
+    Início abriu sem notícia nenhuma — em dias de calendário a sexta já
+    tinha três dias. A de quarta, três dias úteis atrás, continua fora.
+  */
+  const feed = `<rss><channel>
+${item('Dólar fecha a semana em queda', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/dolar', 'Fri, 23 Oct 2026 19:31:00 -0300')}
+${item('Juros futuros recuam', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/juros', 'Thu, 22 Oct 2026 15:00:00 -0300')}
+${item('Inflação de setembro surpreende', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/inflacao', 'Wed, 21 Oct 2026 10:00:00 -0300')}
+</channel></rss>`;
+  const titulos = escolherNoticias(lerFeed(feed), 'automotivo', 4, '2026-10-26').noticias.map((n) => n.titulo);
+  expect(titulos).toEqual(['Dólar fecha a semana em queda', 'Juros futuros recuam']);
+  expect(diasUteisEntre('2026-10-23', '2026-10-26')).toBe(1);
+  expect(diasUteisEntre('2026-10-24', '2026-10-26')).toBe(1);
+  expect(diasUteisEntre('2026-10-26', '2026-10-23')).toBe(-1);
 });
