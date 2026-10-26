@@ -34,10 +34,14 @@ export const buscarNoticiasDaArea = async (setor: string): Promise<NoticiasDaAre
     if (!resposta.ok || !resposta.headers.get('content-type')?.includes('application/json')) return null;
     const dados = (await resposta.json()) as NoticiasDaArea;
     if (!Array.isArray(dados?.noticias)) return null;
-    try {
-      sessionStorage.setItem(chave, JSON.stringify({ em: Date.now(), dados }));
-    } catch {
-      /* só não guarda */
+    // Lista vazia não fica guardada (26/10/2026): segurava o Início sem notícia
+    // por meia hora depois de a agência voltar a publicar
+    if (dados.noticias.length > 0) {
+      try {
+        sessionStorage.setItem(chave, JSON.stringify({ em: Date.now(), dados }));
+      } catch {
+        /* só não guarda */
+      }
     }
     return dados;
   } catch {

@@ -43,8 +43,10 @@ export async function GET(request: Request): Promise<Response> {
     { area: AREAS_DE_NOTICIA[area].rotulo, daArea, noticias, fonte: 'Agência Brasil', atualizadaEm: new Date().toISOString() },
     {
       headers: {
-        // Meia hora na borda; enquanto renova, serve a anterior
-        'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600',
+        // Meia hora na borda; enquanto renova, serve a anterior. Vazia, só um
+        // minuto (26/10/2026): segurava o Início sem notícia por meia hora
+        'Cache-Control':
+          noticias.length > 0 ? 'public, s-maxage=1800, stale-while-revalidate=3600' : 'public, s-maxage=60',
       },
     }
   );
