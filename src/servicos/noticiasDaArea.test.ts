@@ -42,3 +42,10 @@ test('com notícia: guarda, e a próxima abertura não pede de novo', async () =
   expect((await buscarNoticiasDaArea('TI'))?.noticias).toHaveLength(1);
   expect(pedidos).toBe(1);
 });
+
+test('uma vazia que ficou guardada na aba (pela versão antiga) é ignorada', async () => {
+  guardado.set('conecta:noticias:TI', JSON.stringify({ em: Date.now(), dados: { area: 'Tecnologia', daArea: false, noticias: [], fonte: 'Agência Brasil' } }));
+  respostas = [{ area: 'Tecnologia', daArea: false, noticias: [noticia], fonte: 'Agência Brasil' }];
+  expect((await buscarNoticiasDaArea('TI'))?.noticias).toHaveLength(1);
+  expect(pedidos).toBe(1);
+});

@@ -24,7 +24,10 @@ export const buscarNoticiasDaArea = async (setor: string): Promise<NoticiasDaAre
   const chave = `conecta:noticias:${setor}`;
   try {
     const guardada = JSON.parse(sessionStorage.getItem(chave) || 'null') as { em: number; dados: NoticiasDaArea } | null;
-    if (guardada && Date.now() - guardada.em < VALIDADE_MS) return guardada.dados;
+    // Uma vazia guardada antes de 26/10/2026 não vale: pede de novo
+    if (guardada && guardada.dados?.noticias?.length > 0 && Date.now() - guardada.em < VALIDADE_MS) {
+      return guardada.dados;
+    }
   } catch {
     /* sem armazenamento: pede de novo */
   }
