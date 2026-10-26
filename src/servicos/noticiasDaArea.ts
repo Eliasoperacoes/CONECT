@@ -29,7 +29,8 @@ export const buscarNoticiasDaArea = async (setor: string): Promise<NoticiasDaAre
     /* sem armazenamento: pede de novo */
   }
   try {
-    const resposta = await fetch(`/api/noticias?setor=${encodeURIComponent(setor)}`);
+    // Sem o cache do navegador: quem guarda é o aparelho (acima) e a Vercel
+    const resposta = await fetch(`/api/noticias?setor=${encodeURIComponent(setor)}`, { cache: 'no-store' });
     // Fora da Vercel (o sistema local) a rota não existe e volta a página — não é notícia
     if (!resposta.ok || !resposta.headers.get('content-type')?.includes('application/json')) return null;
     const dados = (await resposta.json()) as NoticiasDaArea;

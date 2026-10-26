@@ -43,10 +43,15 @@ export async function GET(request: Request): Promise<Response> {
     { area: AREAS_DE_NOTICIA[area].rotulo, daArea, noticias, fonte: 'Agência Brasil', atualizadaEm: new Date().toISOString() },
     {
       headers: {
-        // Meia hora na borda; enquanto renova, serve a anterior. Vazia, só um
-        // minuto (26/10/2026): segurava o Início sem notícia por meia hora
-        'Cache-Control':
-          noticias.length > 0 ? 'public, s-maxage=1800, stale-while-revalidate=3600' : 'public, s-maxage=60',
+        /*
+          O CACHE É SÓ DA VERCEL, NUNCA DO NAVEGADOR (26/10/2026). O
+          `stale-while-revalidate` no Cache-Control valia também para o
+          navegador: ele seguia mostrando a resposta vazia da manhã por até
+          uma hora, mesmo em aba nova. Meia hora na borda; vazia, um minuto.
+        */
+        'Cache-Control': 'no-store',
+        'Vercel-CDN-Cache-Control':
+          noticias.length > 0 ? 'max-age=1800, stale-while-revalidate=3600' : 'max-age=60',
       },
     }
   );
