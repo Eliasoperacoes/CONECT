@@ -147,6 +147,9 @@ const diasEntre = (de: string, ate: string): number =>
  */
 export const DIAS_DE_VALIDADE = 2;
 
+/** O que completa o dia depois da área e de economia: nunca política nem esporte. */
+export const EDITORIAS_DE_RESERVA = ['geral', 'saude', 'internacional', 'justica'];
+
 /**
  * AS NOTÍCIAS DO DIA, DA ÁREA DA PESSOA. A palavra conta pelo COMEÇO
  * ("veículo" acha "veículos", mas "dados" não acha "candidatos").
@@ -158,8 +161,14 @@ export const DIAS_DE_VALIDADE = 2;
  * faltando, as dos dias anteriores na mesma ordem; nada mais velho que
  * `DIAS_DE_VALIDADE`. Cada uma diz se é da área (`daSuaArea`).
  *
- * Só economia completa: a reserva vinha de "últimas notícias" e trouxe
+ * Só economia completava: a reserva vinha de "últimas notícias" e trouxe
  * política e futebol para a tela de abertura da empresa (05/10/2026).
+ *
+ * A RESERVA VOLTOU, SEM POLÍTICA NEM ESPORTE (26/10/2026). A economia da
+ * agência parou na sexta às 19h31; na segunda às 10h o Início ou ficava vazio
+ * ou mostrava as de sexta — "uma baita erro" (Elias). Agora, no mesmo dia,
+ * depois da área e de economia vêm geral, saúde, internacional e justiça
+ * (`EDITORIAS_DE_RESERVA`).
  */
 export const escolherNoticias = (
   todas: Noticia[],
@@ -182,12 +191,14 @@ export const escolherNoticias = (
   };
   const candidatas = unicas
     .map((n) => ({ ...n, daSuaArea: ehDaArea(n) }))
-    .filter((n) => n.daSuaArea || n.editoria === 'economia');
-  // O dia primeiro (o mais novo antes); no mesmo dia, a da área antes; depois, a mais recente
+    .filter((n) => n.daSuaArea || n.editoria === 'economia' || EDITORIAS_DE_RESERVA.includes(n.editoria));
+  // Dentro do dia: a da área, depois economia, depois a reserva
+  const peso = (n: Noticia & { daSuaArea: boolean }) => (n.daSuaArea ? 0 : n.editoria === 'economia' ? 1 : 2);
+  // O dia primeiro (o mais novo antes); no mesmo dia, pelo peso; depois, a mais recente
   const ordenadas = candidatas.sort(
     (a, b) =>
       diaDeBrasilia(b.publicadaEm).localeCompare(diaDeBrasilia(a.publicadaEm)) ||
-      Number(b.daSuaArea) - Number(a.daSuaArea) ||
+      peso(a) - peso(b) ||
       b.publicadaEm.localeCompare(a.publicadaEm)
   );
   const escolhidas = ordenadas.slice(0, limite);

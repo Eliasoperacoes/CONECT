@@ -47,11 +47,14 @@ test('cada área recebe as suas PRIMEIRO; a economia completa, dita de fora da �
   expect(balcao.noticias.map((n) => [n.titulo, n.daSuaArea])).toEqual([
     ['Venda de veículos cresce em setembro', true],
     ['Prazo do FGTS termina na sexta', false],
+    // A de "geral" completa por último (EDITORIAS_DE_RESERVA, 26/10/2026)
+    ['Mega-Sena acumula', false],
   ]);
   const rh = escolherNoticias(noticias, areaDoSetor('RH'), 4, DIA);
   expect(rh.noticias.map((n) => [n.titulo, n.daSuaArea])).toEqual([
     ['Prazo do FGTS termina na sexta', true],
     ['Venda de veículos cresce em setembro', false],
+    ['Mega-Sena acumula', false],
   ]);
   // O limite vale para a soma: a área não é cortada para a economia caber
   expect(escolherNoticias(noticias, areaDoSetor('Balcão'), 1, DIA).noticias.map((n) => n.daSuaArea)).toEqual([true]);
@@ -59,8 +62,8 @@ test('cada área recebe as suas PRIMEIRO; a economia completa, dita de fora da �
   const ti = escolherNoticias(noticias, areaDoSetor('TI'), 4, DIA);
   expect(ti.daArea).toBe(false);
   expect(ti.noticias[0].titulo).toBe('Venda de veículos cresce em setembro');
-  // ...e só de economia: a de "geral" (Mega-Sena) não vai para a tela da empresa
-  expect(ti.noticias.map((n) => n.editoria)).toEqual(['economia', 'economia']);
+  // ...economia primeiro; a de "geral" (Mega-Sena) só completa depois, e a sem link da fonte nunca entra
+  expect(ti.noticias.map((n) => n.editoria)).toEqual(['economia', 'economia', 'geral']);
   // O mesmo link em dois feeds aparece uma vez só
   const dobradas = escolherNoticias([...noticias, ...noticias], 'automotivo', 4, DIA).noticias.map((n) => n.link);
   expect(dobradas).toEqual([...new Set(dobradas)]);
@@ -125,4 +128,19 @@ test('o destaque é a primeira com imagem; a sem imagem desce para a lista (21/1
   // Nenhuma com imagem: a ordem fica como estava
   const semNenhuma = escolherNoticias([m('a', '13:00'), m('b', '12:00')] as any, areaDoSetor('Balcão'), 4, dia);
   expect(semNenhuma.noticias.map((n) => n.link)).toEqual(['a', 'b']);
+});
+
+test('sem economia no dia, completam as outras editorias de hoje — nunca política, e nunca as de sexta (26/10/2026)', () => {
+  /*
+    A economia da agência parou na sexta às 19h31. Na segunda às 10h o
+    Início ficava vazio, ou mostrava as de sexta — "uma baita erro".
+  */
+  const feed = `<rss><channel>
+${item('Vacinação contra gripe é ampliada', 'https://agenciabrasil.ebc.com.br/saude/noticia/2026-10/gripe', 'Mon, 26 Oct 2026 08:58:00 -0300')}
+${item('Senado vota projeto hoje', 'https://agenciabrasil.ebc.com.br/politica/noticia/2026-10/senado', 'Mon, 26 Oct 2026 08:43:00 -0300')}
+${item('Final do campeonato', 'https://agenciabrasil.ebc.com.br/esportes/noticia/2026-10/final', 'Mon, 26 Oct 2026 08:00:00 -0300')}
+${item('Dólar fecha a semana em queda', 'https://agenciabrasil.ebc.com.br/economia/noticia/2026-10/dolar', 'Fri, 23 Oct 2026 19:31:00 -0300')}
+</channel></rss>`;
+  const titulos = escolherNoticias(lerFeed(feed), 'tecnologia', 4, '2026-10-26').noticias.map((n) => n.titulo);
+  expect(titulos).toEqual(['Vacinação contra gripe é ampliada']);
 });
