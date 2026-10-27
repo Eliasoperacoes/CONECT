@@ -18,6 +18,7 @@ import { fecharVisor, RodapeDoPdf } from '../servicos/visorDeDocumento';
 import { rodandoNoAplicativo } from '../servicos/aplicativo';
 import { carregarLeitorDePdf } from '../servicos/leitorDePdf';
 import { compartilharArquivo } from '../servicos/compartilharArquivo';
+import { registrarErro } from '../servicos/registroDeErros';
 
 /** A largura do "tamanho real" no celular: a folha A4 em pixels de tela, com folga. */
 const LARGURA_AMPLIADA = 1000;
@@ -63,7 +64,12 @@ const PaginasDoPdf: React.FC<{ dados: ArrayBuffer; largura: number; aoFalhar: ()
         caixa.current?.replaceChildren(...telas);
       } catch (erro) {
         if (cancelado) return;
-        console.error('Falha ao desenhar o PDF:', erro);
+        // Ao TI, com o navegador do aparelho: no celular do Marcos falhava calado (22/10/2026)
+        registrarErro({
+          tela: 'visor de pdf',
+          mensagem: `Falha ao desenhar o PDF: ${erro instanceof Error ? erro.message : String(erro)}`,
+          pilha: erro instanceof Error ? erro.stack : undefined,
+        });
         aoFalhar();
       }
     })();
@@ -102,7 +108,10 @@ export const VisorDePdf: React.FC<{
       })
       .then((d) => !cancelado && setDados(d))
       .catch((erro) => {
-        console.error('Falha ao baixar o PDF para o visor:', erro);
+        registrarErro({
+          tela: 'visor de pdf',
+          mensagem: `Falha ao baixar o PDF: ${erro instanceof Error ? erro.message : String(erro)}`,
+        });
         if (!cancelado) setFalhou(true);
       });
     return () => {

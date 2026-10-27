@@ -65,6 +65,7 @@ mock.module('./envioDeAviso', () => ({
   pedirAvisoDaPublicacao: (...args: any[]) => avisosDePublicacao.push(args),
   // Faltando aqui, o arquivo de teste inteiro deixa de carregar
   pedirAvisoDeEntradaNoGrupo: () => {},
+  pedirAvisoDaReacao: () => {},
 }));
 
 let anexosEnviados: { conteudo: string; caminho: string }[] = [];
@@ -132,6 +133,19 @@ const recusaDaMensagem = {
 /** Conversas que o banco falso ja conhece. */
 const conversasNoBancoFalso = new Set<string>();
 
+/** A mesma de nuvemComunicacao.ts — o módulo inteiro está simulado aqui */
+const comoApagadaReal = (m: any, quando: string) => ({
+  id: m.id,
+  conversaId: m.conversaId,
+  remetenteId: m.remetenteId,
+  tipo: m.tipo,
+  criadoEm: m.criadoEm,
+  horaFormatada: m.horaFormatada,
+  lida: m.lida,
+  lidaPor: m.lidaPor,
+  apagadaEm: quando,
+});
+
 mock.module('./nuvemComunicacao', () => ({
   // O registro de conversas ja gravadas: no teste ele comeca vazio, entao
   // a primeira mensagem de cada conversa exercita o caminho completo
@@ -145,6 +159,7 @@ mock.module('./nuvemComunicacao', () => ({
     return m.ehEncaminhada ? `↪ ${m.texto || 'Mensagem encaminhada'}` : m.texto || '';
   },
   carimboDeAuditoria: (iso: string) => `carimbo:${iso}`,
+  comoApagada: (m: any, quando: string) => comoApagadaReal(m, quando),
   nuvemComunicacao: {
     assinarAtualizacoes: () => () => {},
     sincronizarConversas: async () => true,
@@ -190,6 +205,14 @@ mock.module('./nuvemComunicacao', () => ({
       if (recusarEscrita) return recusa;
       bancoMensagens = bancoMensagens.filter((x) => x.id !== id);
       return { sucesso: true };
+    },
+    // Como `apagar_mensagem` (mensagem-apagada.sql): a linha fica, o conteúdo sai
+    apagarMensagem: async (id: string) => {
+      if (recusarEscrita) return recusa;
+      const i = bancoMensagens.findIndex((x) => x.id === id);
+      const caminho = i !== -1 ? bancoMensagens[i].anexoCaminho : undefined;
+      if (i !== -1) bancoMensagens[i] = comoApagadaReal(bancoMensagens[i], '2026-10-21T12:00:00Z');
+      return { sucesso: true, caminho };
     },
     marcarLeitura: async (ids: string[], colaboradorId: string) => {
       ids.forEach((mensagemId) => bancoLeituras.push({ mensagemId, colaboradorId }));
@@ -475,14 +498,15 @@ test('só o autor edita — nem o Administrador', async () => {
   expect(bancoMensagens[0].texto).toBe('da Ana');
 });
 
-test('exclusão tira a mensagem do banco', async () => {
+test('exclusão deixa o lugar e tira o conteúdo, no banco e no aparelho (mensagem-apagada.sql)', async () => {
   await bancoDados.enviarMensagem('grupo-teste', { tipo: 'texto', texto: 'apagar' });
   const id = bancoMensagens[0].id;
 
   const res = await bancoDados.excluirMensagem(id);
   expect(res.sucesso).toBe(true);
-  expect(bancoMensagens).toHaveLength(0);
-  expect(lerCacheMensagens()).toHaveLength(0);
+  expect(bancoMensagens.map((m) => [m.id, m.texto, !!m.apagadaEm])).toEqual([[id, undefined, true]]);
+  const noAparelho = lerCacheMensagens().find((m: any) => m.id === id);
+  expect([noAparelho?.texto, !!noAparelho?.apagadaEm]).toEqual([undefined, true]);
 });
 
 test('exclusão recusada pelo banco mantém a mensagem nos dois lados', async () => {
@@ -1267,4 +1291,25 @@ test('o estado do envio NÃO vai para o banco', async () => {
   const inicio = ponte.indexOf('const paraLinhaMensagem');
   const mapa = ponte.slice(inicio, inicio + 1200);
   expect(mapa).not.toContain('envio');
+});
+
+test('GRUPO OFICIAL: o aparelho inscreve só a própria pessoa, nunca os outros (26/10/2026)', async () => {
+  /*
+    Quem saiu de um grupo oficial segue no banco com a data de saída e fica
+    fora da lista do aparelho. O aparelho do Elias via a Ana "faltando",
+    empurrava todos os grupos oficiais, o banco dizia "já existe" e o
+    sucesso disparava outra carga do chat — 14.143 vezes em 5 dias.
+  */
+  comGrupoDaRede(['colab-elias']);
+  bancoDados.garantirGruposDoSistemaPara('colab-ana');
+  await new Promise((ok) => setTimeout(ok, 0));
+  expect(bancoConversas.map((c) => c.id)).not.toContain('grupo-avisos-da-rede');
+  const noAparelho = JSON.parse(armazenamento.getItem(CHAVE_CONVERSAS) || '[]').find((c: any) => c.id === 'grupo-avisos-da-rede');
+  expect(noAparelho.participantesIds).toEqual(['colab-elias']);
+
+  // A própria pessoa que falta entra, como antes
+  comGrupoDaRede(['colab-ana']);
+  bancoDados.garantirGruposDoSistemaPara('colab-elias');
+  await new Promise((ok) => setTimeout(ok, 0));
+  expect(bancoConversas.find((c) => c.id === 'grupo-avisos-da-rede')?.participantesIds).toContain('colab-elias');
 });

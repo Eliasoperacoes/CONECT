@@ -13,6 +13,7 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle2, PenLine } from 'lucide-react';
 import { dataHoraDeBrasilia } from '../servicos/comprovanteDeHolerite';
 import { FolhaDeAssinar } from './FolhaDeAssinar';
+import { registrarErro } from '../servicos/registroDeErros';
 
 export interface TextosDaAssinatura {
   /** Ao lado do botão: "Confira o holerite e assine o recebimento." */
@@ -37,15 +38,50 @@ export const BarraDeAssinatura: React.FC<{
   // undefined: carregando; null: falta assinar; texto: quando assinou
   const [assinadoEm, setAssinadoEm] = useState<string | null | undefined>(undefined);
   const [folhaAberta, setFolhaAberta] = useState(false);
+  /*
+    A CONFERÊNCIA FALHOU (22/10/2026). Sem isto a barra ficava escondida para
+    sempre, calada — o Accacio via o holerite e nenhum "Assinar". Agora ela
+    diz que não conseguiu, oferece tentar de novo, e o erro chega ao TI.
+  */
+  const [falhou, setFalhou] = useState(false);
+  const [tentativa, setTentativa] = useState(0);
 
   useEffect(() => {
     let cancelado = false;
     setAssinadoEm(undefined);
-    carregar().then((quando) => !cancelado && setAssinadoEm(quando));
+    setFalhou(false);
+    carregar()
+      .then((quando) => !cancelado && setAssinadoEm(quando))
+      .catch((erro) => {
+        if (cancelado) return;
+        registrarErro({
+          tela: 'barra de assinar',
+          mensagem: `Não conferiu a assinatura: ${erro instanceof Error ? erro.message : String(erro)}`,
+          pilha: erro instanceof Error ? erro.stack : undefined,
+        });
+        setFalhou(true);
+      });
     return () => {
       cancelado = true;
     };
-  }, [chave]);
+  }, [chave, tentativa]);
+
+  if (falhou) {
+    return (
+      <div className="flex items-center gap-3 px-4 py-3 bg-[var(--c-superficie)] border-t border-[var(--c-borda)] pb-[max(12px,env(safe-area-inset-bottom))]">
+        <p className="flex-1 text-xs text-[var(--c-texto-2)] leading-snug">
+          Não foi possível conferir a assinatura agora.
+        </p>
+        <button
+          type="button"
+          onClick={() => setTentativa((t) => t + 1)}
+          className="h-10 px-4 rounded-xl border border-[var(--c-borda)] text-[var(--c-texto)] text-sm font-bold"
+        >
+          Tentar de novo
+        </button>
+      </div>
+    );
+  }
 
   if (assinadoEm === undefined) return null;
 

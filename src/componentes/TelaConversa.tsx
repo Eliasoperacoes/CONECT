@@ -18,6 +18,7 @@ import {
   Shield,
   Smile,
   Check,
+  Ban,
   CheckCheck,
   Forward,
   Clock,
@@ -1242,6 +1243,33 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
             }
             const ehMinha = msg.remetenteId === colaboradorAtual.id;
             const remetenteInfo = !ehMinha ? bancoDados.obterColaboradorPorId(msg.remetenteId) : null;
+
+            /*
+              APAGADA (mensagem-apagada.sql, 21/10/2026): fica o lugar, como no
+              WhatsApp — o balão de quem mandou, em cinza e itálico, com a
+              hora. Sem menu, sem reação, sem resposta: não há mais o que ler.
+            */
+            if (msg.apagadaEm) {
+              return (
+                <div key={msg.id} id={`mensagem-${msg.id}`} className={`flex flex-col ${ehMinha ? 'items-end' : 'items-start'}`}>
+                  {!ehMinha && conversa.tipo === 'grupo' && remetenteInfo && (
+                    <span className="text-xs text-[var(--c-texto-3)] mb-1 px-2">
+                      {remetenteInfo.nome} · {remetenteInfo.cargo}
+                    </span>
+                  )}
+                  <div
+                    className={`flex items-center gap-1.5 max-w-[85%] px-3 py-2 rounded-2xl text-sm italic select-none text-[var(--c-texto-3)] bg-[var(--c-superficie)] border border-[var(--c-borda)] ${
+                      ehMinha ? 'rounded-br-xs' : 'rounded-bl-xs'
+                    }`}
+                  >
+                    <Ban className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
+                    <span>{ehMinha ? 'Você apagou esta mensagem' : 'Esta mensagem foi apagada'}</span>
+                    <span className="ml-1.5 text-[10px] not-italic font-mono">{msg.horaFormatada}</span>
+                  </div>
+                </div>
+              );
+            }
+
             // reacoes é gravado como { emoji: [idsDeQuemReagiu] }; aqui vira lista para exibir
             const reacoes = Object.entries(msg.reacoes || {})
               .filter(([, ids]) => ids.length > 0)

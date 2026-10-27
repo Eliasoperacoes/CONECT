@@ -13,6 +13,8 @@ import {
   definirRecarga,
   pedirRecarga,
   INTERVALO_MINIMO_MS,
+  deveRecarregarAoVoltar,
+  AUSENCIA_LONGA_MS,
 } from './reconexao';
 
 let recargas = 0;
@@ -91,11 +93,21 @@ test('os cinco canais avisam quando voltam, e a abertura registra a recarga', ()
   const nuvem = ler('nuvem.ts');
   const comunicacao = ler('nuvemComunicacao.ts');
 
-  // O quinto é o sinal de mudança das fichas (fichas-por-nivel.sql, 13/10/2026)
+  // O sinal de mudança das fichas (fichas-por-nivel.sql, 13/10/2026) e a
+  // auditoria ao vivo, só no aparelho do TI e do RH (21/10/2026); a escuta
+  // morta de `colaboradores` saiu no mesmo dia
   const inscricoes = [...nuvem.matchAll(/\.subscribe\(([^)]*\)?)\)/g), ...comunicacao.matchAll(/\.subscribe\(([^)]*\)?)\)/g)];
   expect(inscricoes).toHaveLength(5);
   for (const [, argumento] of inscricoes) expect(argumento).toContain('acompanharCanal(');
 
   expect(nuvem).toContain('definirRecarga(carregarTudo)');
   expect(nuvem).toContain('recarregarAoVoltar()');
+});
+
+test('voltar para a tela só recarrega se um canal caiu ou se ficou escondida 10 min (26/10/2026)', () => {
+  // Trocar de aba no balcão disparava a carga completa: ~9 por pessoa por dia
+  expect(deveRecarregarAoVoltar(30_000, 0)).toBe(false);
+  expect(deveRecarregarAoVoltar(AUSENCIA_LONGA_MS - 1, 0)).toBe(false);
+  expect(deveRecarregarAoVoltar(AUSENCIA_LONGA_MS, 0)).toBe(true);
+  expect(deveRecarregarAoVoltar(5_000, 1)).toBe(true);
 });

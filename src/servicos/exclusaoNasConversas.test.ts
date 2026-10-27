@@ -93,6 +93,8 @@ test('o aplicativo confere a exclusão e leva o arquivo junto', () => {
   expect(nuvem).toContain("await supabase.from('mensagens').delete().eq('id', id).select('id');");
   expect(nuvem).not.toContain("from('conversas').delete()");
   const banco = readFileSync('src/servicos/bancoDados.ts', 'utf8');
-  expect(banco).toContain('if (alvo.anexoCaminho) await apagarAnexos([alvo.anexoCaminho]);');
+  // Apagar deixa o lugar (mensagem-apagada.sql); o caminho do anexo volta da função do banco
+  expect(banco).toContain('const caminho = res.caminho || alvo.anexoCaminho;');
+  expect(banco).toContain('if (caminho) await apagarAnexos([caminho]);');
   expect(banco).toContain('arquivos = await apagarAnexos(res.caminhos || []);');
 });

@@ -24,20 +24,28 @@ export const buscarNoticiasDaArea = async (setor: string): Promise<NoticiasDaAre
   const chave = `conecta:noticias:${setor}`;
   try {
     const guardada = JSON.parse(sessionStorage.getItem(chave) || 'null') as { em: number; dados: NoticiasDaArea } | null;
-    if (guardada && Date.now() - guardada.em < VALIDADE_MS) return guardada.dados;
+    // Uma vazia guardada antes de 26/10/2026 não vale: pede de novo
+    if (guardada && guardada.dados?.noticias?.length > 0 && Date.now() - guardada.em < VALIDADE_MS) {
+      return guardada.dados;
+    }
   } catch {
     /* sem armazenamento: pede de novo */
   }
   try {
-    const resposta = await fetch(`/api/noticias?setor=${encodeURIComponent(setor)}`);
+    // Sem o cache do navegador: quem guarda é o aparelho (acima) e a Vercel
+    const resposta = await fetch(`/api/noticias?setor=${encodeURIComponent(setor)}`, { cache: 'no-store' });
     // Fora da Vercel (o sistema local) a rota não existe e volta a página — não é notícia
     if (!resposta.ok || !resposta.headers.get('content-type')?.includes('application/json')) return null;
     const dados = (await resposta.json()) as NoticiasDaArea;
     if (!Array.isArray(dados?.noticias)) return null;
-    try {
-      sessionStorage.setItem(chave, JSON.stringify({ em: Date.now(), dados }));
-    } catch {
-      /* só não guarda */
+    // Lista vazia não fica guardada (26/10/2026): segurava o Início sem notícia
+    // por meia hora depois de a agência voltar a publicar
+    if (dados.noticias.length > 0) {
+      try {
+        sessionStorage.setItem(chave, JSON.stringify({ em: Date.now(), dados }));
+      } catch {
+        /* só não guarda */
+      }
     }
     return dados;
   } catch {
