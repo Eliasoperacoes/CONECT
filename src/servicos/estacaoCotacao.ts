@@ -46,14 +46,19 @@ export interface BancoDaEstacao {
   gravar(cotacao: string, resultados: ResultadoFornecedor[]): Promise<string>;
   /**
    * Avisa quando a fila muda (pedido novo, pedido que voltou), em tempo
-   * real. Devolve como parar de ouvir. Sem ele, só o relógio de 5 s.
+   * real. Devolve como parar de ouvir. Sem ele, só o relógio de reserva.
    */
   ouvirFila?(aoMudar: () => void): () => void;
 }
 
 export const NOME_DA_ESTACAO = 'compras';
 export const INTERVALO_SINAL_MS = 60_000;
-export const INTERVALO_FILA_MS = 5_000;
+/**
+ * A RESERVA da fila: o pedido chega pelo tempo real (ouvirFila) na hora; o
+ * relógio só cobre o aviso que se perder. Era 5 s — 17 mil chamadas por dia
+ * da estação, quase todas de fila vazia (LIMITES-SUPABASE.md).
+ */
+export const INTERVALO_FILA_MS = 30_000;
 export const PRAZO_EXTENSAO_MS = 90_000;
 export const PRAZO_OLA_MS = 2_000;
 

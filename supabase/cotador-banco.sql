@@ -136,6 +136,10 @@ create table if not exists public.historico_precos_b2b (
 );
 alter table public.historico_precos_b2b enable row level security;
 
+-- A limpeza de 30 dias (gravar_cotacao) sem varrer as tabelas
+create index if not exists precos_b2b_consultado on public.precos_b2b (consultado_em);
+create index if not exists similares_b2b_consultado on public.similares_b2b (consultado_em);
+
 drop policy if exists precos_b2b_leitura on public.precos_b2b;
 create policy precos_b2b_leitura on public.precos_b2b
   for select to authenticated using (public.posso_ver_custo());
@@ -550,6 +554,11 @@ alter table public.mensagens
   add column if not exists encomenda_id    uuid,
   add column if not exists encomenda_ids   uuid[],
   add column if not exists aviso_encomenda text;
+
+-- Achar o recado de uma encomenda (a notificação do passo) sem varrer todas as
+-- mensagens do chat: o índice só tem as linhas de recado
+create index if not exists mensagens_recado_da_encomenda on public.mensagens (encomenda_id, aviso_encomenda)
+  where encomenda_id is not null;
 
 create or replace function public.conversa_com_compras(vendedor text)
 returns text language plpgsql security definer set search_path = public as $$
@@ -1083,6 +1092,11 @@ begin
 
   -- A fila não cresce para sempre: pedido com mais de 90 dias sai
   delete from public.cotacoes_b2b where criada_em < now() - interval '90 days';
+  -- Nem o retrato dos preços: o preço vale 24 h (encomendar recusa o mais velho);
+  -- 30 dias guardam as marcas do mês para a tela de margens. Antes, cada peça já
+  -- cotada ficava para sempre — crescia com o catálogo, sem ninguém ler
+  delete from public.precos_b2b where consultado_em < now() - interval '30 days';
+  delete from public.similares_b2b where consultado_em < now() - interval '30 days';
 
   return case when gravados = 0 then 'erro' else 'pronta' end;
 end;

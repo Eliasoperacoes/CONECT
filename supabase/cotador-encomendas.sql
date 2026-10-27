@@ -97,6 +97,8 @@ create table if not exists public.encomendas (
 alter table public.encomendas enable row level security;
 create index if not exists encomendas_situacao on public.encomendas (situacao, criada_em);
 create index if not exists encomendas_vendedor on public.encomendas (vendedor_id, criada_em desc);
+-- A trava da resposta do comprador (resposta_com_encomenda_fica) sem varrer as encomendas
+create index if not exists encomendas_da_resposta on public.encomendas (resposta_id) where resposta_id is not null;
 
 -- DE ONDE A ENCOMENDA NASCEU (Elias, 22/10/2026: "precisaremos metrificar
 -- todo o processo — desde a cotação ao fechamento até a entrega para o

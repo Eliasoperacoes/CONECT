@@ -31,6 +31,7 @@ import {
   Hourglass,
   Lightbulb,
   PackagePlus,
+  RefreshCw,
   Percent,
   Route,
   Search,
@@ -66,7 +67,6 @@ import {
   type TomDoInsight,
 } from '../servicos/relatorios';
 import type { ParteDosPedidos } from './TelaPedidos';
-import { ouvirEmRajada } from '../servicos/encomendas';
 import { EstadoVazio, FiltroSegmentado, classeDoBotao } from './PadraoWeb';
 import { Selo, brl } from './cotador/visual';
 import { AreaNoTempo, CartaoDeNumero, ColunasPorDia, Delta, ListaDeBarras, Widget } from './relatorios/Widgets';
@@ -139,11 +139,12 @@ export const TelaRelatorios: React.FC<{ colaboradorAtual: Colaborador; aoIr: (d:
       .finally(() => esta === leitura.current && setCarregando(false));
   }, [servico, intervalo]);
 
+  // Relatório é análise, não painel ao vivo: lê ao abrir, ao trocar o período e no
+  // "Atualizar". Reler a cada mudança fazia toda tela aberta baixar o período
+  // atual e o anterior inteiros a cada encomenda (LIMITES-SUPABASE.md)
   useEffect(() => {
     carregar();
-    // 30 encomendas marcadas de uma vez = uma releitura, não 30 (LIMITES-SUPABASE)
-    return servico ? ouvirEmRajada((aoMudar) => servico.ouvir(aoMudar), carregar) : undefined;
-  }, [servico, carregar]);
+  }, [carregar]);
 
   const r = useMemo(() => (dados ? montarRelatorio(dados.atual, filtros) : null), [dados, filtros]);
   const antes = useMemo(() => (dados ? montarRelatorio(dados.anterior, filtros) : null), [dados, filtros]);
@@ -241,6 +242,9 @@ export const TelaRelatorios: React.FC<{ colaboradorAtual: Colaborador; aoIr: (d:
               Limpar
             </button>
           )}
+          <button type="button" className={`${classeDoBotao.secundario} h-9`} onClick={carregar} disabled={carregando} title="Ler o período de novo">
+            <RefreshCw className={`h-4 w-4 ${carregando ? 'animate-spin' : ''}`} /> Atualizar
+          </button>
           <button type="button" className={`${classeDoBotao.secundario} h-9`} onClick={() => void exportar()} disabled={!r || exportando}>
             <Download className="h-4 w-4" /> {exportando ? 'Gerando…' : 'Excel'}
           </button>

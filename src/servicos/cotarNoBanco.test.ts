@@ -188,3 +188,19 @@ test('Compras altera o frete, e a venda muda na hora; Balcão e Gerente não alt
   expect((await banco.db.query<{ f: number }>("select frete_por_peca::float as f from public.fornecedores_b2b where chave = 'dpk'")).rows[0].f).toBe(5);
   await banco.db.exec("update public.fornecedores_b2b set frete_por_peca = 10 where chave = 'dpk'");
 });
+
+test('o retrato dos preços não cresce para sempre: cada cotação gravada tira o que passou de 30 dias', async () => {
+  await banco.db.exec(`
+    insert into public.precos_b2b (fornecedor, codigo, local, em_sp, custo, quantidade, disponivel, proximidade, consultado_em)
+    values ('dpk', 'VELHA1', 'RIB PRETO', true, 10, 1, true, 1, now() - interval '31 days'),
+           ('dpk', 'NOVA1', 'RIB PRETO', true, 10, 1, true, 1, now() - interval '29 days');
+    insert into public.similares_b2b (fornecedor, codigo, codigo_similar, consultado_em)
+    values ('dpk', 'VELHA1', 'S1', now() - interval '31 days'), ('dpk', 'NOVA1', 'S2', now() - interval '29 days');
+  `);
+  await como(BIA, "select * from public.pedir_cotacao(array['LIMPA1'], true, false)");
+  await como(CAIO, "select * from public.pegar_proxima_cotacao('compras')");
+  const [{ id }] = (await banco.db.query<{ id: string }>("select id from public.cotacoes_b2b where codigo = 'LIMPA1'")).rows;
+  await como(CAIO, `select public.gravar_cotacao('${id}', '[{"fornecedor":"dpk","peca":null,"ofertas":[],"erro":"x"}]'::jsonb)`);
+  const sobrou = async (t: string) => (await banco.db.query<{ codigo: string }>(`select codigo from public.${t} where codigo in ('VELHA1', 'NOVA1') order by 1`)).rows.map((r) => r.codigo);
+  expect([await sobrou('precos_b2b'), await sobrou('similares_b2b')]).toEqual([['NOVA1'], ['NOVA1']]);
+});

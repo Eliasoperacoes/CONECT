@@ -32,12 +32,15 @@ Nomes e campos definitivos saem na implementação; isto é o contrato.
 | `similares_b2b` | um similar de uma peça num fornecedor | `fornecedor`, `codigo`, `codigo_similar`, `marca_similar`, `consultado_em` | (`fornecedor`, `codigo`, `codigo_similar`) |
 | `historico_precos_b2b` | o melhor preço do dia | `dia`, `fornecedor`, `codigo`, `local`, `custo`, `situacao` (`SP`, `FORA DO ESTADO`, `SEM ESTOQUE`) | (`dia`, `fornecedor`, `codigo`) |
 
-**Volume.** `precos_b2b` e `similares_b2b` são sobrescritos: só guardam o
-último preço, sem crescer com o tempo. Quem cresce é o
-`historico_precos_b2b` (uma linha por dia, fornecedor e peça cotada) e a
-fila. Estimativa: 200 cotações por dia × 3 fornecedores = ~600 linhas por
-dia, menos de 50 MB por ano. A fila apaga pedidos com mais de 90 dias.
-Conferir em [LIMITES-SUPABASE.md](../LIMITES-SUPABASE.md) após 1 mês.
+**Volume (revisto em 27/10/2026).** `precos_b2b` e `similares_b2b` guardam
+o último preço de cada peça cotada — e cresciam com cada código novo, para
+sempre. O preço vale 24 h, então cada cotação gravada tira o que passou de
+30 dias (a tela de margens vê as marcas do mês). A fila apaga pedidos com
+mais de 90 dias. Quem cresce é o `historico_precos_b2b` (uma linha por dia,
+fornecedor e peça cotada): com 13 fornecedores, ~200 cotações por dia dão
+~2.600 linhas por dia, perto de 140 MB por ano (~146 bytes por linha,
+medido no local). A medida de verdade sai de `supabase/medir-cotador.sql`
+depois de 1 a 2 semanas de uso.
 
 ## Quem acessa o quê (RLS)
 

@@ -62,7 +62,9 @@ respondeu ao `ola`. Em qualquer outro PC, ou para qualquer outra pessoa,
 não faz nada (nem chamada ao banco).
 
 - **Sinal:** a cada 60 s.
-- **Fila:** a cada 5 s, se não está cotando, chama `pegar_proxima_cotacao`.
+- **Fila:** o pedido chega pelo tempo real na hora; de reserva, a cada 30 s
+  (era 5 s: 17 mil chamadas por dia, quase todas de fila vazia), se não está
+  cotando, chama `pegar_proxima_cotacao`.
   Um pedido por vez.
 - **Prazo:** a extensão tem 90 s para responder. Sem resposta, grava erro
   em todos os fornecedores, e o pedido fica `erro`. O balconista pode pedir

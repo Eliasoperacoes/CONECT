@@ -832,14 +832,5 @@ export const relatoriosPeloSupabase = (supabase: SupabaseClient) => ({
       incompleto: c.length >= TETO_DE_LINHAS.cotacoes || s.length >= TETO_DE_LINHAS.solicitacoes || e.length >= TETO_DE_LINHAS.encomendas,
     };
   },
-  /** Pinta o relatório de novo quando algo muda (encomenda, solicitação) */
-  ouvir(aoMudar: () => void): () => void {
-    const canal = supabase
-      .channel(`relatorios-${Math.random().toString(36).slice(2)}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'encomendas' }, aoMudar)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitacoes_cotacao' }, aoMudar)
-      .subscribe();
-    return () => void supabase.removeChannel(canal);
-  },
 });
 
