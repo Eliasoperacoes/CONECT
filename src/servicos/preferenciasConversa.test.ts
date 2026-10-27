@@ -591,7 +591,8 @@ test('O SELO CONTA O QUE A LISTA MOSTRA: removida, oculta e vazia não acendem a
 
 test('o título da aba e o aviso usam a mesma regra do selo', async () => {
   const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
-  expect(app).toContain('const totalNaoLidas = naoLidasDaLista(colaboradorAtual.id, conversasIndividuais);');
+  // O balão e a aba Conversas somam os grupos: o recado de Compras é grupo
+  expect(app).toContain('const totalNaoLidas = naoLidasDaLista(colaboradorAtual.id, conversasIndividuais) + naoLidasDosGrupos;');
   expect(app).toContain('const naoLidasDosGrupos = naoLidasDaLista(colaboradorAtual.id, grupos);');
   expect(app).toContain('bancoDados.obterMensagensPorLer().filter((m) => naLista.has(m.conversaId))');
 });

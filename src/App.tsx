@@ -1675,8 +1675,9 @@ export default function App() {
 
   const abasNavegacao = todasAsAbas.filter((aba) => aba.visivel);
 
-  // O selo conta o que a lista mostra — nem uma conversa a mais (`naoLidasDaLista`)
-  const totalNaoLidas = naoLidasDaLista(colaboradorAtual.id, conversasIndividuais);
+  // O selo conta o que a lista mostra — nem uma conversa a mais (`naoLidasDaLista`).
+  // Grupos também: o recado de Compras ao vendedor é grupo, e ficava sem selo (27/10/2026)
+  const totalNaoLidas = naoLidasDaLista(colaboradorAtual.id, conversasIndividuais) + naoLidasDosGrupos;
 
 
   /**
