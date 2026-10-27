@@ -10,7 +10,7 @@
 
 with tabelas(tabela, quando) as (
   values
-    ('historico_precos_b2b', 'dia'),          -- uma linha por dia, fornecedor e peça cotada
+    ('historico_precos_b2b', 'dia'),          -- uma linha por dia, fornecedor e peça; fica 13 meses
     ('consultas_cotacao',    'criada_em'),    -- a foto de cada cotação (Histórico e Relatórios)
     ('cotacoes_b2b',         'criada_em'),    -- a fila (apaga sozinha o que passa de 90 dias)
     ('cotacoes_do_dia',      'dia'),

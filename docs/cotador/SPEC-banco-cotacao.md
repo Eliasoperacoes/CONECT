@@ -39,7 +39,8 @@ sempre. O preço vale 24 h, então cada cotação gravada tira o que passou de
 mais de 90 dias. Quem cresce é o `historico_precos_b2b` (uma linha por dia,
 fornecedor e peça cotada): com 13 fornecedores, ~200 cotações por dia dão
 ~2.600 linhas por dia, perto de 140 MB por ano (~146 bytes por linha,
-medido no local). A medida de verdade sai de `supabase/medir-cotador.sql`
+medido no local) — e fica 13 meses (Elias, 27/10/2026): dá para comparar com
+o mesmo mês do ano anterior, e o tamanho estabiliza em ~150 MB. A medida de verdade sai de `supabase/medir-cotador.sql`
 depois de 1 a 2 semanas de uso.
 
 ## Quem acessa o quê (RLS)

@@ -204,3 +204,17 @@ test('o retrato dos preços não cresce para sempre: cada cotação gravada tira
   const sobrou = async (t: string) => (await banco.db.query<{ codigo: string }>(`select codigo from public.${t} where codigo in ('VELHA1', 'NOVA1') order by 1`)).rows.map((r) => r.codigo);
   expect([await sobrou('precos_b2b'), await sobrou('similares_b2b')]).toEqual([['NOVA1'], ['NOVA1']]);
 });
+
+test('o histórico de preços fica 13 meses: o mais velho sai a cada cotação gravada', async () => {
+  await banco.db.exec(`
+    insert into public.historico_precos_b2b (dia, fornecedor, codigo, local, custo, situacao) values
+      (public.hoje_brasilia() - interval '13 months' - interval '1 day', 'dpk', 'ANTIGO1', null, null, 'SEM ESTOQUE'),
+      (public.hoje_brasilia() - interval '13 months' + interval '1 day', 'dpk', 'ANOPASSADO1', null, null, 'SEM ESTOQUE');
+  `);
+  await como(BIA, "select * from public.pedir_cotacao(array['LIMPA2'], true, false)");
+  await como(CAIO, "select * from public.pegar_proxima_cotacao('compras')");
+  const [{ id }] = (await banco.db.query<{ id: string }>("select id from public.cotacoes_b2b where codigo = 'LIMPA2'")).rows;
+  await como(CAIO, `select public.gravar_cotacao('${id}', '[{"fornecedor":"dpk","peca":null,"ofertas":[],"erro":"x"}]'::jsonb)`);
+  const sobrou = (await banco.db.query<{ codigo: string }>("select codigo from public.historico_precos_b2b where codigo in ('ANTIGO1', 'ANOPASSADO1')")).rows.map((r) => r.codigo);
+  expect(sobrou).toEqual(['ANOPASSADO1']);
+});

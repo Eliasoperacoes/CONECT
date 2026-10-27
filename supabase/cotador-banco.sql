@@ -1097,6 +1097,9 @@ begin
   -- cotada ficava para sempre — crescia com o catálogo, sem ninguém ler
   delete from public.precos_b2b where consultado_em < now() - interval '30 days';
   delete from public.similares_b2b where consultado_em < now() - interval '30 days';
+  -- O histórico de preços fica 13 meses (Elias, 27/10/2026): dá para comparar
+  -- com o mesmo mês do ano anterior, e o tamanho para de crescer (~150 MB)
+  delete from public.historico_precos_b2b where dia < public.hoje_brasilia() - interval '13 months';
 
   return case when gravados = 0 then 'erro' else 'pronta' end;
 end;
