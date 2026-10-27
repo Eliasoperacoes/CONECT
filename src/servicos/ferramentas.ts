@@ -221,6 +221,52 @@ export const FERRAMENTAS: Ferramenta[] = [
     nivelPadrao: NIVEL_COLABORADOR,
   },
   {
+    chave: 'encomendas_cotador',
+    nome: 'Encomendas (cotador)',
+    descricao:
+      'As peças que o vendedor encomendou pela cotação: a situação de cada uma, cancelar até o horário de corte e confirmar o recebimento.',
+    area: 'principal',
+    // Quem encomenda de fato é quem cota (podeCotar, par de encomendar no banco)
+    nivelPadrao: NIVEL_COLABORADOR,
+  },
+  {
+    chave: 'painel_compras_cotador',
+    nome: 'Painel de Compras (cotador)',
+    descricao:
+      'A primeira tela de Compras: solicitações abertas, encomendas para pedir, fornecedores que fecham o mínimo, chegadas e a atividade do dia — cada número leva à etapa dele.',
+    area: 'gestao',
+    // Quem vê de fato é Compras e TI (podeAtenderFila, par de encomendas_de_compras)
+    nivelPadrao: NIVEL_COLABORADOR,
+  },
+  {
+    chave: 'relatorios_cotador',
+    nome: 'Relatórios do cotador',
+    descricao:
+      'Relatórios e insights por período: o tempo de cada etapa e o gargalo, vendedores, peças mais encomendadas, procura sem encomenda, fornecedores e lojas; exporta para Excel.',
+    area: 'gestao',
+    // Quem vê de fato é Compras e Gerência (podeVerHistoricoDeTodos, par de cotacoes_do_periodo)
+    nivelPadrao: NIVEL_COLABORADOR,
+    cuidado: 'Mostra o valor encomendado por vendedor e, para quem vê custo, a margem.',
+  },
+  {
+    chave: 'pedidos_cotador',
+    nome: 'Pedidos de compras (cotador)',
+    descricao:
+      'O painel de Compras: as encomendas por fornecedor com a conta do pedido mínimo, pedido realizado, chegada e conferência.',
+    area: 'gestao',
+    // Quem muda de fato é Compras e TI (podeAtenderFila, par de marcar_pedido_realizado)
+    nivelPadrao: NIVEL_COLABORADOR,
+  },
+  {
+    chave: 'historico_cotador',
+    nome: 'Histórico de cotação (cotador)',
+    descricao:
+      'Tudo o que foi cotado nos B2Bs e pedido ao comprador. O vendedor vê o dele; Compras e Gerência, o de todos.',
+    area: 'principal',
+    // Quem vê de quem é do banco (historico_de_cotacao); aqui só a porta
+    nivelPadrao: NIVEL_COLABORADOR,
+  },
+  {
     chave: 'fretes_cotador',
     nome: 'Fretes dos fornecedores (cotador)',
     descricao:

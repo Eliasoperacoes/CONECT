@@ -262,6 +262,94 @@ export const bancoPeloSupabase = (supabase: SupabaseClient): BancoDaEstacao => (
   },
 });
 
+// ------------------------------------------------------------
+// O que o Painel de Compras mostra da estação, de qualquer PC
+// ------------------------------------------------------------
+
+/** Uma estação como o banco a devolve; `no_ar` é a regra do banco (estacao_online), sem cópia aqui */
+export interface LinhaDaEstacao {
+  visto_em: string;
+  no_ar: boolean;
+  sites: Record<string, SituacaoSite>;
+  versao_extensao?: string | null;
+}
+
+export interface ResumoDaEstacao {
+  noAr: boolean;
+  /** Último sinal de qualquer estação (null: nunca deu sinal) */
+  vistoEm: string | null;
+  sitesOk: number;
+  sitesTotal: number;
+  /** Os sites com problema, com o motivo ("Rolemar: deslogado") */
+  problemas: string[];
+  naFila: number;
+  /** A versão da extensão que deu o último sinal (null: estação antiga, sem versão) */
+  versao: string | null;
+}
+
+const ROTULO_SITE: Record<SituacaoSite, string> = { ok: 'ok', deslogado: 'deslogado', fora: 'aba fechada' };
+
+export const resumoDaEstacao = (
+  estacoes: LinhaDaEstacao[],
+  naFila: number,
+  /** chave do fornecedor → nome na tela ("rolemar" → "Rolemar") */
+  nomes: Record<string, string> = {}
+): ResumoDaEstacao => {
+  const ultima = [...estacoes].sort((a, b) => b.visto_em.localeCompare(a.visto_em))[0];
+  if (!ultima) return { noAr: false, vistoEm: null, sitesOk: 0, sitesTotal: 0, problemas: [], naFila, versao: null };
+  const sites = Object.entries(ultima.sites ?? {});
+  return {
+    noAr: ultima.no_ar,
+    vistoEm: ultima.visto_em,
+    sitesOk: sites.filter(([, s]) => s === 'ok').length,
+    sitesTotal: sites.length,
+    problemas: sites.filter(([, s]) => s !== 'ok').map(([chave, s]) => `${nomes[chave] ?? chave}: ${ROTULO_SITE[s]}`),
+    naFila,
+    versao: ultima.versao_extensao ?? null,
+  };
+};
+
+/** A estação e a fila, pelo login de quem olha (a leitura é de quem cota ou atende a fila) */
+export const lerEstacaoPeloSupabase = async (supabase: SupabaseClient, nomes: Record<string, string> = {}): Promise<ResumoDaEstacao> => {
+  const [estacoes, fila] = await Promise.all([
+    // no_ar: a coluna calculada do banco (public.no_ar), a mesma regra da fila
+    supabase.from('estacoes_cotacao').select('visto_em, no_ar, sites, versao_extensao'),
+    supabase.from('cotacoes_b2b').select('id', { count: 'exact', head: true }).eq('situacao', 'na_fila'),
+  ]);
+  if (estacoes.error) throw estacoes.error;
+  if (fila.error) throw fila.error;
+  return resumoDaEstacao((estacoes.data ?? []) as LinhaDaEstacao[], fila.count ?? 0, nomes);
+};
+
+/**
+ * A EXTENSÃO PUBLICADA para o comprador baixar (public/extensao, gerada por
+ * `bun scripts/empacotar.ts` na extensão). Instalada mais velha que a
+ * publicada: o Painel avisa e leva ao passo a passo (/extensao.html).
+ */
+export const PAGINA_DA_EXTENSAO = '/extensao.html';
+
+/** "0.4.0" é mais velha que "1.0.0"? Número a número; sem versão instalada, não acusa. */
+export const versaoAtrasada = (instalada: string | null, publicada: string | null): boolean => {
+  if (!instalada || !publicada) return false;
+  const a = instalada.split('.').map(Number);
+  const b = publicada.split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0;
+    const y = b[i] || 0;
+    if (x !== y) return x < y;
+  }
+  return false;
+};
+
+export const lerVersaoPublicada = async (buscar: typeof fetch = fetch): Promise<string | null> => {
+  try {
+    const r = await buscar('/extensao/versao.json', { cache: 'no-store' });
+    return r.ok ? (((await r.json()) as { versao?: string }).versao ?? null) : null;
+  } catch {
+    return null;
+  }
+};
+
 /**
  * Não congelar a aba da estação: enquanto a página segura uma trava (Web
  * Locks), o Chrome não a congela em segundo plano. Solta ao parar.

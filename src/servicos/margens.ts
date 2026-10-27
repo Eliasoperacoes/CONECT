@@ -44,6 +44,26 @@ export const lerFator = (texto: string): number | null => {
   return n >= FATOR_MINIMO && n <= FATOR_MAXIMO ? n : null;
 };
 
+/**
+ * A VENDA COM O FATOR QUE O VENDEDOR DIGITOU (Callcenter, Elias 26/10/2026:
+ * "o vendedor vê o preço de custo e em cima dele adiciona a margem").
+ *
+ * A conta é a de `preco_de_venda` no banco — custo × fator, para cima em ,90
+ * — repetida aqui DE PROPÓSITO: o preço muda a cada tecla, sem ir ao banco.
+ * Em centavos inteiros, para não haver erro de vírgula. O banco é o que vale
+ * (a encomenda recalcula lá); precificacaoNoBanco.test.ts confere as duas
+ * contas lado a lado. Mudou uma, mude a outra.
+ */
+export const precoComFator = (base: number, fator: number): number | null => {
+  if (!(base > 0) || !(fator > 0)) return null;
+  const centavos = Math.round(base * 100);
+  const centesimos = Math.round(fator * 100);
+  // custo × fator em décimos de milésimo (exato), arredondado para centavos como o round(…, 2) do Postgres
+  const bruto = Math.floor((centavos * centesimos + 50) / 100);
+  // ceil(v - 0,90) + 0,90
+  return (Math.ceil((bruto - 90) / 100) * 100 + 90) / 100;
+};
+
 /** 1.8 → "1,80" */
 export const mostrarFator = (fator: number): string => fator.toFixed(2).replace('.', ',');
 

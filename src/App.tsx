@@ -21,7 +21,8 @@ import {
   LayoutGrid,
 } from 'lucide-react';
 import { ABAS_PRINCIPAIS, AbaPrincipal, Colaborador, Conversa, Mensagem } from './tipos';
-import { ferramentasDe } from './servicos/ferramentasInternas';
+import { ferramentasDe, escreverLugar, CHAVE_DO_LUGAR, EVENTO_ABRIR_FERRAMENTA, type IdParteDaFerramenta } from './servicos/ferramentasInternas';
+import { pedirAbertura } from './servicos/aberturaDaCotacao';
 import { TelaFerramentas } from './componentes/TelaFerramentas';
 
 /**
@@ -81,7 +82,6 @@ import { ModalNovaConversa } from './componentes/ModalNovaConversa';
 import { ModalCriarGrupo } from './componentes/ModalCriarGrupo';
 import { IndicadorOffline } from './componentes/IndicadorOffline';
 import { AvisoEstacaoCotacao } from './componentes/AvisoEstacaoCotacao';
-import { AvisosDeCotacao } from './componentes/AvisosDeCotacao';
 import { vigiarVersao } from './servicos/versao';
 import { IndicadorNuvem } from './componentes/IndicadorNuvem';
 import { TelaLogin } from './componentes/TelaLogin';
@@ -288,6 +288,31 @@ export default function App() {
   const [colaboradorAtual, setColaboradorAtual] = useState<Colaborador>(
     bancoDados.obterColaboradorAtual()
   );
+
+  /**
+   * Leva a uma aba do cotador, no computador e no celular — o cartão do
+   * chat ("Abrir cotação"). O endereço (computador) e o lugar guardado
+   * (celular) levam até ela; o chat (inclusive em tela cheia) fecha, porque
+   * a pessoa pediu para ir à cotação.
+   */
+  const abrirNoCotador = useCallback((parte: IdParteDaFerramenta) => {
+    const lugar = escreverLugar({ ferramenta: 'cotador', parte });
+    lembrarOndeParei(colaboradorAtual.id, CHAVE_DO_LUGAR, lugar);
+    // Só quando o endereço muda: já na aba Cotar, "Abrir cotação" de novo não empilha voltar repetido
+    const caminho = `${caminhoDaTela('ferramentas')}/${lugar}`;
+    if (!ehTelaDeCelular() && window.location.pathname !== caminho) window.history.pushState(null, '', caminho);
+    setAbaAtiva('ferramentas');
+    setTelaWeb('ferramentas');
+    setChatExpandido(false);
+    setConversaAtivaId(null);
+    window.dispatchEvent(new Event(EVENTO_ABRIR_FERRAMENTA));
+  }, [colaboradorAtual.id]);
+
+  /** A cotação JÁ FEITA desta peça, sem cotar de novo (Elias, 21/10/2026): a aba Cotar pega o pedido. */
+  const abrirCotacao = useCallback((codigo: string) => {
+    pedirAbertura({ codigo });
+    abrirNoCotador('cotar');
+  }, [abrirNoCotador]);
   const [conversasIndividuais, setConversasIndividuais] = useState<Conversa[]>([]);
   const [grupos, setGrupos] = useState<Conversa[]>([]);
   const [conversaAtivaId, setConversaAtivaId] = useState<string | null>(null);
@@ -1078,6 +1103,9 @@ export default function App() {
         quantidade: daConversa.length,
         // A foto de quem mandou: trocou a foto, o aviso dos outros já mostra a nova
         foto: remetente?.foto,
+        // O recado do cotador avisa mesmo com o CONECTA à vista (Elias, 22/10/2026: "deixe só
+        // as notificações externas"); o resto do chat segue calado com a tela à vista
+        mesmoComJanelaVisivel: daConversa.some((m) => !!m.avisoEncomenda),
         aoClicar: () => abrirJanela(id),
       });
     }
@@ -1718,7 +1746,6 @@ export default function App() {
     <div className="w-full h-[100dvh] flex flex-col bg-[var(--c-canvas)] text-[var(--c-texto)] overflow-hidden">
       <IndicadorOffline />
       <AvisoEstacaoCotacao colaborador={autenticado ? colaboradorAtual : null} />
-      <AvisosDeCotacao colaborador={autenticado ? colaboradorAtual : null} />
 
       {/*
         VERSÃO NOVA NO AR.
@@ -2089,6 +2116,7 @@ export default function App() {
                     }
                     aoVoltar={() => setConversaAtivaId(null)}
                     aoAbrirPublicacao={abrirPublicacao}
+                    aoAbrirCotacao={abrirCotacao}
                     aoConversarCom={lidarSelecionarColega}
                     voltarSoNoCelular={chatExpandido}
                   />
@@ -2235,6 +2263,10 @@ export default function App() {
             aoAbrirPublicacao={(id) => {
               fecharJanela(janela.id);
               abrirPublicacao(id);
+            }}
+            aoAbrirCotacao={(codigo) => {
+              fecharJanela(janela.id);
+              abrirCotacao(codigo);
             }}
           />
         );

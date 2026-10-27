@@ -175,6 +175,13 @@ returns boolean language sql stable set search_path = public as $$
   select visto > now() - interval '3 minutes';
 $$;
 
+-- A mesma regra como coluna calculada (select 'no_ar'): o Painel de Compras
+-- lê "no ar" daqui, sem copiar os 3 minutos para a tela
+create or replace function public.no_ar(e public.estacoes_cotacao)
+returns boolean language sql stable set search_path = public as $$
+  select public.estacao_online(e.visto_em);
+$$;
+
 create or replace function public.sinal_da_estacao(estacao text, sites jsonb, versao text)
 returns void language plpgsql security definer set search_path = public as $$
 begin
@@ -524,6 +531,101 @@ do $$ begin
   end if;
 end $$;
 
+-- ------------------------------------------------------------
+-- O RECADO ENTRE O VENDEDOR E COMPRAS (SPEC-comunicacao-recebimento,
+-- Elias 26/10/2026: "é de extrema importância notificações em todos os
+-- processos")
+--
+-- Cada vendedor tem UMA conversa com Compras (o vendedor, todo o pessoal
+-- de Compras e quem fez o passo). Tudo o que um precisa saber do outro —
+-- a cotação pedida e a resposta, cada passo da encomenda — é um recado
+-- escrito AQUI, na mesma transação do passo: nunca há passo sem recado.
+-- Chat, notificação no celular e a do Windows saem pelo caminho de
+-- qualquer mensagem; a tela de quem fez o passo pede a notificação
+-- (pedirAvisosDosRecados), e o servidor confere que o recado é dela.
+-- ------------------------------------------------------------
+
+alter table public.mensagens
+  add column if not exists cotacao_codigo  text,
+  add column if not exists encomenda_id    uuid,
+  add column if not exists encomenda_ids   uuid[],
+  add column if not exists aviso_encomenda text;
+
+create or replace function public.conversa_com_compras(vendedor text)
+returns text language plpgsql security definer set search_path = public as $$
+declare
+  alvo text := 'compras-' || vendedor;
+begin
+  insert into public.conversas (id, tipo, nome, descricao)
+  select alvo, 'grupo', 'Compras · ' || c.nome, 'Cotações e encomendas entre o vendedor e Compras'
+    from public.colaboradores c where c.id = vendedor
+  on conflict (id) do nothing;
+  insert into public.participantes (conversa_id, colaborador_id)
+  select alvo, c.id from public.colaboradores c
+   -- E quem está fazendo o passo (TI também atende a fila): o recado sai
+   -- com o nome dele, e sem participar ele nem leria o recado para a notificação
+   where c.id = vendedor or (c.setor = 'Compras' and c.ativo) or c.id = public.meu_colaborador_id()
+  on conflict do nothing;
+  return alvo;
+end;
+$$;
+revoke all on function public.conversa_com_compras(text) from public, anon, authenticated;
+
+-- Grava o recado na conversa do vendedor com Compras; devolve o id dele
+drop function if exists escrever_recado(text, text, text, text, uuid[]);
+create or replace function public.escrever_recado(vendedor text, texto text, aviso text, cotacao text default null, ids uuid[] default null, recado text default null)
+returns text language plpgsql security definer set search_path = public as $$
+declare
+  alvo text := public.conversa_com_compras(vendedor);
+  novo text := coalesce(recado, 'rec-' || gen_random_uuid());
+begin
+  -- Só daqui as colunas do recado passam (recado_so_pelo_banco)
+  perform set_config('conecta.escrevendo_recado', 'sim', true);
+  insert into public.mensagens (id, conversa_id, remetente_id, tipo, texto, cotacao_codigo, encomenda_id, encomenda_ids, aviso_encomenda)
+  values (novo, alvo, public.meu_colaborador_id(), 'texto', texto, cotacao, ids[1], ids, aviso);
+  perform set_config('conecta.escrevendo_recado', '', true);
+  update public.conversas set atualizado_em = now() where id = alvo;
+  return novo;
+end;
+$$;
+revoke all on function public.escrever_recado(text, text, text, text, uuid[], text) from public, anon, authenticated;
+
+-- AS COLUNAS DO RECADO SÓ PELO BANCO. Pela API, qualquer participante poderia
+-- gravar um "Em conferência" falso, ou trocar as peças do recado de Compras —
+-- e o recado avisa no Windows mesmo com o CONECTA à vista. A tela nunca as
+-- manda (nuvemComunicacao.ts); aqui ninguém mais consegue.
+create or replace function public.recado_so_pelo_banco()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if coalesce(current_setting('conecta.escrevendo_recado', true), '') = 'sim' then
+    return new;
+  end if;
+  if tg_op = 'INSERT' then
+    new.cotacao_codigo := null;
+    new.encomenda_id := null;
+    new.encomenda_ids := null;
+    new.aviso_encomenda := null;
+  else
+    new.cotacao_codigo := old.cotacao_codigo;
+    new.encomenda_id := old.encomenda_id;
+    new.encomenda_ids := old.encomenda_ids;
+    new.aviso_encomenda := old.aviso_encomenda;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists mensagens_recado_so_pelo_banco on public.mensagens;
+create trigger mensagens_recado_so_pelo_banco
+  before insert or update on public.mensagens
+  for each row execute function public.recado_so_pelo_banco();
+
+-- "R$ 1.234,90"
+create or replace function public.em_reais(v numeric)
+returns text language sql immutable set search_path = public as $$
+  -- Até R$ 999 bilhões: acima da máscara o to_char devolve ###
+  select 'R$ ' || translate(to_char(v, 'FM999,999,999,990.00'), ',.', '.,');
+$$;
+
 create or replace function public.pedir_ao_comprador(codigo text, veiculo text, observacao text)
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
@@ -540,6 +642,12 @@ begin
   values (normal, nullif(btrim(veiculo), ''), nullif(btrim(observacao), ''), public.meu_colaborador_id(),
           (select c.loja from public.colaboradores c where c.id = public.meu_colaborador_id()))
   returning id into novo;
+  -- Compras fica sabendo pela conversa (chat e celular), não só pela aba Solicitações
+  perform public.escrever_recado(
+    public.meu_colaborador_id(),
+    'Cotação pedida ao comprador:' || E'\n' || normal || coalesce(' · ' || nullif(btrim(veiculo), ''), '')
+      || coalesce(E'\nObs.: ' || nullif(btrim(observacao), ''), ''),
+    'solicitacao', normal, null, 'rec-' || novo);
   return novo;
 end;
 $$;
@@ -547,12 +655,18 @@ revoke all on function public.pedir_ao_comprador(text, text, text) from public, 
 grant execute on function public.pedir_ao_comprador(text, text, text) to authenticated;
 
 -- O comprador responde: uma ou mais opções [{fornecedor, marca, venda,
--- custo, prazo, observacao}], ou "não encontrei" com o motivo.
+-- custo, prazo, observacao}], ou "não encontrei" com o motivo. O vendedor
+-- SEMPRE recebe o recado com a peça (o botão "Abrir cotação"): é o único
+-- aviso da resposta. Devolve o recado, para a notificação no celular.
+drop function if exists responder_solicitacao(uuid, jsonb, boolean, text, boolean);
+drop function if exists responder_solicitacao(uuid, jsonb, boolean, text);
 create or replace function public.responder_solicitacao(solicitacao uuid, opcoes jsonb, nao_encontrei boolean, motivo text)
-returns void language plpgsql security definer set search_path = public as $$
+returns text language plpgsql security definer set search_path = public as $$
 declare
   s public.solicitacoes_cotacao%rowtype;
   o jsonb;
+  peca text;
+  texto text;
 begin
   if not public.posso_atender_fila() then
     raise exception 'Só Compras ou TI respondem a solicitação de cotação' using errcode = '42501';
@@ -562,12 +676,21 @@ begin
     raise exception 'Solicitação não existe';
   end if;
 
+  peca := 'Cotação da peça ' || s.codigo || coalesce(' (' || s.veiculo || ')', '');
+
   if nao_encontrei then
+    -- Opção que já virou encomenda não sai: trava em cotador-encomendas.sql
+    delete from public.respostas_cotacao where solicitacao_id = s.id;
     update public.solicitacoes_cotacao
        set situacao = 'nao_encontrada', motivo = nullif(btrim(responder_solicitacao.motivo), ''),
            respondida_por = public.meu_colaborador_id(), respondida_em = now(), vista_em = null
      where id = s.id;
-    return;
+    if s.pedida_por is null then
+      return null;
+    end if;
+    return public.escrever_recado(s.pedida_por,
+      peca || ': não encontrei.' || coalesce(' ' || nullif(btrim(responder_solicitacao.motivo), ''), ''),
+      'resposta', s.codigo);
   end if;
 
   if jsonb_typeof(opcoes) is distinct from 'array' or jsonb_array_length(opcoes) = 0 then
@@ -584,6 +707,17 @@ begin
      set situacao = 'respondida', motivo = null, respondida_por = public.meu_colaborador_id(),
          respondida_em = now(), vista_em = null
    where id = s.id;
+  if s.pedida_por is null then
+    return null;
+  end if;
+  -- Uma linha por opção, da mais barata; nunca o custo (conversa se encaminha)
+  select peca || ':' || E'\n' || string_agg(
+           '• ' || r.fornecedor || coalesce(' (' || r.marca || ')', '') || ': ' || public.em_reais(r.venda)
+           || coalesce(' · ' || r.prazo, ''),
+           E'\n' order by r.venda)
+    into texto
+    from public.respostas_cotacao r where r.solicitacao_id = s.id;
+  return public.escrever_recado(s.pedida_por, texto, 'resposta', s.codigo);
 end;
 $$;
 revoke all on function public.responder_solicitacao(uuid, jsonb, boolean, text) from public, anon;
@@ -592,13 +726,16 @@ grant execute on function public.responder_solicitacao(uuid, jsonb, boolean, tex
 -- As solicitações com as respostas, para o painel do comprador (todas as
 -- abertas e as dos últimos 7 dias) e para o cartão do vendedor (as dele).
 -- Uma linha por opção de resposta (ou uma linha só, sem resposta ainda).
--- O custo só para quem vê custo.
+-- O custo só para quem vê custo. O id da resposta é o que o vendedor
+-- encomenda (pedidos-compras); mudar as colunas pede o drop.
+drop function if exists public.solicitacoes_de_cotacao(text);
 create or replace function public.solicitacoes_de_cotacao(codigo text default null)
 returns table (
   id uuid, codigo_peca text, veiculo text, observacao text, situacao text, motivo text,
   pedida_por text, nome_de_quem_pediu text, loja text, criada_em timestamptz,
   respondida_por text, nome_de_quem_respondeu text, respondida_em timestamptz, vista_em timestamptz,
-  fornecedor text, marca text, venda numeric, custo numeric, prazo text, observacao_da_resposta text
+  fornecedor text, marca text, venda numeric, custo numeric, prazo text, observacao_da_resposta text,
+  resposta_id uuid
 )
 language plpgsql stable security definer set search_path = public as $$
 declare
@@ -613,7 +750,7 @@ begin
     select s.id, s.codigo, s.veiculo, s.observacao, s.situacao, s.motivo,
            s.pedida_por, (select c.nome from public.colaboradores c where c.id = s.pedida_por), s.loja, s.criada_em,
            s.respondida_por, (select c.nome from public.colaboradores c where c.id = s.respondida_por), s.respondida_em, s.vista_em,
-           r.fornecedor, r.marca, r.venda, case when ve_custo then r.custo end, r.prazo, r.observacao
+           r.fornecedor, r.marca, r.venda, case when ve_custo then r.custo end, r.prazo, r.observacao, r.id
       from public.solicitacoes_cotacao s
       left join public.respostas_cotacao r on r.solicitacao_id = s.id
      where (s.pedida_por = eu or compras)

@@ -17,11 +17,18 @@
  *   - a regra do trabalho (quem cota, quem cuida das margens…), que é o par
  *     da regra do banco — o banco continua sendo a trava.
  */
-import { podeCotar, podeAtenderFila } from '../tipos';
+import { podeCotar, podeAtenderFila, podeVerHistoricoDeTodos } from '../tipos';
 import { cuidaDasMargens } from './margens';
 
 export type IdFerramentaInterna = 'cotador';
-export type IdParteDaFerramenta = 'cotar' | 'solicitacoes' | 'fretes' | 'margens';
+export type IdParteDaFerramenta = 'painel' | 'relatorios' | 'cotar' | 'encomendas' | 'solicitacoes' | 'pedidos' | 'historico' | 'fretes' | 'margens';
+
+/**
+ * "Abra as Ferramentas no lugar guardado": o App (o cartão do chat) pede, a
+ * tela das Ferramentas ouve. Um evento próprio, e não um voltar falso do
+ * navegador, que acordava junto todo o resto que ouve o voltar.
+ */
+export const EVENTO_ABRIR_FERRAMENTA = 'conecta:abrir-ferramenta';
 
 type Pessoa = { nivel: number; setor: string };
 
@@ -47,9 +54,19 @@ export const FERRAMENTAS_INTERNAS: FerramentaInterna[] = [
     nome: 'Cotação de peças',
     descricao: 'Preço de venda, prazo e similares nos B2Bs; fretes e margens.',
     partes: [
+      // O painel de Compras (Elias, 22/10/2026): os números de cada etapa, linkados
+      { id: 'painel', chave: 'painel_compras_cotador', nome: 'Painel', usa: podeAtenderFila },
       { id: 'cotar', chave: 'cotar_b2b', nome: 'Cotar', usa: podeCotar },
+      // As encomendas do vendedor (SPEC-pedidos-compras): o par de `encomendar`
+      { id: 'encomendas', chave: 'encomendas_cotador', nome: 'Encomendas', usa: podeCotar },
       // O painel do comprador (cotação humana): o par de `responder_solicitacao`
       { id: 'solicitacoes', chave: 'solicitacoes_cotador', nome: 'Solicitações', usa: podeAtenderFila },
+      // O painel de pedidos de Compras: o par de `marcar_pedido_realizado`
+      { id: 'pedidos', chave: 'pedidos_cotador', nome: 'Pedidos', usa: podeAtenderFila },
+      // O que foi cotado e pedido, guardado (SPEC-historico): quem cota e quem atende a fila
+      { id: 'historico', chave: 'historico_cotador', nome: 'Histórico', usa: (c) => podeCotar(c) || podeAtenderFila(c) },
+      // Relatórios e insights (SPEC-insights-cotacao): o par de cotacoes_do_periodo — Compras e Gerência
+      { id: 'relatorios', chave: 'relatorios_cotador', nome: 'Relatórios', usa: podeVerHistoricoDeTodos },
       // O par de `alterar_frete` no banco: quem atende a fila (Compras e TI)
       { id: 'fretes', chave: 'fretes_cotador', nome: 'Fretes', usa: podeAtenderFila },
       { id: 'margens', chave: 'margens_cotador', nome: 'Margens', usa: cuidaDasMargens },
@@ -75,6 +92,13 @@ export const lugarParaAbrir = (blocos: FerramentaInterna[], lugar: string[]): Lu
   const parte = bloco.partes.find((p) => p.id === lugar[1]) ?? bloco.partes[0];
   return { ferramenta: bloco.id, parte: parte.id };
 };
+
+/**
+ * A chave do lugar nas Ferramentas guardado no aparelho (celular). Uma só:
+ * a seção grava onde a pessoa está, e o botão "Abrir cotação" do chat
+ * grava para onde ela vai — chaves diferentes deixariam a seção sem saber.
+ */
+export const CHAVE_DO_LUGAR = 'ferramentas';
 
 /** O lugar escrito como vai no endereço: "cotador/margens". */
 export const escreverLugar = (l: LugarNasFerramentas | null): string => (l ? `${l.ferramenta}/${l.parte}` : '');

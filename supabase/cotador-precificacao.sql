@@ -147,8 +147,10 @@ $$;
 
 -- Mudou o formato da resposta (prazo e frete entraram, SPEC-cotar): o
 -- Postgres não troca colunas de função com create or replace
-drop function if exists public.resultado_da_cotacao(text);
-create or replace function public.resultado_da_cotacao(codigo text)
+-- A CONTA INTEIRA, SEM MÁSCARA: a mesma para a tela e para a encomenda
+-- (pedidos-compras), que congela custo e venda da hora mesmo quando quem
+-- encomenda é o Balcão. Ninguém de fora chama: só as funções daqui.
+create or replace function public.resultado_sem_mascara(codigo text, loja text)
 returns table (
   tipo text, codigo_peca text, fornecedor text, marca text, descricao text,
   local text, em_sp boolean, quantidade integer, situacao text, prazo text,
@@ -158,13 +160,8 @@ returns table (
 language plpgsql stable security definer set search_path = public as $$
 declare
   alvo text := public.normalizar_codigo(codigo);
-  ve_custo boolean := public.posso_ver_custo();
-  minha_loja text := (select c.loja from public.colaboradores c where c.id = public.meu_colaborador_id());
+  minha_loja text := loja;
 begin
-  if not (public.posso_cotar() or public.posso_atender_fila() or ve_custo) then
-    raise exception 'Sem permissão para cotar' using errcode = '42501';
-  end if;
-
   return query
   with pecas as (
     select 'peca'::text as tipo, alvo as cod
@@ -200,9 +197,9 @@ begin
          f.variante <> '' and position(public.normalizar_marca(f.variante) in public.normalizar_marca(m.descricao)) > 0,
          f.padrao,
          public.preco_de_venda(m.custo + fb.frete_por_peca, f.fator),
-         case when ve_custo then m.custo end,
-         case when ve_custo then f.fator end,
-         case when ve_custo then fb.frete_por_peca end
+         m.custo,
+         f.fator,
+         fb.frete_por_peca
     from melhor m
     join public.fornecedores_b2b fb on fb.chave = m.fornecedor
     cross join lateral public.fatores_da_marca(
@@ -210,6 +207,35 @@ begin
                           where p2.fornecedor = m.fornecedor and p2.codigo = m.cod limit 1))
     ) f
    order by (m.tipo <> 'peca'), m.cod, public.preco_de_venda(m.custo + fb.frete_por_peca, f.fator) nulls last, m.fornecedor, f.variante;
+end;
+$$;
+revoke all on function public.resultado_sem_mascara(text, text) from public, anon, authenticated;
+
+-- O que a tela recebe: a conta acima, com custo, fator e frete só para quem vê custo
+drop function if exists public.resultado_da_cotacao(text);
+create or replace function public.resultado_da_cotacao(codigo text)
+returns table (
+  tipo text, codigo_peca text, fornecedor text, marca text, descricao text,
+  local text, em_sp boolean, quantidade integer, situacao text, prazo text,
+  variante text, variantes integer, variante_provavel boolean, fator_padrao boolean,
+  venda numeric, custo numeric, fator numeric, frete numeric
+)
+language plpgsql stable security definer set search_path = public as $$
+declare
+  ve_custo boolean := public.posso_ver_custo();
+  minha_loja text := (select c.loja from public.colaboradores c where c.id = public.meu_colaborador_id());
+begin
+  if not (public.posso_cotar() or public.posso_atender_fila() or ve_custo) then
+    raise exception 'Sem permissão para cotar' using errcode = '42501';
+  end if;
+  return query
+    select r.tipo, r.codigo_peca, r.fornecedor, r.marca, r.descricao, r.local, r.em_sp, r.quantidade,
+           r.situacao, r.prazo, r.variante, r.variantes, r.variante_provavel, r.fator_padrao, r.venda,
+           case when ve_custo then r.custo end,
+           case when ve_custo then r.fator end,
+           case when ve_custo then r.frete end
+      from public.resultado_sem_mascara(codigo, minha_loja) with ordinality r
+     order by r.ordinality;
 end;
 $$;
 revoke all on function public.resultado_da_cotacao(text) from public, anon;

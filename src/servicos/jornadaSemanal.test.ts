@@ -550,7 +550,23 @@ test('AVISO DO SISTEMA SO QUANDO A TELA NAO ESTA A VISTA', async () => {
   const corpo = fonte.slice(inicio, fim === -1 ? undefined : fim);
 
   expect(corpo.length).toBeGreaterThan(400);
-  expect(corpo).toContain('if (janelaEstaVisivel()) return;');
+  // A exceção é pedida, nunca o padrão: só quem não tem outro aviso na tela
+  expect(corpo).toContain('if (janelaEstaVisivel() && !dados.mesmoComJanelaVisivel) return;');
+
+  /**
+   * QUEM PEDE A EXCEÇÃO: só o recado do cotador (Elias, 22/10/2026: "o balão polui o
+   * design; deixe só as notificações externas"). O chat e o ponto seguem
+   * calados com a tela à vista — um chamador novo que copie a opção sem
+   * motivo faz este teste falhar.
+   */
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const quemUsa = (readdirSync('src', { recursive: true }) as string[])
+    .map((f) => f.replace(/\\/g, '/'))
+    .filter((f) => /\.tsx?$/.test(f) && !f.endsWith('.test.ts'))
+    .filter((f) => /mesmoComJanelaVisivel:/.test(readFileSync(`src/${f}`, 'utf8')));
+  expect(quemUsa).toEqual(['App.tsx']);
+  // E lá, só para o recado do cotador (a mensagem com aviso_encomenda), nunca o chat inteiro
+  expect(readFileSync('src/App.tsx', 'utf8')).toContain('mesmoComJanelaVisivel: daConversa.some((m) => !!m.avisoEncomenda)');
 
   /**
    * E o aplicativo nativo sai ANTES de tudo.

@@ -355,7 +355,9 @@ export const ConteudoWeb: React.FC<{
           título da aba e o que se faz nela. O mesmo lugar, do mesmo jeito,
           em todas — `DESCRICAO_DA_TELA` (telasPorAssunto.ts).
         */}
-        {tela !== 'inicio' && (
+        {/* Ferramentas desenha o próprio título: o nome da ferramenta aberta, com
+            as abas dela — o padrão daqui repetia "Ferramentas" acima (Elias, 21/10/2026) */}
+        {tela !== 'inicio' && tela !== 'ferramentas' && (
           <header className="max-w-7xl mx-auto w-full px-8 pt-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-0">

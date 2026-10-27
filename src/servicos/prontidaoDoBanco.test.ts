@@ -197,6 +197,12 @@ const ARQUIVOS_QUE_ESCREVEM = [
   'src/servicos/registroDeErros.ts',
   /* Lê as margens do cotador e remove apelido (cotador-precificacao.sql) */
   'src/servicos/margens.ts',
+  /* Lê a estação e conta a fila para o Painel de Compras (cotador-banco.sql) */
+  'src/servicos/estacaoCotacao.ts',
+  /* Lê o texto dos recados que o banco escreveu, para a notificação no celular (cotador-banco.sql) */
+  'src/servicos/recados.ts',
+  /* Conta as encomendas esperando pedido, para o número da aba (cotador-encomendas.sql) */
+  'src/servicos/encomendas.ts',
 ];
 
 /**

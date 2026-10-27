@@ -32,6 +32,7 @@ import {
   Reply,
   Mic,
   Megaphone,
+  ShoppingCart,
   UploadCloud,
 } from 'lucide-react';
 import { MAXIMO_DE_ARQUIVOS_POR_VEZ, trazArquivos } from '../servicos/arquivosSoltos';
@@ -39,6 +40,7 @@ import {
   Conversa,
   Colaborador,
   Mensagem,
+  podeCotar,
 } from '../tipos';
 import { FotoPresenca } from './FotoPresenca';
 import { Avatar } from './Avatar';
@@ -54,6 +56,7 @@ import { DadosDoGrupo } from './DadosDoGrupo';
 import { ModalVisualizadorImagem } from './ModalVisualizadorImagem';
 import { ModalEncaminharMensagem } from './ModalEncaminharMensagem';
 import { montarPreviaDaMensagem } from '../servicos/nuvemComunicacao';
+import { RecebimentoNaMensagem, CabecalhoDaEncomenda } from './cotador/EncomendaNoChat';
 import { mensagemCasaComBusca } from '../servicos/buscaNasConversas';
 import { diaLocal, separadoresDeDia } from '../servicos/diaNaConversa';
 import { gravadorVoz, gravacaoDisponivel } from '../servicos/gravadorVoz';
@@ -70,6 +73,8 @@ interface PropsTelaConversa {
    * seria uma surpresa.
    */
   aoAbrirPublicacao?: (publicacaoId: string) => void;
+  /** Abre a cotação respondida (a peça), a partir do cartão no chat. */
+  aoAbrirCotacao?: (codigo: string) => void;
   /** Chegando pela busca da lista: a mensagem encontrada, para abrir nela. */
   mensagemAlvoId?: string;
   /** "Conversar com Fulano", dos dados do grupo: abre a conversa individual. */
@@ -200,6 +205,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
   colaboradorAtual,
   aoVoltar,
   aoAbrirPublicacao,
+  aoAbrirCotacao,
   mensagemAlvoId,
   aoConversarCom,
   voltarSoNoCelular,
@@ -1287,7 +1293,7 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
               Só no texto puro — foto, arquivo, áudio e o recado da Central
               têm o que fazer embaixo.
             */
-            const horaNaLinha = msg.tipo === 'texto' && editandoId !== msg.id && !msg.publicacaoId;
+            const horaNaLinha = msg.tipo === 'texto' && editandoId !== msg.id && !msg.publicacaoId && !msg.cotacaoCodigo && !msg.encomendaId;
 
             return (
               <div
@@ -1445,6 +1451,25 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                       </div>
                     )}
 
+                    {/*
+                      A COTAÇÃO RESPONDIDA É UM CARTÃO (Elias, 21/10/2026):
+                      o selo diz o que é, o texto traz a peça e o valor (nunca
+                      o custo), e o botão abre a cotação já respondida — sem
+                      pesquisar de novo nem procurar a peça na aba.
+                    */}
+                    {msg.cotacaoCodigo && editandoId !== msg.id && (
+                      <span
+                        className={`mb-1.5 flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-wider ${
+                          ehMinha ? 'text-white/80' : 'text-[var(--c-acento)]'
+                        }`}
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" /> Cotação de peças · {msg.cotacaoCodigo}
+                      </span>
+                    )}
+
+                    {/* A encomenda (pedidos-compras): o cabeçalho; o Recebi vem embaixo */}
+                    {msg.encomendaId && editandoId !== msg.id && <CabecalhoDaEncomenda texto={msg.texto} aviso={msg.avisoEncomenda} ehMinha={ehMinha} />}
+
                     {/* Tipo: Texto */}
                     {msg.tipo === 'texto' && editandoId !== msg.id && (
                       <p className="whitespace-pre-wrap break-words leading-relaxed text-base sm:text-sm">
@@ -1481,6 +1506,31 @@ export const TelaConversa: React.FC<PropsTelaConversa> = ({
                         <Megaphone className="w-3.5 h-3.5" />
                         Abrir publicação
                       </button>
+                    )}
+
+                    {/* Só para quem cota, e não no próprio recado: quem não cota não tem a aba Cotar */}
+                    {msg.cotacaoCodigo && aoAbrirCotacao && !ehMinha && podeCotar(colaboradorAtual) && (
+                      <button
+                        type="button"
+                        onClick={() => aoAbrirCotacao(msg.cotacaoCodigo!)}
+                        className={`mt-2 w-full px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:brightness-110 transition-all ${
+                          ehMinha ? 'bg-white/20 text-white' : 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                        }`}
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
+                        Abrir cotação
+                      </button>
+                    )}
+
+                    {msg.encomendaId && (
+                      <RecebimentoNaMensagem
+                        ids={msg.encomendaIds ?? [msg.encomendaId]}
+                        aviso={msg.avisoEncomenda}
+                        texto={msg.texto}
+                        ehMinha={ehMinha}
+                        eu={colaboradorAtual.id}
+                        recadoId={msg.id}
+                      />
                     )}
 
                     {/* Edição acontece no próprio balão, para a pessoa ver o

@@ -295,6 +295,12 @@ export const mostrarAvisoDeMensagem = async (dados: {
   quantidade?: number;
   /** A foto de quem mandou (`fotoDoAviso`): sem ela, a logo. */
   foto?: string;
+  /**
+   * Avisa pelo Windows MESMO com o CONECTA à vista. Só para quem não tem
+   * outro aviso na tela: o cotador (Elias, 22/10/2026: "o balão polui o
+   * design; deixe só as notificações externas, Windows e Android").
+   */
+  mesmoComJanelaVisivel?: boolean;
 }): Promise<void> => {
   /**
    * ===============================================================
@@ -334,7 +340,7 @@ export const mostrarAvisoDeMensagem = async (dados: {
    * O sino dentro do sistema continua contando — é ele que mostra o que
    * está esperando enquanto a tela está à vista.
    */
-  if (janelaEstaVisivel()) return;
+  if (janelaEstaVisivel() && !dados.mesmoComJanelaVisivel) return;
 
   const { total, alertar: depoisDoIntervalo } = contarChegada(dados.conversaId, dados.quantidade ?? 1, Date.now());
   /*

@@ -3,9 +3,11 @@
  *
  * Venda, custo, prazo e o melhor local vêm prontos do banco
  * (resultado_da_cotacao); aqui só se organiza o que chega em cartões e se
- * acompanha o andamento até ficar pronto. Nenhum preço é calculado aqui.
+ * acompanha o andamento até ficar pronto. O único preço calculado aqui é o
+ * do Callcenter com o fator que ele digitou (comFatorDoVendedor).
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { precoComFator } from './margens';
 
 /** Uma linha de `resultado_da_cotacao`. `custo` e `fator` chegam nulos para quem não vê custo. */
 export interface LinhaDoResultado {
@@ -172,6 +174,130 @@ export const montarCartao = (codigo: string, linhas: LinhaDoResultado[]): Cartao
   similares.sort((a, b) => menorVenda(a) - menorVenda(b) || a.codigo.localeCompare(b.codigo));
 
   return { ...peca, similares };
+};
+
+/**
+ * O CALLCENTER MONTA O PREÇO (Elias, 26/10/2026): vê o custo e põe a margem
+ * em cima. Sem fator digitado, a "venda" de cada oferta vira custo + frete (a
+ * base); com fator, a base × fator, para cima em ,90 (precoComFator, a conta
+ * do banco). Um fator para o cartão inteiro, então os tipos de peça viram um
+ * preço só. A ordem e o "melhor" seguem a base — os mesmos para qualquer fator.
+ */
+export const comFatorDoVendedor = (cartao: CartaoDaPeca, fator: number | null): CartaoDaPeca => {
+  const ofertas = (os: Oferta[]): Oferta[] =>
+    ordenarOfertas(
+      os.map((o) => {
+        if (o.venda == null || o.custo == null) return o;
+        const base = Math.round((o.custo + (o.frete ?? 0)) * 100) / 100;
+        return { ...o, venda: fator == null ? base : precoComFator(base, fator), tipos: [] };
+      })
+    );
+  const similares = cartao.similares.map((g) => ({ ...g, ofertas: ofertas(g.ofertas) }));
+  similares.sort((a, b) => menorVenda(a) - menorVenda(b) || a.codigo.localeCompare(b.codigo));
+  return { ...cartao, ofertas: ofertas(cartao.ofertas), similares };
+};
+
+// ------------------------------------------------------------
+// O WIDGET POR FORNECEDOR (Elias, 21/10/2026: "são mais de 10 fornecedores;
+// um embaixo do outro vira rolagem infinita"). Um bloco por fornecedor, do
+// mesmo tamanho, com a peça dele e os similares dele minimizados dentro.
+// ------------------------------------------------------------
+
+export interface SimilarDoFornecedor {
+  codigo: string;
+  marca: string | null;
+  descricao: string | null;
+  oferta: Oferta;
+}
+
+export interface BlocoDoFornecedor {
+  fornecedor: string;
+  /** A peça pedida neste fornecedor (venda nula = sem estoque) */
+  peca: Oferta | null;
+  /** Os similares deste fornecedor, do mais barato ao mais caro (sem estoque no fim) */
+  similares: SimilarDoFornecedor[];
+  /** A menor venda entre os similares dele, para o "a partir de" do botão */
+  similarMaisBarato: number | null;
+}
+
+export interface ResumoDoCartao {
+  melhor: { fornecedor: string; oferta: Oferta } | null;
+  comEstoque: number;
+  fornecedores: number;
+  similarMaisBarato: { fornecedor: string; similar: SimilarDoFornecedor } | null;
+}
+
+export type OrdemDosBlocos = 'preco' | 'prazo';
+
+/** "2–3 dias" → 2; sem prazo → infinito (vai para o fim). */
+const diasDoPrazo = (prazo: string | null): number => {
+  const n = prazo ? parseInt(prazo, 10) : NaN;
+  return Number.isFinite(n) ? n : Infinity;
+};
+
+/** Os blocos do cartão: um por fornecedor, com a peça e os similares dele. */
+export const blocosPorFornecedor = (cartao: CartaoDaPeca, ordem: OrdemDosBlocos = 'preco'): BlocoDoFornecedor[] => {
+  const blocos = new Map<string, BlocoDoFornecedor>();
+  const bloco = (f: string) => {
+    if (!blocos.has(f)) blocos.set(f, { fornecedor: f, peca: null, similares: [], similarMaisBarato: null });
+    return blocos.get(f)!;
+  };
+  for (const o of cartao.ofertas) bloco(o.fornecedor).peca = o;
+  for (const g of cartao.similares)
+    for (const o of g.ofertas) bloco(o.fornecedor).similares.push({ codigo: g.codigo, marca: g.marca ?? o.marca, descricao: g.descricao ?? o.descricao, oferta: o });
+
+  for (const b of blocos.values()) {
+    b.similares.sort((x, y) => (x.oferta.venda ?? Infinity) - (y.oferta.venda ?? Infinity) || x.codigo.localeCompare(y.codigo));
+    b.similarMaisBarato = b.similares[0]?.oferta.venda ?? null;
+  }
+
+  // Com a peça em estoque primeiro (SP antes de fora); depois, quem só tem similar; por último, nada
+  const grupo = (b: BlocoDoFornecedor) =>
+    b.peca?.venda != null ? (b.peca.emSP ? 0 : 1) : b.similarMaisBarato != null ? 2 : 3;
+  const chave = (b: BlocoDoFornecedor) =>
+    ordem === 'prazo' ? diasDoPrazo(b.peca?.prazo ?? null) : (b.peca?.venda ?? b.similarMaisBarato ?? Infinity);
+  return [...blocos.values()].sort(
+    (a, b) =>
+      grupo(a) - grupo(b) ||
+      chave(a) - chave(b) ||
+      (a.peca?.venda ?? Infinity) - (b.peca?.venda ?? Infinity) ||
+      a.fornecedor.localeCompare(b.fornecedor)
+  );
+};
+
+/**
+ * A peça foi cotada nos B2B hoje? Cotada, todo fornecedor responde —
+ * até o "sem estoque" vira oferta. Cartão vazio é peça que ninguém cotou
+ * hoje (aberta pelo Histórico ou pelo chat): mostrar "nenhum fornecedor
+ * tem" seria mentira; o certo é a foto da última vez e o "cotar agora".
+ */
+export const foiCotadaHoje = (c: CartaoDaPeca): boolean => c.ofertas.length > 0 || c.similares.length > 0;
+
+/**
+ * Os fornecedores que TÊM A PEÇA (Elias, 21/10/2026: "DPK apareceu em
+ * disponível mesmo estando sem peças"). Quem só tem similar não entra:
+ * aparece em "Todos", e o similar mais barato já está no resumo do topo.
+ */
+export const comAPeca = (blocos: BlocoDoFornecedor[]): BlocoDoFornecedor[] => blocos.filter((b) => b.peca?.venda != null);
+
+/** A faixa do topo: o que o vendedor precisa em 1 segundo. */
+export const resumoDoCartao = (blocos: BlocoDoFornecedor[]): ResumoDoCartao => {
+  // A melhor é a mesma da ordem por preço: em SP pela menor venda
+  const comPeca = comAPeca(blocos);
+  const melhorBloco = [...comPeca].sort(
+    (a, b) => (a.peca!.emSP === b.peca!.emSP ? 0 : a.peca!.emSP ? -1 : 1) || a.peca!.venda! - b.peca!.venda!
+  )[0];
+  let similar: ResumoDoCartao['similarMaisBarato'] = null;
+  for (const b of blocos) {
+    const s = b.similares[0];
+    if (s?.oferta.venda != null && (!similar || s.oferta.venda < similar.similar.oferta.venda!)) similar = { fornecedor: b.fornecedor, similar: s };
+  }
+  return {
+    melhor: melhorBloco ? { fornecedor: melhorBloco.fornecedor, oferta: melhorBloco.peca! } : null,
+    comEstoque: comPeca.length,
+    fornecedores: blocos.length,
+    similarMaisBarato: similar,
+  };
 };
 
 /**

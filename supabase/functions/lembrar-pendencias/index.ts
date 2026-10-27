@@ -778,6 +778,42 @@ var FERRAMENTAS = [
     nivelPadrao: NIVEL_COLABORADOR
   },
   {
+    chave: "encomendas_cotador",
+    nome: "Encomendas (cotador)",
+    descricao: "As peças que o vendedor encomendou pela cotação: a situação de cada uma, cancelar até o horário de corte e confirmar o recebimento.",
+    area: "principal",
+    nivelPadrao: NIVEL_COLABORADOR
+  },
+  {
+    chave: "painel_compras_cotador",
+    nome: "Painel de Compras (cotador)",
+    descricao: "A primeira tela de Compras: solicitações abertas, encomendas para pedir, fornecedores que fecham o mínimo, chegadas e a atividade do dia — cada número leva à etapa dele.",
+    area: "gestao",
+    nivelPadrao: NIVEL_COLABORADOR
+  },
+  {
+    chave: "relatorios_cotador",
+    nome: "Relatórios do cotador",
+    descricao: "Relatórios e insights por período: o tempo de cada etapa e o gargalo, vendedores, peças mais encomendadas, procura sem encomenda, fornecedores e lojas; exporta para Excel.",
+    area: "gestao",
+    nivelPadrao: NIVEL_COLABORADOR,
+    cuidado: "Mostra o valor encomendado por vendedor e, para quem vê custo, a margem."
+  },
+  {
+    chave: "pedidos_cotador",
+    nome: "Pedidos de compras (cotador)",
+    descricao: "O painel de Compras: as encomendas por fornecedor com a conta do pedido mínimo, pedido realizado, chegada e conferência.",
+    area: "gestao",
+    nivelPadrao: NIVEL_COLABORADOR
+  },
+  {
+    chave: "historico_cotador",
+    nome: "Histórico de cotação (cotador)",
+    descricao: "Tudo o que foi cotado nos B2Bs e pedido ao comprador. O vendedor vê o dele; Compras e Gerência, o de todos.",
+    area: "principal",
+    nivelPadrao: NIVEL_COLABORADOR
+  },
+  {
     chave: "fretes_cotador",
     nome: "Fretes dos fornecedores (cotador)",
     descricao: "O frete por peça de cada B2B, somado ao custo antes da margem, na seção Ferramentas. Quem altera é Compras.",
@@ -1025,6 +1061,112 @@ var planejarAlertasSemBater = (dados, agora) => {
   return alertas;
 };
 
+// src/servicos/conversaComCompras.ts
+var conversaComCompras = (vendedorId) => `compras-${vendedorId}`;
+
+// src/servidor/lembretesEncomendas.ts
+var HORAS_PARA_O_RECEBI = 4;
+var HORAS_PARA_O_GERENTE = 24;
+var DIAS_SEM_ENTREGAR = 7;
+var DIAS_PARADA = 3;
+var HORA_DO_RESUMO = 9;
+var HORA = 3600000;
+var PRIMEIRA_RODADA = 7;
+var ULTIMA_RODADA = 19;
+var emBrasilia = (t) => {
+  const p = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", hour: "numeric", hour12: false, weekday: "short" }).formatToParts(t);
+  return { hora: Number(p.find((x) => x.type === "hour").value) % 24, domingo: p.find((x) => x.type === "weekday").value === "Sun" };
+};
+var primeiraRodadaDesde = (t) => {
+  let r = new Date(Math.ceil(t.getTime() / HORA) * HORA);
+  for (let i = 0;i < 24 * 8; i++) {
+    const { hora, domingo } = emBrasilia(r);
+    if (!domingo && hora >= PRIMEIRA_RODADA && hora <= ULTIMA_RODADA)
+      return r;
+    r = new Date(r.getTime() + HORA);
+  }
+  return r;
+};
+var naJanela = (desde, horas, agora) => {
+  if (!desde)
+    return false;
+  const alvo = primeiraRodadaDesde(new Date(new Date(desde).getTime() + horas * HORA));
+  const h = (agora.getTime() - alvo.getTime()) / HORA;
+  return h >= 0 && h % 24 < 1;
+};
+var horaEmBrasilia = (agora) => Number(agora.toLocaleString("en-US", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" })) % 24;
+var porPessoa2 = (lista, de) => {
+  const m = new Map;
+  for (const x of lista) {
+    const k = de(x);
+    if (k)
+      m.set(k, [...m.get(k) ?? [], x]);
+  }
+  return m;
+};
+var pecas = (l) => l.length === 1 ? `${l[0].quantidade}× ${l[0].codigo}` : `${l.length} peças`;
+var planejarLembretesDeEncomendas = (encomendas, pessoas, agora) => {
+  const ativas = pessoas.filter((p) => p.ativo !== false);
+  const ativo = new Set(ativas.map((p) => p.id));
+  const lembretes = [];
+  const aviso = (colaboradorId, assunto, dados) => ({
+    colaboradorId,
+    dados: { mensagemId: `lembrete-encomenda-${assunto}-${colaboradorId}`, ehGrupo: "true", remetente: "Encomendas", ...dados }
+  });
+  const naConversaDele = (vendedor) => ({ tipo: "conversa", conversaId: conversaComCompras(vendedor) });
+  const semRecebi = encomendas.filter((e) => e.situacao === "em_conferencia" && naJanela(e.conferenciaEm, HORAS_PARA_O_RECEBI, agora));
+  for (const [vendedor, suas] of porPessoa2(semRecebi, (e) => e.vendedorId)) {
+    if (!ativo.has(vendedor))
+      continue;
+    lembretes.push(aviso(vendedor, "recebi", {
+      ...naConversaDele(vendedor),
+      conversa: "Peça esperando o Recebi",
+      texto: `${pecas(suas)} ${suas.length === 1 ? "está" : "estão"} em conferência na loja. Confira e toque "Recebi".`
+    }));
+  }
+  const paraGerente = encomendas.filter((e) => e.situacao === "em_conferencia" && naJanela(e.conferenciaEm, HORAS_PARA_O_GERENTE, agora));
+  for (const [loja, daLoja] of porPessoa2(paraGerente, (e) => e.loja)) {
+    for (const g of ativas.filter((p) => p.nivel >= 3 && p.loja === loja)) {
+      const deOutros = daLoja.filter((e) => e.vendedorId !== g.id);
+      if (!deOutros.length)
+        continue;
+      lembretes.push(aviso(g.id, "gerente", {
+        conversa: "Peça parada na loja",
+        texto: `${pecas(deOutros)} em conferência há mais de 1 dia sem o "Recebi" do vendedor. Você pode confirmar em Encomendas.`
+      }));
+    }
+  }
+  const naoEntregues = encomendas.filter((e) => e.situacao === "recebida" && naJanela(e.recebidaEm, DIAS_SEM_ENTREGAR * 24, agora));
+  for (const [vendedor, suas] of porPessoa2(naoEntregues, (e) => e.vendedorId)) {
+    if (!ativo.has(vendedor))
+      continue;
+    lembretes.push(aviso(vendedor, "entrega", {
+      ...naConversaDele(vendedor),
+      conversa: "Peça não entregue",
+      texto: `${pecas(suas)} recebida${suas.length === 1 ? "" : "s"} há ${DIAS_SEM_ENTREGAR} dias e ainda não entregue${suas.length === 1 ? "" : "s"} ao cliente. Avise o cliente ou marque "Entregue".`
+    }));
+  }
+  if (horaEmBrasilia(agora) === HORA_DO_RESUMO) {
+    const hoje = hojeEmBrasilia(agora);
+    const paradas = encomendas.filter((e) => e.situacao === "encomendada" && agora.getTime() - new Date(e.criadaEm).getTime() >= DIAS_PARADA * 24 * HORA);
+    const atrasadas = encomendas.filter((e) => e.situacao === "pedido_realizado" && !!e.previsaoChegada && e.previsaoChegada < hoje);
+    const problemas = encomendas.filter((e) => e.problemaAberto);
+    const desistencias = encomendas.filter((e) => e.desistiuSemDestino);
+    const partes = [
+      paradas.length && `${paradas.length} parada${paradas.length === 1 ? "" : "s"} há ${DIAS_PARADA}+ dias sem pedido`,
+      atrasadas.length && `${atrasadas.length} pedido${atrasadas.length === 1 ? "" : "s"} atrasado${atrasadas.length === 1 ? "" : "s"}`,
+      problemas.length && `${problemas.length} problema${problemas.length === 1 ? "" : "s"} para resolver`,
+      desistencias.length && `${desistencias.length} desistência${desistencias.length === 1 ? "" : "s"} sem destino`
+    ].filter(Boolean);
+    if (partes.length) {
+      for (const c of ativas.filter((p) => p.setor === "Compras")) {
+        lembretes.push(aviso(c.id, "compras", { conversa: "Encomendas do dia", texto: `Encomendas: ${partes.join(" · ")}.` }));
+      }
+    }
+  }
+  return lembretes;
+};
+
 // src/servicos/linhasDoBanco.ts
 var paraAfastamento = (l) => ({
   id: l.id,
@@ -1251,6 +1393,33 @@ var alertarSemBater = async (segredo, simular) => {
   const entregues = alertas.length ? await entregar(segredo, alertas) : 0;
   return responder({ ok: true, hoje, alertas: alertas.length, entregues });
 };
+var lembrarEncomendas = async (segredo, simular) => {
+  const { ler } = criarLeitor();
+  const agora = new Date;
+  const [encomendas, pessoas] = await Promise.all([
+    ler("encomendas?select=id,codigo,quantidade,situacao,vendedor_id,loja,criada_em,conferencia_em,recebida_em,previsao_chegada,problema,problema_resolvido_em,desistiu_em" + "&situacao=in.(encomendada,pedido_realizado,em_transferencia,em_conferencia,recebida)", true),
+    ler("colaboradores?select=id,setor,loja,nivel,ativo&ativo=eq.true")
+  ]);
+  const lembretes = planejarLembretesDeEncomendas(encomendas.map((e) => ({
+    id: String(e.id),
+    codigo: String(e.codigo),
+    quantidade: Number(e.quantidade),
+    situacao: String(e.situacao),
+    vendedorId: e.vendedor_id ?? null,
+    loja: e.loja ?? null,
+    criadaEm: String(e.criada_em),
+    conferenciaEm: e.conferencia_em ?? null,
+    recebidaEm: e.recebida_em ?? null,
+    previsaoChegada: e.previsao_chegada ?? null,
+    problemaAberto: !!e.problema && !e.problema_resolvido_em,
+    desistiuSemDestino: !!e.desistiu_em
+  })), pessoas, agora);
+  if (simular) {
+    return responder({ simulacao: true, encomendas: encomendas.length, lembretes: lembretes.length, seriaEnviado: lembretes.map((l) => `${l.colaboradorId} · ${l.dados.texto}`) });
+  }
+  const entregues = lembretes.length ? await entregar(segredo, lembretes) : 0;
+  return responder({ ok: true, encomendas: encomendas.length, lembretes: lembretes.length, entregues });
+};
 Deno.serve(async (req) => {
   const segredo = Deno.env.get("APURAR_SEGREDO");
   if (!segredo || req.headers.get("x-apurar-segredo") !== segredo) {
@@ -1260,6 +1429,8 @@ Deno.serve(async (req) => {
   try {
     if (new URL(req.url).searchParams.has("semBater"))
       return await alertarSemBater(segredo, simular);
+    if (new URL(req.url).searchParams.has("encomendas"))
+      return await lembrarEncomendas(segredo, simular);
     const { ler, ausentes } = criarLeitor();
     const agora = new Date;
     const desde = new Date(agora.getTime() - PUBLICACAO_COBRADA_DIAS * 86400000).toISOString();

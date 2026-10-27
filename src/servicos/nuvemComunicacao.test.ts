@@ -406,6 +406,24 @@ test('TODA MENSAGEM leva `publicacao_id`, mesmo sem publicação nenhuma', async
   expect(res.erro).toContain('publicacao_id');
 });
 
+test('AS COLUNAS DO COTADOR só o banco grava: a tela nunca as manda, e faltando o chat continua', async () => {
+  /**
+   * O contrário do `publicacao_id`, de propósito: os recados do cotador nascem
+   * no banco (escrever_recado). Uma mensagem que a tela grava — mesmo com a
+   * peça em memória — não leva essas colunas, e um banco sem elas não para
+   * o "bom dia" de ninguém.
+   */
+  colunasQueFaltam = new Set(['cotacao_codigo', 'encomenda_id', 'encomenda_ids', 'aviso_encomenda']);
+  const base = {
+    conversaId: CANAL_LOJA.id, remetenteId: 'colab-ana', tipo: 'texto',
+    criadoEm: '2026-10-21T18:00:00.000Z', horaFormatada: '18:00', lida: false, lidaPor: ['colab-ana'],
+  };
+  const bomDia = await nuvemComunicacao.salvarMensagem({ ...base, id: 'msg-c1', texto: 'bom dia' } as any);
+  expect(bomDia.sucesso).toBe(true);
+  const comPeca = await nuvemComunicacao.salvarMensagem({ ...base, id: 'msg-c2', texto: 'OC90', cotacaoCodigo: 'OC90', encomendaId: 'x' } as any);
+  expect(comPeca.sucesso).toBe(true);
+});
+
 /**
  * A CONVERSA A DOIS QUE AINDA ESTÁ SUBINDO NÃO TROCA DE CARA.
  *

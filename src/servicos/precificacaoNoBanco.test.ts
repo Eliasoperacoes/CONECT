@@ -8,6 +8,7 @@
  */
 import { test, expect, beforeAll } from 'bun:test';
 import { montarBancoLocal, lerSql, type BancoLocal } from '../../scripts/bancoLocal';
+import { precoComFator } from './margens';
 
 let banco: BancoLocal;
 const BIA = '00000000-0000-0000-0000-0000000000a1'; // Balcão, nível 1
@@ -77,6 +78,27 @@ test('venda = custo × fator, para cima em ,90 (R$ 100 × 1,80 = R$ 180,90)', as
   expect(r).toEqual([180.9, 13.9, 13.9, 14.9, 0.9, 15.9]);
   // Sem custo (ou zero) não há venda
   expect(await numeros('select public.preco_de_venda(0, 1.8)::float as v union all select public.preco_de_venda(null, 1.8)::float')).toEqual([null, null]);
+});
+
+test('o fator digitado pelo Callcenter: a conta da tela é a do banco, centavo por centavo', async () => {
+  // À mão: 11,30 × 1,60 = 18,08 → 18,90 · 7,98 × 1,00 = 7,98 → 8,90 · 18,90 × 1,00 = 18,90 (já em ,90)
+  // 0,01 × 5,00 = 0,05 → 0,90 · 12,345 não existe (centavos) · 33,33 × 1,55 = 51,6615 → 51,66 → 51,90
+  expect([precoComFator(11.3, 1.6), precoComFator(7.98, 1), precoComFator(18.9, 1), precoComFator(0.01, 5), precoComFator(33.33, 1.55)])
+    .toEqual([18.9, 8.9, 18.9, 0.9, 51.9]);
+  expect([precoComFator(0, 1.8), precoComFator(10, 0)]).toEqual([null, null]);
+
+  // Lado a lado com preco_de_venda: 3000 pares de centavos quebrados e fatores de 1,00 a 5,00
+  let semente = 7;
+  const sorteio = (n: number) => ((semente = (semente * 48271) % 2147483647), semente % n);
+  const casos = Array.from({ length: 3000 }, () => [(sorteio(500000) + 1) / 100, (100 + sorteio(401)) / 100] as const);
+  const doBanco = await numeros(
+    `select public.preco_de_venda(c, f)::float as v from (values ${casos.map(([c, f], i) => `(${i}, ${c}::numeric, ${f}::numeric)`).join(',')}) t(i, c, f) order by i`
+  );
+  const divergentes = casos
+    .map(([c, f], i) => ({ c, f, tela: precoComFator(c, f), banco: doBanco[i] }))
+    .filter((x) => x.tela !== x.banco)
+    .map((x) => `${x.c} × ${x.f}: tela ${x.tela} · banco ${x.banco}`);
+  expect(divergentes).toEqual([]);
 });
 
 test('o fator da marca: direto, pelo apelido, e marca sem cadastro usa o padrão 1,80', async () => {

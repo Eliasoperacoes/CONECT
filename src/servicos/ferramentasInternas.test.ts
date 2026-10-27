@@ -17,19 +17,19 @@ const vê = (setor: string, nivel: number, pode: (c: string) => boolean = tudoLi
 
 test('o cotador é UM bloco só, com as partes de cada pessoa dentro', () => {
   expect(FERRAMENTAS_INTERNAS.map((f) => f.id)).toEqual(['cotador']);
-  expect(vê('Balcão', 1)).toEqual(['cotador: cotar']);
-  expect(vê('Callcenter', 1)).toEqual(['cotador: cotar']);
-  expect(vê('Gerência', 3)).toEqual(['cotador: cotar, margens']);
+  expect(vê('Balcão', 1)).toEqual(['cotador: cotar, encomendas, historico']);
+  expect(vê('Callcenter', 1)).toEqual(['cotador: cotar, encomendas, historico']);
+  expect(vê('Gerência', 3)).toEqual(['cotador: cotar, encomendas, historico, relatorios, margens']);
   // Compras não cota nem cuida das margens, mas cuida do frete (Elias, 21/10/2026)
-  expect(vê('Compras', 2)).toEqual(['cotador: solicitacoes, fretes']);
-  expect(vê('TI', 5)).toEqual(['cotador: cotar, solicitacoes, fretes, margens']);
+  expect(vê('Compras', 2)).toEqual(['cotador: painel, solicitacoes, pedidos, historico, relatorios, fretes']);
+  expect(vê('TI', 5)).toEqual(['cotador: painel, cotar, encomendas, solicitacoes, pedidos, historico, relatorios, fretes, margens']);
   // Sem parte nenhuma, o bloco nem aparece
   expect(vê('Estoque', 1)).toEqual([]);
 });
 
 test('desligar a permissão no catálogo tira a parte, mesmo do gerente', () => {
-  expect(vê('Gerência', 3, (c) => c !== 'margens_cotador')).toEqual(['cotador: cotar']);
-  expect(vê('Gerência', 3, (c) => c !== 'cotar_b2b')).toEqual(['cotador: margens']);
+  expect(vê('Gerência', 3, (c) => c !== 'margens_cotador')).toEqual(['cotador: cotar, encomendas, historico, relatorios']);
+  expect(vê('Gerência', 3, (c) => c !== 'cotar_b2b')).toEqual(['cotador: encomendas, historico, relatorios, margens']);
 });
 
 test('a seção existe só para quem tem algum bloco (computador)', () => {

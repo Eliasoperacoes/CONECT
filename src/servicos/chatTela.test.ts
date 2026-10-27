@@ -1041,7 +1041,8 @@ test('regra de chat: o balao tem a largura do texto, e a hora divide a ultima li
   expect(tela).not.toContain('flex items-center gap-2 max-w-full min-w-0');
 
   // A hora no fim do texto: espaço reservado + hora presa no canto de baixo
-  expect(tela).toContain("const horaNaLinha = msg.tipo === 'texto' && editandoId !== msg.id && !msg.publicacaoId;");
+  // O recado da Central e o cartão da cotação têm botão embaixo: a hora não divide linha
+  expect(tela).toContain("const horaNaLinha = msg.tipo === 'texto' && editandoId !== msg.id && !msg.publicacaoId && !msg.cotacaoCodigo && !msg.encomendaId;");
   expect(tela).toContain("horaNaLinha ? 'absolute right-3 bottom-1.5' : 'mt-1'");
   expect(tela).toContain('style={{ width: larguraDaHora(ehMinha, !!msg.editadaEm) }}');
 });

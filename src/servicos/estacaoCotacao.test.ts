@@ -6,7 +6,7 @@
  * Chrome desacelera com a aba em segundo plano: 7 min de espera, 21/10/2026).
  */
 import { test, expect, afterEach } from 'bun:test';
-import { criarEstacao, NOME_DA_ESTACAO, type BancoDaEstacao, type Extensao, type PedidoDaFila, type Estacao } from './estacaoCotacao';
+import { criarEstacao, resumoDaEstacao, versaoAtrasada, lerVersaoPublicada, NOME_DA_ESTACAO, type BancoDaEstacao, type Extensao, type PedidoDaFila, type Estacao } from './estacaoCotacao';
 
 const COMPRAS = { setor: 'Compras', nivel: 1 };
 const BALCAO = { setor: 'Balcão', nivel: 1 };
@@ -230,4 +230,27 @@ test('enquanto é estação, segura a aba acordada; ao parar, solta e deixa de o
   estacao.parar();
   expect(trava).toEqual({ segurou: 1, soltou: 1 });
   expect(aviso.parou).toBe(true);
+});
+
+test('o painel vê a estação: "no ar" como o banco disse, os sites com problema pelo nome, e a fila', () => {
+  const agora = new Date('2026-10-26T12:00:00Z');
+  const sinal = (min: number) => new Date(agora.getTime() - min * 60_000).toISOString();
+  const nomes = { roles: 'Roles', pellegrino: 'Pellegrino', dpk: 'DPK' };
+  const r = resumoDaEstacao([{ visto_em: sinal(2), no_ar: true, sites: { ...SITES, dpk: 'fora' }, versao_extensao: '1.0.0' }], 1, nomes);
+  expect(r).toEqual({ noAr: true, vistoEm: sinal(2), sitesOk: 1, sitesTotal: 3, problemas: ['Pellegrino: deslogado', 'DPK: aba fechada'], naFila: 1, versao: '1.0.0' });
+  // A mais recente é a que vale
+  expect(resumoDaEstacao([{ visto_em: sinal(9), no_ar: true, sites: SITES }, { visto_em: sinal(4), no_ar: false, sites: SITES }], 0).noAr).toBe(false);
+  expect(resumoDaEstacao([], 0)).toMatchObject({ noAr: false, vistoEm: null });
+});
+
+test('extensão desatualizada: número a número, e sem versão instalada não acusa', async () => {
+  expect(versaoAtrasada('0.4.0', '1.0.0')).toBe(true);
+  expect(versaoAtrasada('1.0.0', '1.0.0')).toBe(false);
+  expect(versaoAtrasada('1.10.0', '1.9.3')).toBe(false);
+  expect(versaoAtrasada('1.0', '1.0.1')).toBe(true);
+  expect(versaoAtrasada(null, '1.0.0')).toBe(false);
+  expect(versaoAtrasada('1.0.0', null)).toBe(false);
+  const buscar = (async () => new Response(JSON.stringify({ versao: '1.0.0' }))) as unknown as typeof fetch;
+  expect(await lerVersaoPublicada(buscar)).toBe('1.0.0');
+  expect(await lerVersaoPublicada((async () => new Response('', { status: 404 })) as unknown as typeof fetch)).toBeNull();
 });

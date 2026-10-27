@@ -1668,6 +1668,16 @@ grant execute on function public.usar_escrita_com_ia() to authenticated;
 
 alter table public.mensagens add column if not exists anexo_caminho text;
 
+-- O RECADO DO COTADOR (cotador-banco.sql, SPEC-comunicacao-recebimento): a
+-- peça da cotação, a(s) encomenda(s) e o passo. Só o banco grava estas
+-- colunas (escrever_recado); a tela só lê. As tabelas do cotador moram nos
+-- deltas cotador-*.sql (docs/cotador/MAPA.md).
+alter table public.mensagens
+  add column if not exists cotacao_codigo  text,
+  add column if not exists encomenda_id    uuid,
+  add column if not exists encomenda_ids   uuid[],
+  add column if not exists aviso_encomenda text;
+
 insert into storage.buckets (id, name, public, file_size_limit)
 values ('anexos', 'anexos', false, 5242880)
 on conflict (id) do update set file_size_limit = excluded.file_size_limit;

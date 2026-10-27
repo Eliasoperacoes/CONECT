@@ -174,6 +174,10 @@ operacoes (tabela, comando) as (values
   ('erros_do_app', 'INSERT'),
   -- Cotador B2B: a tela de margens (margens.ts; gravar é por função)
   ('margens_por_marca', 'SELECT'),
+  -- Cotador B2B: o Painel de Compras lê a estação e conta a fila (estacaoCotacao.ts)
+  ('estacoes_cotacao', 'SELECT'),
+  -- Cotador B2B: o número da aba Pedidos conta as encomendas (encomendas.ts)
+  ('encomendas', 'SELECT'),
   ('apelidos_de_marca', 'SELECT'),
   ('apelidos_de_marca', 'DELETE'),
   ('auditoria', 'SELECT'),

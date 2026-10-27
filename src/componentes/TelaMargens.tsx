@@ -21,7 +21,6 @@ import {
   type Apelido,
 } from '../servicos/margens';
 import {
-  CabecalhoDeSecao,
   CartaoNumero,
   CartaoLista,
   BuscaDaLista,
@@ -196,11 +195,10 @@ export const TelaMargens: React.FC<{ colaboradorAtual: Colaborador }> = ({ colab
 
   return (
     <div className="flex flex-col gap-5">
-      <CabecalhoDeSecao
-        rotulo="Cotação B2B"
-        titulo="Margens por marca"
-        descricao="Preço de venda = custo do B2B × fator da marca, arredondado para cima em ,90 (R$ 100 com fator 1,80 vira R$ 180,90). Marca sem fator usa o padrão. O balconista vê só a venda."
-      />
+      {/* A aba já diz o nome: aqui, só o que a tela faz */}
+      <p className="text-sm text-[var(--c-texto-2)]">
+        <b>Venda = (custo + frete) × fator da marca</b>, arredondada para cima em ,90 — R$ 100 com fator 1,80 vira R$ 180,90. Marca sem fator usa o padrão. O balconista vê só a venda.
+      </p>
 
       {erro && <p className="rounded-xl bg-[var(--c-superficie-2)] p-3 text-xs text-[var(--c-erro)]">{erro}</p>}
 

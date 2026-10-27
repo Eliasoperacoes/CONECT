@@ -862,6 +862,42 @@ var FERRAMENTAS = [
     nivelPadrao: NIVEL_COLABORADOR
   },
   {
+    chave: "encomendas_cotador",
+    nome: "Encomendas (cotador)",
+    descricao: "As peças que o vendedor encomendou pela cotação: a situação de cada uma, cancelar até o horário de corte e confirmar o recebimento.",
+    area: "principal",
+    nivelPadrao: NIVEL_COLABORADOR
+  },
+  {
+    chave: "painel_compras_cotador",
+    nome: "Painel de Compras (cotador)",
+    descricao: "A primeira tela de Compras: solicitações abertas, encomendas para pedir, fornecedores que fecham o mínimo, chegadas e a atividade do dia — cada número leva à etapa dele.",
+    area: "gestao",
+    nivelPadrao: NIVEL_COLABORADOR
+  },
+  {
+    chave: "relatorios_cotador",
+    nome: "Relatórios do cotador",
+    descricao: "Relatórios e insights por período: o tempo de cada etapa e o gargalo, vendedores, peças mais encomendadas, procura sem encomenda, fornecedores e lojas; exporta para Excel.",
+    area: "gestao",
+    nivelPadrao: NIVEL_COLABORADOR,
+    cuidado: "Mostra o valor encomendado por vendedor e, para quem vê custo, a margem."
+  },
+  {
+    chave: "pedidos_cotador",
+    nome: "Pedidos de compras (cotador)",
+    descricao: "O painel de Compras: as encomendas por fornecedor com a conta do pedido mínimo, pedido realizado, chegada e conferência.",
+    area: "gestao",
+    nivelPadrao: NIVEL_COLABORADOR
+  },
+  {
+    chave: "historico_cotador",
+    nome: "Histórico de cotação (cotador)",
+    descricao: "Tudo o que foi cotado nos B2Bs e pedido ao comprador. O vendedor vê o dele; Compras e Gerência, o de todos.",
+    area: "principal",
+    nivelPadrao: NIVEL_COLABORADOR
+  },
+  {
     chave: "fretes_cotador",
     nome: "Fretes dos fornecedores (cotador)",
     descricao: "O frete por peça de cada B2B, somado ao custo antes da margem, na seção Ferramentas. Quem altera é Compras.",

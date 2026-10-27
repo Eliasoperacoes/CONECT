@@ -55,6 +55,8 @@ interface PropsJanelaChat {
   visivelNoCelular?: boolean;
   /** Abre uma publicação da Central, a partir do recado no chat. */
   aoAbrirPublicacao?: (publicacaoId: string) => void;
+  /** Abre a cotação respondida, a partir do cartão no chat. */
+  aoAbrirCotacao?: (codigo: string) => void;
 }
 
 export const JanelaChat: React.FC<PropsJanelaChat> = ({
@@ -66,6 +68,7 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
   aoExpandir,
   visivelNoCelular = true,
   aoAbrirPublicacao,
+  aoAbrirCotacao,
   aoConversarCom,
 }) => {
   const estilo = { '--direita': `${direita}px` } as React.CSSProperties;
@@ -124,6 +127,7 @@ export const JanelaChat: React.FC<PropsJanelaChat> = ({
           colaboradorAtual={colaboradorAtual}
           aoVoltar={aoFechar}
           aoAbrirPublicacao={aoAbrirPublicacao}
+          aoAbrirCotacao={aoAbrirCotacao}
           aoConversarCom={aoConversarCom}
         />
       </div>

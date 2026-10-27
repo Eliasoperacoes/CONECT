@@ -21,6 +21,7 @@
  */
 import { planejarLembretes, PUBLICACAO_COBRADA_DIAS, Lembrete } from './lembretes';
 import { planejarAlertasSemBater } from './semBater';
+import { planejarLembretesDeEncomendas } from './lembretesEncomendas';
 import { hojeEmBrasilia } from '../servicos/apuracaoDoDia';
 import {
   LinhaAviso,
@@ -115,6 +116,47 @@ const alertarSemBater = async (segredo: string, simular: boolean): Promise<Respo
   return responder({ ok: true, hoje, alertas: alertas.length, entregues });
 };
 
+/**
+ * `?encomendas=1`: de hora em hora no horário das lojas, o que está parado
+ * nas encomendas (lembretesEncomendas.ts). Só as em andamento: as entregues
+ * e canceladas não pesam no tráfego.
+ */
+const lembrarEncomendas = async (segredo: string, simular: boolean): Promise<Response> => {
+  const { ler } = criarLeitor();
+  const agora = new Date();
+  const [encomendas, pessoas] = await Promise.all([
+    ler<Record<string, string | number | null>>(
+      'encomendas?select=id,codigo,quantidade,situacao,vendedor_id,loja,criada_em,conferencia_em,recebida_em,previsao_chegada,problema,problema_resolvido_em,desistiu_em' +
+        '&situacao=in.(encomendada,pedido_realizado,em_transferencia,em_conferencia,recebida)',
+      true
+    ),
+    ler<{ id: string; setor: string; loja: string; nivel: number; ativo: boolean }>('colaboradores?select=id,setor,loja,nivel,ativo&ativo=eq.true'),
+  ]);
+  const lembretes = planejarLembretesDeEncomendas(
+    encomendas.map((e) => ({
+      id: String(e.id),
+      codigo: String(e.codigo),
+      quantidade: Number(e.quantidade),
+      situacao: String(e.situacao),
+      vendedorId: (e.vendedor_id as string | null) ?? null,
+      loja: (e.loja as string | null) ?? null,
+      criadaEm: String(e.criada_em),
+      conferenciaEm: (e.conferencia_em as string | null) ?? null,
+      recebidaEm: (e.recebida_em as string | null) ?? null,
+      previsaoChegada: (e.previsao_chegada as string | null) ?? null,
+      problemaAberto: !!e.problema && !e.problema_resolvido_em,
+      desistiuSemDestino: !!e.desistiu_em,
+    })),
+    pessoas,
+    agora
+  );
+  if (simular) {
+    return responder({ simulacao: true, encomendas: encomendas.length, lembretes: lembretes.length, seriaEnviado: lembretes.map((l) => `${l.colaboradorId} · ${l.dados.texto}`) });
+  }
+  const entregues = lembretes.length ? await entregar(segredo, lembretes) : 0;
+  return responder({ ok: true, encomendas: encomendas.length, lembretes: lembretes.length, entregues });
+};
+
 Deno.serve(async (req) => {
   const segredo = Deno.env.get('APURAR_SEGREDO');
   if (!segredo || req.headers.get('x-apurar-segredo') !== segredo) {
@@ -124,6 +166,7 @@ Deno.serve(async (req) => {
 
   try {
     if (new URL(req.url).searchParams.has('semBater')) return await alertarSemBater(segredo, simular);
+    if (new URL(req.url).searchParams.has('encomendas')) return await lembrarEncomendas(segredo, simular);
 
     const { ler, ausentes } = criarLeitor();
     const agora = new Date();

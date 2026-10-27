@@ -67,6 +67,18 @@ export const pedirAvisoDaMensagem = (mensagemId: string, previa: string): void =
 };
 
 /**
+ * OS RECADOS QUE O BANCO ESCREVEU (encomendas: SPEC-comunicacao-recebimento).
+ *
+ * O segundo — e único outro — caminho de pedido. O recado de encomenda não
+ * passa por `salvarMensagem`: nasce na mesma transação do passo, dentro do
+ * banco, para nunca existir passo sem recado. Quem fez o passo é o remetente,
+ * então o servidor confere do mesmo jeito que o recado é de quem pede.
+ */
+export const pedirAvisosDosRecados = (recados: { id: string; texto: string | null }[]): void => {
+  for (const r of recados) pedirAvisoDaMensagem(r.id, r.texto ?? '');
+};
+
+/**
  * AVISA QUEM UMA PUBLICAÇÃO DIRIGIDA ALCANÇA.
  *
  * Quem recebe é calculado por quem chama, com `publicoAlvo` — a mesma

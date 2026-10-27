@@ -245,6 +245,13 @@ interface LinhaMensagem {
   fixada_por_id: string | null;
   anexo_caminho: string | null;
   publicacao_id: string | null;
+  /** Ausente no banco que não rodou o `cotador-cartao-no-chat.sql` */
+  cotacao_codigo?: string | null;
+  /** Ausente no banco que não rodou o `cotador-encomendas.sql` */
+  encomenda_id?: string | null;
+  /** Só nos recados que o banco escreve (avisar_encomendas); a tela nunca os grava */
+  encomenda_ids?: string[] | null;
+  aviso_encomenda?: string | null;
   criado_em: string;
 }
 
@@ -276,6 +283,13 @@ const paraLinhaMensagem = (m: Mensagem) => ({
   anexo_caminho: m.anexoCaminho ?? null,
   criado_em: m.criadoEm,
 });
+
+/*
+  As colunas do cotador (cotacao_codigo, encomenda_id, encomenda_ids,
+  aviso_encomenda) só o BANCO grava: os recados nascem em escrever_recado
+  (cotador-banco.sql). A tela só as lê — a linha que ela grava não as leva,
+  e um banco sem elas não para o chat de ninguém.
+*/
 
 /**
  * Onde o anexo aparece depende do tipo da mensagem. Ao trazer do banco, o
@@ -540,6 +554,10 @@ class PonteComunicacao {
         respondendoA: linha.responde_a || undefined,
         ehAvisoDirecao: linha.eh_aviso_direcao || undefined,
         publicacaoId: linha.publicacao_id || undefined,
+        cotacaoCodigo: linha.cotacao_codigo || undefined,
+        encomendaId: linha.encomenda_id || undefined,
+        encomendaIds: linha.encomenda_ids || undefined,
+        avisoEncomenda: linha.aviso_encomenda || undefined,
         editadaEm: linha.editada_em || undefined,
         fixadaEm: linha.fixada_em || undefined,
         fixadaPorId: linha.fixada_por_id || undefined,

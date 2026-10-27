@@ -188,14 +188,21 @@ test('os arquivos .sql não têm delimitador de corpo quebrado', async () => {
    * Já aconteceu três vezes nesta base, sempre pela ferramenta que escreveu
    * o arquivo comendo um cifrão. Custa uma linha conferir.
    */
-  for (const arquivo of ['esquema.sql', 'acessos.sql', 'organograma.sql', 'conserto-login.sql', 'resetar-acesso.sql', 'liberar-acesso.sql', 'permissoes.sql', 'qr-por-loja.sql', 'mensagem-fixada.sql', 'preferencias-conversa.sql', 'ponto-tolerancia-justificativas.sql', 'escala-turnos.sql', 'folga-sabado.sql', 'turno-escolhido-uma-vez.sql', 'ciencia-da-advertencia.sql', 'falta-na-fila.sql', 'pontos-incompletos.sql', 'dias-com-batida.sql', 'ponto-pelo-servidor.sql', 'apuracao-1-preparar.sql', 'apuracao-3-agendar.sql', 'compensacao-sabado.sql', 'assinatura-holerite.sql', 'lembretes-3-agendar.sql', 'grupos-de-todos.sql', 'grupos-de-todos-2.sql']) {
+  for (const arquivo of ['esquema.sql', 'acessos.sql', 'organograma.sql', 'conserto-login.sql', 'resetar-acesso.sql', 'liberar-acesso.sql', 'permissoes.sql', 'qr-por-loja.sql', 'mensagem-fixada.sql', 'preferencias-conversa.sql', 'ponto-tolerancia-justificativas.sql', 'escala-turnos.sql', 'folga-sabado.sql', 'turno-escolhido-uma-vez.sql', 'ciencia-da-advertencia.sql', 'falta-na-fila.sql', 'pontos-incompletos.sql', 'dias-com-batida.sql', 'ponto-pelo-servidor.sql', 'apuracao-1-preparar.sql', 'apuracao-3-agendar.sql', 'compensacao-sabado.sql', 'assinatura-holerite.sql', 'lembretes-3-agendar.sql', 'grupos-de-todos.sql', 'grupos-de-todos-2.sql',
+    // O cotador (o cifrão já sumiu num replace de script aqui, 26/10/2026)
+    'cotador-banco.sql', 'cotador-cartao-no-chat.sql', 'cotador-encomendas.sql', 'cotador-fornecedores-carga.sql', 'cotador-margens-carga.sql', 'cotador-precificacao.sql', 'cotador-relatorios.sql', 'lembretes-encomendas.sql']) {
     const sql = await lerSql(arquivo);
 
     // Cifrão solto: aparece fora de um par
     const solto = sql
       .split('\n')
       .map((linha, i) => ({ linha, numero: i + 1 }))
-      .filter(({ linha }) => linha.includes('$') && !linha.includes('$$'));
+      .filter(({ linha }) => {
+        // 'R$' é dinheiro (texto dos recados) e "$'" fecha uma expressão regular
+        // ('^[A-Z0-9]+$'): nenhum dos dois é delimitador
+        const semReais = linha.replace(/R\$/g, '').replace(/\$'/g, '');
+        return semReais.includes('$') && !semReais.includes('$$');
+      });
     expect(
       solto.map((s) => `${arquivo}:${s.numero} ${s.linha}`)
     ).toEqual([]);

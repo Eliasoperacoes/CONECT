@@ -7,7 +7,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Truck } from 'lucide-react';
 import { supabase } from '../servicos/supabase';
 import { fretesPeloSupabase, lerFrete, type FreteDoFornecedor } from '../servicos/fretes';
-import { CabecalhoDeSecao, CartaoLista, EstadoVazio } from './PadraoWeb';
+import { CartaoLista, EstadoVazio } from './PadraoWeb';
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -82,11 +82,10 @@ export const TelaFretes: React.FC = () => {
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-4">
-      <CabecalhoDeSecao
-        rotulo="Cotação B2B"
-        titulo="Fretes dos fornecedores"
-        descricao="O frete por peça é somado ao custo antes da margem: venda = (custo + frete) × fator. Zero para quem dá frete grátis."
-      />
+      {/* A aba já diz o nome: aqui, só o que a tela faz */}
+      <p className="text-sm text-[var(--c-texto-2)]">
+        O frete por peça entra no preço antes da margem: <b>venda = (custo + frete) × fator</b>. Zero para quem dá frete grátis. Alterar aqui muda o preço na hora.
+      </p>
       {erro && <p className="rounded-xl bg-[var(--c-superficie-2)] p-3 text-xs text-[var(--c-erro)]">{erro}</p>}
       <CartaoLista>
         {fretes.map((f) => (

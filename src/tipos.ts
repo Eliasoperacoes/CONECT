@@ -139,6 +139,13 @@ export const podeCotar = (c: { nivel: number; setor: string }): boolean =>
 export const podeVerCusto = (c: { nivel: number; setor: string }): boolean =>
   c.setor === 'Callcenter' || c.setor === 'Compras' || c.nivel >= NIVEL_GERENTE;
 
+/**
+ * Monta o preço: vê o custo e digita o fator (Elias, 26/10/2026). Só o
+ * Callcenter; os outros veem a venda pelo fator da marca. O banco aceita o
+ * fator de quem vê custo (encomendar) e recalcula a venda lá.
+ */
+export const montaOPreco = (c: { setor: string }): boolean => c.setor === 'Callcenter';
+
 /** Vê o histórico de cotação de todos (SPEC-historico): Compras e Gerência (nível ≥ 3). O vendedor vê o dele. */
 export const podeVerHistoricoDeTodos = (c: { nivel: number; setor: string }): boolean =>
   c.setor === 'Compras' || c.nivel >= NIVEL_GERENTE;
@@ -1037,6 +1044,24 @@ export interface Mensagem {
    * sistema continua sem ele.
    */
   publicacaoId?: string;
+  /**
+   * A PEÇA DA COTAÇÃO QUE ESTE RECADO RESPONDE (Elias, 21/10/2026).
+   *
+   * O comprador responde e o vendedor recebe um cartão com a peça, o valor
+   * e o botão que abre a cotação respondida — sem pesquisar de novo.
+   * Só a resposta do comprador tem; toda outra mensagem continua sem ele.
+   */
+  cotacaoCodigo?: string;
+  /**
+   * A ENCOMENDA QUE ESTE RECADO ACOMPANHA (pedidos-compras): "Sua encomenda
+   * foi realizada", "Sua peça está em conferência" — esta com o botão
+   * Recebi, que encerra a encomenda sem sair do chat.
+   */
+  encomendaId?: string;
+  /** O recado que o BANCO escreveu (SPEC-comunicacao-recebimento): todas as peças do vendedor naquele passo */
+  encomendaIds?: string[];
+  /** De que passo é o recado: pedido_realizado, em_transferencia, em_conferencia, cancelada, problema… */
+  avisoEncomenda?: string;
   /**
    * Ainda subindo. So no aparelho — nunca vai para o banco.
    *
