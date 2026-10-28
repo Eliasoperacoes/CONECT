@@ -22,6 +22,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { temComprovante } from '../servicos/comprovanteDeBatida';
+import { aBatidaQueValeu, textoDaRepetida } from '../servicos/batidaRepetida';
 import { RegistroPonto, ROTULO_MARCACAO, ROTULO_FORA_DA_JORNADA, precisaEscolherTurno } from '../tipos';
 import { servicoPonto, dataDeHoje } from '../servicos/ponto';
 import { bancoDados } from '../servicos/bancoDados';
@@ -361,7 +362,52 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
 
         <div className="flex-1 overflow-y-auto">
           {/* Confirmação */}
-          {estado === 'sucesso' && registroFeito ? (
+          {estado === 'sucesso' && registroFeito && registroFeito.foraDaJornada === 'repetida' ? (
+            /* A LEITURA REPETIDA (batidaRepetida.ts): o ponto já está batido,
+               e é isso que vem em destaque — o aviso amarelo de antes fazia
+               a pessoa ler o QR de novo */
+            (() => {
+              const valeu = aBatidaQueValeu(
+                servicoPonto.obterMarcacoesDoDia(registroFeito.colaboradorId, registroFeito.data),
+                registroFeito
+              );
+              const texto = textoDaRepetida(valeu);
+              return (
+                <div id="confirmacao-leitura-repetida" className="p-6 flex flex-col items-center text-center gap-3">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 flex items-center justify-center">
+                    <CheckCircle2 className="w-9 h-9" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-black text-[var(--c-texto)] tracking-tight">
+                      {valeu?.horaFormatada ?? registroFeito.horaFormatada}
+                    </p>
+                    <p className="text-sm font-semibold text-[var(--c-texto-2)] mt-0.5">{texto.titulo}</p>
+                    <p className="text-xs text-[var(--c-texto-3)] mt-1.5 max-w-[17rem] mx-auto leading-relaxed">
+                      {texto.detalhe}
+                    </p>
+                  </div>
+                  {aoVerComprovante && temComprovante(registroFeito) && (
+                    <button
+                      type="button"
+                      id="botao-ver-comprovante"
+                      onClick={() => aoVerComprovante(registroFeito)}
+                      className="mt-2 w-full py-3 rounded-xl border border-[var(--c-borda)] bg-[var(--c-superficie)] text-[var(--c-texto)] font-bold text-sm flex items-center justify-center gap-2 hover:bg-[var(--c-superficie-2)] transition-all"
+                    >
+                      <ReceiptText className="w-4 h-4" />
+                      Ver comprovante · NSR {String(registroFeito.nsr).padStart(9, '0')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={aoFechar}
+                    className="w-full py-3 rounded-xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] font-bold text-sm hover:brightness-110 active:scale-[0.99] transition-all"
+                  >
+                    Concluir
+                  </button>
+                </div>
+              );
+            })()
+          ) : estado === 'sucesso' && registroFeito ? (
             <div className="p-6 flex flex-col items-center text-center gap-3">
               {registroFeito.foraDaJornada ? (
                 <div className="w-16 h-16 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20 flex items-center justify-center">
