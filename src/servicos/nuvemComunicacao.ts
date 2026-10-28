@@ -777,15 +777,23 @@ class PonteComunicacao {
             // Tudo, e não colunas nomeadas: `papel` e `saiu_em` só existem
             // depois de grupos-de-todos.sql, e pedi-las antes derrubaria a
             // lista de conversas inteira
-            .select('*'),
+            .select('*')
+            // Ordem pela chave: sem ela as páginas pulam linhas (paginacao.ts)
+            .order('conversa_id')
+            .order('colaborador_id'),
         'os participantes'
       ),
       buscarTodasAsLinhas<LinhaMensagem>(
-        () => supabase!.from('mensagens').select('*').order('criado_em'),
+        () => supabase!.from('mensagens').select('*').order('criado_em').order('id'),
         'as mensagens'
       ),
       buscarTodasAsLinhas<{ mensagem_id: string; colaborador_id: string }>(
-        () => supabase!.from('leituras_mensagem').select('mensagem_id, colaborador_id'),
+        () =>
+          supabase!
+            .from('leituras_mensagem')
+            .select('mensagem_id, colaborador_id')
+            .order('mensagem_id')
+            .order('colaborador_id'),
         'as leituras'
       ),
     ]);
@@ -1312,7 +1320,12 @@ class PonteComunicacao {
     const [avisos, leituras] = await Promise.all([
       supabase.from('avisos_rede').select('*').order('criado_em', { ascending: false }),
       buscarTodasAsLinhas<{ aviso_id: string; colaborador_id: string; confirmado: boolean }>(
-        () => supabase!.from('avisos_leitura').select('aviso_id, colaborador_id, confirmado'),
+        () =>
+          supabase!
+            .from('avisos_leitura')
+            .select('aviso_id, colaborador_id, confirmado')
+            .order('aviso_id')
+            .order('colaborador_id'),
         'as leituras de aviso'
       ),
     ]);

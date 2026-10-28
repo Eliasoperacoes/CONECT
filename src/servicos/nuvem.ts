@@ -1087,7 +1087,8 @@ class PonteNuvem {
                com fuso, e comparar data com ele erra a virada do dia */
             .gte('data', janela.inicio)
             .lte('data', janela.fim)
-            .order('horario'),
+            .order('horario')
+            .order('id'),
         'as marcações de ponto'
       ),
       supabase.from('codigos_ponto_loja').select('*'),
@@ -1207,7 +1208,8 @@ class PonteNuvem {
           .eq('colaborador_id', colaboradorId)
           .gte('data', periodo.inicio)
           .lte('data', periodo.fim)
-          .order('horario'),
+          .order('horario')
+          .order('id'),
       'as marcações do mês'
     );
     if (!linhas) return false;
@@ -1777,7 +1779,8 @@ class PonteNuvem {
         supabase!
           .from('justificativas_ausencia')
           .select('*')
-          .order('data_inicio', { ascending: false }),
+          .order('data_inicio', { ascending: false })
+          .order('id'),
       'as ausências'
     );
 
@@ -1971,7 +1974,7 @@ class PonteNuvem {
     if (!supabase) return false;
 
     const data = await buscarTodasAsLinhas<LinhaAjuste>(
-      () => supabase!.from('ajustes_jornada').select('*').order('data', { ascending: false }),
+      () => supabase!.from('ajustes_jornada').select('*').order('data', { ascending: false }).order('id'),
       'as apurações'
     );
 

@@ -176,3 +176,52 @@ test('AS LEITURAS QUE CRESCEM PASSAM PELA PAGINAÇÃO', async () => {
 
   expect(faltando).toEqual([]);
 });
+
+// ------------------------------------------------------------------
+// A ORDEM QUE NÃO EMPATA (29/10/2026)
+//
+// Página é "da linha 1000 à 1999" de uma ordem. Sem ordem, ou com uma que
+// empata (dez ajustes no mesmo dia), o banco pode devolver os empatados em
+// sequência diferente a cada página — e uma linha cai entre duas páginas,
+// sem erro. No chat, leitura que não chega é mensagem lida contada como
+// não lida (o balão da conta ADM com 5 e a lista vazia, no dia em que
+// todos entraram). Toda consulta paginada termina na chave da tabela.
+// ------------------------------------------------------------------
+
+/** A chave de cada tabela lida em páginas. Tabela nova paginada entra aqui. */
+const CHAVE: Record<string, string[]> = {
+  participantes: ['conversa_id', 'colaborador_id'],
+  mensagens: ['id'],
+  leituras_mensagem: ['mensagem_id', 'colaborador_id'],
+  avisos_leitura: ['aviso_id', 'colaborador_id'],
+  registros_ponto: ['id'],
+  justificativas_ausencia: ['id'],
+  ajustes_jornada: ['id'],
+  marcacoes_originais: ['nsr'],
+  tratamento_marcacao: ['nsr'],
+  cpf_colaborador: ['colaborador_id'],
+};
+
+test('toda consulta paginada termina ordenada pela chave da tabela', async () => {
+  const consultas: Array<{ arquivo: string; tabela: string; ordens: string[] }> = [];
+  for (const arquivo of ['nuvem.ts', 'nuvemComunicacao.ts']) {
+    const fonte = await Bun.file(new URL(`./${arquivo}`, import.meta.url)).text();
+    const partes = fonte.split('buscarTodasAsLinhas<').slice(1);
+    for (const parte of partes) {
+      // A consulta vai até o rótulo ('as mensagens'), que fecha a chamada
+      const consulta = parte.slice(0, parte.search(/,\s*\n?\s*'[^']+'\s*\n?\s*\)/));
+      const tabela = consulta.match(/\.from\('(\w+)'\)/)?.[1] ?? '?';
+      const ordens = [...consulta.matchAll(/\.order\('(\w+)'/g)].map((m) => m[1]);
+      consultas.push({ arquivo, tabela, ordens });
+    }
+  }
+
+  expect(consultas.length).toBeGreaterThanOrEqual(10);
+  for (const c of consultas) {
+    const chave = CHAVE[c.tabela];
+    expect({ ...c, chaveConhecida: !!chave }).toMatchObject({ chaveConhecida: true });
+    for (const coluna of chave) {
+      expect({ ...c, falta: coluna, tem: c.ordens.includes(coluna) }).toMatchObject({ tem: true });
+    }
+  }
+});
