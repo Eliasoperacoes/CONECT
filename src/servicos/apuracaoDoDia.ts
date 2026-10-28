@@ -570,6 +570,29 @@ export const horariosEsperadosDoDia = (
     return null;
   }
 
+  /**
+   * O ALMOÇO LIVRE DAS FILIAIS (`intervalo.livre`, 28/10/2026).
+   *
+   * Às 11:00 ou às 12:30, conforme a pessoa: o horário do turno não diz
+   * quando ela sai, só quanto tempo fica fora. A janela esperada parte da
+   * saída DE VERDADE — quem saiu às 12:30 volta às 14:00 sem variação
+   * nenhuma. Sem a saída batida não há hora para cobrar, e o almoço fica
+   * fora da comparação (nem alerta de "sem bater" na saída para ele).
+   */
+  if (!ehSabado(data) && turno.intervalo?.livre && horarios.saida_almoco !== undefined) {
+    const duracao = (horarios.retorno_almoco ?? 0) - horarios.saida_almoco;
+    const saiu = colaborador
+      ? fonte.marcacoesDoDia(colaborador.id, data).find((r) => r.tipo === 'saida_almoco')
+      : undefined;
+    if (saiu) {
+      horarios.saida_almoco = fonte.minutosDoHorario(saiu.horario);
+      horarios.retorno_almoco = horarios.saida_almoco + duracao;
+    } else {
+      delete horarios.saida_almoco;
+      delete horarios.retorno_almoco;
+    }
+  }
+
   return horarios;
 };
 

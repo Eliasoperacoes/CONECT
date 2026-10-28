@@ -27,9 +27,11 @@ interface Props {
 
 const descreverTurno = (t: Turno): string => {
   const intervalo = t.intervalo
-    ? t.intervalo.desconta
-      ? `almoço ${t.intervalo.saida}–${t.intervalo.retorno}`
-      : 'pausa de 15 min'
+    ? t.intervalo.livre
+      ? 'almoço de 1h30 às 11:00 ou às 12:30'
+      : t.intervalo.desconta
+        ? `almoço ${t.intervalo.saida}–${t.intervalo.retorno}`
+        : 'pausa de 15 min'
     : 'direto, sem intervalo';
   const sabado = t.sabado ? `sábado ${TURNO_SABADO.entrada}–${TURNO_SABADO.saida}` : 'sem sábado';
   return `${intervalo} · ${sabado}`;

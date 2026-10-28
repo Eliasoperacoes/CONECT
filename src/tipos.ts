@@ -378,7 +378,22 @@ export interface Turno {
      * vez, por outro caminho.
      */
     desconta: boolean;
+    /**
+     * ALMOÇO NO HORÁRIO QUE A LOJA COMBINAR (Elias, 28/10/2026).
+     *
+     * Nas filiais o almoço de 1h30 é às 11:00 ou às 12:30, e varia por
+     * pessoa. Vale a DURAÇÃO, contada da saída de verdade: o horário de
+     * `saida`/`retorno` acima é só o de referência (AEJ, preenchimento
+     * pelo turno). Ver `horariosEsperadosDoDia`.
+     */
+    livre?: boolean;
   };
+  /**
+   * EM QUE LOJAS ESTE HORÁRIO EXISTE — para a pessoa só escolher o da
+   * loja dela (`turnosParaEscolher`). Ausente: todas. A matriz inclui a
+   * central de operações, que fica com ela em Pirassununga.
+   */
+  unidades?: 'matriz' | 'filiais';
   /**
    * De quem é este turno.
    *
@@ -404,8 +419,10 @@ export interface Turno {
  *
  * A CONTA DE CADA UM, pelo relógio e não por número escolhido:
  *
- *   A   07:30→17:10  −1h30   =  8h10
- *   B   08:20→18:00  −1h30   =  8h10
+ *   A   07:30→17:10  −1h30   =  8h10   (Pirassununga)
+ *   B   08:20→18:00  −1h30   =  8h10   (Pirassununga)
+ *   C   08:00→17:40  −1h30   =  8h10   (filiais, almoço livre)
+ *   D   08:20→18:00  −1h30   =  8h10   (filiais, almoço livre)
  *   E1  07:30→13:30  −0h15   =  5h45
  *   E2  07:30→12:30  direto  =  5h00
  *   E3  13:00→18:00  −0h15   =  4h45
@@ -422,6 +439,7 @@ export const TURNOS: Turno[] = [
     intervalo: { saida: '12:30', retorno: '14:00', desconta: true },
     perfil: 'integral',
     sabado: true,
+    unidades: 'matriz',
   },
   {
     chave: 'B',
@@ -431,6 +449,33 @@ export const TURNOS: Turno[] = [
     intervalo: { saida: '11:00', retorno: '12:30', desconta: true },
     perfil: 'integral',
     sabado: true,
+    unidades: 'matriz',
+  },
+  {
+    /**
+     * OS HORÁRIOS DAS FILIAIS (Elias, 28/10/2026): nenhum dos dois de
+     * Pirassununga serve nas outras lojas. O D tem o relógio do B, mas o
+     * almoço de 1h30 é às 11:00 ou às 12:30, conforme a pessoa — por isso
+     * é outro turno, e não o B.
+     */
+    chave: 'C',
+    nome: 'Turno C · 08:00 às 17:40 · filiais',
+    entrada: '08:00',
+    saida: '17:40',
+    intervalo: { saida: '11:00', retorno: '12:30', desconta: true, livre: true },
+    perfil: 'integral',
+    sabado: true,
+    unidades: 'filiais',
+  },
+  {
+    chave: 'D',
+    nome: 'Turno D · 08:20 às 18:00 · filiais',
+    entrada: '08:20',
+    saida: '18:00',
+    intervalo: { saida: '12:30', retorno: '14:00', desconta: true, livre: true },
+    perfil: 'integral',
+    sabado: true,
+    unidades: 'filiais',
   },
   {
     /**
@@ -706,15 +751,23 @@ export const turnoDoHorarioProprio = (h: HorarioProprio, ehEstagio: boolean): Tu
   };
 };
 
+/** A loja é filial? A matriz e a central de operações (Rede) não são. */
+export const unidadesDaLoja = (loja?: string): 'matriz' | 'filiais' =>
+  INFORMACOES_LOJAS.find((l) => l.nome === loja)?.tipo === 'Filial' ? 'filiais' : 'matriz';
+
 /**
  * OS TURNOS QUE A PRÓPRIA PESSOA PODE ESCOLHER.
  *
- * Os do perfil dela, sem o encaixe "a definir" (E0): ele é um lugar de
- * espera, não um horário que alguém cumpre. O banco confere a mesma
- * coisa no gatilho `turno_escolhido_uma_vez` — mudou aqui, mude lá.
+ * Os do perfil dela e da loja dela (`unidades`: Pirassununga não vê os das
+ * filiais, nem as filiais os de Pirassununga), sem o encaixe "a definir"
+ * (E0): ele é um lugar de espera, não um horário que alguém cumpre. O
+ * banco confere a mesma coisa no gatilho `turno_escolhido_uma_vez` —
+ * mudou aqui, mude lá. O RH continua podendo pôr qualquer um na ficha.
  */
-export const turnosParaEscolher = (colaborador?: { setor?: string; cargo?: string }): Turno[] =>
-  turnosDoPerfil(ehDeEstagio(colaborador)).filter((t) => t.chave !== 'E0');
+export const turnosParaEscolher = (colaborador?: { setor?: string; cargo?: string; loja?: string }): Turno[] =>
+  turnosDoPerfil(ehDeEstagio(colaborador)).filter(
+    (t) => t.chave !== 'E0' && (!t.unidades || t.unidades === unidadesDaLoja(colaborador?.loja))
+  );
 
 /**
  * A BATIDA PERGUNTA O HORÁRIO?

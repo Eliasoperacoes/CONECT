@@ -59,7 +59,7 @@ alter table public.colaboradores
 alter table public.colaboradores drop constraint if exists colaboradores_turno_check;
 alter table public.colaboradores
   add constraint colaboradores_turno_check
-  check (turno in ('A', 'B', 'E0', 'E1', 'E2', 'E3', 'P'));
+  check (turno in ('A', 'B', 'C', 'D', 'E0', 'E1', 'E2', 'E3', 'P'));
 
 -- O HORÁRIO PRÓPRIO (horario-proprio.sql, 17/10/2026): o turno 'P' é o
 -- horário que o RH digita, e só vale completo, em HH:MM e na ordem do dia
@@ -752,7 +752,10 @@ create trigger colaboradores_nivel_ate_o_meu
 -- recusar: o app grava a linha inteira ao trocar a foto.
 --
 -- O perfil (estágio ou integral) repete `ehDeEstagio` e os turnos repetem
--- `turnosParaEscolher` (tipos.ts). Mudou lá, mude aqui.
+-- `turnosParaEscolher` (tipos.ts). Mudou lá, mude aqui. As filiais
+-- (turnos-das-filiais.sql, 28/10/2026) repetem as lojas 'Filial' de
+-- INFORMACOES_LOJAS: Pirassununga e a central escolhem A ou B; as
+-- filiais, C ou D.
 create or replace function public.turno_escolhido_uma_vez()
 returns trigger
 language plpgsql
@@ -761,6 +764,7 @@ set search_path = public
 as $$
 declare
   estagio boolean;
+  filial  boolean;
 begin
   -- Sem usuário (`auth.uid()` nulo) é o SQL Editor do TI: sem isto, a
   -- correção de turno feita por script voltaria ao valor antigo calada
@@ -791,14 +795,17 @@ begin
   estagio := lower(old.setor) like '%está%'
           or lower(old.setor) like '%esta%'
           or lower(old.cargo) like '%estagi%';
+  filial  := old.loja in ('Porto Ferreira', 'Palmeiras', 'Descalvado', 'Santa Rita');
 
   -- A única troca aceita: quem nunca confirmou, confirmando agora um
-  -- turno do próprio perfil. Qualquer outra coisa volta ao que era.
+  -- turno do próprio perfil e da própria loja. Qualquer outra coisa volta
+  -- ao que era.
   if old.turno_confirmado_em is null
      and new.turno_confirmado_em is not null
      and (
        (estagio and new.turno in ('E1', 'E2', 'E3'))
-       or (not estagio and new.turno in ('A', 'B'))
+       or (not estagio and not filial and new.turno in ('A', 'B'))
+       or (not estagio and filial and new.turno in ('C', 'D'))
      )
   then
     new.turno_confirmado_em := now();

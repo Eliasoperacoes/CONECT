@@ -42,7 +42,7 @@ mock.module('./nuvem', () => ({
 }));
 
 const { bancoDados } = await import('./bancoDados');
-const { turnosParaEscolher, precisaEscolherTurno, TURNOS } = await import('../tipos');
+const { turnosParaEscolher, precisaEscolherTurno, TURNOS, INFORMACOES_LOJAS } = await import('../tipos');
 
 const BASE = {
   loja: 'Pirassununga', nivel: 1, foto: '', presenca: 'online',
@@ -50,6 +50,8 @@ const BASE = {
 };
 const MARIA = { ...BASE, id: 'maria', nome: 'Maria Clara', login: 'maria', cargo: 'Auxiliar de Estoque', setor: 'Estoque', turno: 'A' };
 const ISAQUE = { ...BASE, id: 'isaque', nome: 'Isaque', login: 'isaque', cargo: 'Estagiário(a)', setor: 'Estágio', turno: 'A' };
+const MARIA_DA_FILIAL = { ...MARIA, id: 'maria-pf', login: 'maria-pf', loja: 'Porto Ferreira' };
+const DA_CENTRAL = { ...MARIA, id: 'central', login: 'central', loja: 'Rede' };
 
 const entrarComo = (quem: any, equipe: any[]) => {
   armazenamento.setItem('conecta_v4_colaboradores', JSON.stringify(equipe));
@@ -72,6 +74,23 @@ test('o integral escolhe entre A e B; o estágio, entre os três de estágio', (
   expect(turnosParaEscolher(MARIA).map((t) => t.chave)).toEqual(['A', 'B']);
   // O E0 é o lugar de espera "a definir": não é horário que alguém cumpre
   expect(turnosParaEscolher(ISAQUE).map((t) => t.chave)).toEqual(['E1', 'E2', 'E3']);
+});
+
+test('cada loja escolhe só os horários dela: filial C ou D; Pirassununga e a central, A ou B (28/10/2026)', () => {
+  expect(turnosParaEscolher(MARIA_DA_FILIAL).map((t) => t.chave)).toEqual(['C', 'D']);
+  expect(turnosParaEscolher(DA_CENTRAL).map((t) => t.chave)).toEqual(['A', 'B']);
+  // O estágio não tem horário por loja
+  expect(turnosParaEscolher({ ...ISAQUE, loja: 'Descalvado' }).map((t) => t.chave)).toEqual(['E1', 'E2', 'E3']);
+});
+
+test('a filial não confirma o horário de Pirassununga, nem Pirassununga o da filial', async () => {
+  entrarComo(MARIA_DA_FILIAL, [MARIA_DA_FILIAL]);
+  expect((await bancoDados.escolherMeuTurno('A')).sucesso).toBe(false);
+  expect((await bancoDados.escolherMeuTurno('C')).sucesso).toBe(true);
+  expect(fichaDe('maria-pf').turno).toBe('C');
+
+  entrarComo(MARIA, [MARIA]);
+  expect((await bancoDados.escolherMeuTurno('D')).sucesso).toBe(false);
 });
 
 test('pergunta só enquanto ninguém confirmou', () => {
@@ -137,17 +156,37 @@ const ler = (arquivo: string) =>
 
 test('o gatilho aceita exatamente os turnos que a tela oferece', () => {
   const esquema = ler('esquema.sql');
-  const listas = [...esquema.matchAll(/\((estagio|not estagio) and new\.turno in \(([^)]*)\)\)/g)];
+  const listas = [...esquema.matchAll(/\((estagio|not estagio and not filial|not estagio and filial) and new\.turno in \(([^)]*)\)\)/g)];
   const doBanco = Object.fromEntries(
     listas.map((m) => [m[1], m[2].split(',').map((s) => s.trim().replace(/'/g, ''))])
   );
 
-  expect(doBanco['not estagio']).toEqual(turnosParaEscolher(MARIA).map((t) => t.chave));
+  expect(doBanco['not estagio and not filial']).toEqual(turnosParaEscolher(MARIA).map((t) => t.chave));
+  expect(doBanco['not estagio and filial']).toEqual(turnosParaEscolher(MARIA_DA_FILIAL).map((t) => t.chave));
   expect(doBanco['estagio']).toEqual(turnosParaEscolher(ISAQUE).map((t) => t.chave));
   // Toda chave que o gatilho aceita existe na tabela de turnos
-  for (const chave of [...doBanco['not estagio'], ...doBanco['estagio']]) {
+  for (const chave of Object.values(doBanco).flat()) {
     expect(TURNOS.some((t) => t.chave === chave)).toBe(true);
   }
+});
+
+test('as filiais do gatilho são as lojas "Filial" do cadastro das unidades', () => {
+  const esquema = ler('esquema.sql');
+  const lista = esquema.match(/filial\s+:= old\.loja in \(([^)]*)\);/)![1];
+  const doBanco = lista.split(',').map((s) => s.trim().replace(/'/g, '')).sort();
+  const doCadastro = INFORMACOES_LOJAS.filter((l) => l.tipo === 'Filial').map((l) => l.nome).sort();
+  expect(doBanco).toEqual(doCadastro);
+});
+
+test('o delta das filiais traz o gatilho de hoje, e termina conferindo', () => {
+  const esquema = ler('esquema.sql');
+  const delta = ler('turnos-das-filiais.sql');
+  const ini = esquema.indexOf('-- O HORÁRIO, ESCOLHIDO UMA VEZ.');
+  const marca = 'for each row execute function public.turno_escolhido_uma_vez();';
+  expect(delta).toContain(esquema.slice(ini, esquema.indexOf(marca) + marca.length));
+  expect(delta).toContain("check (turno in ('A', 'B', 'C', 'D', 'E0', 'E1', 'E2', 'E3', 'P'))");
+  expect(esquema).toContain("check (turno in ('A', 'B', 'C', 'D', 'E0', 'E1', 'E2', 'E3', 'P'))");
+  expect(delta.lastIndexOf('select')).toBeGreaterThan(delta.indexOf("notify pgrst, 'reload schema'"));
 });
 
 test('a pessoa não mexe na própria jornada: o gatilho devolve cada campo', () => {
@@ -161,27 +200,18 @@ test('a pessoa não mexe na própria jornada: o gatilho devolve cada campo', () 
   expect(esquema).toContain('before insert or update on public.colaboradores');
 });
 
-test('o delta é o mesmo bloco do esquema, e termina conferindo', () => {
-  const esquema = ler('esquema.sql');
-  const delta = ler('turno-escolhido-uma-vez.sql');
-  const ini = esquema.indexOf('-- O HORÁRIO, ESCOLHIDO UMA VEZ.');
-  const marca = 'for each row execute function public.turno_escolhido_uma_vez();';
-  // O gatilho ganhou o horário próprio depois (horario-proprio.sql,
-  // 17/10/2026): o delta antigo é conferido sem as duas linhas dele, e o
-  // delta novo traz o gatilho de hoje
-  const LINHAS_DO_HORARIO =
-    '  -- O horário digitado é do RH, como o turno (horario-proprio.sql)\n' +
-    '  new.horario_proprio              := old.horario_proprio;\n';
-  const bloco = esquema.slice(ini, esquema.indexOf(marca) + marca.length);
-  const comHorario = bloco.slice(bloco.indexOf('create or replace function'), bloco.indexOf('$$;') + 3);
-  expect(comHorario).toContain(LINHAS_DO_HORARIO);
-  expect(ler('horario-proprio.sql')).toContain(comHorario);
-
-  expect(ini).toBeGreaterThan(-1);
-  expect(delta).toContain(bloco.split(LINHAS_DO_HORARIO).join(''));
-  expect(delta).toContain("notify pgrst, 'reload schema'");
-  expect(delta.trim().endsWith(';')).toBe(true);
-  expect(delta.lastIndexOf('select')).toBeGreaterThan(delta.indexOf('notify pgrst'));
+test('os deltas antigos do gatilho terminam conferindo', () => {
+  // O gatilho de hoje mora no delta das filiais (28/10/2026, conferido
+  // acima); estes dois são o histórico: o primeiro e o do horário próprio
+  for (const arquivo of ['turno-escolhido-uma-vez.sql', 'horario-proprio.sql']) {
+    const delta = ler(arquivo);
+    expect(delta).toContain('create or replace function public.turno_escolhido_uma_vez()');
+    expect(delta).toContain("notify pgrst, 'reload schema'");
+    expect(delta.trim().endsWith(';')).toBe(true);
+  }
+  expect(ler('turno-escolhido-uma-vez.sql').lastIndexOf('select')).toBeGreaterThan(
+    ler('turno-escolhido-uma-vez.sql').indexOf('notify pgrst')
+  );
 });
 
 // ------------------------------------------------------------------

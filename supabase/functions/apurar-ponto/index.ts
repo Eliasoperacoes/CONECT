@@ -18,7 +18,8 @@ var TURNOS = [
     saida: "17:10",
     intervalo: { saida: "12:30", retorno: "14:00", desconta: true },
     perfil: "integral",
-    sabado: true
+    sabado: true,
+    unidades: "matriz"
   },
   {
     chave: "B",
@@ -27,7 +28,28 @@ var TURNOS = [
     saida: "18:00",
     intervalo: { saida: "11:00", retorno: "12:30", desconta: true },
     perfil: "integral",
-    sabado: true
+    sabado: true,
+    unidades: "matriz"
+  },
+  {
+    chave: "C",
+    nome: "Turno C · 08:00 às 17:40 · filiais",
+    entrada: "08:00",
+    saida: "17:40",
+    intervalo: { saida: "11:00", retorno: "12:30", desconta: true, livre: true },
+    perfil: "integral",
+    sabado: true,
+    unidades: "filiais"
+  },
+  {
+    chave: "D",
+    nome: "Turno D · 08:20 às 18:00 · filiais",
+    entrada: "08:20",
+    saida: "18:00",
+    intervalo: { saida: "12:30", retorno: "14:00", desconta: true, livre: true },
+    perfil: "integral",
+    sabado: true,
+    unidades: "filiais"
   },
   {
     chave: "E0",
@@ -414,6 +436,17 @@ var horariosEsperadosDoDia = (colaborador, data) => {
   const implicado = ehSabado(data) ? (horarios.saida ?? 0) - (horarios.entrada ?? 0) : (horarios.saida_almoco ?? 0) - (horarios.entrada ?? 0) + ((horarios.saida ?? 0) - (horarios.retorno_almoco ?? 0));
   if (implicado !== cargaPrevistaEmMinutos(colaborador, data) + compensacaoEsperadaDoDia(colaborador, data)) {
     return null;
+  }
+  if (!ehSabado(data) && turno.intervalo?.livre && horarios.saida_almoco !== undefined) {
+    const duracao = (horarios.retorno_almoco ?? 0) - horarios.saida_almoco;
+    const saiu = colaborador ? fonte.marcacoesDoDia(colaborador.id, data).find((r) => r.tipo === "saida_almoco") : undefined;
+    if (saiu) {
+      horarios.saida_almoco = fonte.minutosDoHorario(saiu.horario);
+      horarios.retorno_almoco = horarios.saida_almoco + duracao;
+    } else {
+      delete horarios.saida_almoco;
+      delete horarios.retorno_almoco;
+    }
   }
   return horarios;
 };
