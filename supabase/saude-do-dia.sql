@@ -23,9 +23,9 @@ select * from (
          count(*)::text as valor, '' as o_que_olhar
     from public.colaboradores where ativo
   union all
-  select 2, 'Ativos sem login criado',
+  select 2, 'Ainda sem o primeiro acesso',
          count(*)::text,
-         coalesce('Não conseguem entrar: ' || string_agg(nome, ', ' order by nome), 'Todos com login')
+         coalesce('Falta entrar com o cupom de primeiro acesso: ' || string_agg(nome, ', ' order by nome), 'Todos já entraram')
     from public.colaboradores where ativo and auth_user_id is null
   union all
   select 3, 'Fizeram login hoje',
