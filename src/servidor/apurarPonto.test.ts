@@ -153,6 +153,60 @@ test('a falta pendente de um dia que ganhou folga aprovada sai da fila, com zero
   expect(plano.novosNaFila.find((a) => a.id === 'falta-0310')).toBeUndefined();
 });
 
+test('o débito já aprovado de um dia que ganhou atestado aprovado vira zero; a hora extra fica', () => {
+  /*
+    A Beatriz voltou do médico 1h18 depois do almoço (28/10/2026). A líder
+    pode aprovar o débito antes de o RH aprovar o atestado — e o banco
+    seguiria descontando um dia que o espelho mostra abonado.
+  */
+  const batidas = semanaCerta().map((b) =>
+    b.data === '2026-10-05' && b.tipo === 'retorno_almoco' ? batida('ana', '2026-10-05', 'retorno_almoco', '15:18') : b
+  );
+  const debitoAprovado = {
+    id: 'deb-0510', colaboradorId: 'ana', data: '2026-10-05', tipo: 'debito' as const, minutos: 78,
+    minutosTrabalhados: 412, minutosPrevistos: 490, estado: 'aprovado' as const, aprovadorNome: 'Líder', criadoEm: '',
+  };
+  const extraAprovada = {
+    id: 'ext-0606', colaboradorId: 'ana', data: '2026-10-06', tipo: 'hora_extra' as const, minutos: 30,
+    minutosTrabalhados: 520, minutosPrevistos: 490, estado: 'aprovado' as const, criadoEm: '',
+  };
+  const atestado = (dia: string) =>
+    ({ id: `at-${dia}`, colaboradorId: 'ana', dataInicio: dia, dataFim: dia, tipo: 'atestado', estado: 'aprovada', criadoEm: '' }) as any;
+  const sabado = [batida('ana', '2026-10-03', 'entrada', '08:00'), batida('ana', '2026-10-03', 'saida', '12:00')];
+
+  const plano = planejarApuracao(
+    dados({
+      batidas: [...batidas, ...sabado],
+      ajustes: [debitoAprovado, extraAprovada],
+      ausencias: [atestado('2026-10-05'), atestado('2026-10-06')],
+    }),
+    opcoes
+  );
+  expect(plano.gravar.find((a) => a.id === 'deb-0510')).toMatchObject({
+    estado: 'aprovado', minutos: 0, aprovadorNome: 'Ausência aprovada',
+  });
+  expect(plano.gravar.find((a) => a.id === 'ext-0606')).toBeUndefined();
+  expect(plano.novosNaFila).toEqual([]);
+
+  // Sem o atestado, o débito decidido não é reaberto
+  const semAtestado = planejarApuracao(
+    dados({ batidas: [...batidas, ...sabado], ajustes: [debitoAprovado, extraAprovada] }),
+    opcoes
+  );
+  expect(semAtestado.gravar.find((a) => a.id === 'deb-0510')).toBeUndefined();
+
+  // E a noite seguinte não regrava o que já zerou
+  const deNovo = planejarApuracao(
+    dados({
+      batidas: [...batidas, ...sabado],
+      ajustes: [...plano.gravar, extraAprovada],
+      ausencias: [atestado('2026-10-05'), atestado('2026-10-06')],
+    }),
+    opcoes
+  );
+  expect(deNovo.gravar).toEqual([]);
+});
+
 test('a madrugada fecha o saldo de compensação do sábado do mês anterior', () => {
   /*
     Hoje é 08/10: o mês fechado é setembro. A Ana cumpriu dois dias úteis

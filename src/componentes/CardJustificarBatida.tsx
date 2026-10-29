@@ -10,7 +10,7 @@
  * — e um motivo lembrado por alto vale menos que nenhum.
  */
 import React, { useState } from 'react';
-import { AlertTriangle, Paperclip, X, Check } from 'lucide-react';
+import { AlertTriangle, Paperclip, X, Check, Stethoscope } from 'lucide-react';
 
 interface Props {
   aberto: boolean;
@@ -19,7 +19,12 @@ interface Props {
   /** O que saiu fora da janela, já formatado. */
   descricao: string;
   aoCancelar: () => void;
-  aoConfirmar: (dados: { motivo: string; anexo?: { conteudo: string; nome: string } }) => void;
+  aoConfirmar: (dados: {
+    motivo: string;
+    anexo?: { conteudo: string; nome: string };
+    /** O anexo é atestado: vai ao RH (`enviarAtestadoDaBatida`), não à fila da líder. */
+    ehAtestado: boolean;
+  }) => void;
 }
 
 /** 4 MB: comprovante é foto de papel, não vídeo. */
@@ -34,6 +39,7 @@ export const CardJustificarBatida: React.FC<Props> = ({
 }) => {
   const [motivo, setMotivo] = useState('');
   const [anexo, setAnexo] = useState<{ conteudo: string; nome: string } | null>(null);
+  const [ehAtestado, setEhAtestado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   if (!aberto) return null;
@@ -63,7 +69,7 @@ export const CardJustificarBatida: React.FC<Props> = ({
       setErro('Escreva o motivo para concluir a batida.');
       return;
     }
-    aoConfirmar({ motivo: motivo.trim(), anexo: anexo || undefined });
+    aoConfirmar({ motivo: motivo.trim(), anexo: anexo || undefined, ehAtestado: !!anexo && ehAtestado });
   };
 
   return (
@@ -119,7 +125,10 @@ export const CardJustificarBatida: React.FC<Props> = ({
                 </span>
                 <button
                   type="button"
-                  onClick={() => setAnexo(null)}
+                  onClick={() => {
+                    setAnexo(null);
+                    setEhAtestado(false);
+                  }}
                   className="p-1 rounded-lg text-[var(--c-texto-3)] hover:text-red-600"
                   aria-label="Remover anexo"
                 >
@@ -137,6 +146,42 @@ export const CardJustificarBatida: React.FC<Props> = ({
                   className="hidden"
                 />
               </label>
+            )}
+
+            {/* Atestado é do RH: marcado, o documento não vai à fila da líder */}
+            {anexo && (
+              <button
+                type="button"
+                id="anexo-e-atestado"
+                role="checkbox"
+                aria-checked={ehAtestado}
+                onClick={() => setEhAtestado((v) => !v)}
+                className={`mt-2 w-full flex items-start gap-2.5 p-2.5 rounded-xl border text-left transition-colors ${
+                  ehAtestado
+                    ? 'bg-[var(--c-acento)]/10 border-[var(--c-acento)]/40'
+                    : 'bg-[var(--c-canvas)] border-[var(--c-borda)] hover:border-[var(--c-acento)]/40'
+                }`}
+              >
+                <span
+                  className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center flex-shrink-0 border ${
+                    ehAtestado
+                      ? 'bg-[var(--c-acento)] border-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                      : 'border-[var(--c-borda-forte)]'
+                  }`}
+                >
+                  {ehAtestado && <Check className="w-3 h-3" />}
+                </span>
+                <span className="min-w-0">
+                  <span className="text-xs font-semibold text-[var(--c-texto)] flex items-center gap-1.5">
+                    <Stethoscope className="w-3.5 h-3.5 text-[var(--c-texto-2)]" />
+                    É atestado ou declaração médica
+                  </span>
+                  <span className="text-[11px] text-[var(--c-texto-3)] block mt-0.5 leading-snug">
+                    Vai direto para o RH, e não para quem aprova a sua jornada. Aprovado, o
+                    tempo deste dia é abonado.
+                  </span>
+                </span>
+              </button>
             )}
           </div>
 

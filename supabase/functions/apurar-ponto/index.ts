@@ -601,12 +601,13 @@ var decidirLevantamento = (pessoa, data, agora) => {
   if (ehDiaDeFolga(data))
     return { acao: "nada" };
   if (situacaoEfetiva(pessoa.id, data) !== "normal") {
-    const pendente = fonte.ajusteDoDia(pessoa.id, data);
-    if (pendente && pendente.estado === "pendente") {
+    const doDia = fonte.ajusteDoDia(pessoa.id, data);
+    const debitoConfirmado = doDia?.estado === "aprovado" && doDia.tipo === "debito" && doDia.minutos > 0;
+    if (doDia && (doDia.estado === "pendente" || debitoConfirmado)) {
       return {
         acao: "resolverPorAusencia",
         ajuste: {
-          ...pendente,
+          ...doDia,
           minutos: 0,
           estado: "aprovado",
           aprovadorId: undefined,

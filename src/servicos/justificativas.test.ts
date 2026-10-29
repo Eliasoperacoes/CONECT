@@ -293,6 +293,68 @@ test('APROVADA: o dia deixa de ser "sem batida" e ganha situação', async () =>
   expect(situacaoDoDia(ANA.id, '2026-09-19')).toBe('normal');
 });
 
+test('o RH aprova o atestado e o débito do dia cai na hora, mesmo já aprovado pela líder', async () => {
+  /*
+    A Beatriz voltou do médico 1h18 depois do almoço (28/10/2026). O
+    atestado é do RH, e a líder nem o enxerga: o levantamento da fila dela
+    nunca veria o dia abonado. Quem resolve o débito é a aprovação do RH.
+  */
+  const { gravarLista } = await import('./cacheDeLeitura');
+  const { servicoPonto } = await import('./ponto');
+  const debito = (id: string, data: string, estado: 'aprovado' | 'pendente') => ({
+    id, colaboradorId: 'ana', data, tipo: 'debito', minutos: 78, minutosTrabalhados: 412,
+    minutosPrevistos: 490, estado, criadoEm: '',
+  });
+  gravarLista('conecta_v4_ajustes_jornada', [
+    debito('aprovado-pela-lider', '2026-09-16', 'aprovado'),
+    debito('na-fila', '2026-09-17', 'pendente'),
+    debito('fora-do-atestado', '2026-09-21', 'aprovado'),
+  ]);
+
+  await pedirAtestado('2026-09-16', '2026-09-18');
+  logado = RH;
+  await decidirAusencia(pendenciasParaDecidir()[0].justificativa.id, true);
+
+  expect(servicoPonto.obterAjusteDoDia('ana', '2026-09-16')).toMatchObject({ minutos: 0, aprovadorNome: 'Ausência aprovada' });
+  expect(servicoPonto.obterAjusteDoDia('ana', '2026-09-17')).toMatchObject({ minutos: 0, estado: 'aprovado' });
+  expect(servicoPonto.obterAjusteDoDia('ana', '2026-09-21')).toMatchObject({ minutos: 78 });
+  expect(servicoPonto.obterSaldoAcumulado('ana')).toBe(-78);
+});
+
+test('o atestado anexado na batida vira solicitação do RH, e a líder não o recebe', async () => {
+  /*
+    Era o caso da Beatriz (28/10/2026): o atestado ia junto com o dia de
+    ponto para a fila da líder e nunca chegava ao RH nem ao painel.
+  */
+  const { enviarAtestadoDaBatida, AVISO_DO_ATESTADO_NA_BATIDA } = await import('./justificativas');
+  const res = await enviarAtestadoDaBatida({
+    data: '2026-10-28',
+    motivo: 'estava no médico, com atestado',
+    anexoCaminho: 'ausencias/ana/2026-10-28.jpg',
+    anexoNome: 'atestado.jpg',
+  });
+
+  expect(res).toEqual({ sucesso: true, motivo: `estava no médico, com atestado · ${AVISO_DO_ATESTADO_NA_BATIDA}` });
+  expect(minhasJustificativas()[0]).toMatchObject({
+    tipo: 'atestado', dataInicio: '2026-10-28', dataFim: '2026-10-28', estado: 'pendente',
+    anexoCaminho: 'ausencias/ana/2026-10-28.jpg',
+  });
+
+  logado = CHEFE;
+  expect(pendenciasParaDecidir()).toHaveLength(0);
+  logado = RH;
+  expect(pendenciasParaDecidir().map((p) => p.justificativa.tipo)).toEqual(['atestado']);
+});
+
+test('a batida com atestado manda o documento ao RH e não ao dia de ponto', async () => {
+  // A tela é quem liga as duas pontas; se o anexo voltar a seguir com a
+  // batida, a líder volta a ler o atestado (LGPD) e o RH não o recebe
+  const tela = await Bun.file(new URL('../componentes/ModalBaterPonto.tsx', import.meta.url)).text();
+  expect(tela).toContain("`${ehAtestado ? 'ausencias' : 'ponto'}/${eu.id}`");
+  expect(tela).toMatch(/if \(atestado\.sucesso\) \{\s*motivoDaBatida = atestado\.motivo;\s*anexoCaminho = undefined;/);
+  expect(tela).toContain('confirmarCodigo(segurada.conteudo, { motivo: motivoDaBatida, anexoCaminho })');
+});
+
 test('PENDENTE não muda o dia', async () => {
   // Mudar o espelho antes de alguém decidir seria o mesmo que a hora extra
   // entrar no saldo sem aprovação

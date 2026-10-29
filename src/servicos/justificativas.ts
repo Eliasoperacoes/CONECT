@@ -265,6 +265,39 @@ export const solicitarAusencia = async (dados: {
 };
 
 /**
+ * O ATESTADO ENTREGUE NA BATIDA (Beatriz, 28/10/2026).
+ *
+ * Quem volta do médico bate o retorno atrasada, e o motivo é pedido ali
+ * mesmo. O atestado anexado nesse cartão ficava preso ao dia de ponto: ia
+ * para a fila da líder, que lia o documento e só podia aprovar o débito,
+ * e não chegava ao RH nem ao painel de atestados.
+ *
+ * Marcado como atestado, ele vira a MESMA solicitação de "Justificar
+ * ausência": vai ao RH e, aprovado, abona o dia. O dia de ponto leva só o
+ * motivo, com o aviso de que o documento está com o RH.
+ */
+export const AVISO_DO_ATESTADO_NA_BATIDA = 'Atestado enviado ao RH';
+
+export const enviarAtestadoDaBatida = async (dados: {
+  data: string;
+  motivo: string;
+  anexoCaminho?: string;
+  anexoNome?: string;
+}): Promise<{ sucesso: true; motivo: string } | { sucesso: false; erro: string }> => {
+  const res = await solicitarAusencia({
+    dataInicio: dados.data,
+    dataFim: dados.data,
+    tipo: 'atestado',
+    observacao: dados.motivo,
+    anexoCaminho: dados.anexoCaminho,
+    anexoNome: dados.anexoNome,
+  });
+  return res.sucesso
+    ? { sucesso: true, motivo: `${dados.motivo} · ${AVISO_DO_ATESTADO_NA_BATIDA}` }
+    : { sucesso: false, erro: res.erro || 'O atestado não foi enviado.' };
+};
+
+/**
  * A LIDERANÇA LANÇA A AUSÊNCIA DA EQUIPE, sem esperar pedido.
  *
  * `solicitarAusencia` cobre o que parte da pessoa — atestado, folga. Não
@@ -545,6 +578,13 @@ export const decidirAusencia = async (
     'usuario',
     `${eu.nome} ${aprovada ? 'aprovou' : 'recusou'} ${alvo.tipo} de ${dono.nome}.`
   );
+
+  // O débito que esperava nesses dias cai agora. Sem rede, cai na madrugada
+  if (aprovada) {
+    await servicoPonto
+      .resolverDiasPorAusencia(dono.id, diasDoPeriodo(alvo.dataInicio, alvo.dataFim))
+      .catch(() => 0);
+  }
 
   avisarDecisaoDePonto({
     tabela: 'justificativas_ausencia',

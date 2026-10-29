@@ -2298,6 +2298,38 @@ class ServicoPonto {
   }
 
   /**
+   * A AUSÊNCIA APROVADA RESOLVE OS DIAS DELA NA HORA.
+   *
+   * Quem aprova o atestado é o RH, e o líder nem o enxerga: o levantamento
+   * que corre na fila dele nunca vê o dia abonado. Sem isto, o débito do
+   * dia esperava a madrugada para cair. A regra é a do levantamento
+   * (`decidirLevantamento`); aqui só se grava.
+   */
+  async resolverDiasPorAusencia(colaboradorId: string, datas: string[]): Promise<number> {
+    const pessoa = bancoDados.obterColaboradorPorId(colaboradorId);
+    if (!pessoa || datas.length === 0) return 0;
+
+    // A folga trabalhada não é folga: sem as batidas do dia, ela pareceria gozada
+    await this.garantirBatidasDoPeriodo(datas[0], datas[datas.length - 1]);
+
+    let resolvidos = 0;
+    for (const data of datas) {
+      const decisao = decidirLevantamento(pessoa, data, new Date().toISOString());
+      if (decisao.acao !== 'resolverPorAusencia') continue;
+
+      if (usandoNuvem()) {
+        const res = await nuvem.salvarAjuste(decisao.ajuste);
+        if (!res.sucesso) continue;
+      }
+      this.gravarAjustes([...this.lerAjustes().filter((a) => a.id !== decisao.ajuste.id), decisao.ajuste]);
+      resolvidos++;
+    }
+
+    if (resolvidos > 0) this.notificar();
+    return resolvidos;
+  }
+
+  /**
    * A decisão sobre um dia sem fechar.
    *
    * `abonar` = o dia conta como jornada normal, saldo zero. Caso do

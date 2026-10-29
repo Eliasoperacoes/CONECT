@@ -1094,12 +1094,23 @@ export const decidirLevantamento = (
       um "confirmar débito" por engano tirava 4h dela (05/10/2026). Sai
       como as outras resolvidas pelo próprio dia: aprovado, com zero.
     */
-    const pendente = fonte.ajusteDoDia(pessoa.id, data);
-    if (pendente && pendente.estado === 'pendente') {
+    const doDia = fonte.ajusteDoDia(pessoa.id, data);
+    /*
+      O DÉBITO JÁ CONFIRMADO CAI TAMBÉM. O −1h18 do almoço da Beatriz
+      (28/10/2026) foi à fila da líder com o atestado da consulta junto:
+      aprovado ali antes de o RH aprovar o atestado, o espelho mostraria o
+      dia abonado e o banco seguiria com o desconto. Quem confirmou o
+      débito decidiu sobre um dia sem atestado, que deixou de existir. A
+      hora extra fica: o abono perdoa o que faltou, não apaga o que foi
+      trabalhado.
+    */
+    const debitoConfirmado =
+      doDia?.estado === 'aprovado' && doDia.tipo === 'debito' && doDia.minutos > 0;
+    if (doDia && (doDia.estado === 'pendente' || debitoConfirmado)) {
       return {
         acao: 'resolverPorAusencia',
         ajuste: {
-          ...pendente,
+          ...doDia,
           minutos: 0,
           estado: 'aprovado',
           aprovadorId: undefined,

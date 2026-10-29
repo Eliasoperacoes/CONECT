@@ -20,11 +20,13 @@ import {
   CameraOff,
   Inbox,
   Loader2,
+  Stethoscope,
 } from 'lucide-react';
 import { temComprovante } from '../servicos/comprovanteDeBatida';
 import { aBatidaQueValeu, textoDaRepetida } from '../servicos/batidaRepetida';
 import { RegistroPonto, ROTULO_MARCACAO, ROTULO_FORA_DA_JORNADA, precisaEscolherTurno } from '../tipos';
 import { servicoPonto, dataDeHoje } from '../servicos/ponto';
+import { enviarAtestadoDaBatida } from '../servicos/justificativas';
 import { bancoDados } from '../servicos/bancoDados';
 import { enviarAnexo } from '../servicos/anexos';
 import { abrirFluxo, soltarFluxo, assinarRetomada, CAPA_VAZIA_DO_VIDEO } from '../servicos/midia';
@@ -80,6 +82,8 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
   } | null>(null);
   /** Batida segurada esperando a pessoa dizer o horário dela. */
   const [escolhendoTurno, setEscolhendoTurno] = useState<string | null>(null);
+  /** O atestado anexado no motivo desta batida: chegou ao RH ou não. */
+  const [atestadoDaBatida, setAtestadoDaBatida] = useState<'enviado' | 'falhou' | null>(null);
   // Pergunta uma vez por batida: quem respondeu "agora não" não é perguntado de novo aqui
   const refTurnoPerguntado = useRef(false);
 
@@ -272,6 +276,7 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
       setModoDigitar(false);
       setCodigoDigitado('');
       setRegistroFeito(null);
+      setAtestadoDaBatida(null);
       return;
     }
 
@@ -440,6 +445,35 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
                   {registroFeito.metodo === 'qrcode' ? 'QR lido' : 'código digitado'}
                 </p>
               </div>
+              {atestadoDaBatida && (
+                <div
+                  id="atestado-da-batida"
+                  className={`w-full p-3 rounded-xl border text-left flex items-start gap-2.5 ${
+                    atestadoDaBatida === 'enviado'
+                      ? 'bg-emerald-500/10 border-emerald-500/20'
+                      : 'bg-amber-500/10 border-amber-500/25'
+                  }`}
+                >
+                  <Stethoscope
+                    className={`w-4 h-4 flex-shrink-0 mt-0.5 ${
+                      atestadoDaBatida === 'enviado' ? 'text-emerald-600' : 'text-amber-600'
+                    }`}
+                  />
+                  <span className="text-xs text-[var(--c-texto-2)] leading-relaxed">
+                    {atestadoDaBatida === 'enviado' ? (
+                      <>
+                        <strong className="text-[var(--c-texto)]">Atestado enviado ao RH.</strong> Aprovado,
+                        o tempo deste dia é abonado.
+                      </>
+                    ) : (
+                      <>
+                        <strong className="text-[var(--c-texto)]">O atestado não chegou ao RH.</strong> Envie
+                        de novo em Ponto › Justificar ausência.
+                      </>
+                    )}
+                  </span>
+                </div>
+              )}
               {/* O comprovante da batida, logo depois de bater (Portaria 671/2021) */}
               {aoVerComprovante && temComprovante(registroFeito) && (
                 <button
@@ -612,7 +646,7 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
         rotuloMarcacao={pedindoMotivo?.rotulo || ''}
         descricao={pedindoMotivo?.descricao || ''}
         aoCancelar={() => setPedindoMotivo(null)}
-        aoConfirmar={async ({ motivo, anexo }) => {
+        aoConfirmar={async ({ motivo, anexo, ehAtestado }) => {
           const segurada = pedindoMotivo;
           setPedindoMotivo(null);
           if (!segurada) return;
@@ -629,14 +663,36 @@ export const ModalBaterPonto: React.FC<PropsModalBaterPonto> = ({
             const eu = bancoDados.obterColaboradorAtual();
             const enviado = await enviarAnexo(
               anexo.conteudo,
-              `ponto/${eu.id}`,
+              // O atestado mora com os documentos de ausência, que são do RH
+              `${ehAtestado ? 'ausencias' : 'ponto'}/${eu.id}`,
               `${dataDeHoje()}-${Date.now()}`,
               anexo.nome
             );
             anexoCaminho = enviado?.caminho;
           }
 
-          await confirmarCodigo(segurada.conteudo, { motivo, anexoCaminho });
+          /*
+            O ATESTADO VAI AO RH, e o dia de ponto leva só o motivo. Se não
+            subir, o documento segue com a batida, como antes: a líder vê-lo
+            é melhor do que ninguém ver.
+          */
+          let motivoDaBatida = motivo;
+          setAtestadoDaBatida(null);
+          if (ehAtestado) {
+            const atestado = await enviarAtestadoDaBatida({
+              data: dataDeHoje(),
+              motivo,
+              anexoCaminho,
+              anexoNome: anexo?.nome,
+            });
+            setAtestadoDaBatida(atestado.sucesso ? 'enviado' : 'falhou');
+            if (atestado.sucesso) {
+              motivoDaBatida = atestado.motivo;
+              anexoCaminho = undefined;
+            }
+          }
+
+          await confirmarCodigo(segurada.conteudo, { motivo: motivoDaBatida, anexoCaminho });
         }}
       />
 
