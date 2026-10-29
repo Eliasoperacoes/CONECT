@@ -108,3 +108,14 @@ test('o B de Pirassununga segue com o almoço fixo das 11:00', () => {
   expect(hora(esperados.saida_almoco)).toBe('11:00');
   expect(hora(esperados.retorno_almoco)).toBe('12:30');
 });
+
+test('a tabela de horários para as gerentes traz o relógio de cada turno (horarios-dos-colaboradores.sql)', async () => {
+  const { TURNOS } = await import('../tipos');
+  const sql = await Bun.file(new URL('../../supabase/horarios-dos-colaboradores.sql', import.meta.url)).text();
+  for (const t of TURNOS.filter((t) => t.chave !== 'E0')) {
+    // A chave do turno aparece numa regra, com a entrada e a saída dele
+    expect({ turno: t.chave, tem: sql.includes(`'${t.chave}'`) }).toEqual({ turno: t.chave, tem: true });
+    expect({ turno: t.chave, entrada: sql.includes(`'${t.entrada}'`) }).toEqual({ turno: t.chave, entrada: true });
+    expect({ turno: t.chave, saida: sql.includes(`'${t.saida}'`) }).toEqual({ turno: t.chave, saida: true });
+  }
+});
