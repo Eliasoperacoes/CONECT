@@ -56,6 +56,56 @@ const CHAVE_LINHAS_CONVERSAS = 'conecta_v4_linhas_conversas';
 const CHAVE_LINHAS_PARTICIPANTES = 'conecta_v4_linhas_participantes';
 const CHAVE_LINHAS_MENSAGENS = 'conecta_v4_linhas_mensagens';
 const CHAVE_LINHAS_LEITURAS = 'conecta_v4_linhas_leituras';
+
+/** As leituras que ainda não chegaram ao banco (`marcarLeitura`) */
+const CHAVE_LEITURAS_PENDENTES = 'conecta_v4_leituras_pendentes';
+/** Parada há mais de uma semana, a leitura não vai mais subir: sai da fila */
+const VALIDADE_DA_LEITURA_PENDENTE_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Recusas que não mudam tentando de novo: a mensagem não existe mais
+ * (23503) ou a regra não deixa mais (42501, saiu da conversa).
+ */
+const RECUSAS_SEM_VOLTA = new Set(['23503', '42501']);
+
+/** Uma leitura na fila: mensagem, pessoa e quando entrou */
+interface LeituraPendente {
+  m: string;
+  c: string;
+  em: number;
+}
+
+export const lerLeiturasPendentes = (agora = Date.now()): LeituraPendente[] => {
+  try {
+    const lista = JSON.parse(localStorage.getItem(CHAVE_LEITURAS_PENDENTES) || '[]') as LeituraPendente[];
+    return Array.isArray(lista) ? lista.filter((p) => agora - p.em < VALIDADE_DA_LEITURA_PENDENTE_MS) : [];
+  } catch {
+    return [];
+  }
+};
+
+const gravarLeiturasPendentes = (lista: LeituraPendente[]): void => {
+  try {
+    if (lista.length > 0) localStorage.setItem(CHAVE_LEITURAS_PENDENTES, JSON.stringify(lista));
+    else localStorage.removeItem(CHAVE_LEITURAS_PENDENTES);
+  } catch {
+    /* aparelho cheio: a leitura sobe na próxima vez que a conversa abrir */
+  }
+};
+
+const guardarLeiturasPendentes = (mensagemIds: string[], colaboradorId: string): void => {
+  const atuais = lerLeiturasPendentes();
+  const ja = new Set(atuais.map((p) => `${p.m}|${p.c}`));
+  const agora = Date.now();
+  gravarLeiturasPendentes([
+    ...atuais,
+    ...mensagemIds.filter((m) => !ja.has(`${m}|${colaboradorId}`)).map((m) => ({ m, c: colaboradorId, em: agora })),
+  ]);
+};
+
+const tirarLeiturasPendentes = (mensagemIds: string[], colaboradorId: string): void => {
+  const saem = new Set(mensagemIds);
+  gravarLeiturasPendentes(lerLeiturasPendentes().filter((p) => !(p.c === colaboradorId && saem.has(p.m))));
+};
 /**
  * Conversas que já sabemos existir no banco.
  *
@@ -789,6 +839,8 @@ class PonteComunicacao {
       assim, ordenando pela chave que cada receita declara.
     */
     const dono = localStorage.getItem('conecta_v4_colaborador_atual');
+    // A leitura que não subiu antes vai primeiro: assim ela já desce junto (marcarLeitura)
+    await this.reenviarLeiturasPendentes(dono);
     const resultados = await Promise.all([
       sincronizarPeloQueMudou<LinhaConversa, LinhaConversa>({
         tabela: 'conversas',
@@ -864,6 +916,12 @@ class PonteComunicacao {
       atual.push(l.colaborador_id);
       lidaPorMensagem.set(l.mensagem_id, atual);
     });
+    // A leitura desta pessoa que ainda está na fila conta como feita (marcarLeitura)
+    for (const p of lerLeiturasPendentes()) {
+      if (p.c !== dono) continue;
+      const atual = lidaPorMensagem.get(p.m) || [];
+      if (!atual.includes(p.c)) lidaPorMensagem.set(p.m, [...atual, p.c]);
+    }
 
     const listaMensagens: Mensagem[] = mensagens.map((linha) =>
       paraMensagemDaLinha(linha, lidaPorMensagem.get(linha.id) || [])
@@ -1293,19 +1351,48 @@ class PonteComunicacao {
     return { sucesso: true, caminhos: (data as string[] | null) || [] };
   }
 
-  /** Marca como lidas. Repetir não é erro: a chave é (mensagem, pessoa). */
+  /**
+   * Marca como lidas. Repetir não é erro: a chave é (mensagem, pessoa).
+   *
+   * A LEITURA QUE NÃO SUBIU NÃO PODE SE PERDER (30/10/2026). Abrir a conversa
+   * marca no aparelho na hora e manda ao banco uma vez — e, se a rede da loja
+   * falhava nesse instante, ninguém tentava de novo. A carga seguinte trazia
+   * o banco sem a leitura e a mensagem voltava a contar como não lida: o
+   * número que aparece e, aberta a conversa, não tem nada de novo.
+   *
+   * Agora ela vai para a fila do aparelho antes de sair e só deixa a fila
+   * quando o banco confirma — ou recusa de vez. Enquanto espera, conta como
+   * lida na tela (`cargaCompletaDasConversas`), e a carga reenvia.
+   */
   async marcarLeitura(mensagemIds: string[], colaboradorId: string): Promise<boolean> {
     if (!supabase || mensagemIds.length === 0) return false;
+    guardarLeiturasPendentes(mensagemIds, colaboradorId);
+    return this.enviarLeituras(mensagemIds, colaboradorId);
+  }
 
-    const { error } = await supabase.from('leituras_mensagem').upsert(
-      mensagemIds.map((mensagemId) => ({
-        mensagem_id: mensagemId,
-        colaborador_id: colaboradorId,
-      })),
-      { onConflict: 'mensagem_id,colaborador_id', ignoreDuplicates: true }
-    );
+  private async enviarLeituras(mensagemIds: string[], colaboradorId: string): Promise<boolean> {
+    if (!supabase) return false;
+    try {
+      const { error } = await supabase.from('leituras_mensagem').upsert(
+        mensagemIds.map((mensagemId) => ({
+          mensagem_id: mensagemId,
+          colaborador_id: colaboradorId,
+        })),
+        { onConflict: 'mensagem_id,colaborador_id', ignoreDuplicates: true }
+      );
+      // Gravou, ou nunca vai gravar (mensagem apagada, conversa de que saiu): sai da fila
+      if (!error || RECUSAS_SEM_VOLTA.has(error.code)) tirarLeiturasPendentes(mensagemIds, colaboradorId);
+      return !error;
+    } catch {
+      return false; // Sem rede: fica na fila
+    }
+  }
 
-    return !error;
+  /** Reenvia o que ficou na fila, de quem está no aparelho. */
+  private async reenviarLeiturasPendentes(meuId: string | null): Promise<void> {
+    if (!meuId) return;
+    const minhas = lerLeiturasPendentes().filter((p) => p.c === meuId).map((p) => p.m);
+    if (minhas.length > 0) await this.enviarLeituras(minhas, meuId);
   }
 
   /**

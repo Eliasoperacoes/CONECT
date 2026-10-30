@@ -66,9 +66,25 @@ const consulta = (tabela: Tabela, colunas: string) => {
 
 const sha = (chaves: string[]) => new Bun.CryptoHasher('sha256').update([...chaves].sort().join(',')).digest('hex');
 
+/** Como o banco responde à gravação da leitura: grava, a rede caiu, ou recusa de vez */
+let gravacaoDaLeitura: 'grava' | 'sem-rede' | 'recusa' = 'grava';
+
+const gravarLeituras = async (linhas: Array<{ mensagem_id: string; colaborador_id: string }>) => {
+  if (gravacaoDaLeitura === 'sem-rede') return { error: { message: 'TypeError: Failed to fetch', code: '' } };
+  if (gravacaoDaLeitura === 'recusa') return { error: { message: 'new row violates row-level security policy', code: '42501' } };
+  for (const l of linhas) {
+    const ja = banco.leituras_mensagem.some((x) => x.mensagem_id === l.mensagem_id && x.colaborador_id === l.colaborador_id);
+    if (!ja) banco.leituras_mensagem.push(leitura(l.mensagem_id, l.colaborador_id));
+  }
+  return { error: null };
+};
+
 mock.module('./supabase', () => ({
   supabase: {
-    from: (tabela: Tabela) => ({ select: (colunas: string) => consulta(tabela, colunas) }),
+    from: (tabela: Tabela) => ({
+      select: (colunas: string) => consulta(tabela, colunas),
+      upsert: (linhas: any[]) => gravarLeituras(linhas),
+    }),
     rpc: async (_nome: string, args: { p_tabela: Tabela }) => {
       if (!temResumo) return { data: null, error: { message: 'Could not find the function' } };
       const linhas = banco[args.p_tabela];
@@ -83,7 +99,7 @@ mock.module('./supabase', () => ({
   temSessaoViva: () => true,
 }));
 
-const { nuvemComunicacao } = await import('./nuvemComunicacao');
+const { nuvemComunicacao, lerLeiturasPendentes } = await import('./nuvemComunicacao');
 
 const conversa = (id: string, nome: string) => ({
   id, tipo: 'grupo', nome, foto: null, descricao: null, criado_por_id: 'ana',
@@ -113,6 +129,7 @@ beforeEach(() => {
   armazenamento.setItem('conecta_v4_colaborador_atual', 'ana');
   relogio = 0;
   temResumo = true;
+  gravacaoDaLeitura = 'grava';
   banco = {
     conversas: [conversa('g1', 'Balcão')],
     participantes: [participante('g1', 'ana'), participante('g1', 'bia')],
@@ -199,4 +216,48 @@ test('SEM O SCRIPT NO BANCO, a carga completa de antes monta o mesmo chat', asyn
   await nuvemComunicacao.sincronizarConversas();
   expect(total()).toBe(6);
   expect(lerChat()).toEqual(pelaMudanca);
+});
+
+/*
+  A LEITURA QUE NÃO SUBIU (30/10/2026). Abrir a conversa marcava a leitura no
+  aparelho e mandava ao banco uma vez; com a rede da loja falhando naquele
+  instante, a carga seguinte trazia o banco sem ela e a mensagem voltava a
+  contar como não lida — o número que aparece e não tem nada de novo.
+*/
+const naoLidaPelaAna = (id: string) => !lerChat().mensagens.find((m: any) => m.id === id).lidaPor.includes('ana');
+
+test('A LEITURA QUE NÃO SUBIU não volta como não lida, e sobe quando a rede volta', async () => {
+  banco.mensagens.push(mensagem('m3', 'bia', 'chegou a peça', '2026-10-30T09:00:00.000Z'));
+  await nuvemComunicacao.sincronizarConversas();
+  expect(naoLidaPelaAna('m3')).toBe(true);
+
+  // A Ana abre a conversa com a rede caída
+  gravacaoDaLeitura = 'sem-rede';
+  expect(await nuvemComunicacao.marcarLeitura(['m3'], 'ana')).toBe(false);
+  expect(lerLeiturasPendentes().map((p) => p.m)).toEqual(['m3']);
+
+  // A carga seguinte, ainda sem rede para gravar: segue lida na tela
+  await nuvemComunicacao.sincronizarConversas();
+  expect(naoLidaPelaAna('m3')).toBe(false);
+
+  // A rede volta: a próxima carga reenvia, o banco grava e a fila esvazia
+  gravacaoDaLeitura = 'grava';
+  await nuvemComunicacao.sincronizarConversas();
+  expect(banco.leituras_mensagem.some((l) => l.mensagem_id === 'm3' && l.colaborador_id === 'ana')).toBe(true);
+  expect(lerLeiturasPendentes()).toEqual([]);
+  expect(naoLidaPelaAna('m3')).toBe(false);
+});
+
+test('recusa definitiva (saiu da conversa, mensagem apagada) tira a leitura da fila', async () => {
+  gravacaoDaLeitura = 'recusa';
+  expect(await nuvemComunicacao.marcarLeitura(['m1'], 'ana')).toBe(false);
+  expect(lerLeiturasPendentes()).toEqual([]);
+});
+
+test('a fila é de quem está no aparelho: a leitura de outra pessoa não conta para esta', async () => {
+  banco.mensagens.push(mensagem('m3', 'bia', 'chegou a peça', '2026-10-30T09:00:00.000Z'));
+  gravacaoDaLeitura = 'sem-rede';
+  await nuvemComunicacao.marcarLeitura(['m3'], 'cris');
+  await nuvemComunicacao.sincronizarConversas();
+  expect(naoLidaPelaAna('m3')).toBe(true);
 });
