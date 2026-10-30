@@ -195,6 +195,8 @@ operacoes (tabela, comando) as (values
   ('colaboradores', 'INSERT'),
   ('colaboradores', 'SELECT'),
   ('colaboradores', 'UPDATE'),
+  -- O contador das fichas: a carga dos cadastros só desce quando ele muda (30/10/2026)
+  ('colaboradores_versao', 'SELECT'),
   ('assinaturas', 'SELECT'),
   ('assinaturas_do_responsavel', 'SELECT'),
   ('compensacao_sabado', 'SELECT'),

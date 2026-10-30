@@ -124,6 +124,36 @@ const CHAVE_AJUSTES = 'conecta_v4_ajustes_jornada';
 const CHAVE_SINC_REGISTROS_PONTO = 'conecta_v4_sinc_registros_ponto';
 const CHAVE_SINC_AJUSTES = 'conecta_v4_sinc_ajustes_jornada';
 
+/** O contador das fichas na última carga dos cadastros (`sincronizarColaboradores`) */
+const CHAVE_SINC_COLABORADORES = 'conecta_v4_sinc_colaboradores';
+/** Menos que as oito horas da assinatura das fotos (anexos.ts) */
+const VALIDADE_DOS_CADASTROS_MS = 6 * 60 * 60 * 1000;
+
+interface VersaoDasFichas {
+  versao: number;
+  dono: string | null;
+  /** Quando a lista foi baixada inteira */
+  em: number;
+}
+
+const lerVersaoDasFichas = (): VersaoDasFichas | null => {
+  try {
+    const bruto = localStorage.getItem(CHAVE_SINC_COLABORADORES);
+    return bruto ? (JSON.parse(bruto) as VersaoDasFichas) : null;
+  } catch {
+    return null;
+  }
+};
+
+const gravarVersaoDasFichas = (v: VersaoDasFichas | null): void => {
+  try {
+    if (v) localStorage.setItem(CHAVE_SINC_COLABORADORES, JSON.stringify(v));
+    else localStorage.removeItem(CHAVE_SINC_COLABORADORES);
+  } catch {
+    /* sem o contador, a próxima carga é completa — nada se perde */
+  }
+};
+
 /**
  * ===================================================================
  * A JANELA DO PONTO — por que o cache não pode ser "tudo"
@@ -757,8 +787,48 @@ class PonteNuvem {
     return (diretorio.data as unknown as LinhaColaborador[]).map((d) => ({ ...d, ...(porId.get(d.id) || {}) }) as LinhaColaborador);
   }
 
+  /**
+   * O contador das fichas (`colaboradores_versao`), que o banco sobe a cada
+   * mudança em qualquer ficha. Nulo quando não deu para ler: aí se baixa tudo.
+   */
+  private async versaoDasFichas(): Promise<number | null> {
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase.from('colaboradores_versao').select('versao').limit(1);
+      const versao = (data as Array<{ versao: number | string }> | null)?.[0]?.versao;
+      return error || versao === undefined ? null : Number(versao);
+    } catch {
+      return null;
+    }
+  }
+
   async sincronizarColaboradores(): Promise<boolean> {
     if (!supabase) return false;
+
+    /*
+      SÓ QUANDO ALGUMA FICHA MUDOU (30/10/2026). Esta carga roda a cada
+      abertura do aplicativo e a cada volta depois de o celular derrubar a
+      conexão — 34 vezes por pessoa por dia, medido em 30/10 —, e trazia a
+      rede inteira, com as fichas reservadas, a cada vez. O banco já conta
+      as mudanças nas fichas; contador igual ao da última carga, nada
+      mudou e nada desce.
+
+      Vale no máximo seis horas: as fotos vêm com endereço assinado por
+      oito (abaixo), e passado disso a foto quebraria na tela. Outra pessoa
+      no mesmo celular, ou a lista sumida do aparelho, também baixam tudo.
+    */
+    const versao = await this.versaoDasFichas();
+    const dono = localStorage.getItem(CHAVE_COLABORADOR_ATUAL);
+    const guardada = lerVersaoDasFichas();
+    if (
+      versao !== null &&
+      guardada?.versao === versao &&
+      guardada.dono === dono &&
+      Date.now() - guardada.em < VALIDADE_DOS_CADASTROS_MS &&
+      lerLista(CHAVE_COLABORADORES).length > 0
+    ) {
+      return true;
+    }
 
     const linhas = await this.lerFichasVisiveis();
     if (!linhas) return false;
@@ -781,6 +851,7 @@ class PonteNuvem {
     const assinadas = caminhos.length > 0 ? await resolverCaminhos(caminhos) : undefined;
 
     this.gravarCacheColaboradores(linhas.map((l) => paraColaborador(l, assinadas)));
+    gravarVersaoDasFichas(versao === null ? null : { versao, dono, em: Date.now() });
     this.avisar();
     return true;
   }
