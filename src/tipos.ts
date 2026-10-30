@@ -1182,6 +1182,11 @@ export interface Conversa {
    * com o que veio antes — sem escrever, sem receber —, até eu apagá-la.
    */
   euSaiEm?: string;
+  /**
+   * Quando EU entrei (`participantes.entrou_em`, a hora do banco). No canal
+   * oficial, o que veio antes não conta como não lido (contaComoNaoLida).
+   */
+  euEntreiEm?: string;
   apenasGestoresPublicam?: boolean; // ex: "Avisos da Rede" onde só nível 3+ publica
   ehSistemaPadrao?: boolean;
 }

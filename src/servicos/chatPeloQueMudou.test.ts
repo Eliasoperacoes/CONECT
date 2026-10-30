@@ -193,6 +193,15 @@ test('quem saiu do grupo sai da lista de participantes', async () => {
   expect(lerChat().conversas[0].participantesIds).toEqual(['ana']);
 });
 
+test('a hora em que EU entrei vem da minha linha de participação, não da dos outros', async () => {
+  banco.participantes = [
+    participante('g1', 'ana', { entrou_em: '2026-10-28T12:00:00.000Z' }),
+    participante('g1', 'bia', { entrou_em: '2026-10-01T08:00:00.000Z' }),
+  ];
+  await nuvemComunicacao.sincronizarConversas();
+  expect(lerChat().conversas[0].euEntreiEm).toBe('2026-10-28T12:00:00.000Z');
+});
+
 test('mensagem apagada de vez no banco some da tela, sem baixar o chat de novo', async () => {
   await nuvemComunicacao.sincronizarConversas();
   banco.mensagens = banco.mensagens.filter((m) => m.id !== 'm2');

@@ -296,6 +296,43 @@ export const estaNaLista = (
   c: { id: string; atualizadoEm: string; tipo?: string; ultimaMensagem?: unknown }
 ): boolean => deveAparecer(colaboradorId, c) && !ehConversaVazia(c);
 
+/** Quanto antes da entrada ainda conta: o relógio do celular de quem mandou pode estar atrasado. */
+export const FOLGA_DA_ENTRADA_MS = 10 * 60 * 1000;
+
+/**
+ * ESTA MENSAGEM CONTA COMO NÃO LIDA PARA A PESSOA? (30/10/2026)
+ *
+ * Uma pergunta só para o número da conversa, o título da aba, o som e a
+ * Central. Eram dois filtros iguais no bancoDados, e as duas regras novas
+ * entrariam em um e esqueceriam o outro.
+ *
+ * - A própria mensagem e a já lida não contam.
+ * - MENSAGEM DE SISTEMA não conta ("Fulano saiu", "Fulano adicionou
+ *   Beltrano"), como no WhatsApp: fica na conversa, sem acender número nem
+ *   tocar. Quem foi adicionado já recebe um aviso próprio.
+ * - NO CANAL OFICIAL (Avisos da Rede, grupo da loja), quem entra vê o
+ *   histórico inteiro, mas o que chegou antes da entrada não é novidade.
+ *   As ~40 pessoas que entraram em 28/10 viram os avisos antigos acenderem
+ *   de uma vez.
+ *
+ * O corte é só no canal oficial. No grupo de gente, o banco nem entrega o
+ * que veio antes da entrada (posso_ler_mensagem); na conversa individual,
+ * entrar é criar, e a hora da mensagem vem do celular de quem mandou — um
+ * relógio atrasado esconderia justamente a primeira.
+ */
+export const contaComoNaoLida = (
+  m: { remetenteId: string; tipo?: string; criadoEm: string; lidaPor?: string[] },
+  colaboradorId: string,
+  conversa?: { ehSistemaPadrao?: boolean; euEntreiEm?: string }
+): boolean => {
+  if (m.remetenteId === colaboradorId || m.lidaPor?.includes(colaboradorId)) return false;
+  if (m.tipo === 'sistema') return false;
+  if (conversa?.ehSistemaPadrao && conversa.euEntreiEm) {
+    return Date.parse(m.criadoEm) >= Date.parse(conversa.euEntreiEm) - FOLGA_DA_ENTRADA_MS;
+  }
+  return true;
+};
+
 /** As não lidas que a pessoa consegue abrir: só as das conversas da lista. */
 export const naoLidasDaLista = (
   colaboradorId: string,

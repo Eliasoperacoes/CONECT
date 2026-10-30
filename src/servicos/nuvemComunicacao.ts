@@ -319,6 +319,8 @@ interface LinhaParticipante {
   papel?: string | null;
   /** Quando a pessoa saiu do grupo; a linha fica, com o histórico até ali */
   saiu_em?: string | null;
+  /** Quando entrou, pela hora do banco */
+  entrou_em?: string | null;
 }
 
 /** Quem leu qual mensagem — só as duas colunas descem */
@@ -969,9 +971,11 @@ class PonteComunicacao {
      */
     const adminsPorConversa = new Map<string, string[]>();
     const euSaiEm = new Map<string, string>();
+    const euEntreiEm = new Map<string, string>();
     participantes.forEach((p) => {
       const saiu = !!p.saiu_em;
       if (meuId && p.colaborador_id === meuId && p.saiu_em) euSaiEm.set(p.conversa_id, p.saiu_em);
+      if (meuId && p.colaborador_id === meuId && p.entrou_em) euEntreiEm.set(p.conversa_id, p.entrou_em);
       if (saiu && p.colaborador_id !== meuId) return;
 
       const atual = idsPorConversa.get(p.conversa_id) || [];
@@ -1009,6 +1013,7 @@ class PonteComunicacao {
         criadoPorId: linha.criado_por_id || undefined,
         administradoresIds: adminsPorConversa.get(linha.id),
         euSaiEm: euSaiEm.get(linha.id),
+        euEntreiEm: euEntreiEm.get(linha.id),
         apenasGestoresPublicam: linha.apenas_gestores_publicam || undefined,
         ehSistemaPadrao: linha.eh_sistema_padrao || undefined,
         // Recalculada por quem estiver olhando; nunca vem do banco

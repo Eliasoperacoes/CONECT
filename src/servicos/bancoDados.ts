@@ -28,6 +28,7 @@ import { alcanca, podeEditarPublicacao, destinosDe, publicoAlvo } from './mural'
 import { pedirAvisoDaPublicacao, pedirAvisoDeEntradaNoGrupo, pedirAvisoDaReacao } from './envioDeAviso';
 import { lerLista } from './cacheDeLeitura';
 import { semFormatacao, pessoasCitadas, citadosNovos } from './textoRico';
+import { contaComoNaoLida } from './preferenciasConversa';
 import {
   nuvemComunicacao,
   conversaJaEstaNoBanco,
@@ -1899,38 +1900,28 @@ class BancoDadosConecta {
    */
   obterMensagensPorLer(): Mensagem[] {
     const atual = this.obterColaboradorAtual();
-    const conversasMinhas = new Set(
+    const conversasMinhas = new Map(
       this.obterTodasConversas()
         .filter((c) => c.participantesIds.includes(atual.id))
-        .map((c) => c.id)
+        .map((c) => [c.id, c])
     );
 
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
       const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
       return todas
-        .filter(
-          (m) =>
-            conversasMinhas.has(m.conversaId) &&
-            m.remetenteId !== atual.id &&
-            (!m.lidaPor || !m.lidaPor.includes(atual.id))
-        )
+        .filter((m) => conversasMinhas.has(m.conversaId) && contaComoNaoLida(m, atual.id, conversasMinhas.get(m.conversaId)))
         .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm));
     } catch {
       return [];
     }
   }
 
-  private contarNaoLidasPara(conversaId: string, usuarioId: string): number {
+  private contarNaoLidasPara(conversa: Conversa, usuarioId: string): number {
     try {
       const bruto = localStorage.getItem(CHAVE_MENSAGENS);
       const todas: Mensagem[] = bruto ? JSON.parse(bruto) : [];
-      return todas.filter(
-        (m) =>
-          m.conversaId === conversaId &&
-          m.remetenteId !== usuarioId &&
-          (!m.lidaPor || !m.lidaPor.includes(usuarioId))
-      ).length;
+      return todas.filter((m) => m.conversaId === conversa.id && contaComoNaoLida(m, usuarioId, conversa)).length;
     } catch {
       return 0;
     }
@@ -1938,7 +1929,7 @@ class BancoDadosConecta {
 
   // Formata os dados de exibição da conversa (nome, foto e contagem de não lidas) sob a perspectiva do usuário logado
   private formatarConversaParaUsuario(conversa: Conversa, usuarioId: string): Conversa {
-    const naoLidas = this.contarNaoLidasPara(conversa.id, usuarioId);
+    const naoLidas = this.contarNaoLidasPara(conversa, usuarioId);
 
     // Grupos e canais mantêm nome e foto próprios; só muda a contagem individual
     if (conversa.tipo !== 'individual') {

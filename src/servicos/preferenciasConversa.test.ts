@@ -33,6 +33,7 @@ const {
   aplicarPreferenciasDaNuvem,
   removerConversaDaLista,
   abaComNaoLidas,
+  contaComoNaoLida,
 } = await import('./preferenciasConversa');
 
 const EU = 'colab-elias';
@@ -625,4 +626,39 @@ test('cada aba do painel mostra o número dela — a mesma conta do balão do ca
   const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
   expect(app).toContain('const naoLidasDosGrupos = naoLidasDaLista(colaboradorAtual.id, grupos)');
   expect(app).toContain('const totalNaoLidas = naoLidasDaLista(colaboradorAtual.id, conversasIndividuais) + naoLidasDosGrupos');
+});
+
+/*
+  O QUE CONTA COMO NÃO LIDA (Elias, 30/10/2026, sobre as duas propostas:
+  "pode!"). Como no WhatsApp, a mensagem de sistema fica na conversa sem
+  acender número; e quem entra num canal oficial não recebe o histórico
+  inteiro como novidade.
+*/
+const de = (extra: Record<string, unknown> = {}) => ({ remetenteId: OUTRO, tipo: 'texto', criadoEm: AGORA, lidaPor: [] as string[], ...extra });
+
+test('MENSAGEM DE SISTEMA NÃO ACENDE NÚMERO: "Fulano saiu" fica na conversa, mas não conta', () => {
+  expect(contaComoNaoLida(de(), EU)).toBe(true);
+  expect(contaComoNaoLida(de({ tipo: 'sistema' }), EU)).toBe(false);
+  // As regras de antes continuam: a minha e a já lida não contam
+  expect(contaComoNaoLida(de({ remetenteId: EU }), EU)).toBe(false);
+  expect(contaComoNaoLida(de({ lidaPor: [EU] }), EU)).toBe(false);
+  expect(contaComoNaoLida(de({ lidaPor: [OUTRO] }), EU)).toBe(true);
+});
+
+test('NO CANAL OFICIAL, o que chegou antes de a pessoa entrar não é novidade', () => {
+  const entrei = '2026-10-28T12:00:00.000Z';
+  const canal = { ehSistemaPadrao: true, euEntreiEm: entrei };
+  expect(contaComoNaoLida(de({ criadoEm: '2026-10-20T09:00:00.000Z' }), EU, canal)).toBe(false);
+  expect(contaComoNaoLida(de({ criadoEm: '2026-10-28T13:00:00.000Z' }), EU, canal)).toBe(true);
+  // A hora da mensagem vem do celular de quem mandou; a da entrada, do banco
+  expect(contaComoNaoLida(de({ criadoEm: '2026-10-28T11:55:00.000Z' }), EU, canal)).toBe(true);
+  expect(contaComoNaoLida(de({ criadoEm: '2026-10-28T11:40:00.000Z' }), EU, canal)).toBe(false);
+});
+
+test('fora do canal oficial a entrada não corta: a primeira mensagem não pode sumir', () => {
+  const antiga = de({ criadoEm: '2026-10-20T09:00:00.000Z' });
+  // Grupo de gente e conversa individual: entrar é ser chamado ou criar
+  expect(contaComoNaoLida(antiga, EU, { euEntreiEm: '2026-10-28T12:00:00.000Z' })).toBe(true);
+  // Sem a data (modo local, ou antes da carga do banco), conta como sempre contou
+  expect(contaComoNaoLida(antiga, EU, { ehSistemaPadrao: true })).toBe(true);
 });

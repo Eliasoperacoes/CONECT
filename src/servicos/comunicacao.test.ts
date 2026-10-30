@@ -832,6 +832,37 @@ test('as mensagens por ler vêm da mais antiga para a mais nova', async () => {
   expect(porLer.map((m) => m.texto)).toEqual(['primeira', 'segunda']);
 });
 
+test('"Fulano saiu" e o histórico do canal de antes da entrada não acendem número nem aviso', () => {
+  armazenamento.setItem(
+    CHAVE_CONVERSAS,
+    JSON.stringify([
+      CONVERSA_EQUIPE,
+      {
+        id: 'canal-loja', tipo: 'grupo', nome: 'Loja', participantesIds: ['colab-elias', 'colab-ana'],
+        ehSistemaPadrao: true, euEntreiEm: '2026-10-28T12:00:00.000Z',
+        naoLidas: 0, atualizadoEm: '2026-10-29T09:00:00.000Z',
+      },
+    ])
+  );
+  const msg = (id: string, conversaId: string, tipo: string, criadoEm: string) => ({
+    id, conversaId, remetenteId: 'colab-ana', tipo, texto: id, criadoEm, horaFormatada: '09:00', lida: false, lidaPor: [],
+  });
+  armazenamento.setItem(
+    CHAVE_MENSAGENS,
+    JSON.stringify([
+      msg('ana-saiu', 'grupo-teste', 'sistema', '2026-10-29T08:00:00.000Z'),
+      msg('aviso-antigo', 'canal-loja', 'texto', '2026-10-20T09:00:00.000Z'),
+      msg('aviso-novo', 'canal-loja', 'texto', '2026-10-29T09:00:00.000Z'),
+    ])
+  );
+
+  entrarComo(ELIAS);
+  // O som, o título da aba e a Central leem esta lista; o número de cada grupo, a outra conta
+  expect(bancoDados.obterMensagensPorLer().map((m) => m.id)).toEqual(['aviso-novo']);
+  const numeros = Object.fromEntries(bancoDados.obterGrupos().map((c) => [c.id, c.naoLidas]));
+  expect([numeros['grupo-teste'], numeros['canal-loja']]).toEqual([0, 1]);
+});
+
 // ============================================================
 // LIMPEZA DO HISTÓRICO DE CONVERSAS
 // ============================================================
