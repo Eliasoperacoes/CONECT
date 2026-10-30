@@ -77,15 +77,27 @@ const consulta = () => {
     order: () => encadeado,
     // A página pedida, como o Supabase: devolver tudo em cada página faria a
     // busca paginada juntar a mesma lista dezenas de vezes
-    range: (de: number, ate: number) => Promise.resolve({ data: linhasDoBanco.slice(de, ate + 1), error: null }),
+    range: (de: number, ate: number) => {
+      paginasPedidas++;
+      return Promise.resolve({ data: linhasDoBanco.slice(de, ate + 1), error: null });
+    },
     limit: () => encadeado,
     then: (f: any) => Promise.resolve({ data: linhasDoBanco, error: null }).then(f),
   };
   return encadeado;
 };
 
+/** Páginas de linhas pedidas ao banco — a conta do tráfego */
+let paginasPedidas = 0;
+/** O resumo que o banco devolve (sincronizacao-pelo-que-mudou.sql); null = script não rodado */
+let resumoDoBanco: { quantidade: number; marca: string; assinatura: string } | null = null;
+
 mock.module('./supabase', () => ({
-  supabase: { from: () => consulta() },
+  supabase: {
+    from: () => consulta(),
+    rpc: async () =>
+      resumoDoBanco ? { data: [resumoDoBanco], error: null } : { data: null, error: { message: 'sem a função' } },
+  },
   usandoNuvem: () => true,
   temSessaoViva: () => true,
   /* O `nuvem.ts` importa os quatro; faltando um, o módulo nem carrega */
@@ -124,6 +136,29 @@ beforeEach(() => {
   armazenamento.limite = 0;
   filtros = [];
   linhasDoBanco = [linha(1), linha(2)];
+  paginasPedidas = 0;
+  resumoDoBanco = null;
+});
+
+test('COM O RESUMO DO BANCO, a segunda sincronização do ponto não baixa uma linha (30/10/2026)', async () => {
+  /**
+   * Esta carga roda antes de cada batida e a cada evento ao vivo. Com o
+   * resumo (sincronizacao-pelo-que-mudou.sql), o banco diz em poucos bytes
+   * que nada mudou, e a lista guardada fica como está.
+   */
+  const ids = ['ponto-1', 'ponto-2'];
+  resumoDoBanco = {
+    quantidade: 2,
+    marca: '2026-09-28T10:30:01.000Z',
+    assinatura: new Bun.CryptoHasher('sha256').update(ids.sort().join(',')).digest('hex'),
+  };
+  expect(await nuvem.sincronizarPonto()).toBe(true);
+  expect(paginasPedidas).toBe(1);
+
+  paginasPedidas = 0;
+  expect(await nuvem.sincronizarPonto()).toBe(true);
+  expect(paginasPedidas).toBe(0);
+  expect(lido(armazenamento.getItem(CHAVE)!).map((r: any) => r.id)).toEqual(ids);
 });
 
 // ===============================================================

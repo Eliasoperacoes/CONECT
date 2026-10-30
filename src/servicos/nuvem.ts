@@ -55,6 +55,7 @@ import { nuvemComunicacao } from './nuvemComunicacao';
 import { aplicarJustificativasDaNuvem, gravarAfastamentos } from './justificativasCache';
 import { aplicarFeriadosDaNuvem } from './feriadosCache';
 import { buscarTodasAsLinhas } from './paginacao';
+import { sincronizarPeloQueMudou, type ConsultaSincronizavel } from './sincronizacaoIncremental';
 import {
   LinhaColaborador,
   LinhaRegistroPonto,
@@ -119,6 +120,9 @@ const RECUSA_SEM_LINHAS =
   'O banco não gravou: pela regra de alçada do banco, você não responde por esta pessoa. Nada foi alterado. Procure o RH.';
 const CHAVE_CODIGOS_PONTO = 'conecta_v4_codigos_ponto_loja';
 const CHAVE_AJUSTES = 'conecta_v4_ajustes_jornada';
+/** O resumo da última sincronização de cada tabela (sincronizacaoIncremental.ts) */
+const CHAVE_SINC_REGISTROS_PONTO = 'conecta_v4_sinc_registros_ponto';
+const CHAVE_SINC_AJUSTES = 'conecta_v4_sinc_ajustes_jornada';
 
 /**
  * ===================================================================
@@ -1076,56 +1080,70 @@ class PonteNuvem {
     if (periodo) this.janelaDoPonto = periodo;
     const janela = this.obterJanelaDoPonto();
 
-    const [registros, codigos] = await Promise.all([
-      buscarTodasAsLinhas<LinhaRegistroPonto>(
-        () =>
+    /*
+      SÓ O QUE MUDOU (sincronizacaoIncremental.ts, 30/10/2026). Esta carga
+      roda antes de cada batida e a cada evento ao vivo, e para o RH eram
+      milhares de linhas a cada vez. Agora o banco diz em poucos bytes se
+      algo mudou e desce só o que mudou; a lista guardada é a mesma.
+    */
+    const [resultado, codigos] = await Promise.all([
+      sincronizarPeloQueMudou<LinhaRegistroPonto, RegistroPonto>({
+        tabela: 'registros_ponto',
+        montar: (colunas) =>
           supabase!
             .from('registros_ponto')
-            .select('*')
+            .select(colunas)
             /* A coluna `data` é indexada (`registros_ponto_por_data`), e
                é por ela que o período se recorta — `horario` é timestamp
                com fuso, e comparar data com ele erra a virada do dia */
             .gte('data', janela.inicio)
-            .lte('data', janela.fim)
-            .order('horario')
-            .order('id'),
-        'as marcações de ponto'
-      ),
+            .lte('data', janela.fim) as unknown as ConsultaSincronizavel,
+        colunasDaChave: ['id'],
+        janela,
+        chaveDoEstado: CHAVE_SINC_REGISTROS_PONTO,
+        dono: localStorage.getItem(CHAVE_COLABORADOR_ATUAL),
+        chaveDoItem: (r) => r.id,
+        paraItem: paraRegistroPonto,
+        lerGuardados: () => lerLista<RegistroPonto>(CHAVE_REGISTROS_PONTO),
+        /**
+         * O CACHE QUE NÃO COUBE NÃO PODE DERRUBAR A BATIDA.
+         *
+         * `setItem` LANÇA quando estoura o limite do navegador, e esta
+         * função roda dentro de `registrarMarcacaoPorCodigo`. Sem esta
+         * guarda, o aparelho do RH que passasse do limite deixaria de bater
+         * ponto — com uma exceção subindo até a tela, sem nome nem
+         * explicação.
+         *
+         * E NÃO SE GRAVA PELA METADE. Truncar para caber deixaria o espelho
+         * com dias faltando e ninguém saberia: documento de ponto incompleto
+         * é pior do que documento que não abriu. Ou entra inteiro, ou o
+         * cache fica como estava e a função diz que falhou.
+         */
+        gravar: (registros) => {
+          try {
+            gravarLista(CHAVE_REGISTROS_PONTO, registros);
+          } catch (erro) {
+            console.error(
+              `Não coube no aparelho a janela ${janela.inicio} a ${janela.fim} ` +
+                `(${registros.length} marcações):`,
+              erro
+            );
+            // Chega ao TI (erros_do_app): aparelho cheio mostra dado velho sem avisar ninguém
+            registrarErro({
+              tela: 'armazenamento',
+              mensagem: `Não coube no aparelho a janela do ponto (${registros.length} marcações)`,
+              pilha: erro instanceof Error ? `${erro.name}: ${erro.message}` : String(erro),
+            });
+            throw erro;
+          }
+        },
+        ordenar: (a, b) => (a.horario < b.horario ? -1 : a.horario > b.horario ? 1 : a.id < b.id ? -1 : 1),
+        ondeEstou: 'as marcações de ponto',
+      }),
       supabase.from('codigos_ponto_loja').select('*'),
     ]);
 
-    if (!registros) return false;
-
-    /**
-     * O CACHE QUE NÃO COUBE NÃO PODE DERRUBAR A BATIDA.
-     *
-     * `setItem` LANÇA quando estoura o limite do navegador, e esta
-     * função roda dentro de `registrarMarcacaoPorCodigo`. Sem esta
-     * guarda, o aparelho do RH que passasse do limite deixaria de bater
-     * ponto — com uma exceção subindo até a tela, sem nome nem
-     * explicação.
-     *
-     * E NÃO SE GRAVA PELA METADE. Truncar para caber deixaria o espelho
-     * com dias faltando e ninguém saberia: documento de ponto incompleto
-     * é pior do que documento que não abriu. Ou entra inteiro, ou o
-     * cache fica como estava e a função diz que falhou.
-     */
-    try {
-      gravarLista(CHAVE_REGISTROS_PONTO, registros.map(paraRegistroPonto));
-    } catch (erro) {
-      console.error(
-        `Não coube no aparelho a janela ${janela.inicio} a ${janela.fim} ` +
-          `(${registros.length} marcações):`,
-        erro
-      );
-      // Chega ao TI (erros_do_app): aparelho cheio mostra dado velho sem avisar ninguém
-      registrarErro({
-        tela: 'armazenamento',
-        mensagem: `Não coube no aparelho a janela do ponto (${registros.length} marcações)`,
-        pilha: erro instanceof Error ? `${erro.name}: ${erro.message}` : String(erro),
-      });
-      return false;
-    }
+    if (resultado === 'falhou') return false;
 
     if (!codigos.error && codigos.data) {
       localStorage.setItem(
@@ -1973,14 +1991,23 @@ class PonteNuvem {
   private async cargaCompletaDosAjustes(): Promise<boolean> {
     if (!supabase) return false;
 
-    const data = await buscarTodasAsLinhas<LinhaAjuste>(
-      () => supabase!.from('ajustes_jornada').select('*').order('data', { ascending: false }).order('id'),
-      'as apurações'
-    );
+    // Todas as apurações, desde o começo — e por isso só o que mudou (sincronizacaoIncremental.ts)
+    const resultado = await sincronizarPeloQueMudou<LinhaAjuste, AjusteJornada>({
+      tabela: 'ajustes_jornada',
+      montar: (colunas) => supabase!.from('ajustes_jornada').select(colunas) as unknown as ConsultaSincronizavel,
+      colunasDaChave: ['id'],
+      chaveDoEstado: CHAVE_SINC_AJUSTES,
+      dono: localStorage.getItem(CHAVE_COLABORADOR_ATUAL),
+      chaveDoItem: (a) => a.id,
+      paraItem: paraAjuste,
+      lerGuardados: () => lerLista<AjusteJornada>(CHAVE_AJUSTES),
+      gravar: (ajustes) => gravarLista(CHAVE_AJUSTES, ajustes),
+      // A ordem de antes: o dia mais recente primeiro
+      ordenar: (a, b) => (a.data > b.data ? -1 : a.data < b.data ? 1 : a.id < b.id ? -1 : 1),
+      ondeEstou: 'as apurações',
+    });
 
-    if (!data) return false;
-
-    gravarLista(CHAVE_AJUSTES, data.map(paraAjuste));
+    if (resultado === 'falhou') return false;
 
     /*
       O SALDO DE COMPENSAÇÃO DO SÁBADO vem junto: uma linha por pessoa por

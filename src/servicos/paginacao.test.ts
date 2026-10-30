@@ -159,7 +159,9 @@ test('AS LEITURAS QUE CRESCEM PASSAM PELA PAGINAÇÃO', async () => {
 
       achouLeitura = true;
       const antes = fonte.slice(Math.max(0, em - 300), em);
-      if (!antes.includes('buscarTodasAsLinhas')) {
+      // A receita da sincronização pelo que mudou também pagina: o motor
+      // lê tudo por `buscarTodasAsLinhas` (teste abaixo)
+      if (!antes.includes('buscarTodasAsLinhas') && !antes.includes('sincronizarPeloQueMudou')) {
         faltando.push(`${tabela}: leitura sem paginação`);
       }
     }
@@ -215,6 +217,28 @@ test('toda consulta paginada termina ordenada pela chave da tabela', async () =>
       consultas.push({ arquivo, tabela, ordens });
     }
   }
+
+  /*
+    A SINCRONIZAÇÃO PELO QUE MUDOU (30/10/2026). A receita não escreve a
+    consulta paginada: declara a chave (`colunasDaChave`), e o motor ordena
+    por ela toda leitura que faz. As duas metades são conferidas — a receita
+    declara a chave certa, e o motor não lê em páginas sem ordenar por ela.
+  */
+  const receitas: Array<{ arquivo: string; tabela: string; ordens: string[] }> = [];
+  for (const arquivo of ['nuvem.ts', 'nuvemComunicacao.ts']) {
+    const fonte = await Bun.file(new URL(`./${arquivo}`, import.meta.url)).text();
+    for (const parte of fonte.split('sincronizarPeloQueMudou<').slice(1)) {
+      const tabela = parte.match(/tabela: '(\w+)'/)?.[1] ?? '?';
+      const ordens = [...(parte.match(/colunasDaChave: \[([^\]]*)\]/)?.[1] ?? '').matchAll(/'(\w+)'/g)].map((m) => m[1]);
+      receitas.push({ arquivo, tabela, ordens });
+    }
+  }
+  const motor = await Bun.file(new URL('./sincronizacaoIncremental.ts', import.meta.url)).text();
+  const leiturasDoMotor = motor.split('buscarTodasAsLinhas<').slice(1);
+  expect(leiturasDoMotor.length).toBeGreaterThanOrEqual(4);
+  for (const leitura of leiturasDoMotor) expect(leitura.slice(0, 120)).toContain('naChave(');
+  expect(motor).toContain('r.colunasDaChave.reduce((q, coluna) => q.order(coluna), consulta)');
+  consultas.push(...receitas);
 
   expect(consultas.length).toBeGreaterThanOrEqual(10);
   for (const c of consultas) {
