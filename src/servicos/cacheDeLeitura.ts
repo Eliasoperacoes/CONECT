@@ -93,7 +93,15 @@ import { deflateSync, inflateSync, strToU8, strFromU8 } from 'fflate';
  * sem ele, é o JSON de antes — quem já tinha dados guardados não perde nada.
  */
 export const PREFIXO_COMPRIMIDO = 'conecta-z1:';
-export const CHAVES_COMPRIMIDAS = new Set(['conecta_v4_registros_ponto', 'conecta_v4_ajustes_jornada']);
+export const CHAVES_COMPRIMIDAS = new Set([
+  'conecta_v4_registros_ponto',
+  'conecta_v4_ajustes_jornada',
+  // As linhas do chat guardadas para a sincronização pelo que mudou (nuvemComunicacao.ts)
+  'conecta_v4_linhas_conversas',
+  'conecta_v4_linhas_participantes',
+  'conecta_v4_linhas_mensagens',
+  'conecta_v4_linhas_leituras',
+]);
 
 const BASE = 0x0800;
 

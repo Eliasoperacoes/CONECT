@@ -24,7 +24,8 @@ import {
   Colaborador,
   leAuditoria,
 } from '../tipos';
-import { lerLista } from './cacheDeLeitura';
+import { lerLista, gravarLista } from './cacheDeLeitura';
+import { sincronizarPeloQueMudou, type ConsultaSincronizavel } from './sincronizacaoIncremental';
 
 /** Quem está no aparelho, pelo cache — para saber se ele lê a auditoria */
 const euNoAparelho = (): Colaborador | undefined => {
@@ -46,6 +47,15 @@ import { aplicarPermissoes, MapaDePermissoes } from './permissoes';
 import { horaDe, LinhaAviso, paraAvisoRede } from './linhasDoBanco';
 
 const CHAVE_CONVERSAS = 'conecta_v4_conversas';
+/*
+  As linhas do chat como o banco as devolveu, base da sincronização pelo que
+  mudou (sincronizacaoIncremental.ts). As telas leem as chaves montadas
+  (CHAVE_CONVERSAS, CHAVE_MENSAGENS); estas só a carga lê.
+*/
+const CHAVE_LINHAS_CONVERSAS = 'conecta_v4_linhas_conversas';
+const CHAVE_LINHAS_PARTICIPANTES = 'conecta_v4_linhas_participantes';
+const CHAVE_LINHAS_MENSAGENS = 'conecta_v4_linhas_mensagens';
+const CHAVE_LINHAS_LEITURAS = 'conecta_v4_linhas_leituras';
 /**
  * Conversas que já sabemos existir no banco.
  *
@@ -259,6 +269,12 @@ interface LinhaParticipante {
   papel?: string | null;
   /** Quando a pessoa saiu do grupo; a linha fica, com o histórico até ali */
   saiu_em?: string | null;
+}
+
+/** Quem leu qual mensagem — só as duas colunas descem */
+interface LinhaLeitura {
+  mensagem_id: string;
+  colaborador_id: string;
 }
 
 interface LinhaMensagem {
@@ -760,48 +776,86 @@ class PonteComunicacao {
   private async cargaCompletaDasConversas(): Promise<boolean> {
     if (!supabase) return false;
 
-    /**
-     * TUDO PAGINADO, menos as conversas.
-     *
-     * O Supabase corta em 1000 linhas sem avisar. `leituras_mensagem` é a
-     * que estoura primeiro — uma linha por mensagem POR PESSOA que leu —
-     * e o efeito seria o contador de não lidas mentindo. Conversas são
-     * dezenas; ficam como estão.
-     */
-    const [conversas, participantes, mensagens, leituras] = await Promise.all([
-      supabase.from('conversas').select('*'),
-      buscarTodasAsLinhas<LinhaParticipante>(
-        () =>
-          supabase!
-            .from('participantes')
-            // Tudo, e não colunas nomeadas: `papel` e `saiu_em` só existem
-            // depois de grupos-de-todos.sql, e pedi-las antes derrubaria a
-            // lista de conversas inteira
-            .select('*')
-            // Ordem pela chave: sem ela as páginas pulam linhas (paginacao.ts)
-            .order('conversa_id')
-            .order('colaborador_id'),
-        'os participantes'
-      ),
-      buscarTodasAsLinhas<LinhaMensagem>(
-        () => supabase!.from('mensagens').select('*').order('criado_em').order('id'),
-        'as mensagens'
-      ),
-      buscarTodasAsLinhas<{ mensagem_id: string; colaborador_id: string }>(
-        () =>
+    /*
+      SÓ O QUE MUDOU (sincronizacaoIncremental.ts, 30/10/2026). Esta carga
+      roda ao entrar, a cada mudança de conversa ou de participante e ao
+      voltar a rede, e trazia o chat inteiro toda vez. As linhas do banco
+      ficam guardadas como vieram; o banco diz em poucos bytes o que mudou
+      e só isso desce. A montagem abaixo é a de sempre, sobre a lista
+      inteira guardada.
+
+      Tudo em páginas e pela chave — o Supabase corta em 1000 linhas sem
+      avisar, e `leituras_mensagem` é a que estoura primeiro: o motor lê
+      assim, ordenando pela chave que cada receita declara.
+    */
+    const dono = localStorage.getItem('conecta_v4_colaborador_atual');
+    const resultados = await Promise.all([
+      sincronizarPeloQueMudou<LinhaConversa, LinhaConversa>({
+        tabela: 'conversas',
+        montar: (colunas) => supabase!.from('conversas').select(colunas) as unknown as ConsultaSincronizavel,
+        colunasDaChave: ['id'],
+        chaveDoEstado: 'conecta_v4_sinc_conversas',
+        dono,
+        chaveDoItem: (c) => c.id,
+        paraItem: (linha) => linha,
+        lerGuardados: () => lerLista<LinhaConversa>(CHAVE_LINHAS_CONVERSAS),
+        gravar: (linhas) => gravarLista(CHAVE_LINHAS_CONVERSAS, linhas),
+        ondeEstou: 'as conversas',
+      }),
+      sincronizarPeloQueMudou<LinhaParticipante, LinhaParticipante>({
+        tabela: 'participantes',
+        // Tudo, e não colunas nomeadas: `papel` e `saiu_em` só existem depois de grupos-de-todos.sql
+        montar: (colunas) => supabase!.from('participantes').select(colunas) as unknown as ConsultaSincronizavel,
+        colunasDaChave: ['conversa_id', 'colaborador_id'],
+        chaveDoEstado: 'conecta_v4_sinc_participantes',
+        dono,
+        chaveDoItem: (p) => `${p.conversa_id}|${p.colaborador_id}`,
+        paraItem: (linha) => linha,
+        lerGuardados: () => lerLista<LinhaParticipante>(CHAVE_LINHAS_PARTICIPANTES),
+        gravar: (linhas) => gravarLista(CHAVE_LINHAS_PARTICIPANTES, linhas),
+        ondeEstou: 'os participantes',
+      }),
+      sincronizarPeloQueMudou<LinhaMensagem, LinhaMensagem>({
+        tabela: 'mensagens',
+        montar: (colunas) => supabase!.from('mensagens').select(colunas) as unknown as ConsultaSincronizavel,
+        colunasDaChave: ['id'],
+        chaveDoEstado: 'conecta_v4_sinc_mensagens',
+        dono,
+        chaveDoItem: (m) => m.id,
+        paraItem: (linha) => linha,
+        lerGuardados: () => lerLista<LinhaMensagem>(CHAVE_LINHAS_MENSAGENS),
+        gravar: (linhas) => gravarLista(CHAVE_LINHAS_MENSAGENS, linhas),
+        // A ordem da conversa: a última de cada uma vira a prévia da lista, logo abaixo
+        ordenar: (a, b) => (a.criado_em < b.criado_em ? -1 : a.criado_em > b.criado_em ? 1 : a.id < b.id ? -1 : 1),
+        ondeEstou: 'as mensagens',
+      }),
+      sincronizarPeloQueMudou<LinhaLeitura, LinhaLeitura>({
+        tabela: 'leituras_mensagem',
+        // Só as duas colunas: uma linha por mensagem POR PESSOA que leu
+        montar: (colunas) =>
           supabase!
             .from('leituras_mensagem')
-            .select('mensagem_id, colaborador_id')
-            .order('mensagem_id')
-            .order('colaborador_id'),
-        'as leituras'
-      ),
+            .select(colunas === '*' ? 'mensagem_id, colaborador_id' : colunas) as unknown as ConsultaSincronizavel,
+        colunasDaChave: ['mensagem_id', 'colaborador_id'],
+        chaveDoEstado: 'conecta_v4_sinc_leituras_mensagem',
+        dono,
+        chaveDoItem: (l) => `${l.mensagem_id}|${l.colaborador_id}`,
+        paraItem: (linha) => linha,
+        lerGuardados: () => lerLista<LinhaLeitura>(CHAVE_LINHAS_LEITURAS),
+        gravar: (linhas) => gravarLista(CHAVE_LINHAS_LEITURAS, linhas),
+        ondeEstou: 'as leituras',
+      }),
     ]);
 
-    if (conversas.error || !mensagens || !participantes || !leituras) {
-      console.error('Falha ao sincronizar conversas:', conversas.error?.message);
+    if (resultados.includes('falhou')) {
+      console.error('Falha ao sincronizar conversas:', resultados.join(', '));
       return false;
     }
+
+    const conversas = lerLista<LinhaConversa>(CHAVE_LINHAS_CONVERSAS);
+    const participantes = lerLista<LinhaParticipante>(CHAVE_LINHAS_PARTICIPANTES);
+    const mensagens = lerLista<LinhaMensagem>(CHAVE_LINHAS_MENSAGENS);
+    const leituras = lerLista<LinhaLeitura>(CHAVE_LINHAS_LEITURAS);
 
     // Quem leu cada mensagem
     const lidaPorMensagem = new Map<string, string[]>();
@@ -885,7 +939,7 @@ class PonteComunicacao {
     const ultimaPorConversa = new Map<string, Mensagem>();
     comAnexos.forEach((m) => ultimaPorConversa.set(m.conversaId, m));
 
-    const listaConversas: Conversa[] = ((conversas.data || []) as LinhaConversa[]).map((linha) => {
+    const listaConversas: Conversa[] = conversas.map((linha) => {
       const ultima = ultimaPorConversa.get(linha.id);
       return {
         id: linha.id,

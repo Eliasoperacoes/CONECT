@@ -232,8 +232,10 @@ test('a preferência vai para o BANCO, não fica presa no aparelho', async () =>
   expect(ponte).toContain('salvarPreferenciaDeConversa');
   // E a sincronização traz de volta: a linha inteira do participante
   // (`*` desde os grupos de todos, que somaram papel e saiu_em), com as
-  // preferências lidas dela
-  expect(ponte).toMatch(/\.from\('participantes'\)[\s\S]{0,300}\.select\('\*'\)/);
+  // preferências lidas dela. Desde 30/10/2026 quem pede é o motor da
+  // sincronização pelo que mudou: a receita repassa as colunas, ele pede '*'
+  expect(ponte).toMatch(/\.from\('participantes'\)\.select\(colunas\)/);
+  expect(await Bun.file(new URL('./sincronizacaoIncremental.ts', import.meta.url)).text()).toContain("r.montar('*')");
   expect(ponte).toContain('fixada: !!p.fixada');
   expect(ponte).toContain('ocultaDesde: p.oculta_desde || undefined');
   expect(ponte).toContain('aplicarPreferenciasDaNuvem');
@@ -432,7 +434,8 @@ test('a marca de excluida sobe e desce do banco', async () => {
 
   // Um lado sem o outro faz a exclusão valer só neste navegador
   expect(ponte).toContain('campos.removida = preferencia.removida');
-  expect(ponte).toMatch(/\.from\('participantes'\)[\s\S]{0,300}\.select\('\*'\)/);
+  // A linha inteira desce pelo motor da sincronização (ver o teste acima)
+  expect(ponte).toMatch(/\.from\('participantes'\)\.select\(colunas\)/);
   expect(ponte).toContain('removida?: boolean | null;');
   expect(ponte).toContain('removida: p.removida || undefined');
 

@@ -192,6 +192,7 @@ test('AS LEITURAS QUE CRESCEM PASSAM PELA PAGINAÇÃO', async () => {
 
 /** A chave de cada tabela lida em páginas. Tabela nova paginada entra aqui. */
 const CHAVE: Record<string, string[]> = {
+  conversas: ['id'],
   participantes: ['conversa_id', 'colaborador_id'],
   mensagens: ['id'],
   leituras_mensagem: ['mensagem_id', 'colaborador_id'],

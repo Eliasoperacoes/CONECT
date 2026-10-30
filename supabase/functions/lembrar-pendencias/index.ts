@@ -562,7 +562,14 @@ var planejarLembretes = (d, agora) => {
 };
 
 // src/servicos/cacheDeLeitura.ts
-var CHAVES_COMPRIMIDAS = new Set(["conecta_v4_registros_ponto", "conecta_v4_ajustes_jornada"]);
+var CHAVES_COMPRIMIDAS = new Set([
+  "conecta_v4_registros_ponto",
+  "conecta_v4_ajustes_jornada",
+  "conecta_v4_linhas_conversas",
+  "conecta_v4_linhas_participantes",
+  "conecta_v4_linhas_mensagens",
+  "conecta_v4_linhas_leituras"
+]);
 var cache = new Map;
 var indices = new Map;
 var vigiados = new WeakSet;
