@@ -4450,6 +4450,117 @@ create trigger erros_do_app_limpeza
   for each statement execute function public.limpar_erros_antigos();
 
 -- ============================================================
+-- A SINCRONIZAÇÃO PELO QUE MUDOU (sincronizacao-pelo-que-mudou.sql,
+-- 30/10/2026) — o mesmo texto do delta; há teste conferindo. O carimbo
+-- `alterado_em` e o resumo de poucos bytes com que o aparelho decide se
+-- precisa baixar alguma coisa.
+-- ============================================================
+
+-- 1. O CARIMBO
+
+create or replace function public.carimbar_alteracao()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  -- clock_timestamp, e não now(): now() é o início da transação, e uma
+  -- transação longa carimbaria no passado o que gravou no fim
+  new.alterado_em := clock_timestamp();
+  return new;
+end;
+$$;
+
+do $$
+declare
+  tabela text;
+begin
+  foreach tabela in array array[
+    'registros_ponto', 'ajustes_jornada', 'justificativas_ausencia', 'afastamentos',
+    'mensagens', 'leituras_mensagem', 'participantes', 'conversas'
+  ]
+  loop
+    -- now() como padrão, e não clock_timestamp(): padrão estável não reescreve
+    -- a tabela; as linhas que já existem nascem com a hora deste script
+    execute format(
+      'alter table public.%I add column if not exists alterado_em timestamptz not null default now()',
+      tabela);
+    -- O nome começa com "ultimo" de propósito: gatilhos BEFORE do mesmo
+    -- momento rodam em ordem alfabética, e o carimbo vem depois das guardas
+    -- (só o autor edita, só o admin muda o grupo, a batida não muda)
+    execute format('drop trigger if exists ultimo_carimbo_de_alteracao on public.%I', tabela);
+    execute format(
+      'create trigger ultimo_carimbo_de_alteracao before insert or update on public.%I '
+      'for each row execute function public.carimbar_alteracao()',
+      tabela);
+    execute format('create index if not exists %I on public.%I (alterado_em)', tabela || '_por_alteracao', tabela);
+  end loop;
+end
+$$;
+
+-- 2. O RESUMO
+
+create or replace function public.resumo_da_sincronizacao(
+  p_tabela text,
+  p_inicio date default null,
+  p_fim    date default null
+)
+returns table (quantidade bigint, marca timestamptz, assinatura text)
+language plpgsql
+stable
+security invoker
+set search_path = public
+as $$
+begin
+  -- Nome desconhecido não pode virar "zero linhas": o aparelho apagaria tudo
+  if p_tabela is null or p_tabela not in (
+    'registros_ponto', 'ajustes_jornada', 'justificativas_ausencia', 'afastamentos',
+    'mensagens', 'leituras_mensagem', 'participantes', 'conversas'
+  ) then
+    raise exception 'Tabela fora da sincronização: %', p_tabela;
+  end if;
+
+  return query
+  with chaves (chave, alterado_em) as (
+    select t.id, t.alterado_em from public.registros_ponto t
+     where p_tabela = 'registros_ponto'
+       and (p_inicio is null or t.data >= p_inicio) and (p_fim is null or t.data <= p_fim)
+    union all
+    select t.id, t.alterado_em from public.ajustes_jornada t
+     where p_tabela = 'ajustes_jornada'
+       and (p_inicio is null or t.data >= p_inicio) and (p_fim is null or t.data <= p_fim)
+    union all
+    select t.id, t.alterado_em from public.justificativas_ausencia t
+     where p_tabela = 'justificativas_ausencia'
+    union all
+    select t.id, t.alterado_em from public.afastamentos t
+     where p_tabela = 'afastamentos'
+    union all
+    select t.id, t.alterado_em from public.mensagens t
+     where p_tabela = 'mensagens'
+    union all
+    select t.mensagem_id || '|' || t.colaborador_id, t.alterado_em from public.leituras_mensagem t
+     where p_tabela = 'leituras_mensagem'
+    union all
+    select t.conversa_id || '|' || t.colaborador_id, t.alterado_em from public.participantes t
+     where p_tabela = 'participantes'
+    union all
+    select t.id, t.alterado_em from public.conversas t
+     where p_tabela = 'conversas'
+  )
+  -- A assinatura é o SHA-256 dos ids em ordem de byte (collate "C"), a mesma
+  -- ordem do sort() do JavaScript: o aparelho consegue refazer a conta
+  select count(*),
+         max(c.alterado_em),
+         encode(sha256(convert_to(coalesce(string_agg(c.chave, ',' order by c.chave collate "C"), ''), 'UTF8')), 'hex')
+    from chaves c;
+end;
+$$;
+
+revoke all on function public.resumo_da_sincronizacao(text, date, date) from public, anon;
+grant execute on function public.resumo_da_sincronizacao(text, date, date) to authenticated;
+
+-- ============================================================
 -- NENHUMA FUNÇÃO PARA QUEM NÃO ESTÁ LOGADO (funcoes-sem-acesso-anonimo.sql,
 -- 13/10/2026) — o mesmo texto do delta; há teste conferindo. Fica no FIM
 -- do esquema de propósito: alcança todas as funções criadas acima.
