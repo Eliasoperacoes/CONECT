@@ -304,6 +304,23 @@ export const naoLidasDaLista = (
   conversas.filter((c) => estaNaLista(colaboradorId, c)).reduce((soma, c) => soma + (c.naoLidas || 0), 0);
 
 /**
+ * EM QUE ABA O PAINEL DO CHAT ABRE (30/10/2026).
+ *
+ * No computador, o balão do canto soma as não lidas de conversas E de
+ * grupos, e o painel abria sempre em "Conversas". Com tudo por ler num
+ * grupo, a pessoa via "5" no balão, abria, e não achava nada (Elias: "as
+ * notificações na aba grupo não aparecem"). Pedida uma aba sem nada por
+ * ler e a outra com, abre na outra.
+ */
+export const abaComNaoLidas = (
+  pedida: 'individuais' | 'grupos',
+  naoLidas: { individuais: number; grupos: number }
+): 'individuais' | 'grupos' => {
+  const outra = pedida === 'individuais' ? 'grupos' : 'individuais';
+  return naoLidas[pedida] === 0 && naoLidas[outra] > 0 ? outra : pedida;
+};
+
+/**
  * Aplica as preferências a uma lista já ordenada: tira as ocultas e as
  * vazias, e sobe as fixadas, preservando a ordem de dentro de cada grupo.
  */

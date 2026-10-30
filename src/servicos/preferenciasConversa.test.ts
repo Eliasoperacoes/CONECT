@@ -32,6 +32,7 @@ const {
   obterPreferencias,
   aplicarPreferenciasDaNuvem,
   removerConversaDaLista,
+  abaComNaoLidas,
 } = await import('./preferenciasConversa');
 
 const EU = 'colab-elias';
@@ -598,4 +599,30 @@ test('o título da aba e o aviso usam a mesma regra do selo', async () => {
   expect(app).toContain('const totalNaoLidas = naoLidasDaLista(colaboradorAtual.id, conversasIndividuais) + naoLidasDosGrupos;');
   expect(app).toContain('const naoLidasDosGrupos = naoLidasDaLista(colaboradorAtual.id, grupos);');
   expect(app).toContain('bancoDados.obterMensagensPorLer().filter((m) => naLista.has(m.conversaId))');
+});
+
+/*
+  "AS NOTIFICAÇÕES NA ABA GRUPO NÃO APARECEM" (Elias, 30/10/2026). No
+  computador, o balão do canto soma conversas e grupos; o painel abria em
+  "Conversas" e a aba Grupos não tinha número. Tudo por ler num grupo: o
+  balão dizia 5, a pessoa abria, e não achava nada.
+*/
+test('O PAINEL ABRE NA ABA QUE TEM O QUE LER: tudo por ler em grupo abre em Grupos', () => {
+  expect(abaComNaoLidas('individuais', { individuais: 0, grupos: 5 })).toBe('grupos');
+  expect(abaComNaoLidas('individuais', { individuais: 2, grupos: 5 })).toBe('individuais');
+  expect(abaComNaoLidas('individuais', { individuais: 0, grupos: 0 })).toBe('individuais');
+  expect(abaComNaoLidas('grupos', { individuais: 3, grupos: 0 })).toBe('individuais');
+});
+
+test('cada aba do painel mostra o número dela — a mesma conta do balão do canto', async () => {
+  const painel = await Bun.file(new URL('../componentes/PainelConversas.tsx', import.meta.url)).text();
+  expect(painel).toContain('individuais: naoLidasDaLista(colaboradorId, conversas)');
+  expect(painel).toContain('grupos: naoLidasDaLista(colaboradorId, grupos)');
+  expect(painel).toContain('abaComNaoLidas(secaoInicial, naoLidas)');
+  expect(painel).toMatch(/\{naoLidas\[item\.id\] > 0 && \(/);
+
+  // O balão soma as mesmas duas contas: o que ele mostra, as abas mostram
+  const app = await Bun.file(new URL('../App.tsx', import.meta.url)).text();
+  expect(app).toContain('const naoLidasDosGrupos = naoLidasDaLista(colaboradorAtual.id, grupos)');
+  expect(app).toContain('const totalNaoLidas = naoLidasDaLista(colaboradorAtual.id, conversasIndividuais) + naoLidasDosGrupos');
 });

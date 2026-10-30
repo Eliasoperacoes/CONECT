@@ -29,8 +29,10 @@ import { BuscaDeConversas } from './ListaDeConversas';
 import { ResultadosDaBusca } from './ResultadosDaBusca';
 import { bancoDados } from '../servicos/bancoDados';
 import {
+  abaComNaoLidas,
   aplicarPreferencias,
   contarArquivadas,
+  naoLidasDaLista,
   reexibirArquivadas,
   ocultarConversa,
   removerConversaDaLista,
@@ -66,7 +68,16 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
   aoFechar,
   colaboradorId,
 }) => {
-  const [secao, setSecao] = useState<Secao>(secaoInicial);
+  /*
+    O NÚMERO DE CADA ABA, a mesma conta do balão do canto (naoLidasDaLista).
+    Sem ele, a mensagem de grupo chegava com a pessoa em "Conversas" e nada
+    na aba Grupos dizia que havia o que ler.
+  */
+  const naoLidas = {
+    individuais: naoLidasDaLista(colaboradorId, conversas),
+    grupos: naoLidasDaLista(colaboradorId, grupos),
+  };
+  const [secao, setSecao] = useState<Secao>(() => abaComNaoLidas(secaoInicial, naoLidas));
   const [selecionando, setSelecionando] = useState(false);
   const [versao, setVersao] = useState(0);
   const [menuAberto, setMenuAberto] = useState<string | null>(null);
@@ -190,6 +201,18 @@ export const PainelConversas: React.FC<PropsPainelConversas> = ({
               >
                 <item.icone className="w-3.5 h-3.5" />
                 {item.rotulo}
+                {naoLidas[item.id] > 0 && (
+                  <span
+                    id={`nao-lidas-${item.id}`}
+                    className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                      ativa
+                        ? 'bg-[var(--c-sobre-acento)] text-[var(--c-acento)]'
+                        : 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                    }`}
+                  >
+                    {naoLidas[item.id] > 99 ? '99+' : naoLidas[item.id]}
+                  </span>
+                )}
               </button>
             );
           })}
