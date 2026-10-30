@@ -130,6 +130,9 @@ const recusaDaMensagem = {
     'script no Supabase — avise o TI.',
 };
 
+/** Cada conversa que o aparelho subiu (`salvarConversa`), na ordem. */
+let conversasSubidas: string[] = [];
+
 /** Conversas que o banco falso ja conhece. */
 const conversasNoBancoFalso = new Set<string>();
 
@@ -164,6 +167,7 @@ mock.module('./nuvemComunicacao', () => ({
     assinarAtualizacoes: () => () => {},
     sincronizarConversas: async () => true,
     salvarConversa: async (c: any) => {
+      conversasSubidas.push(c.id);
       if (recusarEscrita) return recusa;
 
       // participantes.colaborador_id aponta para colaboradores(id): id que
@@ -257,7 +261,7 @@ mock.module('./nuvemComunicacao', () => ({
   },
 }));
 
-const { bancoDados } = await import('./bancoDados');
+const { bancoDados, esquecerGruposOficiaisSubidos, DEFINICAO_CANAIS_LOJAS_REDE } = await import('./bancoDados');
 
 const CONVERSA_EQUIPE = {
   id: 'grupo-teste', tipo: 'grupo', nome: 'Equipe',
@@ -287,6 +291,8 @@ beforeEach(() => {
   anexosApagados = [];
   armazenamentoFalha = false;
   avisosDePublicacao = [];
+  conversasSubidas = [];
+  esquecerGruposOficiaisSubidos();
 
   armazenamento.setItem(CHAVE_COLABORADORES, JSON.stringify([ELIAS, ANA]));
   armazenamento.setItem(CHAVE_CONVERSAS, JSON.stringify([CONVERSA_EQUIPE]));
@@ -1312,4 +1318,68 @@ test('GRUPO OFICIAL: o aparelho inscreve só a própria pessoa, nunca os outros 
   bancoDados.garantirGruposDoSistemaPara('colab-elias');
   await new Promise((ok) => setTimeout(ok, 0));
   expect(bancoConversas.find((c) => c.id === 'grupo-avisos-da-rede')?.participantesIds).toContain('colab-elias');
+});
+
+/*
+  A OUTRA PORTA DO MESMO LAÇO (30/10/2026). A correção de cima fechou
+  garantirGruposDoSistemaPara, mas ela chama garantirCanaisTodasLojas — a
+  cada vez que a tela desenha a lista de grupos — e esta seguia pondo todo
+  colaborador nos sete grupos oficiais. medir-estabilidade.sql: 7.428
+  conferências de participantes e 1.199 cargas do chat por dia.
+*/
+const grupoOficial = (id: string, participantesIds: string[]) => ({
+  ...CONVERSA_EQUIPE, id, nome: id, ehSistemaPadrao: true, participantesIds,
+});
+const LOJA_DA_ANA = DEFINICAO_CANAIS_LOJAS_REDE.find((d) => d.loja === 'Pirassununga')!.id;
+const depoisDaTela = () => new Promise((ok) => setTimeout(ok, 0));
+
+test('GRUPO OFICIAL: desenhar a lista não sobe nada quando só OUTRA pessoa falta', async () => {
+  // O Elias está em todos; a Ana saiu de todos (fica fora da lista do aparelho).
+  // Sem foto, de propósito: arrumar a foto é coisa do aparelho, não sobe
+  armazenamento.setItem(
+    CHAVE_CONVERSAS,
+    JSON.stringify([
+      grupoOficial('grupo-avisos-da-rede', ['colab-elias']),
+      grupoOficial('grupo-setor-ti-rede', ['colab-elias']),
+      ...DEFINICAO_CANAIS_LOJAS_REDE.map((d) => grupoOficial(d.id, ['colab-elias'])),
+    ])
+  );
+  bancoDados.obterGrupos();
+  bancoDados.obterGrupos();
+  await depoisDaTela();
+  expect(conversasSubidas).toEqual([]);
+});
+
+test('GRUPO OFICIAL: a loja que a pessoa nem enxerga não vira grupo "faltando"', async () => {
+  // A RLS só entrega à Ana a loja dela e os Avisos; as outras quatro lojas e
+  // o grupo do TI não chegam ao aparelho — e não são dela
+  entrarComo(ANA);
+  armazenamento.setItem(
+    CHAVE_CONVERSAS,
+    JSON.stringify([
+      grupoOficial('grupo-avisos-da-rede', ['colab-elias', 'colab-ana']),
+      grupoOficial(LOJA_DA_ANA, ['colab-elias', 'colab-ana']),
+    ])
+  );
+  bancoDados.obterGrupos();
+  await depoisDaTela();
+  expect(conversasSubidas).toEqual([]);
+});
+
+test('GRUPO OFICIAL: quem falta é a própria pessoa — sobe só aquele grupo, e uma vez por sessão', async () => {
+  entrarComo(ANA);
+  const semAAna = JSON.stringify([
+    grupoOficial('grupo-avisos-da-rede', ['colab-elias']),
+    grupoOficial(LOJA_DA_ANA, ['colab-elias', 'colab-ana']),
+  ]);
+  armazenamento.setItem(CHAVE_CONVERSAS, semAAna);
+  bancoDados.obterGrupos();
+  await depoisDaTela();
+  expect(conversasSubidas).toEqual(['grupo-avisos-da-rede']);
+
+  // A carga ainda não trouxe a Ana de volta e a tela redesenha: não sobe de novo
+  armazenamento.setItem(CHAVE_CONVERSAS, semAAna);
+  bancoDados.obterGrupos();
+  await depoisDaTela();
+  expect(conversasSubidas).toEqual(['grupo-avisos-da-rede']);
 });

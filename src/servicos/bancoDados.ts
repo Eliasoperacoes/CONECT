@@ -410,6 +410,19 @@ export const DEFINICAO_CANAIS_CORPORATIVOS: Array<{
   },
 ];
 
+/**
+ * OS GRUPOS OFICIAIS QUE ESTE APARELHO JÁ SUBIU NESTA SESSÃO, por pessoa.
+ *
+ * Subir de novo o mesmo grupo não muda nada no banco ("já existe"), mas o
+ * sucesso dispara a carga completa do chat — e a tela, ao redesenhar a lista
+ * de grupos, pedia a subida outra vez. Era o laço (30/10/2026). Uma vez por
+ * sessão basta: o que falhou entra na próxima abertura do sistema.
+ */
+const gruposOficiaisSubidos = new Set<string>();
+
+/** Esquece o que já subiu. Para os testes, que trocam de pessoa sem sair. */
+export const esquecerGruposOficiaisSubidos = (): void => gruposOficiaisSubidos.clear();
+
 class BancoDadosConecta {
   private ouvintes: (() => void)[] = [];
 
@@ -467,6 +480,16 @@ class BancoDadosConecta {
         this.recarregarConversasEmBreve();
       }
     });
+  }
+
+  /** Sobe os grupos oficiais que ainda não subiram nesta sessão (`gruposOficiaisSubidos`). */
+  private subirGruposOficiais(lista: Conversa[]): void {
+    if (!usandoNuvem() || !temSessaoViva()) return;
+    const eu = this.obterColaboradorAtual().id;
+    const novos = lista.filter((c) => !gruposOficiaisSubidos.has(`${eu}|${c.id}`));
+    if (novos.length === 0) return;
+    novos.forEach((c) => gruposOficiaisSubidos.add(`${eu}|${c.id}`));
+    this.empurrarConversas(novos);
   }
 
   /**
@@ -2124,6 +2147,23 @@ class BancoDadosConecta {
     const conversas = this.obterTodasConversas();
     const todosColabs = this.obterColaboradores();
 
+    /*
+      NA REDE, OS CANAIS TAMBÉM SÓ INSCREVEM A PRÓPRIA PESSOA (30/10/2026).
+      A correção de 26/10 fechou `garantirGruposDoSistemaPara`, mas ela chama
+      esta — a cada vez que a tela desenha a lista de grupos — e esta seguia
+      pondo TODO colaborador nos sete grupos oficiais. Quem saiu de um deles,
+      ou a loja que a pessoa nem enxerga, aparecia "faltando"; o aparelho
+      subia os sete, o banco dizia "já existe" e o sucesso disparava outra
+      carga completa do chat. Medido (medir-estabilidade.sql): 7.428
+      conferências de participantes e 1.199 cargas do chat por dia, e o
+      tráfego de saída a caminho do limite do plano.
+    */
+    const naRede = usandoNuvem();
+    const eu = this.obterColaboradorAtual().id;
+    const entra = (id: string) => !naRede || id === eu;
+    /** Só o que mudou a participação sobe; foto e nome são do aparelho */
+    const subir = new Set<string>();
+
     /**
      * O administrador dos canais precisa ser uma pessoa que EXISTE na lista.
      *
@@ -2142,10 +2182,11 @@ class BancoDadosConecta {
 
     // 1. Avisos da Rede
     let grupoAvisos = conversas.find((c) => c.id === 'grupo-avisos-da-rede');
-    const todosIds = todosColabs.map((c) => c.id);
-    if (adminId && !todosIds.includes(adminId)) todosIds.push(adminId);
+    const todosIds = todosColabs.map((c) => c.id).filter(entra);
+    if (adminId && entra(adminId) && !todosIds.includes(adminId)) todosIds.push(adminId);
 
-    if (!grupoAvisos) {
+    if (!grupoAvisos && todosIds.length > 0) {
+      subir.add('grupo-avisos-da-rede');
       grupoAvisos = {
         id: 'grupo-avisos-da-rede',
         tipo: 'grupo',
@@ -2160,7 +2201,7 @@ class BancoDadosConecta {
       };
       conversas.push(grupoAvisos);
       houveAlteracao = true;
-    } else {
+    } else if (grupoAvisos) {
       if (!grupoAvisos.foto) {
         grupoAvisos.foto = FOTO_PADRAO_LOGO_EMPRESA;
         houveAlteracao = true;
@@ -2169,6 +2210,7 @@ class BancoDadosConecta {
         if (!grupoAvisos.participantesIds.includes(colabId)) {
           grupoAvisos.participantesIds.push(colabId);
           houveAlteracao = true;
+          subir.add(grupoAvisos.id);
         }
       }
     }
@@ -2178,10 +2220,16 @@ class BancoDadosConecta {
       let grupoLoja = conversas.find((c) => c.id === def.id);
       const membrosLoja = todosColabs
         .filter((c) => c.loja === def.loja || c.nivel >= NIVEL_GERENTE || c.id === adminId)
-        .map((c) => c.id);
-      if (adminId && !membrosLoja.includes(adminId)) membrosLoja.push(adminId);
+        .map((c) => c.id)
+        .filter(entra);
+      if (adminId && entra(adminId) && !membrosLoja.includes(adminId)) membrosLoja.push(adminId);
+
+      // A loja de que a pessoa não faz parte nem chega ao aparelho (RLS):
+      // não é "faltando", é de outros
+      if (!grupoLoja && membrosLoja.length === 0) continue;
 
       if (!grupoLoja) {
+        subir.add(def.id);
         grupoLoja = {
           id: def.id,
           tipo: 'grupo',
@@ -2214,6 +2262,7 @@ class BancoDadosConecta {
           if (!grupoLoja.participantesIds.includes(mId)) {
             grupoLoja.participantesIds.push(mId);
             houveAlteracao = true;
+            subir.add(grupoLoja.id);
           }
         }
       }
@@ -2223,10 +2272,12 @@ class BancoDadosConecta {
     let grupoTI = conversas.find((c) => c.id === 'grupo-setor-ti-rede');
     const membrosTI = todosColabs
       .filter((c) => c.setor === 'TI' || c.nivel >= NIVEL_GERENTE || c.id === adminId)
-      .map((c) => c.id);
-    if (adminId && !membrosTI.includes(adminId)) membrosTI.push(adminId);
+      .map((c) => c.id)
+      .filter(entra);
+    if (adminId && entra(adminId) && !membrosTI.includes(adminId)) membrosTI.push(adminId);
 
-    if (!grupoTI) {
+    if (!grupoTI && membrosTI.length > 0) {
+      subir.add('grupo-setor-ti-rede');
       grupoTI = {
         id: 'grupo-setor-ti-rede',
         tipo: 'grupo',
@@ -2246,7 +2297,7 @@ class BancoDadosConecta {
       };
       conversas.push(grupoTI);
       houveAlteracao = true;
-    } else {
+    } else if (grupoTI) {
       if (!grupoTI.foto) {
         grupoTI.foto = FOTO_PADRAO_LOGO_EMPRESA;
         houveAlteracao = true;
@@ -2255,13 +2306,15 @@ class BancoDadosConecta {
         if (!grupoTI.participantesIds.includes(tId)) {
           grupoTI.participantesIds.push(tId);
           houveAlteracao = true;
+          subir.add(grupoTI.id);
         }
       }
     }
 
     if (houveAlteracao) {
       localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
-      this.empurrarConversas(conversas.filter((c) => c.ehSistemaPadrao));
+      if (naRede) this.subirGruposOficiais(conversas.filter((c) => subir.has(c.id)));
+      else this.empurrarConversas(conversas.filter((c) => c.ehSistemaPadrao));
     }
   }
 
@@ -2284,21 +2337,22 @@ class BancoDadosConecta {
     this.garantirCanaisTodasLojas();
 
     const conversas = this.obterTodasConversas();
-    let houveAlteracao = false;
+    /** Os grupos em que a pessoa acabou de entrar — só eles sobem */
+    const entrou: Conversa[] = [];
 
     // 1. Grupo da Loja
     const idGrupoLoja = `grupo-loja-${colab.loja.toLowerCase().replace(/\s+/g, '-')}`;
     const grupoLoja = conversas.find((c) => c.id === idGrupoLoja);
     if (grupoLoja && !grupoLoja.participantesIds.includes(colab.id)) {
       grupoLoja.participantesIds.push(colab.id);
-      houveAlteracao = true;
+      entrou.push(grupoLoja);
     }
 
     // 2. Avisos da Rede
     const grupoAvisos = conversas.find((c) => c.id === 'grupo-avisos-da-rede');
     if (grupoAvisos && !grupoAvisos.participantesIds.includes(colab.id)) {
       grupoAvisos.participantesIds.push(colab.id);
-      houveAlteracao = true;
+      entrou.push(grupoAvisos);
     }
 
     // 3. TI ou Gestor
@@ -2306,13 +2360,14 @@ class BancoDadosConecta {
       const grupoTI = conversas.find((c) => c.id === 'grupo-setor-ti-rede');
       if (grupoTI && !grupoTI.participantesIds.includes(colab.id)) {
         grupoTI.participantesIds.push(colab.id);
-        houveAlteracao = true;
+        entrou.push(grupoTI);
       }
     }
 
-    if (houveAlteracao) {
+    if (entrou.length > 0) {
       localStorage.setItem(CHAVE_CONVERSAS, JSON.stringify(conversas));
-      this.empurrarConversas(conversas.filter((c) => c.ehSistemaPadrao));
+      if (usandoNuvem()) this.subirGruposOficiais(entrou);
+      else this.empurrarConversas(conversas.filter((c) => c.ehSistemaPadrao));
     }
   }
 
