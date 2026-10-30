@@ -165,7 +165,7 @@ select secao, item, valor, comparacao, o_que_olhar from (
   select 1 as ordem, 1 as pos, '1. JANELA' as secao, 'Medindo desde' as item,
          to_char(janela.desde at time zone 'America/Sao_Paulo', 'DD/MM HH24:MI') as valor,
          round(janela.dias::numeric, 1) || ' dias' as comparacao,
-         'deve ser 26/10 16:09; outra data é limpeza ou reinício no meio' as o_que_olhar
+         'a última limpeza (zerar-medicao.sql); outra data é reinício no meio' as o_que_olhar
     from janela
   union all
   select 1, 2, '1. JANELA', 'Pessoas por dia (média)',
