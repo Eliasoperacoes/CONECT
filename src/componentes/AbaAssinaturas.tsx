@@ -36,10 +36,10 @@ import {
   AlertTriangle,
   Clock,
 } from 'lucide-react';
-import { Colaborador, Holerite, RecebimentoHolerite, inicioDoPontoDe } from '../tipos';
+import { Colaborador, Holerite, RecebimentoHolerite, ROTULO_HOLERITE, inicioDoPontoDe } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoPonto, batePonto, dataDeHoje, AssinaturaNoEspelho } from '../servicos/ponto';
-import { mesesFechados, rotuloDoMes, periodoDoMes, ESPELHO_ASSINADO_DESDE } from '../servicos/meuRH';
+import { mesesFechados, rotuloDoMes, rotuloDoHolerite, periodoDoMes, ESPELHO_ASSINADO_DESDE } from '../servicos/meuRH';
 import {
   listarRecebimentos,
   assinaturasDoEspelho,
@@ -212,7 +212,7 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
     }
     const holerite = dados.holerites.find((h) => h.id === item.referencia);
     if (!holerite) return;
-    const titulo = `Holerite · ${item.nome} · ${rotuloDoMes(mes)}`;
+    const titulo = `${item.nome} · ${rotuloDoHolerite(holerite)}`;
     setOcupado(item.chave);
     /*
       O QUE O RH CONFERE É O ASSINADO (Elias, 05/10/2026): o comprovante com
@@ -462,7 +462,7 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
                         </span>
                       )
                     }
-                    detalhe={`${item.documento === 'holerite' ? 'Holerite' : 'Espelho de ponto'} · ${detalheDoItem(item)}`}
+                    detalhe={`${nomeDoDocumento(item)} · ${detalheDoItem(item)}`}
                     info={pessoa ? `${pessoa.setor} · ${pessoa.loja}` : undefined}
                     acao={{
                       rotulo: ACAO_DO_ESTADO[item.estado],
@@ -645,6 +645,9 @@ export const AbaAssinaturas: React.FC<{ colaboradorAtual: Colaborador }> = ({ co
 };
 
 /** O que a linha diz de onde o documento está: quem assinou, quando — ou o que falta. */
+const nomeDoDocumento = (item: ItemDeAssinatura): string =>
+  item.tipoHolerite ? ROTULO_HOLERITE[item.tipoHolerite] : 'Espelho de ponto';
+
 const detalheDoItem = (item: ItemDeAssinatura): string =>
   item.estado === 'assinado' && item.responsavel
     ? `${item.responsavel.nome} assinou em ${quandoCurto(item.responsavel.assinadoEm)}`
@@ -689,7 +692,7 @@ const LinhaDoDocumento: React.FC<{ item: ItemDeAssinatura; ocupado: boolean; aoA
         <span className="flex-1 min-w-0">
           <span className="block text-[15px] font-semibold text-[var(--c-texto)] truncate">{item.nome}</span>
           <span className="block text-xs text-[var(--c-texto-3)] truncate">
-            {ehHolerite ? 'Holerite' : 'Espelho de ponto'} · {detalhe}
+            {nomeDoDocumento(item)} · {detalhe}
           </span>
           {foraDoLote && (
             <span className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400">

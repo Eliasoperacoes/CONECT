@@ -21,7 +21,7 @@ import { Colaborador, inicioDoPontoDe } from '../tipos';
 import type { TelaId } from '../servicos/telasPorAssunto';
 import { bancoDados } from '../servicos/bancoDados';
 import { servicoPonto, dataDeHoje, formatarSaldo } from '../servicos/ponto';
-import { mesesFechados, periodoDoMes, rotuloDoMes } from '../servicos/meuRH';
+import { mesesFechados, periodoDoMes, rotuloDoMes, rotuloDoHolerite } from '../servicos/meuRH';
 import { assinaturasDoEspelho, listarRecebimentos } from '../servicos/assinatura';
 import { listarHolerites, abrirDocumento, gerarComprovantes } from '../servicos/rh';
 import { mostrarDocumento, mostrarPdf, mostrarPdfGerado } from '../servicos/visorDeDocumento';
@@ -116,12 +116,13 @@ export const FichaRapida: React.FC<{
   const abrirFolha = async () => {
     setOcupado('folha');
     setAviso(null);
-    const [maisNovo] = (await listarHolerites(pessoa.id)).sort((a, b) => b.competencia.localeCompare(a.competencia));
+    // A lista já vem do mais novo: o mês, e dentro do mês o último publicado
+    const [maisNovo] = await listarHolerites(pessoa.id);
     if (!maisNovo) {
       setOcupado(null);
       return setAviso('Nenhum holerite publicado para esta pessoa.');
     }
-    const titulo = `Holerite · ${pessoa.nome} · ${rotuloDoMes(maisNovo.competencia)}`;
+    const titulo = `${pessoa.nome} · ${rotuloDoHolerite(maisNovo)}`;
     const recebimento = (await listarRecebimentos({ holeriteIds: [maisNovo.id] })).get(maisNovo.id);
     if (recebimento) {
       const res = await gerarComprovantes([{ holerite: maisNovo, recebimento, nome: pessoa.nome }]);

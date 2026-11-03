@@ -106,7 +106,7 @@ test('o holerite mais recente aparece no resumo', async () => {
    * doze linhas de coisa antiga na frente da única que interessa.
    */
   const documentos = semComentarios(await lerDocumentos());
-  expect(documentos).toContain('rotuloDoMes(holerites[0].competencia)');
+  expect(documentos).toContain('rotuloDoHolerite(holerites[0])');
 });
 
 test('TRÊS BLOCOS DE PREFERÊNCIA VIRARAM UM', async () => {

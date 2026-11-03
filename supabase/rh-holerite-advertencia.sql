@@ -30,9 +30,11 @@ create table if not exists public.holerites (
   enviado_por_id    text,
   enviado_por_nome  text,
   criado_em         timestamptz not null default now(),
-  -- Um holerite por pessoa por mês: reenviar SUBSTITUI, em vez de empilhar
+  -- A rede recebe adiantamento e folha no mesmo mês (holerite-por-tipo.sql)
+  tipo              text not null default 'folha' check (tipo in ('folha', 'adiantamento')),
+  -- Um de cada tipo por pessoa e mês: reenviar SUBSTITUI, em vez de empilhar
   -- duas versões e deixar a pessoa adivinhar qual vale
-  unique (colaborador_id, competencia)
+  constraint holerites_por_pessoa_mes_e_tipo unique (colaborador_id, competencia, tipo)
 );
 
 create index if not exists holerites_por_colaborador

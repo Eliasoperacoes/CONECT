@@ -27,7 +27,7 @@ import {
   FileUp,
   Download,
 } from 'lucide-react';
-import { Colaborador, Holerite, RecebimentoHolerite } from '../tipos';
+import { Colaborador, Holerite, RecebimentoHolerite, ROTULO_HOLERITE, TipoHolerite } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import {
   listarHolerites,
@@ -67,6 +67,9 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
   /** Dentro da estrutura do computador: sem o título próprio, na margem padrão. */
   const embutida = useTelaEmbutida();
   const [competencia, setCompetencia] = useState(competenciaDeHoje());
+  /** O documento na tela: a lista, os números e o "limpar" valem só para ele. */
+  const [tipo, setTipo] = useState<TipoHolerite>('folha');
+  const documento = `${ROTULO_HOLERITE[tipo]} de ${porExtenso(competencia)}`;
   const [holerites, setHolerites] = useState<Holerite[]>([]);
   const [busca, setBusca] = useState('');
   const [enviando, setEnviando] = useState<string | null>(null);
@@ -203,10 +206,10 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
   const jaTem = useMemo(() => {
     const mapa = new Map<string, Holerite>();
     for (const h of holerites) {
-      if (h.competencia === competencia) mapa.set(h.colaboradorId, h);
+      if (h.competencia === competencia && h.tipo === tipo) mapa.set(h.colaboradorId, h);
     }
     return mapa;
-  }, [holerites, competencia]);
+  }, [holerites, competencia, tipo]);
 
   const escolherArquivo = (colaboradorId: string) => {
     refAlvo.current = colaboradorId;
@@ -231,6 +234,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
     const res = await salvarHolerite({
       colaboradorId: alvo,
       competencia,
+      tipo,
       conteudo,
       arquivoNome: arquivo.name,
     });
@@ -238,7 +242,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
     setEnviando(null);
     setAviso(
       res.sucesso
-        ? `Holerite de ${porExtenso(competencia)} publicado.`
+        ? `${documento} publicado.`
         : res.erro || 'Falha ao publicar.'
     );
     if (res.sucesso) setVersao((v) => v + 1);
@@ -261,11 +265,11 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
   */
   const [confirmandoLimpeza, setConfirmandoLimpeza] = useState(false);
   const [limpando, setLimpando] = useState(false);
-  useEffect(() => setConfirmandoLimpeza(false), [competencia]);
+  useEffect(() => setConfirmandoLimpeza(false), [competencia, tipo]);
 
   const limparMes = async () => {
     setLimpando(true);
-    const res = await removerHoleritesDoMes(competencia);
+    const res = await removerHoleritesDoMes(competencia, tipo);
     setLimpando(false);
     setConfirmandoLimpeza(false);
     if (!res.sucesso) setAviso(res.erro || 'Falha ao remover.');
@@ -276,7 +280,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
         ? ` ${res.assinadosMantidos} assinado${res.assinadosMantidos === 1 ? '' : 's'} ficou${res.assinadosMantidos === 1 ? '' : 'aram'}.`
         : '';
       setAviso(
-        `${res.removidos} holerite${res.removidos === 1 ? '' : 's'} de ${porExtenso(competencia)} removido${res.removidos === 1 ? '' : 's'}.${mantidos}`
+        `${res.removidos} · ${documento} removido${res.removidos === 1 ? '' : 's'}.${mantidos}`
       );
     }
     setVersao((v) => v + 1);
@@ -301,9 +305,34 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
       pessoas={ativos}
       holerites={holerites}
       competenciaInicial={competencia}
-      aoPublicar={() => setVersao((v) => v + 1)}
+      aoPublicar={(mes, publicado) => {
+        setCompetencia(mes);
+        setTipo(publicado);
+        setVersao((v) => v + 1);
+      }}
       arquivoInicial={arquivoDaCarga}
     />
+  );
+
+  const seletorDeTipo = (
+    <div role="group" aria-label="Documento" className="inline-flex p-0.5 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)]">
+      {(['adiantamento', 'folha'] as TipoHolerite[]).map((opcao) => (
+        <button
+          key={opcao}
+          type="button"
+          id={`rh-tipo-${opcao}`}
+          aria-pressed={tipo === opcao}
+          onClick={() => setTipo(opcao)}
+          className={`h-9 px-3 rounded-[10px] text-xs font-bold transition-colors ${
+            tipo === opcao
+              ? 'bg-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+              : 'text-[var(--c-texto-2)] hover:text-[var(--c-texto)]'
+          }`}
+        >
+          {ROTULO_HOLERITE[opcao]}
+        </button>
+      ))}
+    </div>
   );
 
   const arquivoDeUmaPessoa = (
@@ -316,7 +345,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
         .map((h) => ({ holerite: h, recebimento: recebimentos.get(h.id)!, nome: nomeDoColaborador(h.colaboradorId) }))
         .sort((a, b) => a.nome.localeCompare(b.nome)),
       'mes',
-      `Holerites assinados ${competencia}.pdf`
+      `${ROTULO_HOLERITE[tipo]} assinados ${competencia}.pdf`
     );
 
   /** As lojas, recolhidas, e quem em cada uma — no celular solta; no computador, dentro do cartão de lista. */
@@ -398,7 +427,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
                             baixarComprovantes(
                               [{ holerite, recebimento: recebido, nome: c.nome }],
                               holerite.id,
-                              `Holerite assinado ${competencia} - ${c.nome}.pdf`
+                              `${ROTULO_HOLERITE[tipo]} assinado ${competencia} - ${c.nome}.pdf`
                             )
                           }
                           className="flex-shrink-0 px-2 py-1 rounded-lg border border-[var(--c-borda)] text-[11px] font-semibold text-[var(--c-texto-2)] hover:text-[var(--c-texto)] flex items-center gap-1 disabled:opacity-50"
@@ -514,6 +543,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
               {gerando === 'mes' ? 'Gerando…' : `Baixar ${assinadosNoMes.length} assinados`}
             </button>
           )}
+          {seletorDeTipo}
           <label className="sr-only" htmlFor="rh-competencia">
             Competência
           </label>
@@ -572,7 +602,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
           <CartaoNumero
             rotulo="Publicados"
             valor={publicados}
-            detalhe={`de ${ativos.length} colaboradores em ${porExtenso(competencia)}`}
+            detalhe={`de ${ativos.length} colaboradores · ${documento}`}
             tom={publicados > 0 ? 'acento' : 'neutro'}
           />
           <CartaoNumero
@@ -584,7 +614,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
           <CartaoNumero
             rotulo="Sem holerite"
             valor={faltam}
-            detalhe="Ainda não receberam o do mês"
+            detalhe={`Ainda não receberam · ${ROTULO_HOLERITE[tipo]}`}
             tom={faltam > 0 && publicados > 0 ? 'atencao' : 'neutro'}
           />
         </div>
@@ -609,7 +639,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
                 {publicados > assinadosNoMes.length &&
                   (confirmandoLimpeza ? (
                     <span className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-red-700 dark:text-red-400">
-                      Remover os {publicados - assinadosNoMes.length} de {porExtenso(competencia)}?
+                      Remover os {publicados - assinadosNoMes.length} · {documento}?
                       {assinadosNoMes.length > 0 && ` Os ${assinadosNoMes.length} assinados ficam.`}
                       <button
                         type="button"
@@ -637,7 +667,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
                       className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--c-texto-3)] hover:text-red-600 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      Limpar este mês
+                      Limpar {ROTULO_HOLERITE[tipo].toLowerCase()} do mês
                     </button>
                   ))}
               </div>
@@ -674,7 +704,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
         <p className="text-xs text-[var(--c-texto-3)] leading-relaxed">
           Escolha o mês e envie o arquivo de cada pessoa. Ela abre o dela na aba{' '}
           <strong className="text-[var(--c-texto-2)]">Eu</strong> — ninguém mais vê.
-          Reenviar substitui o do mesmo mês.
+          Reenviar substitui o do mesmo mês e tipo.
         </p>
       </div>
 
@@ -716,6 +746,8 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
           />
         </div>
 
+        {seletorDeTipo}
+
         <div className="pb-1">
           <span className="block text-lg font-black text-[var(--c-texto)] leading-none">
             {publicados}
@@ -725,7 +757,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
             </span>
           </span>
           <span className="text-[11px] text-[var(--c-texto-3)]">
-            publicados em {porExtenso(competencia)}
+            publicados · {documento}
             {publicados > 0 && ` · ${assinadosNoMes.length} assinado${assinadosNoMes.length === 1 ? '' : 's'}`}
           </span>
         </div>
@@ -748,7 +780,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
           (confirmandoLimpeza ? (
             <div className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-red-500/8 border border-red-500/30">
               <span className="text-[11px] font-semibold text-red-700 dark:text-red-400">
-                Remover os {publicados - assinadosNoMes.length} holerites de {porExtenso(competencia)}? Quem já recebeu
+                Remover os {publicados - assinadosNoMes.length} · {documento}? Quem já recebeu
                 deixa de ver.
                 {assinadosNoMes.length > 0 && ` Os ${assinadosNoMes.length} assinados ficam.`}
               </span>
@@ -778,7 +810,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
               className="pb-1 flex items-center gap-1.5 text-[11px] font-semibold text-[var(--c-texto-3)] hover:text-red-600 transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              Limpar este mês
+              Limpar {ROTULO_HOLERITE[tipo].toLowerCase()} do mês
             </button>
           ))}
 

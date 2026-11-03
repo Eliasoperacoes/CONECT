@@ -27,7 +27,8 @@ const mesNaFrase = (mes: string) => rotuloDoMes(mes).toLowerCase();
 
 /** "setembro" / "agosto e setembro" / "julho, agosto e setembro". */
 const listaDeMeses = (meses: string[]) => {
-  const nomes = [...meses].sort().map(mesNaFrase);
+  // Folha e adiantamento do mesmo mês: o mês aparece uma vez só na frase
+  const nomes = [...new Set(meses)].sort().map(mesNaFrase);
   return nomes.length <= 1 ? nomes.join('') : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`;
 };
 

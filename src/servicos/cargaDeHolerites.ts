@@ -19,6 +19,7 @@
  *   - página com dois nomes diferentes, ou com um nome que duas pessoas
  *     do cadastro têm, fica para o RH decidir.
  */
+import type { TipoHolerite } from '../tipos';
 
 export interface PaginaAnalisada {
   /** Começa em 1, como o leitor de PDF mostra. */
@@ -228,6 +229,27 @@ const MESES = [
   'JANEIRO', 'FEVEREIRO', 'MARCO', 'ABRIL', 'MAIO', 'JUNHO',
   'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO',
 ];
+
+/**
+ * O TIPO DO DOCUMENTO, lido da etiqueta do PDF — só como sugestão.
+ *
+ * Vale só a etiqueta colada no mês ("Folha Mensal Setembro de 2026"), e não
+ * a palavra solta: a folha desconta o adiantamento, e traz "ADIANTAMENTO"
+ * nas linhas de desconto. PDF com as duas etiquetas, ou com nenhuma, volta
+ * sem sugestão: o RH escolhe, porque o tipo errado substituiria o documento
+ * do outro tipo.
+ */
+export const sugerirTipoDeHolerite = (textos: string[]): TipoHolerite | null => {
+  const mes = `(?:${MESES.join('|')})\\s*(?:\\/|DE)?\\s*20\\d{2}|(?:0[1-9]|1[0-2])\\/20\\d{2}`;
+  const etiqueta = new RegExp(`\\b(FOLHA\\s+MENSAL|ADIANTAMENTO)(?:\\s+[A-Z]{2,12}){0,2}?\\s+(?:${mes})\\b`, 'g');
+
+  const achados = new Set<TipoHolerite>();
+  for (const texto of textos) {
+    const t = texto.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase();
+    for (const m of t.matchAll(etiqueta)) achados.add(m[1].startsWith('FOLHA') ? 'folha' : 'adiantamento');
+  }
+  return achados.size === 1 ? [...achados][0] : null;
+};
 
 /**
  * O MÊS DO HOLERITE, lido do próprio PDF — só como sugestão.

@@ -11,7 +11,7 @@
  *
  * Sem banco e sem tela aqui: os dados entram prontos, para ser testado.
  */
-import type { Holerite, RecebimentoHolerite } from '../tipos';
+import type { Holerite, RecebimentoHolerite, TipoHolerite } from '../tipos';
 import type { AssinaturaNoEspelho } from './ponto';
 import type { AssinaturaDoResponsavel } from './assinatura';
 import { chaveDoEspelho, chaveDoResponsavel } from './assinatura';
@@ -32,6 +32,8 @@ export interface ItemDeAssinatura {
   /** Única na fila: o tipo e a referência. */
   chave: string;
   documento: DocumentoDaFila;
+  /** Só no holerite: a pessoa pode ter adiantamento e folha no mesmo mês. */
+  tipoHolerite?: TipoHolerite;
   /** holerite: o id; espelho: `chaveDoEspelho`. É o que vai ao banco. */
   referencia: string;
   colaboradorId: string;
@@ -85,6 +87,7 @@ export const montarFilaDoMes = (dados: {
     itens.push({
       chave: `holerite#${h.id}`,
       documento: 'holerite',
+      tipoHolerite: h.tipo,
       referencia: h.id,
       colaboradorId: h.colaboradorId,
       nome: nomeDe.get(h.colaboradorId) || 'Colaborador removido',

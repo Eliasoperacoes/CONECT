@@ -24,7 +24,15 @@ import { bancoDados } from './bancoDados';
 import { listarRecebimentos, imagensDasAssinaturas } from './assinatura';
 import { pedirAvisoDeDocumentoRh } from './envioDeAviso';
 import { montarComprovante, juntarPdfs } from './comprovanteDeHolerite';
-import { cuidaDePessoas, Holerite, Advertencia, TipoAdvertencia, RecebimentoHolerite } from '../tipos';
+import {
+  cuidaDePessoas,
+  Holerite,
+  TipoHolerite,
+  ROTULO_HOLERITE,
+  Advertencia,
+  TipoAdvertencia,
+  RecebimentoHolerite,
+} from '../tipos';
 
 /** Quem cuida de pessoas mexe nestes documentos. Os outros só leem os seus. */
 export const podeCuidarDeDocumentos = (): boolean =>
@@ -36,6 +44,7 @@ interface LinhaHolerite {
   id: string;
   colaborador_id: string;
   competencia: string;
+  tipo: TipoHolerite;
   arquivo_caminho: string;
   arquivo_nome: string;
   enviado_por_id: string | null;
@@ -47,6 +56,7 @@ const paraHolerite = (l: LinhaHolerite): Holerite => ({
   id: l.id,
   colaboradorId: l.colaborador_id,
   competencia: l.competencia,
+  tipo: l.tipo,
   arquivoCaminho: l.arquivo_caminho,
   arquivoNome: l.arquivo_nome,
   enviadoPorId: l.enviado_por_id || undefined,
@@ -70,7 +80,8 @@ export const listarHolerites = async (
   let consulta = supabase
     .from('holerites')
     .select('*')
-    .order('competencia', { ascending: false });
+    .order('competencia', { ascending: false })
+    .order('criado_em', { ascending: false });
 
   if (colaboradorId) consulta = consulta.eq('colaborador_id', colaboradorId);
 
@@ -83,15 +94,16 @@ export const listarHolerites = async (
 };
 
 /**
- * Guarda o holerite de um mês.
+ * Guarda um documento do mês: a folha ou o adiantamento.
  *
- * Reenviar SUBSTITUI o do mesmo mês, em vez de empilhar duas versões: duas
- * linhas do mesmo mês deixam a pessoa adivinhando qual vale, e a errada é
- * sempre a que ela abre primeiro.
+ * Reenviar SUBSTITUI o do mesmo mês E TIPO, em vez de empilhar duas versões:
+ * duas folhas do mesmo mês deixam a pessoa adivinhando qual vale, e a errada
+ * é sempre a que ela abre primeiro.
  */
 export const salvarHolerite = async (dados: {
   colaboradorId: string;
   competencia: string;
+  tipo: TipoHolerite;
   conteudo: string;
   arquivoNome: string;
   /** Avisar a pessoa no celular. A carga do PDF desliga e avisa todos juntos no fim. */
@@ -108,7 +120,26 @@ export const salvarHolerite = async (dados: {
   }
 
   const eu = bancoDados.obterColaboradorAtual();
-  const id = `hol-${dados.colaboradorId}-${dados.competencia}`;
+
+  /*
+    O QUE JÁ EXISTE DESTE TIPO É REAPROVEITADO, com o id e o arquivo dele. Os
+    documentos de antes de 03/11/2026 têm id e caminho sem o tipo: montar o
+    endereço de novo aqui acertaria o arquivo do OUTRO documento do mês. Sem
+    conseguir ler, não publica: a dúvida poderia sobrescrever um documento.
+  */
+  const jaPublicado = await supabase
+    .from('holerites')
+    .select('id, arquivo_caminho')
+    .eq('colaborador_id', dados.colaboradorId)
+    .eq('competencia', dados.competencia)
+    .eq('tipo', dados.tipo)
+    .maybeSingle();
+  if (jaPublicado.error) {
+    console.error('Falha ao conferir o holerite:', jaPublicado.error.message);
+    return { sucesso: false, erro: 'Não foi possível conferir o que já foi publicado. Tente de novo.' };
+  }
+  const existente = jaPublicado.data as { id: string; arquivo_caminho: string } | null;
+  const id = existente?.id || `hol-${dados.colaboradorId}-${dados.competencia}-${dados.tipo}`;
 
   /*
     ASSINADO NÃO SE SUBSTITUI. O banco recusaria a linha, mas só DEPOIS de
@@ -120,15 +151,15 @@ export const salvarHolerite = async (dados: {
   }
 
   /**
-   * O caminho carrega a pessoa e o mês.
+   * O caminho carrega a pessoa, o mês e o tipo.
    *
    * Assim o arquivo é localizável sem consultar a tabela — e, mais
-   * importante, reenviar o mesmo mês sobrescreve o arquivo em vez de deixar
-   * o antigo ocupando espaço para sempre.
+   * importante, reenviar o mesmo documento sobrescreve o arquivo em vez de
+   * deixar o antigo ocupando espaço para sempre.
    */
   const enviado = await enviarDocumento(
     dados.conteudo,
-    `holerites/${dados.colaboradorId}/${dados.competencia}.pdf`
+    existente?.arquivo_caminho || `holerites/${dados.colaboradorId}/${dados.competencia}-${dados.tipo}.pdf`
   );
   if (!enviado) {
     return { sucesso: false, erro: 'Não foi possível subir o arquivo.' };
@@ -139,12 +170,13 @@ export const salvarHolerite = async (dados: {
       id,
       colaborador_id: dados.colaboradorId,
       competencia: dados.competencia,
+      tipo: dados.tipo,
       arquivo_caminho: enviado.caminho,
       arquivo_nome: dados.arquivoNome,
       enviado_por_id: eu.id,
       enviado_por_nome: eu.nome,
     },
-    { onConflict: 'colaborador_id,competencia' }
+    { onConflict: 'colaborador_id,competencia,tipo' }
   );
 
   if (error) {
@@ -157,7 +189,7 @@ export const salvarHolerite = async (dados: {
     'usuario',
     `${eu.nome} publicou o holerite de ${dados.competencia} de ${
       bancoDados.obterColaboradorPorId(dados.colaboradorId)?.nome || dados.colaboradorId
-    }.`
+    } (${ROTULO_HOLERITE[dados.tipo]}).`
   );
 
   // A carga do PDF avisa todos de uma vez no fim (`avisar: false` aqui)
@@ -184,15 +216,17 @@ export const removerHolerite = async (
 };
 
 /**
- * APAGA TODOS OS HOLERITES DE UM MÊS — a carga de teste, ou a que subiu
- * errada e vai ser refeita.
+ * APAGA OS HOLERITES DE UM MÊS E TIPO — a carga de teste, ou a que subiu
+ * errada e vai ser refeita. Só do tipo pedido: refazer a folha não pode
+ * levar o adiantamento junto.
  *
  * O `.select()` depois do delete não é enfeite: ele devolve as linhas que
  * o banco DE FATO apagou. Sem permissão, o delete do Supabase afeta zero
  * linhas e responde sucesso — e a tela diria "limpo" com tudo lá.
  */
 export const removerHoleritesDoMes = async (
-  competencia: string
+  competencia: string,
+  tipo: TipoHolerite
 ): Promise<{ sucesso: boolean; removidos: number; assinadosMantidos: number; erro?: string }> => {
   const recusa = (erro: string) => ({ sucesso: false, removidos: 0, assinadosMantidos: 0, erro });
   if (!podeCuidarDeDocumentos()) return recusa('Apenas o RH remove holerite.');
@@ -204,13 +238,13 @@ export const removerHoleritesDoMes = async (
     apagá-lo, e a recusa de UM desfaria a limpeza do mês inteiro. Por isso
     os assinados saem do pedido antes.
   */
-  const doMes = await supabase.from('holerites').select('id').eq('competencia', competencia);
+  const doMes = await supabase.from('holerites').select('id').eq('competencia', competencia).eq('tipo', tipo);
   if (doMes.error) return recusa(doMes.error.message);
   const assinados = [
     ...(await listarRecebimentos({ holeriteIds: ((doMes.data || []) as Array<{ id: string }>).map((h) => h.id) })).keys(),
   ];
 
-  let pedido = supabase.from('holerites').delete().eq('competencia', competencia);
+  let pedido = supabase.from('holerites').delete().eq('competencia', competencia).eq('tipo', tipo);
   if (assinados.length > 0) {
     pedido = pedido.not('id', 'in', `(${assinados.map((id) => `"${id}"`).join(',')})`);
   }
@@ -225,7 +259,7 @@ export const removerHoleritesDoMes = async (
   bancoDados.registrarAuditoria(
     'Holerites removidos',
     'usuario',
-    `${eu.nome} removeu os ${linhas.length} holerites de ${competencia}.`
+    `${eu.nome} removeu os ${linhas.length} holerites de ${competencia} (${ROTULO_HOLERITE[tipo]}).`
   );
   return { sucesso: true, removidos: linhas.length, assinadosMantidos: assinados.length };
 };

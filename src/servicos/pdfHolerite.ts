@@ -15,6 +15,7 @@ import { salvarHolerite } from './rh';
 import { pedirAvisoDeDocumentoRh } from './envioDeAviso';
 import { corteEntreVias } from './cargaDeHolerites';
 import { carregarLeitorDePdf } from './leitorDePdf';
+import { ROTULO_HOLERITE, TipoHolerite } from '../tipos';
 
 /** Onde cortar cada página para ficar uma via só (por número de página, a partir de 1). */
 export type CortesDasVias = Record<number, number | null>;
@@ -100,6 +101,7 @@ export interface ResultadoDaCarga {
 export const publicarCargaDeHolerites = async (dados: {
   arquivo: ArrayBuffer;
   competencia: string;
+  tipo: TipoHolerite;
   grupos: Record<string, number[]>;
   /** De `lerPaginasDoPdf`: sem ele, cada página sai inteira. */
   cortes?: CortesDasVias;
@@ -119,8 +121,9 @@ export const publicarCargaDeHolerites = async (dados: {
       const res = await salvarHolerite({
         colaboradorId,
         competencia: dados.competencia,
+        tipo: dados.tipo,
         conteudo,
-        arquivoNome: `Holerite ${dados.competencia} - ${nome}.pdf`,
+        arquivoNome: `${ROTULO_HOLERITE[dados.tipo]} ${dados.competencia} - ${nome}.pdf`,
         avisar: false,
       });
       if (res.sucesso && res.id) avisar.push(res.id);

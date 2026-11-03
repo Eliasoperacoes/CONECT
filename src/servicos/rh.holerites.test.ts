@@ -16,6 +16,9 @@ let holeritesDoMes: Array<{ id: string }> = [];
 let linhasApagadas: Array<{ arquivo_caminho: string | null }> = [];
 let assinados: string[] = [];
 const arquivosApagados: string[] = [];
+/** O que o banco responde quando se pergunta pelo documento daquele tipo. */
+let jaPublicados: Record<string, { id: string; arquivo_caminho: string }> = {};
+let leituraFalha = false;
 
 /** Uma cadeia de consulta que anota os passos e responde no fim. */
 const cadeia = (tabela: string) => {
@@ -30,6 +33,13 @@ const cadeia = (tabela: string) => {
     delete: passo('delete'),
     eq: passo('eq'),
     not: passo('not'),
+    upsert: passo('upsert'),
+    maybeSingle: async () => {
+      pedido.passos.push('maybeSingle()');
+      if (leituraFalha) return { data: null, error: { message: 'sem rede' } };
+      const tipo = pedido.passos.find((p) => p.startsWith('eq("tipo"'))?.match(/,"(\w+)"\)/)?.[1];
+      return { data: (tipo && jaPublicados[tipo]) || null, error: null };
+    },
     then: (pronto: (r: unknown) => void) => {
       const apagando = pedido.passos.some((p) => p.startsWith('delete'));
       pronto({ data: apagando ? linhasApagadas : holeritesDoMes, error: null });
@@ -48,7 +58,7 @@ const enviados: string[] = [];
 mock.module('./anexos', () => ({
   enviarDocumento: async (_conteudo: string, caminho: string) => {
     enviados.push(caminho);
-    return null;
+    return { caminho, url: '' };
   },
   resolverCaminho: async () => null,
   apagarAnexos: async (caminhos: string[]) => {
@@ -72,7 +82,10 @@ beforeEach(() => {
   eu = { id: 'rh', nome: 'Dani', nivel: 2, setor: 'RH' };
   pedidos = [];
   arquivosApagados.length = 0;
+  enviados.length = 0;
   assinados = [];
+  jaPublicados = {};
+  leituraFalha = false;
   holeritesDoMes = [{ id: 'hol-ana-2026-09' }, { id: 'hol-bia-2026-09' }];
   linhasApagadas = [
     { arquivo_caminho: 'holerites/ana/2026-09.pdf' },
@@ -80,22 +93,28 @@ beforeEach(() => {
   ];
 });
 
-test('apaga só o mês pedido, e os arquivos dele junto', async () => {
-  const res = await removerHoleritesDoMes('2026-09');
+test('apaga só o mês e o tipo pedidos, e os arquivos deles junto', async () => {
+  const res = await removerHoleritesDoMes('2026-09', 'folha');
   expect(res).toEqual({ sucesso: true, removidos: 2, assinadosMantidos: 0 });
-  expect(apagou()!.passos).toEqual(['delete()', 'eq("competencia","2026-09")', 'select("arquivo_caminho")']);
+  expect(apagou()!.passos).toEqual([
+    'delete()',
+    'eq("competencia","2026-09")',
+    'eq("tipo","folha")',
+    'select("arquivo_caminho")',
+  ]);
   expect(arquivosApagados).toEqual(['holerites/ana/2026-09.pdf', 'holerites/bia/2026-09.pdf']);
 
   // Outro mês, outro filtro: o pedido segue a competência escolhida
   pedidos = [];
-  await removerHoleritesDoMes('2026-08');
+  await removerHoleritesDoMes('2026-08', 'adiantamento');
   expect(apagou()!.passos).toContain('eq("competencia","2026-08")');
+  expect(apagou()!.passos).toContain('eq("tipo","adiantamento")');
 });
 
 test('o holerite assinado fica fora do pedido de apagar', async () => {
   assinados = ['hol-ana-2026-09'];
   linhasApagadas = [{ arquivo_caminho: 'holerites/bia/2026-09.pdf' }];
-  const res = await removerHoleritesDoMes('2026-09');
+  const res = await removerHoleritesDoMes('2026-09', 'folha');
   expect(apagou()!.passos).toContain('not("id","in","(\\"hol-ana-2026-09\\")")');
   expect(res).toEqual({ sucesso: true, removidos: 1, assinadosMantidos: 1 });
 });
@@ -103,32 +122,67 @@ test('o holerite assinado fica fora do pedido de apagar', async () => {
 test('o número vem do banco: sem permissão, zero removidos, não "limpo"', async () => {
   // O delete barrado pela regra do banco responde sucesso com nada apagado
   linhasApagadas = [];
-  const res = await removerHoleritesDoMes('2026-09');
+  const res = await removerHoleritesDoMes('2026-09', 'folha');
   expect(res.removidos).toBe(0);
   expect(arquivosApagados).toEqual([]);
 });
 
 test('quem não é do RH não apaga, nem com mês malformado', async () => {
   eu = { id: 'g', nome: 'Gerente', nivel: 2, setor: 'Balcão' };
-  expect((await removerHoleritesDoMes('2026-09')).sucesso).toBe(false);
+  expect((await removerHoleritesDoMes('2026-09', 'folha')).sucesso).toBe(false);
   eu = { id: 'rh', nome: 'Dani', nivel: 2, setor: 'RH' };
   // Sem mês, o filtro vazio apagaria nada — ou, mal escrito, tudo
-  expect((await removerHoleritesDoMes('')).sucesso).toBe(false);
+  expect((await removerHoleritesDoMes('', 'folha')).sucesso).toBe(false);
   expect(pedidos).toHaveLength(0);
 });
 
 test('holerite assinado não é substituído — nem o arquivo chega a subir', async () => {
-  enviados.length = 0;
   assinados = ['hol-ana-2026-09'];
-  const res = await salvarHolerite({ colaboradorId: 'ana', competencia: '2026-09', conteudo: 'data:', arquivoNome: 'x.pdf' });
+  jaPublicados = { folha: { id: 'hol-ana-2026-09', arquivo_caminho: 'holerites/ana/2026-09.pdf' } };
+  const res = await salvarHolerite({ colaboradorId: 'ana', competencia: '2026-09', tipo: 'folha', conteudo: 'data:', arquivoNome: 'x.pdf' });
   expect(res.sucesso).toBe(false);
   expect(res.erro).toContain('já foi assinado');
   // O arquivo assinado continua o mesmo: o upload nem foi tentado
   expect(enviados).toEqual([]);
 
   // O de outra pessoa, não assinado, segue para o envio
-  await salvarHolerite({ colaboradorId: 'bia', competencia: '2026-09', conteudo: 'data:', arquivoNome: 'x.pdf' });
-  expect(enviados).toEqual(['holerites/bia/2026-09.pdf']);
+  jaPublicados = {};
+  await salvarHolerite({ colaboradorId: 'bia', competencia: '2026-09', tipo: 'folha', conteudo: 'data:', arquivoNome: 'x.pdf' });
+  expect(enviados).toEqual(['holerites/bia/2026-09-folha.pdf']);
+});
+
+/*
+  O CASO DA DANI (03/11/2026): o adiantamento de outubro, de antes do tipo,
+  mora em `holerites/ana/2026-10.pdf`, com o id `hol-ana-2026-10`, assinado
+  ou não. A folha do mesmo mês não pode tocar em nenhum dos dois.
+*/
+const ADIANTAMENTO_ANTIGO = { id: 'hol-ana-2026-10', arquivo_caminho: 'holerites/ana/2026-10.pdf' };
+const publicar = (tipo: 'folha' | 'adiantamento') =>
+  salvarHolerite({ colaboradorId: 'ana', competencia: '2026-10', tipo, conteudo: 'data:', arquivoNome: 'x.pdf', avisar: false });
+
+test('A FOLHA ENTRA COM O ADIANTAMENTO ASSINADO, com id e arquivo próprios', async () => {
+  assinados = ['hol-ana-2026-10'];
+  jaPublicados = { adiantamento: ADIANTAMENTO_ANTIGO };
+  const res = await publicar('folha');
+  expect(res).toEqual({ sucesso: true, id: 'hol-ana-2026-10-folha' });
+  expect(enviados).toEqual(['holerites/ana/2026-10-folha.pdf']);
+});
+
+test('reenviar o adiantamento antigo não assinado usa o id e o arquivo dele, sem duplicar', async () => {
+  jaPublicados = { adiantamento: ADIANTAMENTO_ANTIGO };
+  const res = await publicar('adiantamento');
+  expect(res.id).toBe('hol-ana-2026-10');
+  expect(enviados).toEqual(['holerites/ana/2026-10.pdf']);
+  const gravou = pedidos.flatMap((p) => p.passos).find((p) => p.startsWith('upsert'))!;
+  expect(gravou).toContain('"tipo":"adiantamento"');
+  expect(gravou).toContain('"onConflict":"colaborador_id,competencia,tipo"');
+});
+
+test('sem conseguir ler o que já existe, não publica nem sobe arquivo', async () => {
+  leituraFalha = true;
+  const res = await publicar('folha');
+  expect(res.sucesso).toBe(false);
+  expect(enviados).toEqual([]);
 });
 
 test('O COMPROVANTE DO COLABORADOR: só o do próprio holerite; o RH continua com o da rede', async () => {

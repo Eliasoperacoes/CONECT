@@ -1795,11 +1795,20 @@ export interface JustificativaAusencia {
  * dentro da tabela incha o banco e faz cada abertura da tela baixar tudo de
  * novo — e o que a pessoa quer é abrir o dela, não os oitenta.
  */
+/** A rede recebe dois documentos por mês: o adiantamento e a folha. */
+export type TipoHolerite = 'folha' | 'adiantamento';
+
+export const ROTULO_HOLERITE: Record<TipoHolerite, string> = {
+  folha: 'Folha',
+  adiantamento: 'Adiantamento',
+};
+
 export interface Holerite {
   id: string;
   colaboradorId: string;
   /** AAAA-MM. É de um MÊS, não de um dia. */
   competencia: string;
+  tipo: TipoHolerite;
   arquivoCaminho: string;
   arquivoNome: string;
   enviadoPorId?: string;

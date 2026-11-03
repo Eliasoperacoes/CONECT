@@ -30,7 +30,15 @@ import {
   Clock,
   Loader2,
 } from 'lucide-react';
-import { Colaborador, Holerite, Advertencia, ROTULO_ADVERTENCIA, RecebimentoHolerite, inicioDoPontoDe } from '../tipos';
+import {
+  Colaborador,
+  Holerite,
+  Advertencia,
+  ROTULO_ADVERTENCIA,
+  ROTULO_HOLERITE,
+  RecebimentoHolerite,
+  inicioDoPontoDe,
+} from '../tipos';
 import {
   listarRecebimentos,
   listarEspelhosAssinados,
@@ -53,6 +61,7 @@ import { formatarDataBR, dataDeHoje, batePonto } from '../servicos/ponto';
 import {
   mesesFechados,
   rotuloDoMes,
+  rotuloDoHolerite,
   liberacaoDoMesAtual,
   separarMinhasAusencias,
   situacaoDasFerias,
@@ -307,7 +316,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
     da tela ainda não sabe.
   */
   const abrirHolerite = async (h: Holerite) => {
-    const titulo = `Holerite · ${rotuloDoMes(h.competencia)}`;
+    const titulo = rotuloDoHolerite(h);
     const barra = (dados: ArrayBuffer) => (
       <AssinarHolerite
         holerite={h}
@@ -324,7 +333,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
       const comprovante = await gerarMeuComprovante(h, recebimento);
       if (comprovante.pdf) {
         setAbrindo(null);
-        return mostrarPdfGerado(comprovante.pdf, titulo, `Holerite assinado ${h.competencia}.pdf`, barra);
+        return mostrarPdfGerado(comprovante.pdf, titulo, `${ROTULO_HOLERITE[h.tipo]} assinado ${h.competencia}.pdf`, barra);
       }
     }
     const url = await abrirDocumento(h.arquivoCaminho);
@@ -438,7 +447,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
               : holeritesParaAssinar.length
               ? `${holeritesParaAssinar.length} para assinar`
               : holerites.length
-                ? `Último: ${rotuloDoMes(holerites[0].competencia)}`
+                ? `Último: ${rotuloDoHolerite(holerites[0])}`
                 : 'Nenhum publicado ainda'
           }
           alerta={holeritesParaAssinar.length > 0}
@@ -555,7 +564,7 @@ export const MeuRH: React.FC<Props> = ({ colaboradorAtual, cartoes, semTitulo })
               {holerites.map((h) => (
                 <Linha
                   key={h.id}
-                  titulo={rotuloDoMes(h.competencia)}
+                  titulo={rotuloDoHolerite(h)}
                   detalhe={
                     recebimentos.has(h.id)
                       ? `Assinado em ${dataHoraDeBrasilia(recebimentos.get(h.id)!.assinadoEm)}`

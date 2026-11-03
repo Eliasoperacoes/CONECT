@@ -18,13 +18,14 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { FileUp, Loader2, CheckCircle2, AlertTriangle, UserX, FileWarning } from 'lucide-react';
-import { Colaborador, Holerite } from '../tipos';
+import { Colaborador, Holerite, ROTULO_HOLERITE, TipoHolerite } from '../tipos';
 import { FolhaInferior } from './FolhaInferior';
 import {
   analisarPaginas,
   decisaoInicial,
   paginasPorPessoa,
   sugerirCompetencia,
+  sugerirTipoDeHolerite,
   PaginaAnalisada,
 } from '../servicos/cargaDeHolerites';
 import { lerPaginasDoPdf, publicarCargaDeHolerites, ResultadoDaCarga, CortesDasVias } from '../servicos/pdfHolerite';
@@ -38,7 +39,8 @@ interface Props {
   /** Os já publicados, para avisar quem terá o do mês substituído. */
   holerites: Holerite[];
   competenciaInicial: string;
-  aoPublicar: () => void;
+  /** O mês e o tipo publicados: a tela de fora passa a mostrar o que acabou de subir. */
+  aoPublicar: (competencia: string, tipo: TipoHolerite) => void;
   /**
    * O PDF já escolhido fora daqui — arrastado para a área de carga do
    * computador. Chegando, a carga lê direto, sem pedir o arquivo de novo.
@@ -64,6 +66,8 @@ export const CargaDeHolerites: React.FC<Props> = ({
   const [paginas, setPaginas] = useState<PaginaAnalisada[]>([]);
   const [decisoes, setDecisoes] = useState<Record<number, string | null>>({});
   const [competencia, setCompetencia] = useState(competenciaInicial);
+  // Sem padrão: o tipo errado substituiria o documento do outro tipo
+  const [tipo, setTipo] = useState<TipoHolerite | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [progresso, setProgresso] = useState({ feitos: 0, total: 0 });
   const [resultado, setResultado] = useState<ResultadoDaCarga | null>(null);
@@ -75,6 +79,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
     setArquivo(null);
     setPaginas([]);
     setDecisoes({});
+    setTipo(null);
     setErro(null);
     setResultado(null);
   };
@@ -125,6 +130,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
       setPaginas(analise);
       setDecisoes(decisaoInicial(analise));
       setCompetencia(sugerirCompetencia(textos) || competenciaInicial);
+      setTipo(sugerirTipoDeHolerite(textos));
       setEtapa('revisar');
     } catch (falha) {
       console.error('Falha ao ler o PDF da carga:', falha);
@@ -138,7 +144,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
   const paraDecidir = paginas.filter((p) => p.donos.length !== 1);
   const semHolerite = pessoas.filter((p) => !grupos[p.id]);
   const substituidos = recebem.filter((id) =>
-    holerites.some((h) => h.colaboradorId === id && h.competencia === competencia)
+    holerites.some((h) => h.colaboradorId === id && h.competencia === competencia && h.tipo === tipo)
   );
   const naoPublicadas = paginas.filter((p) => !decisoes[p.numero]).length;
   // As páginas impressas em duas vias, que cada um recebe com uma só
@@ -150,6 +156,10 @@ export const CargaDeHolerites: React.FC<Props> = ({
       setErro('Escolha o mês (competência) antes de publicar.');
       return;
     }
+    if (!tipo) {
+      setErro('Escolha se é folha ou adiantamento antes de publicar.');
+      return;
+    }
     setErro(null);
     setEtapa('publicando');
     setProgresso({ feitos: 0, total: recebem.length });
@@ -158,6 +168,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
       arquivo: arquivo.dados,
       cortes: arquivo.cortes,
       competencia,
+      tipo,
       grupos,
       nomeDe,
       aoAvancar: (feitos, total) => setProgresso({ feitos, total }),
@@ -165,7 +176,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
 
     setResultado(res);
     setEtapa('fim');
-    if (res.publicados > 0) aoPublicar();
+    if (res.publicados > 0) aoPublicar(competencia, tipo);
   };
 
   const opcoesDePessoa = (pagina: PaginaAnalisada) => {
@@ -183,10 +194,12 @@ export const CargaDeHolerites: React.FC<Props> = ({
           type="button"
           id="botao-publicar-carga"
           onClick={publicar}
-          disabled={recebem.length === 0}
+          disabled={recebem.length === 0 || !tipo}
           className="w-full h-12 rounded-2xl bg-[var(--c-acento)] text-[var(--c-sobre-acento)] text-sm font-bold disabled:opacity-40"
         >
-          Publicar {recebem.length} holerite{recebem.length === 1 ? '' : 's'} de {rotuloDoMes(competencia)}
+          {tipo
+            ? `Publicar ${recebem.length} · ${ROTULO_HOLERITE[tipo]} de ${rotuloDoMes(competencia)}`
+            : 'Escolha folha ou adiantamento'}
         </button>
         <button type="button" onClick={recomecar} className="h-10 text-xs font-semibold text-[var(--c-texto-2)]">
           Escolher outro arquivo
@@ -264,6 +277,35 @@ export const CargaDeHolerites: React.FC<Props> = ({
             <span className="text-[11px] text-[var(--c-texto-3)]">Lido do PDF. Confira antes de publicar.</span>
           </div>
 
+          <div role="group" aria-labelledby="carga-tipo-rotulo">
+            <span id="carga-tipo-rotulo" className="block text-xs font-bold text-[var(--c-texto-2)] mb-1.5">
+              Qual documento é este?
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              {(['adiantamento', 'folha'] as TipoHolerite[]).map((opcao) => (
+                <button
+                  key={opcao}
+                  type="button"
+                  id={`carga-tipo-${opcao}`}
+                  aria-pressed={tipo === opcao}
+                  onClick={() => setTipo(opcao)}
+                  className={`h-11 rounded-xl border text-sm font-bold transition-colors ${
+                    tipo === opcao
+                      ? 'bg-[var(--c-acento)] border-[var(--c-acento)] text-[var(--c-sobre-acento)]'
+                      : 'bg-[var(--c-canvas)] border-[var(--c-borda)] text-[var(--c-texto-2)]'
+                  }`}
+                >
+                  {ROTULO_HOLERITE[opcao]}
+                </button>
+              ))}
+            </div>
+            {!tipo && (
+              <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                Não deu para ler no PDF. Escolha antes de publicar.
+              </span>
+            )}
+          </div>
+
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="p-2.5 rounded-xl bg-emerald-500/10">
               <span className="block text-xl font-black text-emerald-600">{recebem.length}</span>
@@ -281,10 +323,10 @@ export const CargaDeHolerites: React.FC<Props> = ({
             </div>
           </div>
 
-          {substituidos.length > 0 && (
+          {tipo && substituidos.length > 0 && (
             <p className="p-3 rounded-xl bg-amber-500/8 border border-amber-500/25 text-xs text-amber-700 dark:text-amber-400">
-              {substituidos.length} pessoa{substituidos.length === 1 ? ' já tem' : 's já têm'} holerite de{' '}
-              {rotuloDoMes(competencia)}. Publicar substitui o anterior.
+              {substituidos.length} pessoa{substituidos.length === 1 ? ' já tem' : 's já têm'}{' '}
+              {ROTULO_HOLERITE[tipo]} de {rotuloDoMes(competencia)}. Publicar substitui o anterior; o já assinado não muda.
             </p>
           )}
 
@@ -419,7 +461,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
           <div className="flex items-center gap-2 text-emerald-600">
             <CheckCircle2 className="w-6 h-6" />
             <span className="text-base font-bold">
-              {resultado.publicados} holerite{resultado.publicados === 1 ? '' : 's'} de {rotuloDoMes(competencia)} publicado
+              {resultado.publicados} · {tipo ? ROTULO_HOLERITE[tipo] : 'Holerite'} de {rotuloDoMes(competencia)} publicado
               {resultado.publicados === 1 ? '' : 's'}
             </span>
           </div>

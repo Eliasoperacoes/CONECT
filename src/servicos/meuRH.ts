@@ -15,7 +15,7 @@
  *   espelho                    → `servicoPonto.gerarHtmlEspelho`, o mesmo
  *                                 documento que o RH imprime
  */
-import { JustificativaAusencia, SE_COMPROVA_COM_DOCUMENTO } from '../tipos';
+import { Holerite, JustificativaAusencia, ROTULO_HOLERITE, SE_COMPROVA_COM_DOCUMENTO } from '../tipos';
 import { diasCorridos } from './justificativas';
 import { servicoPonto, AssinaturaNoEspelho } from './ponto';
 import { nuvem } from './nuvem';
@@ -67,6 +67,10 @@ export {
   espelhosParaAssinar,
   liberacaoDoMesAtual,
 };
+
+/** "Adiantamento · Outubro de 2026": sem o tipo, os dois documentos do mês teriam o mesmo nome. */
+export const rotuloDoHolerite = (h: Pick<Holerite, 'tipo' | 'competencia'>): string =>
+  `${ROTULO_HOLERITE[h.tipo]} · ${rotuloDoMes(h.competencia)}`;
 
 export interface MinhasAusencias {
   /** Atestado, declaração, falta justificada: o que se prova com papel. */

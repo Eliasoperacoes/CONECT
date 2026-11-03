@@ -92,16 +92,17 @@ test('advertencia SEM MOTIVO escrito nao e registrada', async () => {
   expect(servico).toContain("dados.tipo === 'suspensao' && !dados.diasSuspensao");
 });
 
-test('reenviar holerite SUBSTITUI o do mesmo mes', async () => {
+test('reenviar holerite SUBSTITUI o do mesmo mes e tipo', async () => {
   const sql = await lerSql();
   const servico = await Bun.file(new URL('./rh.ts', import.meta.url)).text();
 
   /**
-   * Duas linhas do mesmo mês deixam a pessoa adivinhando qual vale, e a
-   * errada é sempre a que ela abre primeiro.
+   * Duas folhas do mesmo mês deixam a pessoa adivinhando qual vale, e a
+   * errada é sempre a que ela abre primeiro. Folha e adiantamento são dois
+   * documentos, e convivem.
    */
-  expect(sql).toContain('unique (colaborador_id, competencia)');
-  expect(servico).toContain("onConflict: 'colaborador_id,competencia'");
+  expect(sql).toContain('unique (colaborador_id, competencia, tipo)');
+  expect(servico).toContain("onConflict: 'colaborador_id,competencia,tipo'");
 });
 
 /**

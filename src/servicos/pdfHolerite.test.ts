@@ -8,7 +8,7 @@ import { test, expect, mock, beforeEach } from 'bun:test';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 
 /** O que foi publicado: para quem, de que mês, e o PDF que foi. */
-const publicados: Array<{ colaboradorId: string; competencia: string; conteudo: string; arquivoNome: string }> = [];
+const publicados: Array<{ colaboradorId: string; competencia: string; tipo: string; conteudo: string; arquivoNome: string }> = [];
 let recusar: string | null = null;
 
 mock.module('./rh', () => ({
@@ -81,6 +81,7 @@ test('a publicação passa os cortes adiante', async () => {
   await publicarCargaDeHolerites({
     arquivo: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
     competencia: '2026-09',
+    tipo: 'folha',
     grupos: { maria: [1] },
     cortes: { 1: 457 },
     nomeDe: (id) => id,
@@ -96,6 +97,7 @@ test('cada pessoa recebe o dela, no mês escolhido', async () => {
   const res = await publicarCargaDeHolerites({
     arquivo,
     competencia: '2026-09',
+    tipo: 'folha',
     grupos: { maria: [1], joao: [2] },
     nomeDe: (id) => (id === 'maria' ? 'Maria Clara' : 'João Felipe'),
     aoAvancar: (feitos, total) => avancos.push(`${feitos}/${total}`),
@@ -109,7 +111,8 @@ test('cada pessoa recebe o dela, no mês escolhido', async () => {
   // Uma página cada — o resumo da folha (pág. 3) não foi para ninguém
   expect(await paginasDe(publicados[0].conteudo)).toBe(1);
   expect(await paginasDe(publicados[1].conteudo)).toBe(1);
-  expect(publicados[0].arquivoNome).toBe('Holerite 2026-09 - Maria Clara.pdf');
+  expect(publicados[0].arquivoNome).toBe('Folha 2026-09 - Maria Clara.pdf');
+  expect(publicados[0].tipo).toBe('folha');
   expect(avancos).toEqual(['1/2', '2/2']);
 });
 
@@ -120,6 +123,7 @@ test('uma falha não derruba o lote: o resto publica, e a falha volta com o moti
   const res = await publicarCargaDeHolerites({
     arquivo,
     competencia: '2026-09',
+    tipo: 'folha',
     grupos: { maria: [1], joao: [2] },
     nomeDe: (id) => id,
   });
@@ -134,6 +138,7 @@ test('pessoa sem página nenhuma não gera holerite vazio', async () => {
   const res = await publicarCargaDeHolerites({
     arquivo,
     competencia: '2026-09',
+    tipo: 'folha',
     grupos: { joao: [1], maria: [] },
     nomeDe: (id) => id,
   });
@@ -147,6 +152,7 @@ test('a carga avisa os publicados de uma vez, no fim — e não quem falhou', as
   await publicarCargaDeHolerites({
     arquivo,
     competencia: '2026-09',
+    tipo: 'folha',
     grupos: { maria: [1], joao: [2], ana: [3] },
     nomeDe: (id) => id,
   });
