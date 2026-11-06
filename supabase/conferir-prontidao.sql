@@ -202,6 +202,8 @@ operacoes (tabela, comando) as (values
   ('compensacao_sabado', 'SELECT'),
   ('configuracoes', 'SELECT'),
   ('cpf_colaborador', 'SELECT'),
+  -- O dia abonado da equipe, sem o atestado (dias-abonados-para-a-lideranca.sql, 06/11/2026)
+  ('dias_abonados', 'SELECT'),
   ('estabelecimentos', 'SELECT'),
   ('marcacoes_originais', 'SELECT'),
   ('tratamento_marcacao', 'SELECT'),

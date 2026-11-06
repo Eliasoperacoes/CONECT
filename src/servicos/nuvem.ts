@@ -52,7 +52,7 @@ import { nuvemComunicacao } from './nuvemComunicacao';
  * importa este — o ciclo fechava e o aplicativo não abria
  * ("Cannot access 'nuvem' before initialization", tela branca).
  */
-import { aplicarJustificativasDaNuvem, gravarAfastamentos } from './justificativasCache';
+import { aplicarJustificativasDaNuvem, gravarAfastamentos, gravarDiasAbonados } from './justificativasCache';
 import { aplicarFeriadosDaNuvem } from './feriadosCache';
 import { buscarTodasAsLinhas } from './paginacao';
 import { sincronizarPeloQueMudou, type ConsultaSincronizavel } from './sincronizacaoIncremental';
@@ -1878,6 +1878,27 @@ class PonteNuvem {
     aplicarJustificativasDaNuvem(data.map(paraJustificativa));
     // Os afastamentos vêm junto: mudam a situação do dia como uma ausência
     await this.sincronizarAfastamentos();
+    await this.sincronizarDiasAbonados();
+    return true;
+  }
+
+  /**
+   * OS DIAS ABONADOS DA EQUIPE (dias-abonados-para-a-lideranca.sql): o que o
+   * líder recebe no lugar do atestado, para o espelho dele fechar igual ao
+   * do RH. Sem a tabela (antes do SQL), fica o que estava.
+   */
+  async sincronizarDiasAbonados(): Promise<boolean> {
+    if (!supabase) return false;
+    const { data, error } = await supabase.from('dias_abonados').select('*');
+    if (error) return false;
+    gravarDiasAbonados(
+      ((data || []) as Array<Record<string, string>>).map((l) => ({
+        id: l.id,
+        colaboradorId: l.colaborador_id,
+        dataInicio: l.data_inicio,
+        dataFim: l.data_fim,
+      }))
+    );
     return true;
   }
 
@@ -2258,6 +2279,18 @@ class PonteNuvem {
         { event: '*', schema: 'public', table: 'justificativas_ausencia' },
         () => {
           this.sincronizarJustificativas();
+        }
+      )
+      /*
+        O LÍDER NÃO OUVE A TABELA DE CIMA: o tempo real respeita a RLS, e o
+        atestado não chega a ele. A decisão da Dani chega por aqui — o
+        gatilho reflete a aprovação ou a recusa nos dias abonados.
+      */
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'dias_abonados' },
+        () => {
+          this.sincronizarDiasAbonados();
         }
       )
       .subscribe(acompanharCanal('ponto'));

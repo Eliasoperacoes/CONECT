@@ -82,6 +82,34 @@ export const gravarAfastamentos = (lista: Afastamento[]): void => {
 };
 
 /**
+ * OS DIAS ABONADOS (dias-abonados-para-a-lideranca.sql, 06/11/2026).
+ *
+ * O líder não recebe o atestado da equipe — dado de saúde fica com o RH —
+ * e o espelho dele, calculado aqui, fechava o dia abonado como dia comum:
+ * o 04/11 da Beatriz saía 0h00 no RH e −2h30 na Leigislaine. O banco
+ * entrega ao líder só isto: quem e de que dia a que dia, sem tipo.
+ */
+export interface DiaAbonado {
+  id: string;
+  colaboradorId: string;
+  dataInicio: string;
+  dataFim: string;
+}
+
+export const CHAVE_DIAS_ABONADOS = 'conecta_v4_dias_abonados';
+
+export const lerDiasAbonados = (): DiaAbonado[] => lerLista<DiaAbonado>(CHAVE_DIAS_ABONADOS);
+
+export const gravarDiasAbonados = (lista: DiaAbonado[]): void => {
+  try {
+    localStorage.setItem(CHAVE_DIAS_ABONADOS, JSON.stringify(lista));
+  } catch {
+    // Sem armazenamento: vale só nesta sessão
+  }
+  notificarJustificativas();
+};
+
+/**
  * A situação de um dia, vinda de ausência APROVADA.
  *
  * Mora aqui, e não no serviço, porque `ponto` precisa dela para saber que
@@ -93,7 +121,7 @@ export const gravarAfastamentos = (lista: Afastamento[]): void => {
  * aprovação.
  */
 export const situacaoDoDia = (colaboradorId: string, data: string): SituacaoDoDia =>
-  situacaoNaLista(lerJustificativas(), colaboradorId, data, lerAfastamentos());
+  situacaoNaLista(lerJustificativas(), colaboradorId, data, lerAfastamentos(), lerDiasAbonados());
 
 /**
  * A MESMA PERGUNTA, sobre uma lista dada — sem ler o aparelho. É o que a
@@ -104,7 +132,13 @@ export const situacaoNaLista = (
   colaboradorId: string,
   data: string,
   /** Vale por cima de qualquer ausência: afastado não está de férias nem de atestado */
-  afastamentos: Afastamento[] = []
+  afastamentos: Afastamento[] = [],
+  /**
+   * O que o líder recebe no lugar do atestado. Vale depois das ausências:
+   * quem lê a ausência inteira (o RH, a pessoa) vê o tipo dela; o líder vê
+   * "Abonado", e o dia fecha igual nos dois espelhos.
+   */
+  diasAbonados: DiaAbonado[] = []
 ): SituacaoDoDia => {
   if (afastamentoEm(afastamentos, colaboradorId, data)) return 'afastado';
   const achada = ausencias.find(
@@ -114,5 +148,9 @@ export const situacaoNaLista = (
       data >= j.dataInicio &&
       data <= j.dataFim
   );
-  return achada ? SITUACAO_POR_TIPO[achada.tipo] : 'normal';
+  if (achada) return SITUACAO_POR_TIPO[achada.tipo];
+  const abonado = diasAbonados.some(
+    (d) => d.colaboradorId === colaboradorId && data >= d.dataInicio && data <= d.dataFim
+  );
+  return abonado ? 'abonado_outro' : 'normal';
 };

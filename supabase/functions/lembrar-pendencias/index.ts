@@ -575,11 +575,14 @@ var indices = new Map;
 var vigiados = new WeakSet;
 
 // src/servicos/justificativasCache.ts
-var situacaoNaLista = (ausencias, colaboradorId, data, afastamentos = []) => {
+var situacaoNaLista = (ausencias, colaboradorId, data, afastamentos = [], diasAbonados = []) => {
   if (afastamentoEm(afastamentos, colaboradorId, data))
     return "afastado";
   const achada = ausencias.find((j) => j.colaboradorId === colaboradorId && j.estado === "aprovada" && data >= j.dataInicio && data <= j.dataFim);
-  return achada ? SITUACAO_POR_TIPO[achada.tipo] : "normal";
+  if (achada)
+    return SITUACAO_POR_TIPO[achada.tipo];
+  const abonado = diasAbonados.some((d) => d.colaboradorId === colaboradorId && data >= d.dataInicio && data <= d.dataFim);
+  return abonado ? "abonado_outro" : "normal";
 };
 
 // src/servicos/feriadosNacionais.ts
