@@ -268,6 +268,58 @@ export const sequenciaDoDia = (data: string, colaborador?: Colaborador): TipoMar
 };
 
 /**
+ * QUAL QUADRO A PRÓXIMA BATIDA PREENCHE.
+ *
+ * Era sempre o primeiro vazio da ordem. A Marília (05/11/2026) bateu a
+ * entrada, esqueceu o almoço, e a batida das 17h de ir embora caiu em
+ * "saída para almoço". O líder não tem como mover a batida de quadro —
+ * apagar é do RH — e o dia dependia do RH para ser consertado.
+ *
+ * Agora a hora pesa: com o almoço ainda pendente, a batida que vem mais
+ * perto da saída do expediente do que da volta do almoço é a SAÍDA, e o
+ * almoço fica vazio. Dia sem almoço batido vai para "Pontos incompletos",
+ * onde o líder lança os dois horários — isso ele já pode.
+ *
+ * Só se pula para a saída. Esquecer a saída para o almoço nunca faz a
+ * batida virar retorno: entre os dois não há hora que decida com
+ * segurança. Sem horário conhecido (`horariosEsperadosDoDia` nulo), vale
+ * a ordem de antes.
+ *
+ * Nunca volta atrás: depois da saída não vem o almoço esquecido. É a
+ * mesma ordem que `registrar_marcacao` confere no banco.
+ *
+ * @param agoraEmMinutos Minutos desde a meia-noite, na hora local. Sem ele,
+ * só a ordem decide.
+ */
+export const proximaMarcacaoDoDia = (
+  colaborador: Colaborador | undefined,
+  data: string,
+  registradas: TipoMarcacao[],
+  agoraEmMinutos?: number
+): TipoMarcacao | null => {
+  const sequencia = sequenciaDoDia(data, colaborador);
+  const ultima = Math.max(-1, ...registradas.map((t) => sequencia.indexOf(t)));
+  const proxima = sequencia.slice(ultima + 1).find((t) => !registradas.includes(t)) || null;
+
+  if (agoraEmMinutos === undefined) return proxima;
+  if (proxima !== 'saida_almoco' && proxima !== 'retorno_almoco') return proxima;
+
+  const horarios = horariosEsperadosDoDia(colaborador, data);
+  // O almoço livre sem a saída batida fica sem horário: vale o do turno
+  const retorno = horarios?.retorno_almoco ?? emMinutosDoTurno(turnoDe(colaborador).intervalo?.retorno);
+  if (!horarios || horarios.saida === undefined || retorno === undefined) return proxima;
+
+  const corte = (retorno + horarios.saida) / 2;
+  return agoraEmMinutos >= corte ? 'saida' : proxima;
+};
+
+const emMinutosDoTurno = (hora?: string): number | undefined => {
+  if (!hora) return undefined;
+  const [h, m] = hora.split(':').map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : undefined;
+};
+
+/**
  * Quanto o dia prevê para esta pessoa.
  *
  * Domingo não prevê nada; sábado prevê as 4 horas da escala; dia útil

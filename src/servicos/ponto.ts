@@ -118,6 +118,7 @@ import {
   situacaoEfetiva,
   folgouNoSabado,
   sequenciaDoDia,
+  proximaMarcacaoDoDia,
 } from './apuracaoDoDia';
 export { paraDataLocal, deDataLocal, ehDiaDeFolga, ehSabado, marcacoesEsperadas, listarDatasDoPeriodo };
 
@@ -1011,9 +1012,11 @@ class ServicoPonto {
      * extra. Sem esta saída, quem foi trabalhar no feriado não conseguia
      * nem registrar que esteve lá. A ordem desse dia é `sequenciaDoDia`.
      */
-    const sequencia = sequenciaDoDia(data, colaborador);
-
-    return sequencia.find((tipo) => !registradas.includes(tipo)) || null;
+    // A hora só pesa no dia de hoje: num dia passado não há "agora" a comparar
+    const agora = agoraSincronizado();
+    const agoraEmMinutos =
+      data === paraDataLocal(agora) ? agora.getHours() * 60 + agora.getMinutes() : undefined;
+    return proximaMarcacaoDoDia(colaborador, data, registradas, agoraEmMinutos);
   }
 
   /** Rótulo do próximo passo, pronto para o botão da tela. */

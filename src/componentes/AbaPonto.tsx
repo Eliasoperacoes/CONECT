@@ -211,9 +211,18 @@ export const AbaPonto: React.FC<PropsAbaPonto> = ({
     [colaboradorAtual.id, hoje, versaoDados]
   );
 
+  // A próxima batida depende da hora (`proximaMarcacaoDoDia`): passado o
+  // meio da tarde, o almoço esquecido dá lugar à saída. A tela aberta
+  // desde cedo precisa acompanhar, senão o botão promete outro quadro.
+  const [minuto, setMinuto] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setMinuto((m) => m + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const proximaMarcacao = useMemo(
     () => servicoPonto.obterProximaMarcacao(colaboradorAtual.id, hoje),
-    [colaboradorAtual.id, hoje, versaoDados]
+    [colaboradorAtual.id, hoje, versaoDados, minuto]
   );
 
   /**
