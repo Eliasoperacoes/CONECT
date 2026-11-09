@@ -6,7 +6,7 @@
  * Chrome desacelera com a aba em segundo plano: 7 min de espera, 21/10/2026).
  */
 import { test, expect, afterEach } from 'bun:test';
-import { criarEstacao, resumoDaEstacao, versaoAtrasada, lerVersaoPublicada, NOME_DA_ESTACAO, type BancoDaEstacao, type Extensao, type PedidoDaFila, type Estacao } from './estacaoCotacao';
+import { criarEstacao, atendeAFila, resumoDaEstacao, versaoAtrasada, lerVersaoPublicada, NOME_DA_ESTACAO, type BancoDaEstacao, type Extensao, type PedidoDaFila, type Estacao } from './estacaoCotacao';
 
 const COMPRAS = { setor: 'Compras', nivel: 1 };
 const BALCAO = { setor: 'Balcão', nivel: 1 };
@@ -65,6 +65,71 @@ const naHora = () => Promise.resolve();
 const assentar = () => new Promise((r) => setTimeout(r, 10));
 
 const pedido = (id: string, codigo = id.toUpperCase(), incluir_similares = false): PedidoDaFila => ({ id, codigo, incluir_similares });
+
+const FECHADAS = { roles: 'fora', pellegrino: 'fora', dpk: 'fora' } as const;
+
+/** A extensão com as abas que o teste mandar: dá para fechar e reabrir no meio */
+const extensaoComAbas = (inicio: Record<string, 'ok' | 'deslogado' | 'fora'>) => {
+  const base = extensaoFalsa();
+  const abas = { sites: inicio };
+  return { ...base, abas, ola: async () => ({ versao: '1.0.0', sites: abas.sites }) };
+};
+
+test('PC com a extensão e sem nenhum B2B aberto: não dá sinal nem pega pedido da estação de verdade', async () => {
+  const { banco, chamadas, fila, aviso } = bancoFalso();
+  const extensao = extensaoComAbas({ ...FECHADAS });
+  estacao = criarEstacao({ colaborador: COMPRAS, extensao, banco, temporizador: nunca });
+  await estacao.iniciar();
+  fila.push(pedido('p1', 'OC90'));
+  aviso.ouvinte?.();
+  await assentar();
+  await estacao.darSinal();
+  await estacao.esvaziarFila();
+  expect(chamadas).toEqual([]);
+  expect(extensao.pedidos).toEqual([]);
+  expect(fila).toHaveLength(1); // o pedido segue na fila, para quem tem as abas
+});
+
+test('as abas fecharam: para de atender; voltaram: dá sinal e atende o que esperava', async () => {
+  const { banco, chamadas, fila, pegas } = bancoFalso();
+  const extensao = extensaoComAbas({ ...SITES });
+  estacao = criarEstacao({ colaborador: COMPRAS, extensao, banco, temporizador: nunca });
+  await estacao.iniciar();
+  await assentar();
+  const sinaisAntes = chamadas.filter((c) => c.startsWith('sinal')).length;
+  const pegasAntes = pegas();
+
+  extensao.abas.sites = { ...FECHADAS };
+  await estacao.darSinal();
+  fila.push(pedido('p1', 'OC90'));
+  await estacao.esvaziarFila();
+  expect(chamadas.filter((c) => c.startsWith('sinal'))).toHaveLength(sinaisAntes);
+  expect(pegas()).toBe(pegasAntes);
+
+  extensao.abas.sites = { ...SITES };
+  await estacao.darSinal();
+  await estacao.esvaziarFila();
+  expect(chamadas.filter((c) => c.startsWith('sinal'))).toHaveLength(sinaisAntes + 1);
+  expect(extensao.pedidos).toEqual(['OC90 false']);
+});
+
+test('aba aberta e deslogada ainda é a estação: o erro de sessão precisa aparecer', async () => {
+  const { banco, chamadas, fila } = bancoFalso();
+  const extensao = extensaoComAbas({ roles: 'deslogado', pellegrino: 'fora', dpk: 'fora' });
+  estacao = criarEstacao({ colaborador: COMPRAS, extensao, banco, temporizador: nunca });
+  await estacao.iniciar();
+  await assentar();
+  fila.push(pedido('p1', 'OC90'));
+  await estacao.esvaziarFila();
+  expect(chamadas.some((c) => c.startsWith('sinal'))).toBe(true);
+  expect(extensao.pedidos).toEqual(['OC90 false']);
+});
+
+test('atendeAFila: basta uma aba aberta; sem nenhuma, ou sem saber, não atende', () => {
+  expect(atendeAFila(SITES)).toBe(true);
+  expect(atendeAFila(FECHADAS)).toBe(false);
+  expect(atendeAFila({})).toBe(false);
+});
 
 test('fora do PC de compras (sem extensão): não liga e não chama o banco', async () => {
   const { banco, chamadas } = bancoFalso();

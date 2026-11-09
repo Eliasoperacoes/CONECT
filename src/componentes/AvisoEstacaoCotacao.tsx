@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../servicos/supabase';
 import {
   criarEstacao,
+  atendeAFila,
   extensaoPelaJanela,
   bancoPeloSupabase,
   manterAcordadoPeloNavegador,
@@ -53,6 +54,13 @@ export function AvisoEstacaoCotacao({ colaborador }: { colaborador: { id: string
     );
   }
   if (!situacao.ativa) return null;
+  if (!atendeAFila(situacao.sites)) {
+    return (
+      <div role="status" className="w-full px-4 py-1 text-[11px] font-semibold text-center flex-shrink-0 bg-[var(--c-canvas)] text-[var(--c-texto-suave,inherit)] opacity-70">
+        Este PC não atende a fila de cotação: nenhum B2B aberto
+      </div>
+    );
+  }
   const sites = Object.entries(situacao.sites);
   const todosOk = sites.every(([, s]) => s === 'ok');
   const resumo = todosOk

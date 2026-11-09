@@ -61,6 +61,9 @@ duas coisas são verdade: `podeAtenderFila(colaborador)` e a extensão
 respondeu ao `ola`. Em qualquer outro PC, ou para qualquer outra pessoa,
 não faz nada (nem chamada ao banco).
 
+- **Sem nenhuma aba de B2B aberta, o PC não é a estação:** não dá sinal nem
+  pega pedido (`atendeAFila`). A fila é uma só; sem isso, quem só tem a
+  extensão instalada pegava o pedido e devolvia erro em todos os fornecedores.
 - **Sinal:** a cada 60 s.
 - **Fila:** o pedido chega pelo tempo real na hora; de reserva, a cada 30 s
   (era 5 s: 17 mil chamadas por dia, quase todas de fila vazia), se não está

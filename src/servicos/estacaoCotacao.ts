@@ -9,6 +9,10 @@
  * Só liga quando as duas coisas são verdade: a pessoa atende a fila
  * (`podeAtenderFila`, par de `posso_atender_fila`) e a extensão respondeu.
  * Em qualquer outro PC, ou para qualquer outra pessoa, não chama o banco.
+ *
+ * Extensão sem nenhuma aba de B2B aberta também não é a estação (`atendeAFila`):
+ * a fila e o sinal são um só ('compras'), e o PC de quem só tem a extensão
+ * instalada pegava o pedido e devolvia erro em todos os fornecedores.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { podeAtenderFila } from '../tipos';
@@ -61,6 +65,10 @@ export const INTERVALO_SINAL_MS = 60_000;
 export const INTERVALO_FILA_MS = 30_000;
 export const PRAZO_EXTENSAO_MS = 90_000;
 export const PRAZO_OLA_MS = 2_000;
+
+/** Uma aba aberta basta, mesmo deslogada: aí o erro de sessão precisa aparecer. */
+export const atendeAFila = (sites: Record<string, SituacaoSite>): boolean =>
+  Object.values(sites).some((s) => s !== 'fora');
 
 const esperar = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -125,12 +133,12 @@ export const criarEstacao = (opcoes: {
   const darSinal = async () => {
     if (!ativa) return;
     ola = await comPrazo(extensao.ola(), temporizador(PRAZO_OLA_MS), 'a extensão não respondeu');
-    await banco.sinal(NOME_DA_ESTACAO, ola.sites, ola.versao);
+    if (atendeAFila(ola.sites)) await banco.sinal(NOME_DA_ESTACAO, ola.sites, ola.versao);
     aoMudar?.();
   };
 
   const atenderFila = async (): Promise<'vazia' | 'ocupada' | string> => {
-    if (!ativa) return 'vazia';
+    if (!ativa || !ola || !atendeAFila(ola.sites)) return 'vazia';
     if (cotando) return 'ocupada';
     cotando = true;
     try {
@@ -187,7 +195,7 @@ export const criarEstacao = (opcoes: {
         return false; // PC sem a extensão: não é a estação
       }
       ativa = true;
-      await banco.sinal(NOME_DA_ESTACAO, ola.sites, ola.versao).catch(() => {});
+      if (atendeAFila(ola.sites)) await banco.sinal(NOME_DA_ESTACAO, ola.sites, ola.versao).catch(() => {});
       relogios = [
         setInterval(() => void darSinal().catch(() => {}), INTERVALO_SINAL_MS),
         // A reserva: se o aviso em tempo real cair, o relógio ainda atende
