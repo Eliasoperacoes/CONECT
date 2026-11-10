@@ -238,15 +238,27 @@ const MESES = [
  * nas linhas de desconto. PDF com as duas etiquetas, ou com nenhuma, volta
  * sem sugestão: o RH escolhe, porque o tipo errado substituiria o documento
  * do outro tipo.
+ *
+ * O 13º vale em qualquer lugar da página ("13º Salário", "13o Sal.",
+ * "Décimo Terceiro"): a folha do mês não fala dele, e o próprio 13º costuma
+ * vir como "Adiantamento do 13º" — por isso ele vence o adiantamento. Com a
+ * etiqueta da folha mensal junto, fica sem sugestão.
  */
 export const sugerirTipoDeHolerite = (textos: string[]): TipoHolerite | null => {
   const mes = `(?:${MESES.join('|')})\\s*(?:\\/|DE)?\\s*20\\d{2}|(?:0[1-9]|1[0-2])\\/20\\d{2}`;
   const etiqueta = new RegExp(`\\b(FOLHA\\s+MENSAL|ADIANTAMENTO)(?:\\s+[A-Z]{2,12}){0,2}?\\s+(?:${mes})\\b`, 'g');
+  const decimoTerceiro = /\b13\s*[ºª°O]?\s*SAL(?:ARIO)?\b|\bDECIMO\s+TERCEIRO\b/;
 
   const achados = new Set<TipoHolerite>();
+  let falaDo13 = false;
   for (const texto of textos) {
     const t = texto.normalize('NFD').replace(/\p{M}/gu, '').toUpperCase();
     for (const m of t.matchAll(etiqueta)) achados.add(m[1].startsWith('FOLHA') ? 'folha' : 'adiantamento');
+    if (decimoTerceiro.test(t)) falaDo13 = true;
+  }
+  if (falaDo13) {
+    achados.delete('adiantamento');
+    achados.add('decimo_terceiro');
   }
   return achados.size === 1 ? [...achados][0] : null;
 };

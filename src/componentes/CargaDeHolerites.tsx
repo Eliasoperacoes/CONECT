@@ -18,7 +18,7 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { FileUp, Loader2, CheckCircle2, AlertTriangle, UserX, FileWarning } from 'lucide-react';
-import { Colaborador, Holerite, ROTULO_HOLERITE, TipoHolerite } from '../tipos';
+import { Colaborador, Holerite, ROTULO_HOLERITE, TIPOS_HOLERITE, TipoHolerite } from '../tipos';
 import { FolhaInferior } from './FolhaInferior';
 import {
   analisarPaginas,
@@ -157,7 +157,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
       return;
     }
     if (!tipo) {
-      setErro('Escolha se é folha ou adiantamento antes de publicar.');
+      setErro('Escolha qual documento é este antes de publicar.');
       return;
     }
     setErro(null);
@@ -199,7 +199,7 @@ export const CargaDeHolerites: React.FC<Props> = ({
         >
           {tipo
             ? `Publicar ${recebem.length} · ${ROTULO_HOLERITE[tipo]} de ${rotuloDoMes(competencia)}`
-            : 'Escolha folha ou adiantamento'}
+            : 'Escolha qual documento é este'}
         </button>
         <button type="button" onClick={recomecar} className="h-10 text-xs font-semibold text-[var(--c-texto-2)]">
           Escolher outro arquivo
@@ -281,8 +281,8 @@ export const CargaDeHolerites: React.FC<Props> = ({
             <span id="carga-tipo-rotulo" className="block text-xs font-bold text-[var(--c-texto-2)] mb-1.5">
               Qual documento é este?
             </span>
-            <div className="grid grid-cols-2 gap-2">
-              {(['adiantamento', 'folha'] as TipoHolerite[]).map((opcao) => (
+            <div className="grid grid-cols-3 gap-2">
+              {TIPOS_HOLERITE.map((opcao) => (
                 <button
                   key={opcao}
                   type="button"

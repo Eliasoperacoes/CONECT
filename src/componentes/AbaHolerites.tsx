@@ -27,7 +27,7 @@ import {
   FileUp,
   Download,
 } from 'lucide-react';
-import { Colaborador, Holerite, RecebimentoHolerite, ROTULO_HOLERITE, TipoHolerite } from '../tipos';
+import { Colaborador, Holerite, RecebimentoHolerite, ROTULO_HOLERITE, TIPOS_HOLERITE, TipoHolerite } from '../tipos';
 import { bancoDados } from '../servicos/bancoDados';
 import {
   listarHolerites,
@@ -316,7 +316,7 @@ export const AbaHolerites: React.FC<Props> = ({ colaboradorAtual }) => {
 
   const seletorDeTipo = (
     <div role="group" aria-label="Documento" className="inline-flex p-0.5 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda)]">
-      {(['adiantamento', 'folha'] as TipoHolerite[]).map((opcao) => (
+      {TIPOS_HOLERITE.map((opcao) => (
         <button
           key={opcao}
           type="button"

@@ -1795,12 +1795,19 @@ export interface JustificativaAusencia {
  * dentro da tabela incha o banco e faz cada abertura da tela baixar tudo de
  * novo — e o que a pessoa quer é abrir o dela, não os oitenta.
  */
-/** A rede recebe dois documentos por mês: o adiantamento e a folha. */
-export type TipoHolerite = 'folha' | 'adiantamento';
+/**
+ * A rede recebe dois documentos por mês, o adiantamento e a folha, e o 13º
+ * salário nos meses em que ele é pago (novembro e dezembro).
+ */
+export type TipoHolerite = 'folha' | 'adiantamento' | 'decimo_terceiro';
+
+/** Na ordem em que são pagos. As telas do RH montam a escolha daqui. */
+export const TIPOS_HOLERITE: readonly TipoHolerite[] = ['adiantamento', 'folha', 'decimo_terceiro'];
 
 export const ROTULO_HOLERITE: Record<TipoHolerite, string> = {
   folha: 'Folha',
   adiantamento: 'Adiantamento',
+  decimo_terceiro: '13º salário',
 };
 
 export interface Holerite {

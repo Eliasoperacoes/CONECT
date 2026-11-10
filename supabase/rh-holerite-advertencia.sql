@@ -30,8 +30,10 @@ create table if not exists public.holerites (
   enviado_por_id    text,
   enviado_por_nome  text,
   criado_em         timestamptz not null default now(),
-  -- A rede recebe adiantamento e folha no mesmo mês (holerite-por-tipo.sql)
-  tipo              text not null default 'folha' check (tipo in ('folha', 'adiantamento')),
+  -- A rede recebe adiantamento e folha no mesmo mês (holerite-por-tipo.sql),
+  -- e o 13º em novembro e dezembro (holerite-decimo-terceiro.sql)
+  tipo              text not null default 'folha'
+    constraint holerites_tipo_check check (tipo in ('folha', 'adiantamento', 'decimo_terceiro')),
   -- Um de cada tipo por pessoa e mês: reenviar SUBSTITUI, em vez de empilhar
   -- duas versões e deixar a pessoa adivinhar qual vale
   constraint holerites_por_pessoa_mes_e_tipo unique (colaborador_id, competencia, tipo)

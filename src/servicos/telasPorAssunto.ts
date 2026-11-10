@@ -215,7 +215,7 @@ export const DESCRICAO_DA_TELA: Record<TelaWeb, string> = {
   assinaturas:
     'Os espelhos que os colaboradores assinaram e esperam a assinatura do responsável — todos de uma vez. O holerite leva só a assinatura do colaborador.',
   holerites:
-    'Os holerites do mês, publicados a partir do PDF do escritório. Cada pessoa vê só o dela; reenviar substitui o do mesmo mês e tipo (folha ou adiantamento).',
+    'Os holerites do mês, publicados a partir do PDF do escritório. Cada pessoa vê só o dela; reenviar substitui o do mesmo mês e tipo (adiantamento, folha ou 13º salário).',
   advertencias:
     'O registro disciplinar da rede. A pessoa vê a dela e dá ciência na própria tela — a confirmação é dela, não de quem aplicou.',
   unidades: 'As lojas da rede: equipe, supervisão e quem está online.',

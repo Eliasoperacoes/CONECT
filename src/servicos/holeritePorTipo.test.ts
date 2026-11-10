@@ -44,6 +44,9 @@ beforeAll(async () => {
   await banco.db.exec(lerSql('holerite-por-tipo.sql'));
   // "Pode rodar mais de uma vez"
   await banco.db.exec(lerSql('holerite-por-tipo.sql'));
+  // O 13º (10/11/2026), também rodado duas vezes
+  await banco.db.exec(lerSql('holerite-decimo-terceiro.sql'));
+  await banco.db.exec(lerSql('holerite-decimo-terceiro.sql'));
   // Montar o banco leva mais de 5 s, o limite padrão, com a máquina ocupada
 }, 60_000);
 
@@ -66,6 +69,34 @@ test('a folha entra no mês do adiantamento, e o segundo do mesmo tipo é recusa
   );
   expect(rows.map((r) => r.tipo)).toEqual(['adiantamento', 'folha']);
 });
+
+test('novembro tem três documentos: o 13º entra ao lado do adiantamento e da folha, e o segundo 13º é recusado', async () => {
+  await inserir('hol-ana-2026-11-adiantamento', '2026-11', 'adiantamento');
+  await inserir('hol-ana-2026-11-folha', '2026-11', 'folha');
+  await inserir('hol-ana-2026-11-decimo_terceiro', '2026-11', 'decimo_terceiro');
+  await expect(inserir('outro-13', '2026-11', 'decimo_terceiro')).rejects.toThrow();
+  const { rows } = await banco.db.query<any>(
+    `select tipo from public.holerites where colaborador_id = 'ana' and competencia = '2026-11' order by tipo`
+  );
+  expect(rows.map((r) => r.tipo)).toEqual(['adiantamento', 'decimo_terceiro', 'folha']);
+});
+
+test('o banco novo, montado do zero, também aceita o 13º', async () => {
+  const novo = await montarBancoLocal();
+  await novo.db.exec(lerSql('rh-holerite-advertencia.sql'));
+  await novo.db.exec(`insert into public.colaboradores (id, nome, login, setor, loja, nivel, ativo)
+                      values ('ana', 'Ana', 'ana', 'Balcão', 'Pirassununga', 1, true)`);
+  await novo.db.query(
+    `insert into public.holerites (id, colaborador_id, competencia, tipo, arquivo_caminho, arquivo_nome)
+     values ('h13', 'ana', '2026-11', 'decimo_terceiro', 'holerites/ana/h13.pdf', 'x.pdf')`
+  );
+  await expect(
+    novo.db.query(
+      `insert into public.holerites (id, colaborador_id, competencia, tipo, arquivo_caminho, arquivo_nome)
+       values ('hb', 'ana', '2026-11', 'bonus', 'holerites/ana/hb.pdf', 'x.pdf')`
+    )
+  ).rejects.toThrow();
+}, 60_000);
 
 test('tipo fora da lista é recusado', async () => {
   await expect(inserir('estranho', '2026-08', 'bonus')).rejects.toThrow();
@@ -96,6 +127,30 @@ test('as telas do RH contam e substituem por tipo, e a carga não publica sem el
 test('o sino não repete o mês quando os dois documentos estão por assinar', async () => {
   const sino = await Bun.file(new URL('../componentes/SinoWeb.tsx', import.meta.url)).text();
   expect(sino).toContain('[...new Set(meses)].sort()');
+});
+
+test('o PDF do 13º é reconhecido, escrito de qualquer jeito, mesmo chamado de adiantamento', () => {
+  expect(sugerirTipoDeHolerite(['Filial  13º Salário 1ª Parcela Novembro de 2026'])).toBe('decimo_terceiro');
+  expect(sugerirTipoDeHolerite(['ADIANTAMENTO 13O SAL. 11/2026'])).toBe('decimo_terceiro');
+  expect(sugerirTipoDeHolerite(['Adiantamento Décimo Terceiro Novembro de 2026'])).toBe('decimo_terceiro');
+  // A 2ª parcela desconta a 1ª: continua 13º
+  expect(sugerirTipoDeHolerite(['13 Salario 2a Parcela Dezembro de 2026', '981 ADIANTAMENTO 13 SALARIO 1.200,00'])).toBe(
+    'decimo_terceiro'
+  );
+});
+
+test('13º com a etiqueta da folha mensal é dúvida; e "13" perto de saldo não é 13º', () => {
+  expect(sugerirTipoDeHolerite(['Folha Mensal Novembro de 2026', '13º Salário 1ª Parcela Novembro de 2026'])).toBeNull();
+  expect(sugerirTipoDeHolerite(['Folha Mensal Novembro de 2026 GERAL', '13 SALDO DE SALARIO 30,00'])).toBe('folha');
+});
+
+test('as duas telas do RH montam a escolha da mesma lista de tipos', async () => {
+  const ler = (nome: string) => Bun.file(new URL(`../componentes/${nome}.tsx`, import.meta.url)).text();
+  for (const tela of ['AbaHolerites', 'CargaDeHolerites']) {
+    const codigo = await ler(tela);
+    expect(codigo).toContain('TIPOS_HOLERITE.map(');
+    expect(codigo).not.toMatch(/\[\s*'adiantamento'\s*,\s*'folha'/);
+  }
 });
 
 test('sem etiqueta, ou com as duas, não há palpite: o RH escolhe', () => {
