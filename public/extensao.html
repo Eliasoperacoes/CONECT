@@ -125,6 +125,18 @@
     <strong>Fechar</strong> (ou no X). Não clique em Desativar: a cotação para.
   </div>
 
+  <h3>Quando um fornecedor desloga</h3>
+  <p>A cada 2 minutos a extensão confere os fornecedores. O que caiu na tela de login ela entra de novo sozinha, com a
+    senha que o Chrome guardou: a aba vem para a frente por alguns segundos e aparece no alto a faixa
+    <span class="toque">"Cotador B2B começou a depurar este navegador"</span>. É esperado e some ao terminar —
+    <strong>não clique em Cancelar</strong> nela, que a entrada é interrompida.</p>
+  <ul>
+    <li>Sky e Barros pedem o CNPJ: guarde-o uma vez no painel da extensão, em <span class="toque">Sessões dos B2Bs</span>.</li>
+    <li>Lucios (site sem https): guarde usuário e senha no mesmo lugar, em <span class="toque">Login da Lucios</span>.</li>
+    <li>CHG pede para confirmar que é humano: essa entra à mão. Quando cair, chega uma notificação do Windows; o clique
+      nela abre a aba.</li>
+  </ul>
+
   <h3>Quando o CONECTA disser "extensão desatualizada"</h3>
   <ol class="passos">
     <li>
@@ -139,6 +151,8 @@
       <div class="passo-corpo">
         <p>Em <code>chrome://extensions</code>, clique na <strong>seta circular</strong> (↻) do cartão Cotador B2B. Depois
           aperte F5 na aba do CONECTA. O aviso some quando a versão nova der sinal.</p>
+        <p>Se o Chrome pedir permissões novas (a 1.1.0 pede para <strong>depurar</strong> — é o que faz a entrada
+          sozinha nos fornecedores — e para mostrar <strong>notificações</strong>), aceite.</p>
       </div>
     </li>
   </ol>
