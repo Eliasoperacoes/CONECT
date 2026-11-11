@@ -35,6 +35,7 @@ import {
   blocosPorFornecedor,
   comAPeca,
   comFatorDoVendedor,
+  falhasDaCotacao,
   foiCotadaHoje,
   resumoDoCartao,
   type Andamento,
@@ -420,6 +421,7 @@ export const CartaoDaCotacao: React.FC<{
   // Aberta sem cotar (Histórico, chat) e ninguém cotou nos B2B hoje
   const naoCotadaHoje = !!cartao && !foiCotadaHoje(cartao);
   const nome = (f: string) => nomes[f] ?? f;
+  const falhas = useMemo(() => (situacao === 'pronta' ? falhasDaCotacao(andamento?.erro, nomes) : []), [situacao, andamento?.erro, nomes]);
   const botao =
     'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-[var(--c-borda)] bg-[var(--c-superficie)] px-3 text-xs font-bold text-[var(--c-texto-2)] transition hover:border-[var(--c-acento)] hover:text-[var(--c-acento)] disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -704,6 +706,19 @@ export const CartaoDaCotacao: React.FC<{
               </div>
             )}
           </div>
+          {/* Quem não cotou agora: não é "sem estoque", é o site que não respondeu */}
+          {falhas.length > 0 && (
+            <p className="flex flex-wrap items-baseline gap-x-1 border-t border-[var(--c-borda)] px-4 py-2.5 text-xs text-[var(--c-texto-2)]">
+              <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 self-center text-[var(--c-atencao)]" aria-hidden />
+              <b className="font-bold text-[var(--c-texto)]">Não cotaram agora:</b>
+              {falhas.map((f, i) => (
+                <span key={f.fornecedor}>
+                  {f.nome} <span className="text-[var(--c-texto-3)]">({f.motivo})</span>
+                  {i < falhas.length - 1 && ' ·'}
+                </span>
+              ))}
+            </p>
+          )}
         </>
       )}
 

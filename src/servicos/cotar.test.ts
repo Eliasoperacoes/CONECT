@@ -202,3 +202,23 @@ test('Callcenter: sem fator, a base (custo + frete) em ordem; com fator, a base 
   // O cartão de origem não muda (a tela troca o fator e volta)
   expect(c.ofertas.find((o) => o.fornecedor === 'dpk')!.venda).toBe(18.9);
 });
+
+test('os que não cotaram: cada fornecedor com o motivo curto (sumiam do resultado, 11/11/2026)', async () => {
+  const { falhasDaCotacao } = await import('./cotar');
+  const erro = [
+    'roles: Roles: erro 400: Parâmetro inválido',
+    'barros: Barros: a sessão caiu (mesmo recarregando a aba). Entre de novo no site e cote de novo.',
+    'dpk: Abra o DPK logado numa aba.',
+    'vespor: Vespor Pro: recarregue a aba do site (F5) ou pesquise qualquer peça nela, e cote de novo.',
+    'lucios: Lucios: entrando de novo no site, cote de novo em 1 minuto.',
+  ].join(' | ');
+  expect(falhasDaCotacao(erro, { roles: 'Roles', dpk: 'DPK', vespor: 'Vespor Pro' })).toEqual([
+    { fornecedor: 'roles', nome: 'Roles', motivo: 'erro 400: Parâmetro inválido' },
+    { fornecedor: 'barros', nome: 'barros', motivo: 'deslogado' },
+    { fornecedor: 'dpk', nome: 'DPK', motivo: 'aba fechada' },
+    { fornecedor: 'vespor', nome: 'Vespor Pro', motivo: 'deslogado' },
+    { fornecedor: 'lucios', nome: 'lucios', motivo: 'entrando de novo no site' },
+  ]);
+  expect(falhasDaCotacao(null)).toEqual([]);
+  expect(falhasDaCotacao('')).toEqual([]);
+});

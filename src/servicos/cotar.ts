@@ -105,6 +105,30 @@ export const separarCodigos = (texto: string): string[] => {
     });
 };
 
+/**
+ * OS FORNECEDORES QUE NÃO COTARAM, do texto que o gravar_cotacao guarda
+ * ("roles: Roles: erro 400 | barros: Barros: a sessão caiu…"). Com a cotação
+ * pronta eles sumiam do resultado sem aviso, e "não cotou" parecia "não tem"
+ * (11/11/2026). O motivo, curto, na língua do balcão.
+ */
+export const falhasDaCotacao = (erro: string | null | undefined, nomes: Record<string, string> = {}): { fornecedor: string; nome: string; motivo: string }[] =>
+  (erro ?? '')
+    .split(' | ')
+    .map((parte) => {
+      const i = parte.indexOf(': ');
+      if (i < 0) return null;
+      const fornecedor = parte.slice(0, i).trim();
+      const nome = nomes[fornecedor] ?? fornecedor;
+      // A extensão repete o nome do site no começo ("Roles: erro 400")
+      let motivo = parte.slice(i + 2).trim();
+      if (motivo.toLowerCase().startsWith(`${nome.toLowerCase()}: `)) motivo = motivo.slice(nome.length + 2);
+      if (/sess[ãa]o (caiu|vencida)|recarregue a aba|sem-sessao/i.test(motivo)) motivo = 'deslogado';
+      else if (/^Abra o .* logado numa aba/i.test(motivo)) motivo = 'aba fechada';
+      else if (/entrando de novo no site/i.test(motivo)) motivo = 'entrando de novo no site';
+      return fornecedor ? { fornecedor, nome, motivo } : null;
+    })
+    .filter((f): f is { fornecedor: string; nome: string; motivo: string } => f !== null);
+
 const FINAL: SituacaoDoAndamento[] = ['pronta', 'erro', 'sem_pedido'];
 export const terminou = (a: Andamento): boolean => FINAL.includes(a.situacao);
 
