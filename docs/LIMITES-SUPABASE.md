@@ -226,3 +226,14 @@ alto sem uso do painel, é origem a desligar, não plano a pagar.
 
 A consulta 2 é a que decide se a foto vira prioridade ou se pode
 esperar.
+
+## O check-up do mês
+
+`supabase/medir-saude.sql` responde se o banco está **saudável**, que é
+outra pergunta além de "cabe no plano": cache, transação esquecida
+aberta, linhas mortas, consultas lentas, índices sem uso, tabela sem RLS,
+deadlocks e se as tarefas da madrugada (apuração do ponto, alertas,
+lembretes) rodaram e se a função chamada respondeu sem erro. Cada linha
+traz OK, ATENÇÃO ou PROBLEMA. A resposta das funções (`net._http_response`)
+só fica guardada por algumas horas: a da apuração das 03:00 pode já ter
+saído à tarde.
