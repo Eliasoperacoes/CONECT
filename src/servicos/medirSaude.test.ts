@@ -21,7 +21,15 @@ beforeAll(async () => {
   banco = await montarBancoLocal();
   await banco.db.exec(`
     alter table storage.objects add column if not exists metadata jsonb;
-    create table extensions.pg_stat_statements (query text, calls bigint, mean_exec_time float8, total_exec_time float8);
+    create table extensions.pg_stat_statements (
+      query text, calls bigint, mean_exec_time float8, total_exec_time float8,
+      userid oid
+    );
+    -- Sem papel dito, a consulta é de um aparelho logado
+    do $$ begin
+      execute format('alter table extensions.pg_stat_statements alter column userid set default %s',
+                     (select oid from pg_roles where rolname = 'authenticated'));
+    end $$;
     create table extensions.pg_stat_statements_info (stats_reset timestamptz);
     insert into extensions.pg_stat_statements_info values (now() - interval '3 days');
     create schema cron;
@@ -93,6 +101,18 @@ test('consulta lenta: acima de 500 ms por vez é PROBLEMA; a rodada poucas vezes
     ['select * from registros_ponto whe', 'PROBLEMA'],
     ['select * from mensagens where y', 'ATENÇÃO'],
   ]);
+});
+
+test('a consulta lenta do painel do Supabase aparece, mas sem veredito: não é do sistema', async () => {
+  await banco.db.exec(`
+    insert into extensions.pg_stat_statements (query, calls, mean_exec_time, total_exec_time, userid)
+    values ('SELECT name FROM pg_timezone_names', 37, 900, 33300, (select oid from pg_roles where rolname = 'postgres'));
+  `);
+  const painel = (await checkup()).find((l) => l.item.startsWith('lenta: SELECT name FROM pg_timezone_names'));
+  expect(painel?.veredito).toBe('—');
+  expect(painel?.leitura).toContain('papel postgres');
+  const doSistema = (await checkup()).find((l) => l.item.startsWith('lenta: select * from registros_ponto'));
+  expect(doSistema?.veredito).toBe('PROBLEMA');
 });
 
 test('arquivos: o tamanho vem do metadata do Storage', async () => {

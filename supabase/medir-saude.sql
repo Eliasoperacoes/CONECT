@@ -155,9 +155,16 @@ select secao, item, valor, veredito, leitura from (
   (select 5, row_number() over (order by s.mean_exec_time desc), '5. CONSULTAS',
           'lenta: ' || left(regexp_replace(s.query, '\s+', ' ', 'g'), 120),
           round(s.mean_exec_time::numeric, 1) || ' ms por vez',
-          case when s.mean_exec_time > 500 then 'PROBLEMA' when s.mean_exec_time > 100 then 'ATENÇÃO' else 'OK' end,
-          s.calls || ' chamadas · ' || round(s.total_exec_time / 1000) || ' s no total'
+          -- Só a consulta dos aparelhos ganha veredito. A do painel do
+          -- Supabase (pg_timezone_names, 14/11/2026) e a do cache de esquema
+          -- do PostgREST rodam com outro papel e não são do sistema
+          case when coalesce(r.rolname, '') not in ('authenticated', 'anon', 'service_role') then '—'
+               when s.mean_exec_time > 500 then 'PROBLEMA'
+               when s.mean_exec_time > 100 then 'ATENÇÃO'
+               else 'OK' end,
+          s.calls || ' chamadas · ' || round(s.total_exec_time / 1000) || ' s no total · papel ' || coalesce(r.rolname, '?')
      from extensions.pg_stat_statements s
+     left join pg_roles r on r.oid = s.userid
     where s.calls >= 20
       and s.query not ilike '%pg_stat%'
     order by s.mean_exec_time desc
@@ -169,8 +176,9 @@ select secao, item, valor, veredito, leitura from (
           'soma: ' || left(regexp_replace(s.query, '\s+', ' ', 'g'), 120),
           round(s.total_exec_time / 1000) || ' s no total',
           'OK',
-          s.calls || ' chamadas · ' || round(s.mean_exec_time::numeric, 1) || ' ms por vez'
+          s.calls || ' chamadas · ' || round(s.mean_exec_time::numeric, 1) || ' ms por vez · papel ' || coalesce(r.rolname, '?')
      from extensions.pg_stat_statements s
+     left join pg_roles r on r.oid = s.userid
     where s.query not ilike '%pg_stat%'
     order by s.total_exec_time desc
     limit 5)
