@@ -153,7 +153,7 @@ esquema.
 | `zerar-saldo-sem-ponto.sql` | **ALTERA.** Antes de abrir para a loja: apaga as apurações de quem não tem marcação de ponto nenhuma, para ninguém entrar no sistema vendo um débito de dia que não trabalhou. Não toca em quem já bateu ponto |
 | `conferir-sabado.sql` | **Não altera nada.** O sábado de alguém previu zero e o que a pessoa trabalhou virou hora extra — separa as duas causas: `trabalha_sabado` desligado na ficha (cadastro errado) ou folga aprovada naquele dia (previsto zero está certo) |
 | `conferir-tolerancia.sql` | **Não altera nada.** Saldo de alguém não bate com o que a pessoa diz ter trabalhado — mostra quanto do saldo dela veio de minutos que a tolerância aprovou sozinha (art. 58 §1º da CLT manda não descontá-los) |
-| `conferir-banco-de-horas.sql` | **Não altera nada.** Saldo do banco de horas de uma pessoa, com a mesma conta da tela: só o aprovado, débito negativo, dia incompleto zero; o pendente vem à parte. Troque `l_via%` pelo começo do nome |
+| `conferir-banco-de-horas.sql` | **Não altera nada.** Saldo do banco de horas de uma pessoa, com a mesma conta da tela: só o aprovado, débito negativo, dia incompleto zero; o pendente vem à parte. Uma linha por mês dos últimos 3 meses, o total deles e o saldo total do banco. Troque `l_via%` pelo começo do nome |
 | `aviso-no-chat.sql` | **Rode uma vez.** Dá ao recado do chat o id da publicação, para o botão "Abrir publicação" levar à certa |
 | `central-da-direcao.sql` | **Rode uma vez.** Dá à Central da Direção tipo, categoria, destinos e anexo, e põe o filtro de quem vê o quê no banco |
 | `resetar-senha-inicial.sql` | **Substituído por `senha-de-ativacao-aleatoria.sql`** — tem trava e para se rodado de novo (devolveria o reset ao "123456", que não ativa mais ninguém) |
