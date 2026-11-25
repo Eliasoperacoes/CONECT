@@ -105,9 +105,12 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
     null
   );
   const [motivoAusencia, setMotivoAusencia] = useState('');
+  /** O dia sem fechar cujo abono espera confirmação (o id do ajuste). */
+  const [confirmandoAbono, setConfirmandoAbono] = useState<string | null>(null);
 
   /* O voltar do Android desiste da recusa, como o botão Cancelar */
   useVoltar(!!recusando, () => setRecusando(null));
+  useVoltar(!!confirmandoAbono, () => setConfirmandoAbono(null));
   useVoltar(!!recusandoAusencia, () => setRecusandoAusencia(null));
 
   /**
@@ -348,11 +351,19 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                   o dia vale. Abonar conta como jornada normal; débito assume
                   que o dia não foi trabalhado. Recusar não significaria nada
                   aqui — o dia continuaria em aberto.
+
+                  OS DOIS COM O MESMO PESO, E O EFEITO ESCRITO (25/11/2026).
+                  O "Abonar dia" era o botão cheio, o de destaque, e três
+                  faltas combinadas para descontar (Leigislaine, Fernanda,
+                  Mikael) foram abonadas e não saíram do banco. A tela não
+                  empurra mais para um lado, cada botão diz o que faz com o
+                  banco, e o abono — que perdoa as horas — pede confirmação.
                 */}
-                {ehDiaSemFechar && (
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                {ehDiaSemFechar && confirmandoAbono !== ajuste.id && (
+                  <div className="grid grid-cols-2 sm:flex sm:items-stretch gap-2 flex-shrink-0">
                     <button
                       type="button"
+                      id={`debito-${ajuste.id}`}
                       disabled={emAndamento === ajuste.id}
                       onClick={async () => {
                         setEmAndamento(ajuste.id);
@@ -360,35 +371,73 @@ export const AprovacaoJornada: React.FC<PropsAprovacaoJornada> = ({ colaboradorA
                         setEmAndamento(null);
                         mostrar(
                           res.sucesso
-                            ? ehFalta
-                              ? 'Falta confirmada. O dia entra como débito no banco de horas.'
-                              : 'Marcado como débito. O dia não foi trabalhado.'
+                            ? `${ehFalta ? 'Falta confirmada' : 'Marcado como débito'}. Desconta ${formatarMinutos(
+                                ajuste.minutosPrevistos
+                              )} do banco de horas.`
                             : res.erro || 'Não foi possível registrar.',
                           !res.sucesso
                         );
                       }}
-                      className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] hover:text-conecta-atencao hover:border-conecta-atencao/30 disabled:opacity-50 transition-colors cursor-pointer"
+                      className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-left hover:border-conecta-atencao/40 disabled:opacity-50 transition-colors cursor-pointer"
                     >
-                      {ehFalta ? 'Confirmar falta' : 'Marcar débito'}
+                      <span className="block text-xs font-bold text-[var(--c-texto)]">
+                        {ehFalta ? 'Confirmar falta' : 'Marcar débito'}
+                      </span>
+                      <span className="block text-[10px] font-semibold text-conecta-atencao">
+                        desconta {formatarMinutos(ajuste.minutosPrevistos)} do banco
+                      </span>
                     </button>
                     <button
                       type="button"
+                      id={`abonar-${ajuste.id}`}
                       disabled={emAndamento === ajuste.id}
-                      onClick={async () => {
-                        setEmAndamento(ajuste.id);
-                        const res = await servicoPonto.decidirDiaIncompleto(ajuste.id, true);
-                        setEmAndamento(null);
-                        mostrar(
-                          res.sucesso
-                            ? 'Abonado. O dia conta como jornada normal.'
-                            : res.erro || 'Não foi possível registrar.',
-                          !res.sucesso
-                        );
-                      }}
-                      className="py-2 px-4 rounded-xl bg-conecta-acento hover:brightness-110 disabled:opacity-50 text-conecta-sobre-acento text-xs font-bold transition-colors cursor-pointer"
+                      onClick={() => setConfirmandoAbono(ajuste.id)}
+                      className="py-2 px-3 rounded-xl border border-[var(--c-borda)] text-left hover:border-[var(--c-borda-forte)] disabled:opacity-50 transition-colors cursor-pointer"
                     >
-                      Abonar dia
+                      <span className="block text-xs font-bold text-[var(--c-texto)]">Abonar dia</span>
+                      <span className="block text-[10px] font-semibold text-[var(--c-texto-3)]">
+                        não desconta do banco
+                      </span>
                     </button>
+                  </div>
+                )}
+
+                {ehDiaSemFechar && confirmandoAbono === ajuste.id && (
+                  <div className="sm:max-w-[18rem] p-3 rounded-xl bg-[var(--c-superficie-2)] border border-[var(--c-borda-forte)] flex flex-col gap-2 flex-shrink-0">
+                    <span className="text-xs text-[var(--c-texto)] leading-snug">
+                      Abonar {formatarDiaCurto(ajuste.data)}? O dia conta como jornada normal e{' '}
+                      <strong>não desconta {formatarMinutos(ajuste.minutosPrevistos)}</strong> do banco de
+                      horas de {colaborador.nome.split(' ')[0]}.
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setConfirmandoAbono(null)}
+                        className="py-2 rounded-xl border border-[var(--c-borda)] text-xs font-bold text-[var(--c-texto-2)] cursor-pointer"
+                      >
+                        Voltar
+                      </button>
+                      <button
+                        type="button"
+                        id={`confirmar-abono-${ajuste.id}`}
+                        disabled={emAndamento === ajuste.id}
+                        onClick={async () => {
+                          setEmAndamento(ajuste.id);
+                          const res = await servicoPonto.decidirDiaIncompleto(ajuste.id, true);
+                          setEmAndamento(null);
+                          setConfirmandoAbono(null);
+                          mostrar(
+                            res.sucesso
+                              ? 'Abonado. O dia conta como jornada normal e não desconta do banco.'
+                              : res.erro || 'Não foi possível registrar.',
+                            !res.sucesso
+                          );
+                        }}
+                        className="py-2 rounded-xl bg-[var(--c-texto)] text-[var(--c-canvas)] text-xs font-bold disabled:opacity-50 cursor-pointer"
+                      >
+                        Abonar
+                      </button>
+                    </div>
                   </div>
                 )}
 
