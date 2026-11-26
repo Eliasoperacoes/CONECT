@@ -3279,11 +3279,15 @@ begin
     -- 08:23:54 — e a jornada ganhou uma saída para almoço às 08:23.
     -- Ninguém sai para o almoço 19 s depois de entrar: a marcação fica
     -- registrada, com NSR e comprovante, e o RH decide o que ela é.
+    -- SÓ CONTA A ANTERIOR QUE ENTROU NA JORNADA (26/11/2026): a tentativa
+    -- que ficou de fora não avançou nada, e contá-la travou a saída para
+    -- almoço do Renan três vezes seguidas.
     when exists (
       -- "anterior", e não "o": a função já tem a variável "o" (a original nova)
       select 1 from public.marcacoes_originais anterior
        where anterior.colaborador_id = eu.id
          and anterior.data = hoje
+         and anterior.registro_id is not null
          and anterior.registrado_em > agora - interval '2 minutes'
     ) then 'repetida'
     when exists (

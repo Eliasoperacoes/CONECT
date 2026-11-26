@@ -70,8 +70,10 @@ test('o esquema.sql traz o MESMO texto dos deltas (uma regra, um lugar)', () => 
     const fim = 'grant execute on function public.registrar_marcacao(text, text, text, text) to authenticated;';
     return texto.slice(i, texto.indexOf(fim, i) + fim.length);
   };
-  const janela = funcaoDe(readFileSync('supabase/batida-repetida-em-2-minutos.sql', 'utf8'));
+  // Desde 26/11/2026 a função vigente é a de batida-repetida-so-a-que-entrou.sql
+  const janela = funcaoDe(readFileSync('supabase/batida-repetida-so-a-que-entrou.sql', 'utf8'));
   expect(janela).toContain("interval '2 minutes'");
+  expect(janela).toContain('anterior.registro_id is not null');
   const etapa2Lida = readFileSync('supabase/registrador-por-estabelecimento.sql', 'utf8');
   // Substituição por função: em texto, o "$$" do plpgsql viraria "$"
   const etapa2 = etapa2Lida.replace(funcaoDe(etapa2Lida), () => janela);

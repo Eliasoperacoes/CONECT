@@ -14,17 +14,21 @@ let domingo = false;
 
 const ANA = '00000000-0000-0000-0000-0000000000f1';
 const BIA = '00000000-0000-0000-0000-0000000000f2';
+const REN = '00000000-0000-0000-0000-0000000000f3';
 
 beforeAll(async () => {
   banco = await montarBancoLocal();
-  // O próprio delta, rodado por cima do esquema: a trava do começo passa
+  // Os próprios deltas, na ordem, por cima do esquema: a trava do começo
+  // passa, e vale a função do mais novo
   await banco.db.exec(lerSql('batida-repetida-em-2-minutos.sql'));
+  await banco.db.exec(lerSql('batida-repetida-so-a-que-entrou.sql'));
   await banco.db.exec(`
     alter table auth.users disable trigger all;
-    insert into auth.users (id) values ('${ANA}'), ('${BIA}');
+    insert into auth.users (id) values ('${ANA}'), ('${BIA}'), ('${REN}');
     insert into public.colaboradores (id, auth_user_id, nome, login, setor, loja, nivel, cnpj, ativo) values
       ('ana', '${ANA}', 'Ana', 'ana', 'Balcão', 'Pirassununga', 1, '11222333000144', true),
-      ('bia', '${BIA}', 'Bia', 'bia', 'Balcão', 'Pirassununga', 1, '11222333000144', true);
+      ('bia', '${BIA}', 'Bia', 'bia', 'Balcão', 'Pirassununga', 1, '11222333000144', true),
+      ('ren', '${REN}', 'Ren', 'ren', 'Balcão', 'Pirassununga', 1, '11222333000144', true);
     insert into public.codigos_ponto_loja (loja, codigo) values ('Pirassununga', 'ABC123')
       on conflict (loja) do update set codigo = excluded.codigo;
   `);
@@ -53,8 +57,36 @@ const envelhecer = async (colaborador: string, minutos: number) => {
 test('a conferência do delta: uma função de batida, com a janela', async () => {
   const r = (await banco.db.query<any>(`
     select (select count(*)::int from pg_proc where proname = 'registrar_marcacao') as funcoes,
-           (select prosrc like '%interval ''2 minutes''%' from pg_proc where proname = 'registrar_marcacao') as janela`)).rows[0];
-  expect(r).toEqual({ funcoes: 1, janela: true });
+           (select prosrc like '%interval ''2 minutes''%' from pg_proc where proname = 'registrar_marcacao') as janela,
+           (select prosrc like '%anterior.registro_id is not null%' from pg_proc where proname = 'registrar_marcacao') as so_a_que_entrou`)).rows[0];
+  expect(r).toEqual({ funcoes: 1, janela: true, so_a_que_entrou: true });
+});
+
+/**
+ * O CASO DO RENAN (26/11/2026): o celular pediu "entrada" com a entrada
+ * já batida — ficou fora, repetida. A saída para almoço certa, 37 s
+ * depois, também ficou fora: a janela contava a tentativa que não entrou.
+ */
+test('O CASO DO RENAN: a tentativa que ficou fora da jornada não trava a batida certa logo depois', async () => {
+  if (domingo) return;
+  const entrada = await marcar(REN, 'entrada');
+  expect(entrada.fora_da_jornada).toBeNull();
+  await envelhecer('ren', 3);
+
+  // O celular sem a entrada pede entrada de novo: fica fora, e não avança nada
+  const errada = await marcar(REN, 'entrada');
+  expect(errada.fora_da_jornada).toBe('repetida');
+  expect(errada.registro).toBeNull();
+
+  // Segundos depois, a certa: entra na jornada
+  const certa = await marcar(REN, 'saida_almoco');
+  expect(certa.fora_da_jornada).toBeNull();
+  expect(certa.registro?.tipo).toBe('saida_almoco');
+
+  const tratamento = (await banco.db.query<{ tipo: string }>(
+    `select tipo from public.registros_ponto where colaborador_id = 'ren' order by horario`
+  )).rows.map((l) => l.tipo);
+  expect(tratamento).toEqual(['entrada', 'saida_almoco']);
 });
 
 test('O CASO DO YAN: a segunda batida 19 s depois fica registrada, mas não vira saída para almoço', async () => {
