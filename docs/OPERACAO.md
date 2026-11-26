@@ -213,6 +213,7 @@ esquema.
 | `conferir-exclusao.sql` | Conversa excluída que volta sozinha |
 | `medir-chat.sql` | Chat lento: mede o custo de uma sincronização |
 | `testar-cadastro.sql` | Cadastro recusado sem motivo claro |
+| `diagnostico-batida-que-nao-entrou.sql` | **Não altera nada.** "Tentei bater e não marcou": separa sistema de aparelho. Linha do tempo de hoje da pessoa — tentativas que chegaram ao servidor (toda batida com QR válido vira marcação original), erros da tela dela, se os colegas da loja bateram e quando o QR da loja foi trocado. Troque `renan%` pelo começo do nome |
 | `conferir-batida-pelo-servidor.sql` | Só leitura. Diz, para as batidas das últimas horas, se cada uma passou por `bater_ponto` (hora do servidor) ou veio pronta do aparelho |
 | `diagnostico-*.sql`, `verificar-*.sql` | Investigações pontuais, já resolvidas. Servem de modelo |
 | `corrigir-turno-maria-clara.sql` | Já aplicado (01/10/2026). Modelo para corrigir o turno de alguém pelo SQL Editor: o gatilho aceita a troca e grava a confirmação |
